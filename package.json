@@ -1,0 +1,17 @@
+{
+  "name": "bms-app",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend \"npm run dev -w @bms-app/backend\" \"npm run dev -w @bms-app/frontend\"",
+    "build": "npm run build -w @bms-app/frontend",
+    "start": "concurrently -n backend,frontend \"npm start -w @bms-app/backend\" \"npm start -w @bms-app/frontend\"",
+    "start:backend": "npm start -w @bms-app/backend",
+    "start:frontend": "npm start -w @bms-app/frontend"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

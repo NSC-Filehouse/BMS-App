@@ -1,0 +1,79 @@
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+
+import Layout from './components/Layout.jsx';
+import MandantGuard from './components/MandantGuard.jsx';
+
+import Start from './pages/Start.jsx';
+
+import CustomersList from './pages/CustomersList.jsx';
+import CustomerDetail from './pages/CustomerDetail.jsx';
+
+import ProductsList from './pages/ProductsList.jsx';
+import ProductDetail from './pages/ProductDetail.jsx';
+
+import OrdersList from './pages/OrdersList.jsx';
+import OrderDetail from './pages/OrderDetail.jsx';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<Start />} />
+
+        <Route
+          path="/customers"
+          element={
+            <MandantGuard>
+              <CustomersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/customers/:id"
+          element={
+            <MandantGuard>
+              <CustomerDetail />
+            </MandantGuard>
+          }
+        />
+
+        <Route
+          path="/products"
+          element={
+            <MandantGuard>
+              <ProductsList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/products/:id"
+          element={
+            <MandantGuard>
+              <ProductDetail />
+            </MandantGuard>
+          }
+        />
+
+        <Route
+          path="/orders"
+          element={
+            <MandantGuard>
+              <OrdersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/orders/:id"
+          element={
+            <MandantGuard>
+              <OrderDetail />
+            </MandantGuard>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
