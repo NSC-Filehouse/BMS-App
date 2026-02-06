@@ -38,6 +38,7 @@ export default function CustomersList() {
   const [q, setQ] = React.useState('');
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
+  const hasMountedRef = React.useRef(false);
 
   React.useEffect(() => {
     metaRef.current = meta;
@@ -73,7 +74,11 @@ export default function CustomersList() {
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
-      load({ page: 1, q });
+      if (hasMountedRef.current) {
+        load({ page: 1, q });
+      } else {
+        hasMountedRef.current = true;
+      }
     }, 300);
     return () => clearTimeout(handle);
   }, [q, load]);
