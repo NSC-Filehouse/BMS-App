@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port,
+      allowedHosts: ['db03.domkimaz.de.local', 'bmsapp.mlholding.org'],
       proxy: {
         // Browser ruft /bms-app/api/... auf -> Vite proxy't auf Backend /api/...
         [`${basePath}/api`]: {
