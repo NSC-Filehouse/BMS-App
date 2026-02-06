@@ -34,8 +34,8 @@ const config = {
       key: 'customers',
       table: 'tblKunden',
       pk: 'kd_KdNR',
-      defaultSort: 'kd_KdNR',
-      searchableFields: ['kd_KdNR'],
+      defaultSort: 'kd_Name1',
+      searchableFields: ['kd_KdNR', 'kd_Name1', 'kd_Name2'],
     },
     products: {
       key: 'products',

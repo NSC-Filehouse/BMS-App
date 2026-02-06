@@ -2,16 +2,17 @@ import React from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   CircularProgress,
+  IconButton,
   Table,
   TableBody,
   TableCell,
   TableRow,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { RESOURCES } from '../config.js';
@@ -49,9 +50,9 @@ export default function ResourceDetail({ resourceKey }) {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Button variant="outlined" onClick={() => navigate(-1)}>
-          Zurück
-        </Button>
+        <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
+          <ArrowBackIcon />
+        </IconButton>
         <Typography variant="h5">
           {resource.label} Detail
         </Typography>
@@ -88,3 +89,4 @@ export default function ResourceDetail({ resourceKey }) {
     </Box>
   );
 }
+

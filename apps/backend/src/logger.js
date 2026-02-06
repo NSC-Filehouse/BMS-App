@@ -67,6 +67,10 @@ class Logger {
     this.log(2, ...messages);
   }
 
+  warn(...messages) {
+    this.warning(...messages);
+  }
+
   error(message, error) {
     const errorMessage = error instanceof Error ? error.message : error;
     this.log(3, `${message} - ${errorMessage}`);

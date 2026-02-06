@@ -19,7 +19,7 @@ function buildWhereClause(resource, q) {
     ? resource.searchableFields
     : [resource.pk];
 
-  const clauses = fields.map(f => `CStr(${escapeIdentifier(f)}) LIKE ?`);
+  const clauses = fields.map(f => `${escapeIdentifier(f)} LIKE ?`);
   return {
     whereSql: `WHERE (${clauses.join(' OR ')})`,
     params: fields.map(() => like),
