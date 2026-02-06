@@ -7,6 +7,7 @@ import {
   CardContent,
   CircularProgress,
   Collapse,
+  IconButton,
   InputAdornment,
   TextField,
   Typography,
@@ -15,6 +16,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 
@@ -200,7 +203,7 @@ export default function ProductsList() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Typography variant="h5" sx={{ mb: 2 }}>
-        Katerorie
+        Kategorie
       </Typography>
 
       <Card sx={{ mb: 2 }}>
@@ -219,6 +222,29 @@ export default function ProductsList() {
               ),
             }}
           />
+          {showSearchResults && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <IconButton
+                aria-label="zurueck"
+                onClick={() => loadProducts({ page: Math.max((meta.page || 1) - 1, 1), q })}
+                disabled={(meta.page || 1) <= 1}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+              <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
+                Seite {meta.page || 1}
+              </Typography>
+              <IconButton
+                aria-label="weiter"
+                onClick={() => loadProducts({ page: (meta.page || 1) + 1, q })}
+                disabled={meta.total !== null && meta.total !== undefined
+                  ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
+                  : false}
+              >
+                <ArrowForwardIcon />
+              </IconButton>
+            </Box>
+          )}
         </CardContent>
       </Card>
 
@@ -243,28 +269,6 @@ export default function ProductsList() {
               onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
             />
           ))}
-
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mt: 1 }}>
-            <Button
-              variant="outlined"
-              onClick={() => loadProducts({ page: Math.max((meta.page || 1) - 1, 1), q })}
-              disabled={(meta.page || 1) <= 1}
-            >
-              Zurueck
-            </Button>
-            <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-              Seite {meta.page || 1}
-            </Typography>
-            <Button
-              variant="outlined"
-              onClick={() => loadProducts({ page: (meta.page || 1) + 1, q })}
-              disabled={meta.total !== null && meta.total !== undefined
-                ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
-                : false}
-            >
-              Weiter
-            </Button>
-          </Box>
         </Box>
       )}
 

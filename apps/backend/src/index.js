@@ -44,6 +44,15 @@ app.use((req, res, next) => {
 // Health
 app.get('/health', (req, res) => res.json({ ok: true, service: 'bms-backend' }));
 
+// Current user info (from reverse proxy headers)
+app.get(`${config.apiBasePath}/me`, (req, res) => {
+  const email =
+    req.headers['x-ms-client-principal-name'] ||
+    req.headers['x-ms-client-principal-name'.toLowerCase()] ||
+    null;
+  res.json({ email: email || null });
+});
+
 // Routes
 app.use(config.apiBasePath, mandantsRouter);
 app.use(config.apiBasePath, customersRouter);

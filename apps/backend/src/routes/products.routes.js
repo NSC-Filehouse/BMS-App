@@ -13,6 +13,7 @@ const FROM_SQL_DETAIL = FROM_SQL_LIST;
 const LIST_COLUMNS = [
   'a.[agA_Artikelindex] AS id',
   'a.[agA_Artikelname] AS article',
+  'a.[agA_Artikelname] AS articleName',
   'g.[ag_Gruppenname] AS category',
   'NULL AS amount',
   'a.[agA_Einheit] AS unit',
@@ -67,9 +68,10 @@ function buildCountQuery(whereSql) {
   return `SELECT COUNT(*) AS total ${FROM_SQL_LIST} ${whereSql}`;
 }
 
-function buildPagedSelectQuery({ whereSql, orderBy, dir, page, pageSize, columns }) {
+function buildPagedSelectQuery({ whereSql, orderBy, orderByOuter, dir, page, pageSize, columns }) {
   const safeDir = normalizeDir(dir);
   const orderSql = `ORDER BY ${orderBy} ${safeDir}`;
+  const orderSqlOuter = `ORDER BY ${orderByOuter || orderBy} ${safeDir}`;
 
   if (page <= 1) {
     return `SELECT TOP ${pageSize} ${columns} ${FROM_SQL_LIST} ${whereSql} ${orderSql}`;
@@ -80,22 +82,22 @@ function buildPagedSelectQuery({ whereSql, orderBy, dir, page, pageSize, columns
   const reversedDir = safeDir === 'ASC' ? 'DESC' : 'ASC';
 
   const inner = `SELECT TOP ${topN} ${columns} ${FROM_SQL_LIST} ${whereSql} ${orderSql}`;
-  const middle = `SELECT TOP ${pageSize} * FROM (${inner}) AS sub1 ORDER BY ${orderBy} ${reversedDir}`;
-  const outer = `SELECT * FROM (${middle}) AS sub2 ORDER BY ${orderBy} ${safeDir}`;
+  const middle = `SELECT TOP ${pageSize} * FROM (${inner}) AS sub1 ORDER BY ${orderByOuter || orderBy} ${reversedDir}`;
+  const outer = `SELECT * FROM (${middle}) AS sub2 ${orderSqlOuter}`;
 
   return outer;
 }
 
 function resolveOrderBy(sort) {
   const map = {
-    agA_Artikelindex: 'a.[agA_Artikelindex]',
-    agA_Artikelname: 'a.[agA_Artikelname]',
-    agA_Artikelgruppe: 'a.[agA_Artikelgruppe]',
-    category: 'g.[ag_Gruppenname]',
-    article: 'a.[agA_Artikelname]',
-    id: 'a.[agA_Artikelindex]',
+    agA_Artikelindex: { field: 'a.[agA_Artikelindex]', outer: 'id' },
+    agA_Artikelname: { field: 'a.[agA_Artikelname]', outer: 'articleName' },
+    agA_Artikelgruppe: { field: 'a.[agA_Artikelgruppe]', outer: 'agA_Artikelgruppe' },
+    category: { field: 'g.[ag_Gruppenname]', outer: 'category' },
+    article: { field: 'a.[agA_Artikelname]', outer: 'articleName' },
+    id: { field: 'a.[agA_Artikelindex]', outer: 'id' },
   };
-  return map[sort] || 'a.[agA_Artikelname]';
+  return map[sort] || { field: 'a.[agA_Artikelname]', outer: 'articleName' };
 }
 
 // LIST
@@ -120,7 +122,15 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   const totalRow = Array.isArray(totalResult) ? totalResult[0] : totalResult;
   const total = totalRow ? (totalRow.total ?? totalRow.TOTAL ?? totalRow.Total ?? Object.values(totalRow)[0] ?? null) : null;
 
-  const dataSql = buildPagedSelectQuery({ whereSql, orderBy, dir, page, pageSize, columns: LIST_COLUMNS });
+  const dataSql = buildPagedSelectQuery({
+    whereSql,
+    orderBy: orderBy.field,
+    orderByOuter: orderBy.outer,
+    dir,
+    page,
+    pageSize,
+    columns: LIST_COLUMNS,
+  });
   const rows = await runSQLQueryAccess(req.database, dataSql, params);
 
   sendEnvelope(res, {
