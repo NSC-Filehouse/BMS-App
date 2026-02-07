@@ -14,7 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { setMandant, getMandant } from '../utils/mandant.js';
-import { isAdminMandant, parseMandantFromEmail } from '../utils/user.js';
+import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
 
 export default function Start() {
   const [mandants, setMandants] = React.useState([]);
@@ -42,8 +42,8 @@ export default function Start() {
         if (!alive) return;
 
         const emailVal = meRes?.principalName || meRes?.mail || meRes?.email || '';
-        const mandantFromEmail = parseMandantFromEmail(emailVal);
-        const admin = isAdminMandant(mandantFromEmail);
+        const mandantFromEmail = getEffectiveMandant(emailVal);
+        const admin = isAdminFromEmail(emailVal);
         setEmail(emailVal);
         setMeName({
           given: meRes?.givenName || '',

@@ -23,7 +23,7 @@ import HomeIcon from '@mui/icons-material/Home';
 
 import { apiRequest } from '../api/client.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
-import { isAdminMandant, parseMandantFromEmail } from '../utils/user.js';
+import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
 
 const drawerWidth = 260;
 
@@ -67,8 +67,8 @@ export default function Layout() {
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);
-        const m = parseMandantFromEmail(emailVal);
-        setIsAdmin(isAdminMandant(m));
+        const m = getEffectiveMandant(emailVal);
+        setIsAdmin(isAdminFromEmail(emailVal));
       } catch {
         if (!alive) return;
         setEmail('');
@@ -153,4 +153,3 @@ export default function Layout() {
     </Box>
   );
 }
-
