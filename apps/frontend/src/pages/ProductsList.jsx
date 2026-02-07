@@ -204,9 +204,34 @@ export default function ProductsList() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Kategorie
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h5">
+          Kategorie
+        </Typography>
+        {showSearchResults && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              aria-label="zurueck"
+              onClick={() => loadProducts({ page: Math.max((meta.page || 1) - 1, 1), q })}
+              disabled={(meta.page || 1) <= 1}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
+              Seite {meta.page || 1}
+            </Typography>
+            <IconButton
+              aria-label="weiter"
+              onClick={() => loadProducts({ page: (meta.page || 1) + 1, q })}
+              disabled={meta.total !== null && meta.total !== undefined
+                ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
+                : false}
+            >
+              <ArrowForwardIcon />
+            </IconButton>
+          </Box>
+        )}
+      </Box>
 
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -224,29 +249,7 @@ export default function ProductsList() {
               ),
             }}
           />
-          {showSearchResults && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <IconButton
-                aria-label="zurueck"
-                onClick={() => loadProducts({ page: Math.max((meta.page || 1) - 1, 1), q })}
-                disabled={(meta.page || 1) <= 1}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-              <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-                Seite {meta.page || 1}
-              </Typography>
-              <IconButton
-                aria-label="weiter"
-                onClick={() => loadProducts({ page: (meta.page || 1) + 1, q })}
-                disabled={meta.total !== null && meta.total !== undefined
-                  ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
-                  : false}
-              >
-                <ArrowForwardIcon />
-              </IconButton>
-            </Box>
-          )}
+          <Box sx={{ flexGrow: 1 }} />
         </CardContent>
       </Card>
 

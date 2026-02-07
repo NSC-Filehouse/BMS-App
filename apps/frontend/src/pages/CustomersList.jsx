@@ -89,9 +89,32 @@ export default function CustomersList() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Kunden
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h5">
+          Kunden
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton
+            aria-label="zurueck"
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
+            disabled={(meta.page || 1) <= 1}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
+            Seite {meta.page || 1}
+          </Typography>
+          <IconButton
+            aria-label="weiter"
+            onClick={() => load({ page: (meta.page || 1) + 1, q })}
+            disabled={meta.total !== null && meta.total !== undefined
+              ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
+              : false}
+          >
+            <ArrowForwardIcon />
+          </IconButton>
+        </Box>
+      </Box>
 
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -110,28 +133,6 @@ export default function CustomersList() {
             }}
           />
           <Box sx={{ flexGrow: 1 }} />
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <IconButton
-              aria-label="zurueck"
-              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
-              disabled={(meta.page || 1) <= 1}
-            >
-              <ArrowBackIcon />
-            </IconButton>
-            <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-              Seite {meta.page || 1}
-            </Typography>
-            <IconButton
-              aria-label="weiter"
-              onClick={() => load({ page: (meta.page || 1) + 1, q })}
-              disabled={meta.total !== null && meta.total !== undefined
-                ? (meta.page || 1) * (meta.pageSize || 25) >= meta.total
-                : false}
-            >
-              <ArrowForwardIcon />
-            </IconButton>
-          </Box>
         </CardContent>
       </Card>
 
