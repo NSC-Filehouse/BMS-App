@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 12;
 const SEARCH_MIN = 3;
 
 export default function OrdersList() {

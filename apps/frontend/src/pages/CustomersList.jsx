@@ -33,7 +33,7 @@ export default function CustomersList() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const [items, setItems] = React.useState([]);
-  const PAGE_SIZE = 7;
+  const PAGE_SIZE = 12;
   const SEARCH_MIN = 3;
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
   const [loading, setLoading] = React.useState(true);

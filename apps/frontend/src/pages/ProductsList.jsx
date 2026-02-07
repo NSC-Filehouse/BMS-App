@@ -23,7 +23,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 const PAGE_SIZE = 12;
-const SEARCH_PAGE_SIZE = 3;
+const SEARCH_PAGE_SIZE = 12;
 const SEARCH_MIN = 3;
 
 function formatPrice(value) {
