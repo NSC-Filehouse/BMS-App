@@ -35,7 +35,7 @@ function formatPrice(value) {
   return `${value} €`;
 }
 
-function ProductCard({ item, onClick }) {
+function ProductCard({ item, onClick, t }) {
   return (
     <Card
       sx={{
@@ -274,6 +274,7 @@ export default function ProductsList() {
             <ProductCard
               key={item.id}
               item={item}
+              t={t}
               onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
             />
           ))}
