@@ -16,6 +16,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -38,11 +39,7 @@ function buildAddress(row) {
 
 function InfoRow({ icon, label, value, link }) {
   const content = link ? (
-    <Box
-      component="a"
-      href={link}
-      sx={{ color: 'primary.main', textDecoration: 'underline' }}
-    >
+    <Box component="a" href={link} sx={{ color: 'primary.main', textDecoration: 'underline' }}>
       {value}
     </Box>
   ) : (
@@ -67,6 +64,7 @@ function InfoRow({ icon, label, value, link }) {
 export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -84,14 +82,14 @@ export default function CustomerDetail() {
         setItem(res?.data || null);
       } catch (e) {
         if (!alive) return;
-        setError(e?.message || 'Fehler beim Laden.');
+        setError(e?.message || t('loading_error'));
       } finally {
         if (alive) setLoading(false);
       }
     })();
 
     return () => { alive = false; };
-  }, [id]);
+  }, [id, t]);
 
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
@@ -104,7 +102,7 @@ export default function CustomerDetail() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
+        <IconButton aria-label="back" onClick={() => navigate(-1)}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">
@@ -124,7 +122,7 @@ export default function CustomerDetail() {
         <Card>
           <CardContent sx={{ pt: 2 }}>
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-              Beschreibung
+              {t('desc_label')}
             </Typography>
             <Typography sx={{ whiteSpace: 'pre-wrap' }}>
               {description || '-'}
@@ -134,7 +132,7 @@ export default function CustomerDetail() {
 
             <InfoRow
               icon={<MapIcon fontSize="small" />}
-              label="Adresse"
+              label={t('address_label')}
               value={address || '-'}
             />
 
@@ -144,14 +142,14 @@ export default function CustomerDetail() {
                 {repName && (
                   <InfoRow
                     icon={<PersonIcon fontSize="small" />}
-                    label="Ansprechpartner"
+                    label={t('contact_label')}
                     value={repName}
                   />
                 )}
                 {phone && (
                   <InfoRow
                     icon={<PhoneIcon fontSize="small" />}
-                    label="Telefon"
+                    label={t('phone_label')}
                     value={phone}
                     link={`tel:${phone}`}
                   />
@@ -159,7 +157,7 @@ export default function CustomerDetail() {
                 {email && (
                   <InfoRow
                     icon={<EmailIcon fontSize="small" />}
-                    label="E-Mail"
+                    label={t('email_label')}
                     value={email}
                     link={`mailto:${email}`}
                   />

@@ -20,6 +20,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 const PAGE_SIZE = 12;
 const SEARCH_PAGE_SIZE = 3;
@@ -62,7 +63,7 @@ function ProductCard({ item, onClick }) {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
             <Typography variant="body2" sx={{ opacity: 0.7 }}>
-              Bereits reserviert
+              {t('product_reserved')}
             </Typography>
             <Typography variant="body2">
               {item.reserved || ''}
@@ -80,7 +81,7 @@ function ProductCard({ item, onClick }) {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
             <Typography variant="body2" sx={{ opacity: 0.7 }}>
-              Lager
+              {t('product_warehouse')}
             </Typography>
             <Typography variant="body2">
               {item.warehouse || ''}
@@ -89,7 +90,7 @@ function ProductCard({ item, onClick }) {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
             <Typography variant="body2" sx={{ opacity: 0.7 }}>
-              Beschreibung
+              {t('product_description')}
             </Typography>
             <Typography variant="body2" sx={{ width: '60%', textAlign: 'right' }}>
               {item.description || ''}
@@ -98,7 +99,7 @@ function ProductCard({ item, onClick }) {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
             <Typography variant="body2" sx={{ opacity: 0.7 }}>
-              BE Nummer
+              {t('product_be_number')}
             </Typography>
             <Typography variant="body2">
               {item.beNumber || ''}
@@ -116,6 +117,7 @@ function ProductCard({ item, onClick }) {
 
 export default function ProductsList() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [q, setQ] = React.useState('');
   const [items, setItems] = React.useState([]);
   const [categories, setCategories] = React.useState([]);
@@ -144,7 +146,7 @@ export default function ProductsList() {
       const res = await apiRequest('/product-categories');
       setCategories(res?.data || []);
     } catch (e) {
-      setError(e?.message || 'Fehler beim Laden der Kategorien.');
+      setError(e?.message || t('loading_categories_error'));
     }
   }, []);
 
@@ -163,7 +165,7 @@ export default function ProductsList() {
       setItems(res?.data || []);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
-      setError(e?.message || 'Fehler beim Laden.');
+      setError(e?.message || t('loading_products_error'));
     } finally {
       setLoading(false);
     }
@@ -177,7 +179,7 @@ export default function ProductsList() {
       const rows = res?.data || [];
       setGroupItems(s => ({ ...s, [groupId]: rows }));
     } catch (e) {
-      setError(e?.message || 'Fehler beim Laden der Artikel.');
+      setError(e?.message || t('loading_products_error'));
     } finally {
       setGroupLoading(s => ({ ...s, [groupId]: false }));
     }
@@ -206,7 +208,7 @@ export default function ProductsList() {
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">
-          Kategorie
+          {t('products_title')}
         </Typography>
         {showSearchResults && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -218,7 +220,7 @@ export default function ProductsList() {
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-              Seite {meta.page || 1}
+              {t('page_label')} {meta.page || 1}
             </Typography>
             <IconButton
               aria-label="weiter"
@@ -238,7 +240,7 @@ export default function ProductsList() {
           <TextField
             fullWidth
             size="small"
-            placeholder="Artikel durchsuchen"
+            placeholder={t('products_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
@@ -262,7 +264,7 @@ export default function ProductsList() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {showSearchResults && !loading && items.length === 0 && (
-        <Typography sx={{ opacity: 0.7 }}>Es gibt keine Artikel</Typography>
+        <Typography sx={{ opacity: 0.7 }}>{t('products_empty')}</Typography>
       )}
 
       {showSearchResults && items.length > 0 && (
@@ -332,12 +334,12 @@ export default function ProductsList() {
                               <Box sx={{ px: 3, pb: 1 }}>
                                 {isGroupLoading && (
                                   <Typography variant="body2" sx={{ opacity: 0.7, py: 0.5 }}>
-                                    Laedt...
+                                    {t('products_loading_items')}
                                   </Typography>
                                 )}
                                 {!isGroupLoading && itemsForGroup.length === 0 && (
                                   <Typography variant="body2" sx={{ opacity: 0.7, py: 0.5 }}>
-                                    Keine Artikel
+                                    {t('products_empty')}
                                   </Typography>
                                 )}
                                 {itemsForGroup.map((it) => (

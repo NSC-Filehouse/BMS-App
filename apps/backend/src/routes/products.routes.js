@@ -10,6 +10,11 @@ const FROM_SQL_LIST = 'FROM [tblArt_Artikel] AS a ' +
 
 const FROM_SQL_DETAIL = FROM_SQL_LIST;
 
+function isEnglish(req) {
+  const lang = String(req.headers['x-lang'] || '').toLowerCase();
+  return lang.startsWith('en');
+}
+
 const LIST_COLUMNS = [
   'a.[agA_Artikelindex] AS id',
   'a.[agA_Artikelname] AS article',
@@ -115,6 +120,8 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
     : parseInt(groupIdRaw, 10);
 
   const orderBy = resolveOrderBy(sort);
+  const categoryField = isEnglish(req) ? 'g.[ag_Gruppenname_EN]' : 'g.[ag_Gruppenname]';
+  const listColumns = LIST_COLUMNS.replace('g.[ag_Gruppenname] AS category', `${categoryField} AS category`);
   const { whereSql, params } = buildWhereClause(q, groupId);
 
   const countSql = buildCountQuery(whereSql);
@@ -129,7 +136,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
     dir,
     page,
     pageSize,
-    columns: LIST_COLUMNS,
+    columns: listColumns,
   });
   const rows = await runSQLQueryAccess(req.database, dataSql, params);
 
@@ -186,8 +193,8 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
 
 // CATEGORIES
 router.get('/product-categories', requireMandant, asyncHandler(async (req, res) => {
-  const groupsSql = 'SELECT [ag_Gruppenindex], [ag_Gruppenname], [ag_Hauptgruppe] FROM [tblArtikelgruppe]';
-  const mainSql = 'SELECT [ah_HauptGruppenindex], [ah_HauptGruppenname] FROM [tblArtikelHauptgruppe]';
+  const groupsSql = 'SELECT [ag_Gruppenindex], [ag_Gruppenname], [ag_Gruppenname_EN], [ag_Hauptgruppe] FROM [tblArtikelgruppe]';
+  const mainSql = 'SELECT [ah_HauptGruppenindex], [ah_HauptGruppenname], [ah_HauptGruppenname_EN] FROM [tblArtikelHauptgruppe]';
 
   const [groupsRaw, mainsRaw] = await Promise.all([
     runSQLQueryAccess(req.database, groupsSql, []),
@@ -196,10 +203,11 @@ router.get('/product-categories', requireMandant, asyncHandler(async (req, res) 
 
   const trimText = (val) => (val === null || val === undefined ? '' : String(val).trim());
 
+  const useEn = isEnglish(req);
   const mains = (mainsRaw || [])
     .map(m => ({
       id: m.ah_HauptGruppenindex,
-      name: trimText(m.ah_HauptGruppenname),
+      name: trimText(useEn ? m.ah_HauptGruppenname_EN : m.ah_HauptGruppenname),
       children: [],
     }))
     .filter(m => m.name);
@@ -209,7 +217,7 @@ router.get('/product-categories', requireMandant, asyncHandler(async (req, res) 
   const groups = (groupsRaw || [])
     .map(g => ({
       id: g.ag_Gruppenindex,
-      name: trimText(g.ag_Gruppenname),
+      name: trimText(useEn ? g.ag_Gruppenname_EN : g.ag_Gruppenname),
       parentId: g.ag_Hauptgruppe,
       children: [],
     }))

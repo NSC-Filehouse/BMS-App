@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../config.js';
 import { getMandant } from '../utils/mandant.js';
+import { getStoredLanguage } from '../utils/i18n.jsx';
 
 async function parseJsonSafe(res) {
   const text = await res.text();
@@ -13,6 +14,8 @@ export async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
   // Mandant wird vom Backend nur für Resource-Endpunkte erwartet; beim Startscreen ist er leer -> okay
   if (mandant) headers.set('x-mandant', mandant);
+  const lang = getStoredLanguage();
+  if (lang) headers.set('x-lang', lang);
 
   // Content-Type nur setzen, wenn Body existiert (für GET nicht nötig, aber okay)
   if (options.body && !headers.has('Content-Type')) {

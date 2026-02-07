@@ -16,6 +16,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -30,6 +31,7 @@ function isValidCustomerName(name) {
 
 export default function CustomersList() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [items, setItems] = React.useState([]);
   const PAGE_SIZE = 7;
   const SEARCH_MIN = 3;
@@ -63,7 +65,7 @@ export default function CustomersList() {
       setItems(filtered);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
-      setError(e?.message || 'Fehler beim Laden.');
+      setError(e?.message || t('loading_error'));
     } finally {
       setLoading(false);
     }
@@ -91,7 +93,7 @@ export default function CustomersList() {
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">
-          Kunden
+          {t('customers_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
@@ -102,7 +104,7 @@ export default function CustomersList() {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-            Seite {meta.page || 1}
+            {t('page_label')} {meta.page || 1}
           </Typography>
           <IconButton
             aria-label="weiter"
@@ -121,7 +123,7 @@ export default function CustomersList() {
           <TextField
             fullWidth
             size="small"
-            placeholder="Kunden durchsuchen"
+            placeholder={t('customers_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
@@ -145,7 +147,7 @@ export default function CustomersList() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {!loading && !error && items.length === 0 && (
-        <Typography sx={{ opacity: 0.7 }}>Keine Kunden</Typography>
+        <Typography sx={{ opacity: 0.7 }}>{t('customers_empty')}</Typography>
       )}
 
       {!loading && !error && items.length > 0 && (

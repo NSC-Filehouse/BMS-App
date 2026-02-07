@@ -13,14 +13,15 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
   const num = Number(value);
   if (Number.isFinite(num)) {
-    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
   }
-  return `${value} €`;
+  return `${value} EUR`;
 }
 
 function InfoRow({ label, value }) {
@@ -39,6 +40,7 @@ function InfoRow({ label, value }) {
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -56,19 +58,19 @@ export default function ProductDetail() {
         setItem(res?.data || null);
       } catch (e) {
         if (!alive) return;
-        setError(e?.message || 'Fehler beim Laden.');
+        setError(e?.message || t('loading_error'));
       } finally {
         if (alive) setLoading(false);
       }
     })();
 
     return () => { alive = false; };
-  }, [id]);
+  }, [id, t]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
+        <IconButton aria-label="back" onClick={() => navigate(-1)}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">
@@ -91,36 +93,36 @@ export default function ProductDetail() {
 
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="subtitle2" color="text.secondary">
-                Einkaufspreis
+                {t('product_price')}
               </Typography>
               <Typography variant="h6">{formatPrice(item.acquisitionPrice)}</Typography>
             </Box>
 
             <Button variant="contained" fullWidth disabled sx={{ mb: 2 }}>
-              Zu Auftrag hinzufuegen
+              {t('product_add_to_order')}
             </Button>
 
             <Divider sx={{ my: 2 }} />
 
-            <InfoRow label="BE Nummer" value={item.beNumber} />
-            <InfoRow label="Bereits reserviert" value={item.reserved} />
-            <InfoRow label="Kunststoff Kategorie" value={item.category} />
-            <InfoRow label="Menge" value={item.amount} />
-            <InfoRow label="Einheit" value={item.unit} />
-            <InfoRow label="Artikel" value={item.article} />
-            <InfoRow label="Lager" value={item.warehouse} />
+            <InfoRow label={t('product_be_number')} value={item.beNumber} />
+            <InfoRow label={t('product_reserved')} value={item.reserved} />
+            <InfoRow label={t('product_category')} value={item.category} />
+            <InfoRow label={t('product_amount')} value={item.amount} />
+            <InfoRow label={t('product_unit')} value={item.unit} />
+            <InfoRow label={t('product_article')} value={item.article} />
+            <InfoRow label={t('product_warehouse')} value={item.warehouse} />
 
             <Divider sx={{ my: 2 }} />
 
-            <InfoRow label="Lieferant" value={item.packaging} />
-            <InfoRow label="Beschreibung" value={item.description} />
-            <InfoRow label="MFI" value={item.mfi} />
+            <InfoRow label={t('product_supplier')} value={item.packaging} />
+            <InfoRow label={t('product_description')} value={item.description} />
+            <InfoRow label={t('product_mfi')} value={item.mfi} />
 
             <Divider sx={{ my: 2 }} />
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                Zusatztext
+                {t('product_extra')}
               </Typography>
               <Typography sx={{ whiteSpace: 'pre-wrap' }}>
                 {item.about || ''}

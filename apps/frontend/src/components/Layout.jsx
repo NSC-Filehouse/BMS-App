@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 
 import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
 import PeopleIcon from '@mui/icons-material/People';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -24,6 +25,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import { apiRequest } from '../api/client.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
 import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 const drawerWidth = 260;
 
@@ -53,6 +55,7 @@ export default function Layout() {
   const [isAdmin, setIsAdmin] = React.useState(false);
   const mandant = getMandant();
   const navigate = useNavigate();
+  const { lang, setLang, t } = useI18n();
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
@@ -81,25 +84,33 @@ export default function Layout() {
 
   const drawer = (
     <Box sx={{ width: drawerWidth }} role="presentation">
-      <Toolbar />
+      <Toolbar sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <IconButton aria-label="close-menu" onClick={closeDrawer}>
+          <CloseIcon />
+        </IconButton>
+      </Toolbar>
       <Divider />
       <List>
-        <NavItem to="/" label="Start" icon={<HomeIcon />} onClick={closeDrawer} />
-        <NavItem to="/customers" label="Kunden" icon={<PeopleIcon />} onClick={closeDrawer} />
-        <NavItem to="/products" label="Produkte" icon={<Inventory2Icon />} onClick={closeDrawer} />
-        <NavItem to="/orders" label="Aufträge" icon={<AssignmentIcon />} onClick={closeDrawer} />
+        <NavItem to="/" label={t('start_title')} icon={<HomeIcon />} onClick={closeDrawer} />
+        <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
+        <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
+        <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
       </List>
       <Divider />
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          Mandant: <b>{mandant || '-'}</b>
+          {t('mandant_label')}: <b>{mandant || '-'}</b>
         </Typography>
         <Typography variant="body2" sx={{ mb: 0.5 }}>
-          Benutzer: <b>{userName || '-'}</b>
+          {t('start_user')}: <b>{userName || '-'}</b>
         </Typography>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          E-Mail: <b>{email || '-'}</b>
+          {t('start_email')}: <b>{email || '-'}</b>
         </Typography>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <IconButton size="small" aria-label="de" onClick={() => setLang('de')} sx={{ border: lang === 'de' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/de.png`} alt="DE" sx={{ width: 24, height: 24 }} /></IconButton>
+          <IconButton size="small" aria-label="en" onClick={() => setLang('en')} sx={{ border: lang === 'en' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/en.png`} alt="EN" sx={{ width: 24, height: 24 }} /></IconButton>
+        </Box>
         {isAdmin && (
           <Button
             variant="outlined"
@@ -110,7 +121,7 @@ export default function Layout() {
               closeDrawer();
             }}
           >
-            Mandant wechseln
+            {t('switch_mandant')}
           </Button>
         )}
       </Box>
@@ -131,10 +142,10 @@ export default function Layout() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            BMS-App
+            {t('app_title')}
           </Typography>
           <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            {mandant ? `Mandant: ${mandant}` : 'Kein Mandant gewählt'}
+            {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
           </Typography>
         </Toolbar>
       </AppBar>

@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { setMandant, getMandant } from '../utils/mandant.js';
 import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 export default function Start() {
   const [mandants, setMandants] = React.useState([]);
@@ -25,6 +26,7 @@ export default function Start() {
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [meName, setMeName] = React.useState({ given: '', surname: '' });
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const selected = getMandant();
 
@@ -59,7 +61,7 @@ export default function Start() {
             setMandant(mandantFromEmail);
             navigate('/customers');
           } else {
-            setError('Sie sind nicht berechtigt diese Funktionen zu nutzen.');
+            setError(t('start_no_permission_text'));
           }
         }
         if (!admin && !mandantFromEmail) {
@@ -67,7 +69,7 @@ export default function Start() {
         }
       } catch (e) {
         if (!alive) return;
-        setError(e?.message || 'Fehler beim Laden der Mandanten.');
+        setError(e?.message || t('loading_mandants_error'));
         setMeName({ given: '', surname: '' });
       } finally {
         if (alive) setLoading(false);
@@ -80,7 +82,7 @@ export default function Start() {
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto' }}>
       <Typography variant="h5" sx={{ mb: 2 }}>
-        Mandant auswählen
+        {t('start_title')}
       </Typography>
 
       {loading && (
@@ -92,7 +94,7 @@ export default function Start() {
       {!loading && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body1">
-            Benutzer: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
+            {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
           </Typography>
           <Typography variant="body2" sx={{ opacity: 0.8 }}>
             {email || '-'}
@@ -106,16 +108,16 @@ export default function Start() {
         <Card>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 1 }}>
-              Keine Berechtigung
+              {t('start_no_permission_title')}
             </Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              {error}
+              {t('start_no_permission_text')}
             </Typography>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              Benutzer: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
+              {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
             </Typography>
             <Typography variant="body2">
-              E-Mail: <b>{email || '-'}</b>
+              {t('start_email')}: <b>{email || '-'}</b>
             </Typography>
           </CardContent>
         </Card>
@@ -125,7 +127,7 @@ export default function Start() {
         <Card>
           <CardContent>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              Bitte wähle den Mandanten, mit dem du arbeiten möchtest.
+              {t('start_prompt')}
             </Typography>
 
             <List dense>
@@ -149,13 +151,13 @@ export default function Start() {
                 disabled={!selected}
                 onClick={() => navigate('/customers')}
               >
-                Weiter
+                {t('start_continue')}
               </Button>
               <Button
                 variant="outlined"
                 onClick={() => window.location.reload()}
               >
-                Neu laden
+                {t('start_reload')}
               </Button>
             </Box>
           </CardContent>
@@ -169,7 +171,7 @@ export default function Start() {
               Eingeloggt als: <b>{email || '—'}</b>
             </Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              Mandant: <b>{userMandant || selected || '—'}</b>
+              {t('mandant_label')}: <b>{userMandant || selected || '-'}</b>
             </Typography>
             <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
               <Button
@@ -192,4 +194,3 @@ export default function Start() {
     </Box>
   );
 }
-

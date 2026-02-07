@@ -12,15 +12,16 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
   const num = Number(value);
   if (Number.isFinite(num)) {
-    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
   }
-  return `${value} €`;
+  return `${value} EUR`;
 }
 
 function InfoRow({ label, value }) {
@@ -39,6 +40,7 @@ function InfoRow({ label, value }) {
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -56,14 +58,14 @@ export default function OrderDetail() {
         setItem(res?.data || null);
       } catch (e) {
         if (!alive) return;
-        setError(e?.message || 'Fehler beim Laden.');
+        setError(e?.message || t('loading_error'));
       } finally {
         if (alive) setLoading(false);
       }
     })();
 
     return () => { alive = false; };
-  }, [id]);
+  }, [id, t]);
 
   const mandant = getMandant();
   const isReserved = Boolean(item?.isReserved);
@@ -71,7 +73,7 @@ export default function OrderDetail() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
+        <IconButton aria-label="back" onClick={() => navigate(-1)}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">
@@ -90,15 +92,15 @@ export default function OrderDetail() {
       {!loading && !error && item && (
         <Card>
           <CardContent sx={{ pt: 2 }}>
-            {!isReserved && <InfoRow label="Kunde" value={item.clientName} />}
-            <InfoRow label="Mandant" value={mandant} />
-            <InfoRow label="Artikel" value={item.article} />
-            <InfoRow label="Gesamtpreis" value={formatPrice(item.price)} />
-            <InfoRow label="Bestellschluss" value={item.closingDate} />
-            <InfoRow label="Reserviert bis" value={item.reservationDate} />
-            {!isReserved && <InfoRow label="Datum der Auftragserstellung" value={item.createdAt} />}
-            <InfoRow label="Verantwortlicher Aussendienstmitarbeiter" value={item.receivedFrom} />
-            <InfoRow label="Weitergereicht an" value={item.passedTo} />
+            {!isReserved && <InfoRow label={t('order_customer')} value={item.clientName} />}
+            <InfoRow label={t('order_distributor')} value={mandant} />
+            <InfoRow label={t('order_article')} value={item.article} />
+            <InfoRow label={t('order_price')} value={formatPrice(item.price)} />
+            <InfoRow label={t('order_closing')} value={item.closingDate} />
+            <InfoRow label={t('order_reserved_until')} value={item.reservationDate} />
+            {!isReserved && <InfoRow label={t('order_created')} value={item.createdAt} />}
+            <InfoRow label={t('order_owner')} value={item.receivedFrom} />
+            <InfoRow label={t('order_passed_to')} value={item.passedTo} />
             <Divider sx={{ mt: 2 }} />
           </CardContent>
         </Card>

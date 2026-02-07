@@ -16,12 +16,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { useI18n } from '../utils/i18n.jsx';
 
 const PAGE_SIZE = 6;
 const SEARCH_MIN = 3;
 
 export default function OrdersList() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [items, setItems] = React.useState([]);
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
   const [loading, setLoading] = React.useState(true);
@@ -50,7 +52,7 @@ export default function OrdersList() {
       setItems(rows.slice(0, PAGE_SIZE));
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
-      setError(e?.message || 'Fehler beim Laden.');
+      setError(e?.message || t('loading_orders_error'));
     } finally {
       setLoading(false);
     }
@@ -74,7 +76,7 @@ export default function OrdersList() {
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">
-          Auftraege
+          {t('orders_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
@@ -85,7 +87,7 @@ export default function OrdersList() {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-            Seite {meta.page || 1}
+            {t('page_label')} {meta.page || 1}
           </Typography>
           <IconButton
             aria-label="weiter"
@@ -104,7 +106,7 @@ export default function OrdersList() {
           <TextField
             fullWidth
             size="small"
-            placeholder="Auftraege durchsuchen"
+            placeholder={t('orders_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
@@ -129,7 +131,7 @@ export default function OrdersList() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {!loading && !error && items.length === 0 && (
-        <Typography sx={{ opacity: 0.7 }}>Keine Auftraege</Typography>
+        <Typography sx={{ opacity: 0.7 }}>{t('orders_empty')}</Typography>
       )}
 
       {!loading && !error && items.length > 0 && (

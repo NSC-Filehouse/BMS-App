@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import Layout from './components/Layout.jsx';
+import { LanguageProvider } from './utils/i18n.jsx';
 import MandantGuard from './components/MandantGuard.jsx';
 
 import Start from './pages/Start.jsx';
@@ -17,9 +18,10 @@ import OrderDetail from './pages/OrderDetail.jsx';
 
 export default function App() {
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Start />} />
+    <LanguageProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Start />} />
 
         <Route
           path="/customers"
@@ -72,8 +74,9 @@ export default function App() {
           }
         />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </LanguageProvider>
   );
 }
