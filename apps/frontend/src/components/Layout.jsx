@@ -92,7 +92,13 @@ export default function Layout() {
       <Divider />
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          Mandant: <b>{mandant || '—'}</b>
+          Mandant: <b>{mandant || '-'}</b>
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 0.5 }}>
+          Benutzer: <b>{userName || '-'}</b>
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          E-Mail: <b>{email || '-'}</b>
         </Typography>
         {isAdmin && (
           <Button
@@ -147,5 +153,4 @@ export default function Layout() {
     </Box>
   );
 }
-
 
