@@ -23,6 +23,7 @@ import HomeIcon from '@mui/icons-material/Home';
 
 import { apiRequest } from '../api/client.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
+import { isAdminMandant, parseMandantFromEmail } from '../utils/user.js';
 
 const drawerWidth = 260;
 
@@ -48,6 +49,8 @@ function NavItem({ to, label, icon, onClick }) {
 export default function Layout() {
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState('');
+  const [userName, setUserName] = React.useState('');
+  const [isAdmin, setIsAdmin] = React.useState(false);
   const mandant = getMandant();
   const navigate = useNavigate();
 
@@ -60,10 +63,17 @@ export default function Layout() {
       try {
         const res = await apiRequest('/me');
         if (!alive) return;
-        setEmail(res?.email || '');
+        const emailVal = res?.principalName || res?.mail || res?.email || '';
+        setEmail(emailVal);
+        const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
+        setUserName(nameVal);
+        const m = parseMandantFromEmail(emailVal);
+        setIsAdmin(isAdminMandant(m));
       } catch {
         if (!alive) return;
         setEmail('');
+        setUserName('');
+        setIsAdmin(false);
       }
     })();
     return () => { alive = false; };
@@ -84,20 +94,19 @@ export default function Layout() {
         <Typography variant="body2" sx={{ mb: 1 }}>
           Mandant: <b>{mandant || '—'}</b>
         </Typography>
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          Eingeloggt als: <b>{email || '—'}</b>
-        </Typography>
-        <Button
-          variant="outlined"
-          fullWidth
-          onClick={() => {
-            clearMandant();
-            navigate('/');
-            closeDrawer();
-          }}
-        >
-          Mandant wechseln
-        </Button>
+        {isAdmin && (
+          <Button
+            variant="outlined"
+            fullWidth
+            onClick={() => {
+              clearMandant();
+              navigate('/');
+              closeDrawer();
+            }}
+          >
+            Mandant wechseln
+          </Button>
+        )}
       </Box>
     </Box>
   );
@@ -138,4 +147,5 @@ export default function Layout() {
     </Box>
   );
 }
+
 
