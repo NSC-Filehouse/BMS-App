@@ -46,7 +46,8 @@ export default function OrdersList() {
       setLoading(true);
       setError('');
       const res = await apiRequest(`/orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=au_Auftragsdatum&dir=DESC`);
-      setItems(res?.data || []);
+      const rows = res?.data || [];
+      setItems(rows.slice(0, PAGE_SIZE));
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
       setError(e?.message || 'Fehler beim Laden.');
