@@ -13,7 +13,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
-import { setMandant, getMandant } from '../utils/mandant.js';
+import { setMandant, getMandant, clearMandant } from '../utils/mandant.js';
 import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -61,11 +61,13 @@ export default function Start() {
             setMandant(mandantFromEmail);
             navigate('/customers');
           } else {
+            clearMandant();
             setError(t('start_no_permission_text'));
           }
         }
         if (!admin && !mandantFromEmail) {
-          setError('Sie sind nicht berechtigt diese Funktionen zu nutzen.');
+          clearMandant();
+          setError(t('start_no_permission_text'));
         }
       } catch (e) {
         if (!alive) return;
