@@ -31,7 +31,8 @@ function isValidCustomerName(name) {
 export default function CustomersList() {
   const navigate = useNavigate();
   const [items, setItems] = React.useState([]);
-  const PAGE_SIZE = 12;
+  const PAGE_SIZE = 7;
+  const SEARCH_MIN = 3;
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -74,10 +75,13 @@ export default function CustomersList() {
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
-      if (hasMountedRef.current) {
-        load({ page: 1, q });
-      } else {
+      const qVal = q.trim();
+      if (!hasMountedRef.current) {
         hasMountedRef.current = true;
+        return;
+      }
+      if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
+        load({ page: 1, q: qVal });
       }
     }, 300);
     return () => clearTimeout(handle);

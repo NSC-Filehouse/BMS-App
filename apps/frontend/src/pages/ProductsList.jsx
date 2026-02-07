@@ -22,6 +22,8 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 
 const PAGE_SIZE = 12;
+const SEARCH_PAGE_SIZE = 3;
+const SEARCH_MIN = 3;
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -149,7 +151,7 @@ export default function ProductsList() {
   const loadProducts = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
-    const pageSize = PAGE_SIZE;
+    const pageSize = SEARCH_PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
     const groupId = opts.groupId ?? null;
 
@@ -188,9 +190,9 @@ export default function ProductsList() {
   React.useEffect(() => {
     const handle = setTimeout(() => {
       const qVal = q.trim();
-      if (qVal) {
+      if (qVal.length >= SEARCH_MIN) {
         loadProducts({ page: 1, q: qVal });
-      } else {
+      } else if (qVal.length === 0) {
         setItems([]);
         setMeta(m => ({ ...m, page: 1 }));
       }
@@ -198,7 +200,7 @@ export default function ProductsList() {
     return () => clearTimeout(handle);
   }, [q, loadProducts]);
 
-  const showSearchResults = q.trim().length > 0;
+  const showSearchResults = q.trim().length >= SEARCH_MIN;
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>

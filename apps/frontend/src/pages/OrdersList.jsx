@@ -17,7 +17,8 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 6;
+const SEARCH_MIN = 3;
 
 export default function OrdersList() {
   const navigate = useNavigate();
@@ -60,7 +61,10 @@ export default function OrdersList() {
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
-      load({ page: 1, q });
+      const qVal = q.trim();
+      if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
+        load({ page: 1, q: qVal });
+      }
     }, 300);
     return () => clearTimeout(handle);
   }, [q, load]);
