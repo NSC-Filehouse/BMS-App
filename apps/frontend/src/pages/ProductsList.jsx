@@ -205,7 +205,7 @@ export default function ProductsList() {
   const showSearchResults = q.trim().length >= SEARCH_MIN;
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">
           {t('products_title')}
@@ -255,6 +255,7 @@ export default function ProductsList() {
         </CardContent>
       </Card>
 
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -371,6 +372,7 @@ export default function ProductsList() {
           })}
         </Box>
       )}
+      </Box>
     </Box>
   );
 }
