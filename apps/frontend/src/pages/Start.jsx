@@ -57,9 +57,9 @@ export default function Start() {
 
         if (!admin && mandantFromEmail) {
           const mandantLower = String(mandantFromEmail || '').toLowerCase();
-          const exists = (res?.data || []).some((m) => String(m || '').toLowerCase() === mandantLower);
-          if (exists) {
-            setMandant(mandantFromEmail);
+          const matched = (res?.data || []).find((m) => String(m || '').toLowerCase() === mandantLower);
+          if (matched) {
+            setMandant(matched);
             navigate('/customers');
           } else {
             clearMandant();
