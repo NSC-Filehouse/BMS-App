@@ -16,10 +16,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 const PAGE_SIZE = 12;
-const SEARCH_MIN = 3;
 
 export default function OrdersList() {
   const navigate = useNavigate();

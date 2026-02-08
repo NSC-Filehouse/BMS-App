@@ -11,3 +11,6 @@ export const RESOURCES = {
   products:  { key: 'products',  label: 'Produkte', pk: 'agA_Artikelindex' },
   orders:    { key: 'orders',    label: 'Aufträge', pk: 'au_Auftragsindex' },
 };
+
+// Minimum characters before search triggers
+export const SEARCH_MIN = 2;
