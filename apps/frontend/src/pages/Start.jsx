@@ -56,7 +56,8 @@ export default function Start() {
         setMandants(res?.data || []);
 
         if (!admin && mandantFromEmail) {
-          const exists = (res?.data || []).includes(mandantFromEmail);
+          const mandantLower = String(mandantFromEmail || '').toLowerCase();
+          const exists = (res?.data || []).some((m) => String(m || '').toLowerCase() === mandantLower);
           if (exists) {
             setMandant(mandantFromEmail);
             navigate('/customers');
