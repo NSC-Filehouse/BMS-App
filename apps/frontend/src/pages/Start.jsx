@@ -155,8 +155,7 @@ export default function Start() {
               >
                 {t('start_continue')}
               </Button>
-              <Button
-                variant="outlined"
+            </Box>
           </CardContent>
         </Card>
       )}
@@ -165,7 +164,7 @@ export default function Start() {
         <Card>
           <CardContent>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              Eingeloggt als: <b>{email || '—'}</b>
+              {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
             </Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
               {t('mandant_label')}: <b>{userMandant || selected || '-'}</b>
@@ -176,10 +175,9 @@ export default function Start() {
                 disabled={!selected}
                 onClick={() => navigate('/customers')}
               >
-                Weiter
+                {t('start_continue')}
               </Button>
-              <Button
-                variant="outlined"
+            </Box>
           </CardContent>
         </Card>
       )}
