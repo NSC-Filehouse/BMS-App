@@ -157,11 +157,6 @@ export default function Start() {
               </Button>
               <Button
                 variant="outlined"
-                onClick={() => window.location.reload()}
-              >
-                {t('start_reload')}
-              </Button>
-            </Box>
           </CardContent>
         </Card>
       )}
@@ -185,11 +180,6 @@ export default function Start() {
               </Button>
               <Button
                 variant="outlined"
-                onClick={() => window.location.reload()}
-              >
-                Neu laden
-              </Button>
-            </Box>
           </CardContent>
         </Card>
       )}
