@@ -143,12 +143,12 @@ export default function Layout() {
           </IconButton>
           <Box
             component="img"
-            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            src="https://mlcdn-e5aygudafwh4e7gs.z02.azurefd.net/bmsapp/icon.svg"
             alt="BMS"
-            sx={{ width: 24, height: 24, mr: 1 }}
+            sx={{ width: 48, height: 48, mr: 1 }}
           />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            {t('app_title')}
+
           </Typography>
           <Typography variant="body2" sx={{ opacity: 0.9 }}>
             {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
