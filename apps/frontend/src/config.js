@@ -9,7 +9,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${APP_BASE_PAT
 export const RESOURCES = {
   customers: { key: 'customers', label: 'Kunden', pk: 'kd_KdNR' },
   products:  { key: 'products',  label: 'Produkte', pk: 'agA_Artikelindex' },
-  orders:    { key: 'orders',    label: 'Aufträge', pk: 'au_Auftragsindex' },
+  orders:    { key: 'orders',    label: 'Reservierungen', pk: 'au_Auftragsindex' },
 };
 
 // Minimum characters before search triggers
