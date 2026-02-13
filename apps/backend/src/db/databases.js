@@ -34,7 +34,12 @@ function escIdentifier(value) {
 
 function isObjectNameError(error) {
   const msg = String(error && error.message ? error.message : '').toLowerCase();
-  return msg.includes('invalid object name') || msg.includes('42s02');
+  if (msg.includes('invalid object name') || msg.includes('ungültiger objektname') || msg.includes('ungueltiger objektname')) {
+    return true;
+  }
+
+  const details = error && Array.isArray(error.odbcErrors) ? error.odbcErrors : [];
+  return details.some((item) => String(item && item.state ? item.state : '').toLowerCase() === '42s02');
 }
 
 async function queryMandantsWithTable(tableName) {
