@@ -22,18 +22,23 @@ function buildSqlServerConnectionString(databaseName) {
   }
 
   const encrypt = config.sql.encrypt ? 'yes' : 'no';
-  const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
-
-  return [
+  const parts = [
     'Driver={ODBC Driver 17 for SQL Server}',
     `Server=${server}`,
     `Database=${db}`,
     `Uid=${user}`,
     `Pwd=${password}`,
     `Encrypt=${encrypt}`,
-    `TrustServerCertificate=${trustServerCertificate}`,
     'Connection Timeout=5',
-  ].join(';') + ';';
+  ];
+
+  // Some driver/build combinations reject TrustServerCertificate when Encrypt is off.
+  if (config.sql.encrypt) {
+    const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
+    parts.push(`TrustServerCertificate=${trustServerCertificate}`);
+  }
+
+  return parts.join(';') + ';';
 }
 
 async function runSQLQuerySqlServer(databaseName, query, params = []) {

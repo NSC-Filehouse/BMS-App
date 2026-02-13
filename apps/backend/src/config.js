@@ -24,7 +24,7 @@ const config = {
     instance: (process.env.BMS_SQL_INSTANCE || '').trim(),
     database: (process.env.BMS_SQL_DATABASE || 'BMS').trim(),
     user: (process.env.BMS_SQL_USER || '').trim(),
-    password: process.env.BMS_SQL_PASSWORD || '',
+    password: String(process.env.BMS_SQL_PASSWORD || '').trim(),
     encrypt: toBool(process.env.BMS_SQL_ENCRYPT, false),
     trustServerCertificate: toBool(process.env.BMS_SQL_TRUST_SERVER_CERT, true),
     tables: {
