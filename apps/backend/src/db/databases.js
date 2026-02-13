@@ -5,6 +5,7 @@ const { canConnectToDatabase, runSQLQuerySqlServer } = require('./access');
 
 const mandantsCache = new Map();
 const dbAvailabilityCache = new Map();
+let sqlContextLoggedAt = 0;
 
 function now() {
   return Date.now();
@@ -50,6 +51,39 @@ async function queryMandantsWithTable(tableName) {
   return runSQLQuerySqlServer(config.sql.database, sql, []);
 }
 
+async function logSqlContextForDiagnostics() {
+  const nowTs = Date.now();
+  // avoid spamming logs on repeated API calls
+  if (nowTs - sqlContextLoggedAt < 30 * 1000) return;
+  sqlContextLoggedAt = nowTs;
+
+  try {
+    const ctxRows = await runSQLQuerySqlServer(
+      config.sql.database,
+      "SELECT DB_NAME() AS dbName, @@SERVERNAME AS serverName, SUSER_SNAME() AS loginName",
+      []
+    );
+    const ctx = Array.isArray(ctxRows) && ctxRows.length ? ctxRows[0] : null;
+    logger.warn(
+      `SQL context: server=${ctx?.serverName || '?'} db=${ctx?.dbName || '?'} login=${ctx?.loginName || '?'}`
+    );
+  } catch (error) {
+    logger.warn('SQL context query failed.', error);
+  }
+
+  try {
+    const tableRows = await runSQLQuerySqlServer(
+      config.sql.database,
+      "SELECT TOP 20 [name] FROM sys.tables WHERE [name] LIKE '%Mandant%' ORDER BY [name] ASC",
+      []
+    );
+    const names = (tableRows || []).map((r) => r.name || r.NAME).filter(Boolean);
+    logger.warn(`SQL tables matching '%Mandant%': ${names.join(', ') || '(none)'}`);
+  } catch (error) {
+    logger.warn('SQL table discovery failed.', error);
+  }
+}
+
 async function queryMandantsForFilehouse() {
   const preferred = config.sql.tables.mandant;
   const candidates = [preferred, 'tblMandanten'].filter((v, i, arr) => v && arr.indexOf(v) === i);
@@ -60,6 +94,7 @@ async function queryMandantsForFilehouse() {
     } catch (error) {
       lastError = error;
       if (!isObjectNameError(error)) throw error;
+      await logSqlContextForDiagnostics();
     }
   }
   throw lastError || new Error('Failed to query mandants table.');
