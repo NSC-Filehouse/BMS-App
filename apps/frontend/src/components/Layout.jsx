@@ -23,11 +23,17 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import HomeIcon from '@mui/icons-material/Home';
 
 import { apiRequest } from '../api/client.js';
+import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
-import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
-import { useI18n } from '../utils/i18n.jsx';
+import { isAdminFromEmail } from '../utils/user.js';
+import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 
 const drawerWidth = 260;
+
+function redirectToStart() {
+  if (typeof window === 'undefined') return;
+  window.location.assign(`${APP_BASE_PATH}/`);
+}
 
 function NavItem({ to, label, icon, onClick }) {
   const navigate = useNavigate();
@@ -70,7 +76,6 @@ export default function Layout() {
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);
-        const m = getEffectiveMandant(emailVal);
         setIsAdmin(isAdminFromEmail(emailVal));
       } catch {
         if (!alive) return;
@@ -80,6 +85,52 @@ export default function Layout() {
       }
     })();
     return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    let active = true;
+    let inFlight = false;
+
+    const probeSession = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const headers = new Headers();
+        const lang = getStoredLanguage();
+        if (lang) headers.set('x-lang', lang);
+
+        const res = await fetch(`${API_BASE_URL}/me`, { headers, cache: 'no-store' });
+        const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+        const isJson = contentType.includes('application/json');
+
+        if (!res.ok || res.redirected || !isJson) {
+          redirectToStart();
+          return;
+        }
+
+        const me = await res.json().catch(() => null);
+        const identity = me?.principalName || me?.mail || me?.email;
+        if (!identity) {
+          redirectToStart();
+        }
+      } catch {
+        redirectToStart();
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void probeSession();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   const drawer = (
