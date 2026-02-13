@@ -25,7 +25,6 @@ import HomeIcon from '@mui/icons-material/Home';
 import { apiRequest } from '../api/client.js';
 import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
-import { isAdminFromEmail } from '../utils/user.js';
 import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 
 const drawerWidth = 260;
@@ -58,7 +57,7 @@ export default function Layout() {
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState('');
   const [userName, setUserName] = React.useState('');
-  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [canSwitchMandant, setCanSwitchMandant] = React.useState(false);
   const mandant = getMandant();
   const navigate = useNavigate();
   const { lang, setLang, t } = useI18n();
@@ -70,18 +69,22 @@ export default function Layout() {
     let alive = true;
     (async () => {
       try {
-        const res = await apiRequest('/me');
+        const [res, mandantsRes] = await Promise.all([
+          apiRequest('/me'),
+          apiRequest('/mandants'),
+        ]);
         if (!alive) return;
         const emailVal = res?.principalName || res?.mail || res?.email || '';
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);
-        setIsAdmin(isAdminFromEmail(emailVal));
+        const available = Array.isArray(mandantsRes?.data) ? mandantsRes.data : [];
+        setCanSwitchMandant(available.length > 1);
       } catch {
         if (!alive) return;
         setEmail('');
         setUserName('');
-        setIsAdmin(false);
+        setCanSwitchMandant(false);
       }
     })();
     return () => { alive = false; };
@@ -162,7 +165,7 @@ export default function Layout() {
           <IconButton size="small" aria-label="de" onClick={() => setLang('de')} sx={{ border: lang === 'de' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/de.png`} alt="DE" sx={{ width: 24, height: 24 }} /></IconButton>
           <IconButton size="small" aria-label="en" onClick={() => setLang('en')} sx={{ border: lang === 'en' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/en.png`} alt="EN" sx={{ width: 24, height: 24 }} /></IconButton>
         </Box>
-        {isAdmin && (
+        {canSwitchMandant && (
           <Button
             variant="outlined"
             fullWidth

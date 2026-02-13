@@ -15,6 +15,7 @@ import ProductDetail from './pages/ProductDetail.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
+import DatabaseUnavailable from './pages/DatabaseUnavailable.jsx';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Start />} />
+          <Route path="/database-unavailable" element={<DatabaseUnavailable />} />
 
         <Route
           path="/customers"

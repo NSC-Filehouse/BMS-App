@@ -1,55 +1,76 @@
 const odbc = require('odbc');
+const config = require('../config');
 const logger = require('../logger');
 
-function escapeAccessValue(value) {
-  if (value === null || value === undefined) return 'NULL';
-  if (value instanceof Date) {
-    const iso = value.toISOString().slice(0, 19).replace('T', ' ');
-    return `#${iso}#`;
+function sanitizeDatabaseName(databaseName) {
+  const value = String(databaseName || '').trim();
+  if (!value) return '';
+  if (!/^[A-Za-z0-9_]+$/.test(value)) {
+    throw new Error(`Invalid SQL database name: ${value}`);
   }
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  const text = String(value).replace(/'/g, "''");
-  return `'${text}'`;
+  return value;
 }
 
-function inlineParams(query, params) {
-  let idx = 0;
-  return query.replace(/\?/g, () => {
-    const value = params[idx++];
-    return escapeAccessValue(value);
-  });
+function buildSqlServerConnectionString(databaseName) {
+  const db = sanitizeDatabaseName(databaseName);
+  const server = String(config.sql.instance || '').trim();
+  const user = String(config.sql.user || '').trim();
+  const password = String(config.sql.password || '');
+
+  if (!server || !user || !password || !db) {
+    throw new Error('Missing SQL Server connection settings in environment.');
+  }
+
+  const encrypt = config.sql.encrypt ? 'yes' : 'no';
+  const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
+
+  return [
+    'Driver={ODBC Driver 17 for SQL Server}',
+    `Server=${server}`,
+    `Database=${db}`,
+    `Uid=${user}`,
+    `Pwd=${password}`,
+    `Encrypt=${encrypt}`,
+    `TrustServerCertificate=${trustServerCertificate}`,
+    'Connection Timeout=5',
+  ].join(';') + ';';
 }
 
-// Funktion zum Ausfuehren einer SQL-Abfrage auf einer Access-Datenbank
-async function runSQLQueryAccess(database, query, params = []) {
-  const { path: targetPath, password } = database;
-  const connectionString = `Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=${targetPath};PWD=${password};`;
-
+async function runSQLQuerySqlServer(databaseName, query, params = []) {
   let connection;
   try {
+    const connectionString = buildSqlServerConnectionString(databaseName);
     connection = await odbc.connect(connectionString);
     const result = await connection.query(query, params);
     return result;
   } catch (error) {
-    const message = String(error && error.message ? error.message : error);
-    logger.error('Access query failed', error);
-    // Optional: more verbose debug info
+    logger.error('SQL Server query failed', error);
     logger.debug('Query:', query);
     logger.debug('Params:', JSON.stringify(params));
-
-    // Fallback for ODBC parameter metadata issues in Access
-    if (params && params.length && /parameters/i.test(message)) {
-      const inlined = inlineParams(query, params);
-      logger.warn('Retrying Access query with inlined params due to parameter metadata error.');
-      logger.debug('Inlined Query:', inlined);
-      const retryResult = await connection.query(inlined);
-      return retryResult;
-    }
-
     throw error;
   } finally {
     if (connection) await connection.close();
   }
 }
 
-module.exports = { runSQLQueryAccess };
+async function runSQLQueryAccess(database, query, params = []) {
+  const databaseName =
+    (database && (database.databaseName || database.name || database.database)) ||
+    config.sql.database;
+  return runSQLQuerySqlServer(databaseName, query, params);
+}
+
+async function canConnectToDatabase(databaseName) {
+  try {
+    await runSQLQuerySqlServer(databaseName, 'SELECT 1 AS ok', []);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = {
+  runSQLQueryAccess,
+  runSQLQuerySqlServer,
+  canConnectToDatabase,
+};

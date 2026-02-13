@@ -20,6 +20,20 @@ const config = {
 
   apiBasePath: process.env.API_BASE_PATH || '/api',
 
+  sql: {
+    instance: (process.env.BMS_SQL_INSTANCE || '').trim(),
+    database: (process.env.BMS_SQL_DATABASE || 'BMS').trim(),
+    user: (process.env.BMS_SQL_USER || '').trim(),
+    password: process.env.BMS_SQL_PASSWORD || '',
+    encrypt: toBool(process.env.BMS_SQL_ENCRYPT, false),
+    trustServerCertificate: toBool(process.env.BMS_SQL_TRUST_SERVER_CERT, true),
+  },
+
+  cache: {
+    mandantsTtlMs: toInt(process.env.MANDANTS_CACHE_TTL_MS, 10 * 60 * 1000),
+    dbAvailabilityTtlMs: toInt(process.env.DB_AVAILABILITY_CACHE_TTL_MS, 10 * 60 * 1000),
+  },
+
   // DB config file (databases.json)
   dbConfigPath: path.resolve(ROOT_DIR, process.env.DB_CONFIG_PATH || './config/databases.json'),
 

@@ -4,6 +4,9 @@ const logger = require('../logger');
 function errorHandler(err, req, res, next) {
   const status = err instanceof HttpError ? err.status : 500;
   const message = err instanceof Error ? err.message : 'Unknown error';
+  const code = err && err.code
+    ? err.code
+    : (err && err.details && err.details.code ? err.details.code : null);
 
   // Log server-side
   if (status >= 500) {
@@ -19,6 +22,7 @@ function errorHandler(err, req, res, next) {
     error: {
       message,
       status,
+      code,
       details: err.details || null,
     },
   });

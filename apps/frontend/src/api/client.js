@@ -16,7 +16,7 @@ function redirectToAppStart() {
 function isAuthInterruptionResponse(res) {
   const contentType = String(res.headers.get('content-type') || '').toLowerCase();
   const isHtml = contentType.includes('text/html');
-  return res.status === 401 || res.status === 403 || res.redirected || isHtml;
+  return res.status === 401 || res.redirected || isHtml;
 }
 
 export async function apiRequest(path, options = {}) {
@@ -47,9 +47,17 @@ export async function apiRequest(path, options = {}) {
   const json = await parseJsonSafe(res);
 
   if (!res.ok) {
+    const code = json?.error?.code || null;
+    if (code === 'DB_NOT_AVAILABLE') {
+      if (typeof window !== 'undefined') {
+        window.location.assign(`${APP_BASE_PATH}/database-unavailable`);
+      }
+    }
+
     const msg = json?.error?.message || `HTTP ${res.status}`;
     const err = new Error(msg);
     err.status = res.status;
+    err.code = code;
     err.payload = json;
     throw err;
   }

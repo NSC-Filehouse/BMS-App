@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Alert,
   Box,
   Button,
   Card,
@@ -14,7 +13,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { setMandant, getMandant, clearMandant } from '../utils/mandant.js';
-import { getEffectiveMandant, isAdminFromEmail } from '../utils/user.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 export default function Start() {
@@ -22,8 +20,6 @@ export default function Start() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [email, setEmail] = React.useState('');
-  const [userMandant, setUserMandant] = React.useState('');
-  const [isAdmin, setIsAdmin] = React.useState(false);
   const [meName, setMeName] = React.useState({ given: '', surname: '' });
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -44,31 +40,29 @@ export default function Start() {
         if (!alive) return;
 
         const emailVal = meRes?.principalName || meRes?.mail || meRes?.email || '';
-        const mandantFromEmail = getEffectiveMandant(emailVal);
-        const admin = isAdminFromEmail(emailVal);
         setEmail(emailVal);
         setMeName({
           given: meRes?.givenName || '',
           surname: meRes?.surname || '',
         });
-        setUserMandant(mandantFromEmail);
-        setIsAdmin(admin);
-        setMandants(res?.data || []);
+        const allowed = Array.isArray(res?.data) ? res.data : [];
+        setMandants(allowed);
 
-        if (!admin && mandantFromEmail) {
-          const mandantLower = String(mandantFromEmail || '').toLowerCase();
-          const matched = (res?.data || []).find((m) => String(m || '').toLowerCase() === mandantLower);
-          if (matched) {
-            setMandant(matched);
-            navigate('/customers');
-          } else {
-            clearMandant();
-            setError(t('start_no_permission_text'));
-          }
-        }
-        if (!admin && !mandantFromEmail) {
+        if (!allowed.length) {
           clearMandant();
           setError(t('start_no_permission_text'));
+          return;
+        }
+
+        const selectedLower = String(selected || '').toLowerCase();
+        const selectedStillAllowed = allowed.find((m) => String(m).toLowerCase() === selectedLower);
+        if (selected && !selectedStillAllowed) {
+          clearMandant();
+        }
+
+        if (allowed.length === 1) {
+          setMandant(allowed[0]);
+          navigate('/customers');
         }
       } catch (e) {
         if (!alive) return;
@@ -105,8 +99,6 @@ export default function Start() {
         </Box>
       )}
 
-      {error && isAdmin && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
       {!loading && error && (
         <Card>
           <CardContent>
@@ -126,7 +118,7 @@ export default function Start() {
         </Card>
       )}
 
-      {!loading && !error && isAdmin && (
+      {!loading && !error && (
         <Card>
           <CardContent>
             <Typography variant="body1" sx={{ mb: 2 }}>
@@ -148,28 +140,6 @@ export default function Start() {
               ))}
             </List>
 
-            <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-              <Button
-                variant="contained"
-                disabled={!selected}
-                onClick={() => navigate('/customers')}
-              >
-                {t('start_continue')}
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
-
-      {!loading && !error && !isAdmin && (
-        <Card>
-          <CardContent>
-            <Typography variant="body1" sx={{ mb: 2 }}>
-              {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 2 }}>
-              {t('mandant_label')}: <b>{userMandant || selected || '-'}</b>
-            </Typography>
             <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
               <Button
                 variant="contained"
