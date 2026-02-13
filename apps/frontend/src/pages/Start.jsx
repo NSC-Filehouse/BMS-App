@@ -23,6 +23,7 @@ export default function Start() {
   const [meName, setMeName] = React.useState({ given: '', surname: '' });
   const navigate = useNavigate();
   const { t } = useI18n();
+  const noPermissionText = t('start_no_permission_text');
 
   const selected = getMandant();
 
@@ -103,10 +104,10 @@ export default function Start() {
         <Card>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 1 }}>
-              {t('start_no_permission_title')}
+              {error === noPermissionText ? t('start_no_permission_title') : t('loading_mandants_error')}
             </Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              {t('start_no_permission_text')}
+              {error}
             </Typography>
             <Typography variant="body2" sx={{ mb: 1 }}>
               {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>

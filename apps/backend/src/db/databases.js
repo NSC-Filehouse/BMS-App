@@ -113,6 +113,11 @@ async function loadMandantsForEmail(email) {
   });
 
   const candidates = Array.from(uniqueByName.values());
+  if (!config.featureFlags.filterUnavailableMandants) {
+    candidates.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    return candidates;
+  }
+
   const checks = await Promise.all(
     candidates.map(async (m) => ({
       ...m,

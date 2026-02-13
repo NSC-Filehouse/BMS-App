@@ -34,6 +34,10 @@ const config = {
     dbAvailabilityTtlMs: toInt(process.env.DB_AVAILABILITY_CACHE_TTL_MS, 10 * 60 * 1000),
   },
 
+  featureFlags: {
+    filterUnavailableMandants: toBool(process.env.MANDANTS_FILTER_UNAVAILABLE, false),
+  },
+
   // DB config file (databases.json)
   dbConfigPath: path.resolve(ROOT_DIR, process.env.DB_CONFIG_PATH || './config/databases.json'),
 
