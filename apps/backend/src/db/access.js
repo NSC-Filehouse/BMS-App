@@ -11,7 +11,7 @@ function sanitizeDatabaseName(databaseName) {
   return value;
 }
 
-function buildSqlServerConnectionString(databaseName) {
+function buildBaseParts(databaseName, driverName) {
   const db = sanitizeDatabaseName(databaseName);
   const server = String(config.sql.instance || '').trim();
   const user = String(config.sql.user || '').trim();
@@ -21,31 +21,72 @@ function buildSqlServerConnectionString(databaseName) {
     throw new Error('Missing SQL Server connection settings in environment.');
   }
 
-  const encrypt = config.sql.encrypt ? 'yes' : 'no';
-  const parts = [
-    'Driver={ODBC Driver 17 for SQL Server}',
+  return [
+    `Driver={${driverName}}`,
     `Server=${server}`,
     `Database=${db}`,
     `Uid=${user}`,
     `Pwd=${password}`,
-    `Encrypt=${encrypt}`,
-    'Connection Timeout=5',
+  ];
+}
+
+function buildSqlServerConnectionCandidates(databaseName) {
+  const encrypt = config.sql.encrypt ? 'yes' : 'no';
+  const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
+
+  const drivers = [
+    'ODBC Driver 18 for SQL Server',
+    'ODBC Driver 17 for SQL Server',
+    'SQL Server',
   ];
 
-  // Some driver/build combinations reject TrustServerCertificate when Encrypt is off.
-  if (config.sql.encrypt) {
-    const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
-    parts.push(`TrustServerCertificate=${trustServerCertificate}`);
+  const candidates = [];
+  for (const driver of drivers) {
+    const base = buildBaseParts(databaseName, driver);
+
+    // Full variant
+    candidates.push(
+      base.concat([
+        `Encrypt=${encrypt}`,
+        ...(config.sql.encrypt ? [`TrustServerCertificate=${trustServerCertificate}`] : []),
+        'Connection Timeout=5',
+      ]).join(';') + ';'
+    );
+
+    // No timeout
+    candidates.push(
+      base.concat([
+        `Encrypt=${encrypt}`,
+        ...(config.sql.encrypt ? [`TrustServerCertificate=${trustServerCertificate}`] : []),
+      ]).join(';') + ';'
+    );
+
+    // Minimal compatibility variant
+    candidates.push(base.join(';') + ';');
   }
 
-  return parts.join(';') + ';';
+  return Array.from(new Set(candidates));
 }
 
 async function runSQLQuerySqlServer(databaseName, query, params = []) {
   let connection;
   try {
-    const connectionString = buildSqlServerConnectionString(databaseName);
-    connection = await odbc.connect(connectionString);
+    let lastConnectError = null;
+    const candidates = buildSqlServerConnectionCandidates(databaseName);
+    for (const connectionString of candidates) {
+      try {
+        connection = await odbc.connect(connectionString);
+        lastConnectError = null;
+        break;
+      } catch (err) {
+        lastConnectError = err;
+      }
+    }
+
+    if (!connection && lastConnectError) {
+      throw lastConnectError;
+    }
+
     const result = await connection.query(query, params);
     return result;
   } catch (error) {
