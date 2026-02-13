@@ -47,6 +47,9 @@ async function runSQLQuerySqlServer(databaseName, query, params = []) {
     logger.error('SQL Server query failed', error);
     logger.debug('Query:', query);
     logger.debug('Params:', JSON.stringify(params));
+    if (error && Array.isArray(error.odbcErrors) && error.odbcErrors.length) {
+      logger.debug('ODBC details:', JSON.stringify(error.odbcErrors));
+    }
     throw error;
   } finally {
     if (connection) await connection.close();

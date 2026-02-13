@@ -24,6 +24,64 @@ function buildTenantDatabaseName(shortName) {
   return normalized ? `BMS_${normalized}` : '';
 }
 
+function escIdentifier(value) {
+  const text = String(value || '').trim();
+  if (!text || /[^A-Za-z0-9_]/.test(text)) {
+    throw new Error(`Invalid SQL identifier: ${value}`);
+  }
+  return `[${text}]`;
+}
+
+function isObjectNameError(error) {
+  const msg = String(error && error.message ? error.message : '').toLowerCase();
+  return msg.includes('invalid object name') || msg.includes('42s02');
+}
+
+async function queryMandantsWithTable(tableName) {
+  const colFirmaId = escIdentifier(config.sql.columns.firmaId);
+  const colFirma = escIdentifier(config.sql.columns.firma);
+  const colFirmaKurz = escIdentifier(config.sql.columns.firmaKurz);
+  const sql = `SELECT ${colFirmaId} AS firmaId, ${colFirma} AS firma, ${colFirmaKurz} AS firmaKurz FROM [dbo].${escIdentifier(tableName)}`;
+  return runSQLQuerySqlServer(config.sql.database, sql, []);
+}
+
+async function queryMandantsForFilehouse() {
+  const preferred = config.sql.tables.mandant;
+  const candidates = [preferred, 'tblMandanten'].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  let lastError = null;
+  for (const tableName of candidates) {
+    try {
+      return await queryMandantsWithTable(tableName);
+    } catch (error) {
+      lastError = error;
+      if (!isObjectNameError(error)) throw error;
+    }
+  }
+  throw lastError || new Error('Failed to query mandants table.');
+}
+
+async function queryMandantsForUser(normalizedEmail) {
+  const tMitarbeiter = escIdentifier(config.sql.tables.mitarbeiter);
+  const tMap = escIdentifier(config.sql.tables.mitarbeiterMandant);
+  const tMandant = escIdentifier(config.sql.tables.mandant);
+
+  const colPersNr = escIdentifier(config.sql.columns.persNr);
+  const colEmail = escIdentifier(config.sql.columns.email);
+  const colMapPersNr = escIdentifier(config.sql.columns.mapPersNr);
+  const colMapFirmaId = escIdentifier(config.sql.columns.mapFirmaId);
+  const colFirmaId = escIdentifier(config.sql.columns.firmaId);
+  const colFirma = escIdentifier(config.sql.columns.firma);
+  const colFirmaKurz = escIdentifier(config.sql.columns.firmaKurz);
+
+  const sql = `SELECT DISTINCT m.${colFirmaId} AS firmaId, m.${colFirma} AS firma, m.${colFirmaKurz} AS firmaKurz
+    FROM [dbo].${tMitarbeiter} AS ma
+    INNER JOIN [dbo].${tMap} AS mm ON mm.${colMapPersNr} = ma.${colPersNr}
+    INNER JOIN [dbo].${tMandant} AS m ON m.${colFirmaId} = mm.${colMapFirmaId}
+    WHERE LOWER(LTRIM(RTRIM(COALESCE(ma.${colEmail}, '')))) = ?`;
+
+  return runSQLQuerySqlServer(config.sql.database, sql, [normalizedEmail]);
+}
+
 function getCachedMandants(email) {
   const key = normalizeEmail(email);
   const item = mandantsCache.get(key);
@@ -73,25 +131,11 @@ async function loadMandantsForEmail(email) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return [];
 
-  const sqlDatabase = config.sql.database;
-
   let rows = [];
   if (isFilehouseEmail(normalizedEmail)) {
-    rows = await runSQLQuerySqlServer(
-      sqlDatabase,
-      'SELECT [md_FirmaID] AS firmaId, [md_Firma] AS firma, [md_FirmaKurz] AS firmaKurz FROM [dbo].[tblMandant]',
-      []
-    );
+    rows = await queryMandantsForFilehouse();
   } else {
-    rows = await runSQLQuerySqlServer(
-      sqlDatabase,
-      `SELECT DISTINCT m.[md_FirmaID] AS firmaId, m.[md_Firma] AS firma, m.[md_FirmaKurz] AS firmaKurz
-       FROM [dbo].[tblMitarbeiter] AS ma
-       INNER JOIN [dbo].[tblMitarbeiterMandant] AS mm ON mm.[mamd_PersNR] = ma.[ma_PersNR]
-       INNER JOIN [dbo].[tblMandant] AS m ON m.[md_FirmaID] = mm.[mamd_FirmaID]
-       WHERE LOWER(LTRIM(RTRIM(COALESCE(ma.[ma_eMail], '')))) = ?`,
-      [normalizedEmail]
-    );
+    rows = await queryMandantsForUser(normalizedEmail);
   }
 
   const normalized = (rows || [])

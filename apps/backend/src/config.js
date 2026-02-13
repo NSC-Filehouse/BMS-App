@@ -27,6 +27,20 @@ const config = {
     password: process.env.BMS_SQL_PASSWORD || '',
     encrypt: toBool(process.env.BMS_SQL_ENCRYPT, false),
     trustServerCertificate: toBool(process.env.BMS_SQL_TRUST_SERVER_CERT, true),
+    tables: {
+      mitarbeiter: (process.env.BMS_SQL_TABLE_MITARBEITER || 'tblMitarbeiter').trim(),
+      mitarbeiterMandant: (process.env.BMS_SQL_TABLE_MITARBEITER_MANDANT || 'tblMitarbeiterMandant').trim(),
+      mandant: (process.env.BMS_SQL_TABLE_MANDANT || 'tblMandant').trim(),
+    },
+    columns: {
+      persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),
+      email: (process.env.BMS_SQL_COL_EMAIL || 'ma_eMail').trim(),
+      mapPersNr: (process.env.BMS_SQL_COL_MAP_PERSNR || 'mamd_PersNR').trim(),
+      mapFirmaId: (process.env.BMS_SQL_COL_MAP_FIRMAID || 'mamd_FirmaID').trim(),
+      firmaId: (process.env.BMS_SQL_COL_FIRMAID || 'md_FirmaID').trim(),
+      firma: (process.env.BMS_SQL_COL_FIRMA || 'md_Firma').trim(),
+      firmaKurz: (process.env.BMS_SQL_COL_FIRMAKURZ || 'md_FirmaKurz').trim(),
+    },
   },
 
   cache: {
