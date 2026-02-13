@@ -64,11 +64,11 @@ async function logSqlContextForDiagnostics() {
       []
     );
     const ctx = Array.isArray(ctxRows) && ctxRows.length ? ctxRows[0] : null;
-    logger.warn(
+    logger.debug(
       `SQL context: server=${ctx?.serverName || '?'} db=${ctx?.dbName || '?'} login=${ctx?.loginName || '?'}`
     );
   } catch (error) {
-    logger.warn('SQL context query failed.', error);
+    logger.debug(`SQL context query failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   try {
@@ -78,9 +78,9 @@ async function logSqlContextForDiagnostics() {
       []
     );
     const names = (tableRows || []).map((r) => r.name || r.NAME).filter(Boolean);
-    logger.warn(`SQL tables matching '%Mandant%': ${names.join(', ') || '(none)'}`);
+    logger.debug(`SQL tables matching '%Mandant%': ${names.join(', ') || '(none)'}`);
   } catch (error) {
-    logger.warn('SQL table discovery failed.', error);
+    logger.debug(`SQL table discovery failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
