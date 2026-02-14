@@ -57,7 +57,7 @@ function mapRepresentatives(rows) {
       const email = toText(row.kdA_eMail);
       const position = toText(row.kdA_Position);
       const salutation = toText(row.kdA_Anrede);
-      const id = row.kdA_IdfNR ?? null;
+      const id = row.kdA_IfdNR ?? null;
 
       return { id, name, phone, email, position, salutation };
     })
@@ -121,10 +121,10 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   }
 
   const repsSql = `
-    SELECT [kdA_IdfNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail]
+    SELECT [kdA_IfdNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail]
     FROM [dbo].[tblKun_Ansprech]
     WHERE [kdA_KdNR] = ?
-    ORDER BY [kdA_IdfNR] ASC
+    ORDER BY [kdA_IfdNR] ASC
   `;
   const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
   const representatives = mapRepresentatives(repsRows);
