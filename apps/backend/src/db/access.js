@@ -1,6 +1,8 @@
-const odbc = require('odbc');
+const sql = require('mssql');
 const config = require('../config');
 const logger = require('../logger');
+
+const pools = new Map();
 
 function sanitizeDatabaseName(databaseName) {
   const value = String(databaseName || '').trim();
@@ -11,102 +13,126 @@ function sanitizeDatabaseName(databaseName) {
   return value;
 }
 
-function buildBaseParts(databaseName, driverName) {
-  const db = sanitizeDatabaseName(databaseName);
-  const server = String(config.sql.instance || '').trim();
-  const user = String(config.sql.user || '').trim();
-  const password = String(config.sql.password || '');
-  const network = String(config.sql.network || '').trim();
+function resolveServerConfig() {
+  if (config.sql.server) {
+    return { server: config.sql.server };
+  }
 
-  if (!server || !user || !password || !db) {
+  if (config.sql.host) {
+    return {
+      server: config.sql.host,
+      ...(config.sql.instanceName ? {} : { port: config.sql.port || 1433 }),
+    };
+  }
+
+  const fallback = String(config.sql.instance || '').trim();
+  if (!fallback) {
+    throw new Error('Missing SQL Server host configuration.');
+  }
+
+  // Backward compatibility: allow host\instance in BMS_SQL_INSTANCE.
+  if (fallback.includes('\\')) {
+    const [host, instanceName] = fallback.split('\\');
+    return {
+      server: host,
+      ...(instanceName ? { options: { instanceName } } : {}),
+    };
+  }
+
+  return { server: fallback, port: config.sql.port || 1433 };
+}
+
+function buildPoolConfig(databaseName) {
+  const db = sanitizeDatabaseName(databaseName);
+  const user = String(config.sql.user || '').trim();
+  const password = String(config.sql.password || '').trim();
+  const timeoutMs = Math.max((config.sql.connectionTimeoutSec || 15) * 1000, 5000);
+
+  if (!db || !user || !password) {
     throw new Error('Missing SQL Server connection settings in environment.');
   }
 
-  const parts = [
-    `Driver={${driverName}}`,
-    `Server=${server}`,
-    `Database=${db}`,
-    `Uid=${user}`,
-    `Pwd=${password}`,
-  ];
+  const serverCfg = resolveServerConfig();
+  const options = {
+    encrypt: Boolean(config.sql.encrypt),
+    trustServerCertificate: Boolean(config.sql.trustServerCertificate),
+    enableArithAbort: true,
+    ...(serverCfg.options || {}),
+  };
 
-  if (network) {
-    parts.push(`Network=${network}`);
-  }
-
-  return parts;
+  return {
+    user,
+    password,
+    server: serverCfg.server,
+    ...(serverCfg.port ? { port: serverCfg.port } : {}),
+    database: db,
+    options,
+    connectionTimeout: timeoutMs,
+    requestTimeout: timeoutMs,
+    pool: {
+      max: 10,
+      min: 0,
+      idleTimeoutMillis: 30000,
+    },
+  };
 }
 
-function buildSqlServerConnectionCandidates(databaseName) {
-  const encrypt = config.sql.encrypt ? 'yes' : 'no';
-  const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
-  const timeout = Math.max(parseInt(config.sql.connectionTimeoutSec || 15, 10) || 15, 5);
+function bindQuestionParams(query, params) {
+  let idx = 0;
+  const sqlText = String(query || '').replace(/\?/g, () => {
+    idx += 1;
+    return `@p${idx}`;
+  });
+  return { sqlText, count: idx };
+}
 
-  const drivers = [
-    'ODBC Driver 18 for SQL Server',
-    'ODBC Driver 17 for SQL Server',
-    'SQL Server',
-  ];
-
-  const candidates = [];
-  for (const driver of drivers) {
-    const base = buildBaseParts(databaseName, driver);
-
-    // Full variant
-    candidates.push(
-      base.concat([
-        `Encrypt=${encrypt}`,
-        ...(config.sql.encrypt ? [`TrustServerCertificate=${trustServerCertificate}`] : []),
-        `Connection Timeout=${timeout}`,
-      ]).join(';') + ';'
-    );
-
-    // No timeout
-    candidates.push(
-      base.concat([
-        `Encrypt=${encrypt}`,
-        ...(config.sql.encrypt ? [`TrustServerCertificate=${trustServerCertificate}`] : []),
-      ]).join(';') + ';'
-    );
-
-    // Minimal compatibility variant
-    candidates.push(base.join(';') + ';');
+async function getPool(databaseName) {
+  const dbName = sanitizeDatabaseName(databaseName);
+  let poolPromise = pools.get(dbName);
+  if (!poolPromise) {
+    const pool = new sql.ConnectionPool(buildPoolConfig(dbName));
+    poolPromise = pool.connect();
+    pools.set(dbName, poolPromise);
   }
 
-  return Array.from(new Set(candidates));
+  try {
+    return await poolPromise;
+  } catch (error) {
+    pools.delete(dbName);
+    throw error;
+  }
+}
+
+function logSqlError(error, query, params) {
+  logger.error('SQL Server query failed', error);
+  logger.debug('Query:', query);
+  logger.debug('Params:', JSON.stringify(params));
+  if (error && error.originalError) {
+    const oe = error.originalError;
+    logger.debug('SQL details:', JSON.stringify({
+      code: oe.code || null,
+      number: oe.number || null,
+      state: oe.state || null,
+      class: oe.class || null,
+      message: oe.message || null,
+    }));
+  }
 }
 
 async function runSQLQuerySqlServer(databaseName, query, params = []) {
-  let connection;
   try {
-    let lastConnectError = null;
-    const candidates = buildSqlServerConnectionCandidates(databaseName);
-    for (const connectionString of candidates) {
-      try {
-        connection = await odbc.connect(connectionString);
-        lastConnectError = null;
-        break;
-      } catch (err) {
-        lastConnectError = err;
-      }
-    }
-
-    if (!connection && lastConnectError) {
-      throw lastConnectError;
-    }
-
-    const result = await connection.query(query, params);
-    return result;
+    const pool = await getPool(databaseName);
+    const request = pool.request();
+    const bind = Array.isArray(params) ? params : [];
+    bind.forEach((value, i) => {
+      request.input(`p${i + 1}`, value);
+    });
+    const { sqlText } = bindQuestionParams(query, bind);
+    const result = await request.query(sqlText);
+    return result && Array.isArray(result.recordset) ? result.recordset : [];
   } catch (error) {
-    logger.error('SQL Server query failed', error);
-    logger.debug('Query:', query);
-    logger.debug('Params:', JSON.stringify(params));
-    if (error && Array.isArray(error.odbcErrors) && error.odbcErrors.length) {
-      logger.debug('ODBC details:', JSON.stringify(error.odbcErrors));
-    }
+    logSqlError(error, query, params);
     throw error;
-  } finally {
-    if (connection) await connection.close();
   }
 }
 
