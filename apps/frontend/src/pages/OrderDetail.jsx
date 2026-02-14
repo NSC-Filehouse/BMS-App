@@ -96,11 +96,13 @@ export default function OrderDetail() {
             <InfoRow label={t('order_distributor')} value={mandant} />
             <InfoRow label={t('order_article')} value={item.article} />
             <InfoRow label={t('order_price')} value={formatPrice(item.price)} />
+            {item?.isReserved && <InfoRow label={t('order_reserve_amount')} value={item.reserveAmount ? `${item.reserveAmount} ${item.unit || 'kg'}` : ''} />}
             <InfoRow label={t('order_closing')} value={item.closingDate} />
             <InfoRow label={t('order_reserved_until')} value={item.reservationDate} />
             {!isReserved && <InfoRow label={t('order_created')} value={item.createdAt} />}
             <InfoRow label={t('order_owner')} value={item.receivedFrom} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
+            {item?.isReserved && <InfoRow label={t('order_comment')} value={item.comment} />}
             <Divider sx={{ mt: 2 }} />
           </CardContent>
         </Card>

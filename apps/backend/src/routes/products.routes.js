@@ -2,6 +2,7 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
+const { getUserPersonNumberByEmail } = require('../db/users');
 
 const router = express.Router();
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
@@ -193,6 +194,70 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
     status: 200,
     data: mapProductRow(row),
     meta: { mandant: req.mandant, idField: 'id', id },
+    error: null,
+  });
+}));
+
+router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) => {
+  const userId = await getUserPersonNumberByEmail(req.userEmail);
+  const amount = Number(req.body?.amount);
+  const reservationEndDateRaw = req.body?.reservationEndDate;
+  const comment = req.body?.comment ? String(req.body.comment).trim() : '';
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw createHttpError(400, 'Invalid reservation amount.');
+  }
+  const reservationEndDate = new Date(reservationEndDateRaw);
+  if (!reservationEndDateRaw || Number.isNaN(reservationEndDate.getTime())) {
+    throw createHttpError(400, 'Invalid reservation end date.');
+  }
+
+  let beNumber = req.body?.beNumber ? String(req.body.beNumber).trim() : '';
+  let warehouseId = req.body?.warehouseId ? String(req.body.warehouseId).trim() : '';
+
+  if ((!beNumber || !warehouseId) && req.body?.productId) {
+    const key = parseProductId(String(req.body.productId));
+    if (!beNumber) beNumber = key.beNumber;
+  }
+
+  if (!beNumber || !warehouseId) {
+    throw createHttpError(400, 'Missing required reservation keys: beNumber and warehouseId.');
+  }
+
+  const createdBy = String(req.userEmail || '').trim() || null;
+  const nowIso = new Date().toISOString();
+
+  const insertSql = `
+    INSERT INTO [dbo].[tblReservation]
+      ([BENumber], [WarehouseId], [ReservationUserId], [Amount], [ReservationEndDate], [Comment], [CreatedBy], [CreateDate], [LastModifiedBy], [LastModifiedDate])
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  await runSQLQueryAccess(req.database, insertSql, [
+    beNumber,
+    warehouseId,
+    userId,
+    amount,
+    reservationEndDate.toISOString(),
+    comment,
+    createdBy,
+    nowIso,
+    createdBy,
+    nowIso,
+  ]);
+
+  const createdSql = `
+    SELECT TOP 1 [Id] AS id, [BENumber] AS beNumber, [WarehouseId] AS warehouseId, [Amount] AS amount, [ReservationEndDate] AS reservationEndDate
+    FROM [dbo].[tblReservation]
+    WHERE [ReservationUserId] = ? AND [BENumber] = ? AND [WarehouseId] = ?
+    ORDER BY [Id] DESC
+  `;
+  const rows = await runSQLQueryAccess(req.database, createdSql, [userId, beNumber, warehouseId]);
+  const created = Array.isArray(rows) && rows.length ? rows[0] : null;
+
+  sendEnvelope(res, {
+    status: 201,
+    data: created || { id: null, beNumber, warehouseId, amount, reservationEndDate },
+    meta: { mandant: req.mandant, reservationUserId: userId },
     error: null,
   });
 }));

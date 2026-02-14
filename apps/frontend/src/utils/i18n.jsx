@@ -73,6 +73,13 @@ const translations = {
     product_mfi_method: 'MFI Prüfmethode',
     product_warehouse_section: 'Lagerbereich',
     product_storage_id: 'Lager-ID',
+    product_reserve_amount: 'Reservierung (kg)',
+    product_reserve_until: 'Datum von bis reserviert',
+    product_reserve_comment: 'Kommentar',
+    product_reserve_submit: 'Reservierung',
+    product_reserve_confirmed: 'Reservierung erstellt',
+    order_reserve_amount: 'Reservierung',
+    order_comment: 'Kommentar',
   },
   en: {
     app_title: 'BMS App',
@@ -136,6 +143,13 @@ const translations = {
     product_mfi_method: 'MFI test method',
     product_warehouse_section: 'Warehouse section',
     product_storage_id: 'Storage ID',
+    product_reserve_amount: 'Reservation (kg)',
+    product_reserve_until: 'Reserved until',
+    product_reserve_comment: 'Comment',
+    product_reserve_submit: 'Reserve',
+    product_reserve_confirmed: 'Reservation created',
+    order_reserve_amount: 'Reservation',
+    order_comment: 'Comment',
   },
 };
 

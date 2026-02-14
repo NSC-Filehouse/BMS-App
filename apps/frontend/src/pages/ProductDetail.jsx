@@ -6,8 +6,13 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
+  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -45,6 +50,12 @@ export default function ProductDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [reserveOpen, setReserveOpen] = React.useState(false);
+  const [reserveAmount, setReserveAmount] = React.useState('');
+  const [reserveDate, setReserveDate] = React.useState('');
+  const [reserveComment, setReserveComment] = React.useState('');
+  const [reserveLoading, setReserveLoading] = React.useState(false);
+  const [reserveSuccess, setReserveSuccess] = React.useState('');
 
   React.useEffect(() => {
     let alive = true;
@@ -85,6 +96,7 @@ export default function ProductDetail() {
       )}
 
       {error && <Alert severity="error">{error}</Alert>}
+      {reserveSuccess && <Alert severity="success" sx={{ mb: 2 }}>{reserveSuccess}</Alert>}
 
       {!loading && !error && item && (
         <Card>
@@ -98,7 +110,19 @@ export default function ProductDetail() {
               <Typography variant="h6">{formatPrice(item.acquisitionPrice)}</Typography>
             </Box>
 
-            <Button variant="contained" fullWidth disabled sx={{ mb: 2 }}>
+            <Button
+              variant="contained"
+              fullWidth
+              sx={{ mb: 2 }}
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                setReserveDate(tomorrow.toISOString().slice(0, 10));
+                setReserveAmount('');
+                setReserveComment('');
+                setReserveOpen(true);
+              }}
+            >
               {t('product_add_to_order')}
             </Button>
 
@@ -136,6 +160,75 @@ export default function ProductDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={reserveOpen} onClose={() => setReserveOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('product_reserve_submit')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('product_reserve_amount')}
+            value={reserveAmount}
+            onChange={(e) => setReserveAmount(e.target.value)}
+            inputProps={{ min: 1, step: 'any' }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            type="date"
+            label={t('product_reserve_until')}
+            value={reserveDate}
+            onChange={(e) => setReserveDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            multiline
+            minRows={2}
+            label={t('product_reserve_comment')}
+            value={reserveComment}
+            onChange={(e) => setReserveComment(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReserveOpen(false)} disabled={reserveLoading}>
+            {t('back_label')}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={reserveLoading || !reserveAmount || !reserveDate}
+            onClick={async () => {
+              try {
+                setReserveLoading(true);
+                setError('');
+                setReserveSuccess('');
+                await apiRequest('/products/reserve', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    productId: item?.id,
+                    beNumber: item?.beNumber,
+                    warehouseId: item?.storageId,
+                    amount: Number(reserveAmount),
+                    reservationEndDate: reserveDate,
+                    comment: reserveComment || '',
+                  }),
+                });
+                setReserveOpen(false);
+                setReserveSuccess(t('product_reserve_confirmed'));
+                navigate('/orders');
+              } catch (e) {
+                setError(e?.message || t('loading_error'));
+              } finally {
+                setReserveLoading(false);
+              }
+            }}
+          >
+            {t('product_reserve_submit')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
