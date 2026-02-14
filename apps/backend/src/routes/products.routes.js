@@ -22,6 +22,14 @@ function asNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function getField(row, key) {
+  if (!row || typeof row !== 'object') return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  const wanted = String(key || '').toLowerCase();
+  const foundKey = Object.keys(row).find((k) => String(k).toLowerCase() === wanted);
+  return foundKey ? row[foundKey] : undefined;
+}
+
 function buildProductId(row) {
   const article = asText(row.Artikel);
   const warehouse = asText(row.Lagerort);
@@ -43,36 +51,36 @@ function parseProductId(id) {
 }
 
 function mapProductRow(row) {
-  const categorySub = asText(row.Kunststoff_Untergruppe);
-  const categoryMain = asText(row.Kunststoff);
+  const categorySub = asText(getField(row, 'Kunststoff_Untergruppe'));
+  const categoryMain = asText(getField(row, 'Kunststoff'));
   const category = categorySub || categoryMain;
-  const mfiMeasured = asNumber(row.beP_MFIgemessen);
-  const mfiBase = asNumber(row.beP_MFI);
+  const mfiMeasured = asNumber(getField(row, 'beP_MFIgemessen'));
+  const mfiBase = asNumber(getField(row, 'beP_MFI'));
   const mfi = mfiMeasured !== null ? mfiMeasured : mfiBase;
 
   return {
     id: buildProductId(row),
-    article: asText(row.Artikel),
-    articleName: asText(row.Artikel),
+    article: asText(getField(row, 'Artikel')),
+    articleName: asText(getField(row, 'Artikel')),
     category,
-    amount: asNumber(row.Menge),
-    unit: asText(row.Einheit),
-    reserved: asNumber(row.bePR_Anzahl),
-    about: asText(row.beP_VLbemerkung),
-    acquisitionPrice: asNumber(row.EP),
-    warehouse: asText(row.Lagerort),
-    description: asText(row.txtLagerInfo),
-    beNumber: asText(row['Bestell-Pos']),
-    packaging: asText(row.beP_Additive),
+    amount: asNumber(getField(row, 'Menge')),
+    unit: asText(getField(row, 'Einheit')),
+    reserved: asNumber(getField(row, 'bePR_Anzahl')),
+    about: asText(getField(row, 'beP_VLbemerkung')),
+    acquisitionPrice: asNumber(getField(row, 'EP')),
+    warehouse: asText(getField(row, 'Lagerort')),
+    description: asText(getField(row, 'txtLagerInfo')),
+    beNumber: asText(getField(row, 'Bestell-Pos')),
+    packaging: asText(getField(row, 'beP_Additive')),
     mfi,
-    reservedBy: asText(row.bePR_reserviertVon),
-    reservedUntil: asText(row.bePR_gueltigBis),
-    mfiTestMethod: asText(row.beP_MFI_Pruefmethode),
-    warehouseSection: asText(row.beP_LagerBeiStrecke),
-    storageId: asText(row.beP_LagerID),
+    reservedBy: asText(getField(row, 'bePR_reserviertVon')),
+    reservedUntil: asText(getField(row, 'bePR_gueltigBis')),
+    mfiTestMethod: asText(getField(row, 'beP_MFI_Pruefmethode')),
+    warehouseSection: asText(getField(row, 'beP_LagerBeiStrecke')),
+    storageId: asText(getField(row, 'bePL_LagerID')),
     plastic: categoryMain,
     plasticSubCategory: categorySub,
-    storageInfo: asText(row.txtLagerInfo),
+    storageInfo: asText(getField(row, 'txtLagerInfo')),
   };
 }
 
