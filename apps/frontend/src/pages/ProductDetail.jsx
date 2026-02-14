@@ -16,7 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -45,6 +45,7 @@ function InfoRow({ label, value }) {
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
@@ -86,10 +87,19 @@ export default function ProductDetail() {
     return () => { alive = false; };
   }, [id, t]);
 
+  const handleBack = React.useCallback(() => {
+    const fromProducts = location.state?.fromProducts;
+    if (fromProducts) {
+      navigate('/products', { state: { listState: fromProducts } });
+      return;
+    }
+    navigate(-1);
+  }, [location.state, navigate]);
+
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="back" onClick={() => navigate(-1)}>
+        <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">

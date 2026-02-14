@@ -14,7 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -23,6 +23,7 @@ const PAGE_SIZE = 12;
 
 export default function OrdersList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const [items, setItems] = React.useState([]);
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
@@ -32,6 +33,8 @@ export default function OrdersList() {
 
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
+  const hydratedFromStateRef = React.useRef(false);
+  const skipSearchReloadRef = React.useRef(false);
   React.useEffect(() => {
     metaRef.current = meta;
   }, [meta]);
@@ -59,12 +62,30 @@ export default function OrdersList() {
   }, []);
 
   React.useEffect(() => {
-    load({ page: 1 });
-  }, [load]);
+    if (hydratedFromStateRef.current) return;
+    hydratedFromStateRef.current = true;
+
+    const listState = location.state?.listState;
+    if (listState && (listState.page || listState.q !== undefined)) {
+      const restoredQ = String(listState.q || '');
+      const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
+      skipSearchReloadRef.current = true;
+      setQ(restoredQ);
+      load({ page: restoredPage, q: restoredQ });
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+
+    load({ page: 1, q: '' });
+  }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
       const qVal = q.trim();
+      if (skipSearchReloadRef.current) {
+        skipSearchReloadRef.current = false;
+        return;
+      }
       if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
         load({ page: 1, q: qVal });
       }
@@ -146,7 +167,9 @@ export default function OrdersList() {
                 boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
                 cursor: 'pointer',
               }}
-              onClick={() => navigate(`/orders/${encodeURIComponent(row.id)}`)}
+              onClick={() => navigate(`/orders/${encodeURIComponent(row.id)}`, {
+                state: { fromOrders: { page: meta.page || 1, q } },
+              })}
             >
               <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                 <Box sx={{ pr: 2 }}>

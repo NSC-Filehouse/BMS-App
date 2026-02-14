@@ -14,7 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -113,6 +113,7 @@ function ProductCard({ item, onClick, t }) {
 
 export default function ProductsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const [q, setQ] = React.useState('');
   const [items, setItems] = React.useState([]);
@@ -150,9 +151,24 @@ export default function ProductsList() {
     }
   }, []);
 
+  const hydratedFromStateRef = React.useRef(false);
+
   React.useEffect(() => {
+    if (hydratedFromStateRef.current) return;
+    hydratedFromStateRef.current = true;
+
+    const listState = location.state?.listState;
+    if (listState && (listState.page || listState.q !== undefined)) {
+      const restoredQ = String(listState.q || '');
+      const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
+      setQ(restoredQ);
+      loadProducts({ page: restoredPage, q: restoredQ });
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+
     loadProducts({ page: 1, q: '' });
-  }, [loadProducts]);
+  }, [loadProducts, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
@@ -237,7 +253,9 @@ export default function ProductsList() {
               key={item.id}
               item={item}
               t={t}
-              onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
+              onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
+                state: { fromProducts: { page: meta.page || 1, q } },
+              })}
             />
           ))}
         </Box>

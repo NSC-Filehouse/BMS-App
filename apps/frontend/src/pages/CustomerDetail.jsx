@@ -14,7 +14,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -105,6 +105,7 @@ function InfoRow({ icon, label, value, link }) {
 export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
@@ -136,11 +137,19 @@ export default function CustomerDetail() {
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
   const representatives = normalizeRepresentatives(item);
+  const handleBack = React.useCallback(() => {
+    const fromCustomers = location.state?.fromCustomers;
+    if (fromCustomers) {
+      navigate('/customers', { state: { listState: fromCustomers } });
+      return;
+    }
+    navigate(-1);
+  }, [location.state, navigate]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="back" onClick={() => navigate(-1)}>
+        <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">

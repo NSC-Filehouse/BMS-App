@@ -2,7 +2,7 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getUserPersonNumberByEmail } = require('../db/users');
+const { getUserIdentityByEmail } = require('../db/users');
 
 const router = express.Router();
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
@@ -199,7 +199,8 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) => {
-  const userId = await getUserPersonNumberByEmail(req.userEmail);
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userId = userIdentity.personNumber;
   const amount = Number(req.body?.amount);
   const reservationEndDateRaw = req.body?.reservationEndDate;
   const comment = req.body?.comment ? String(req.body.comment).trim() : '';
@@ -242,7 +243,7 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`);
   }
 
-  const createdBy = String(req.userEmail || '').trim() || null;
+  const createdBy = userIdentity.shortCode || userIdentity.fullName || userIdentity.email || null;
   const nowIso = new Date().toISOString();
 
   const insertSql = `

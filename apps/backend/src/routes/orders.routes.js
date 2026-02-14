@@ -2,7 +2,7 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getUserPersonNumberByEmail } = require('../db/users');
+const { getUserPersonNumberByEmail, getUserDisplayNameByPersonNumber, getUserShortCodeByPersonNumber } = require('../db/users');
 
 const router = express.Router();
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
@@ -108,6 +108,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       r.[Id] AS id,
       r.[BENumber] AS orderNumber,
       r.[WarehouseId] AS warehouseId,
+      r.[ReservationUserId] AS reservationUserId,
       r.[Amount] AS reserveAmount,
       r.[ReservationEndDate] AS reservationDate,
       r.[Comment] AS comment,
@@ -128,6 +129,9 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(404, `reservations not found: ${id}`);
   }
 
+  const ownerShortCode = await getUserShortCodeByPersonNumber(row.reservationUserId);
+  const ownerName = ownerShortCode || await getUserDisplayNameByPersonNumber(row.reservationUserId);
+
   const detail = {
     id: row.id,
     orderNumber: row.orderNumber || row.id,
@@ -138,7 +142,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     closingDate: null,
     reservationDate: row.reservationDate,
     createdAt: row.createdAt,
-    receivedFrom: row.createdBy,
+    receivedFrom: ownerName || row.createdBy || null,
     passedTo: null,
     isReserved: true,
     reserveAmount: row.reserveAmount,
