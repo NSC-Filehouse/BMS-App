@@ -63,7 +63,16 @@ function normalizeRepresentatives(item) {
 
 function InfoRow({ icon, label, value, link }) {
   const content = link ? (
-    <Box component="a" href={link} sx={{ color: 'primary.main', textDecoration: 'underline' }}>
+    <Box
+      component="a"
+      href={link}
+      sx={{
+        color: 'primary.main',
+        textDecoration: 'underline',
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
+      }}
+    >
       {value}
     </Box>
   ) : (
@@ -78,7 +87,15 @@ function InfoRow({ icon, label, value, link }) {
           {label}
         </Typography>
       </Box>
-      <Box sx={{ width: '45%', textAlign: 'right', whiteSpace: 'pre-line' }}>
+      <Box
+        sx={{
+          width: '45%',
+          textAlign: 'right',
+          whiteSpace: 'pre-line',
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
         {content}
       </Box>
     </Box>
