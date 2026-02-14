@@ -56,6 +56,14 @@ export default function ProductDetail() {
   const [reserveComment, setReserveComment] = React.useState('');
   const [reserveLoading, setReserveLoading] = React.useState(false);
   const [reserveSuccess, setReserveSuccess] = React.useState('');
+  const availableAmount = React.useMemo(() => {
+    const total = Number(item?.amount ?? 0);
+    const reserved = Number(item?.reserved ?? 0);
+    if (!Number.isFinite(total) || !Number.isFinite(reserved)) return null;
+    return Math.max(total - reserved, 0);
+  }, [item]);
+  const reserveAmountNum = Number(reserveAmount);
+  const reserveTooMuch = availableAmount !== null && Number.isFinite(reserveAmountNum) && reserveAmountNum > availableAmount;
 
   React.useEffect(() => {
     let alive = true;
@@ -172,6 +180,12 @@ export default function ProductDetail() {
             value={reserveAmount}
             onChange={(e) => setReserveAmount(e.target.value)}
             inputProps={{ min: 1, step: 'any' }}
+            error={reserveTooMuch}
+            helperText={
+              reserveTooMuch
+                ? t('product_reserve_too_much')
+                : (availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : '')
+            }
           />
           <TextField
             margin="dense"
@@ -198,7 +212,7 @@ export default function ProductDetail() {
           </Button>
           <Button
             variant="contained"
-            disabled={reserveLoading || !reserveAmount || !reserveDate}
+            disabled={reserveLoading || !reserveAmount || !reserveDate || reserveTooMuch}
             onClick={async () => {
               try {
                 setReserveLoading(true);

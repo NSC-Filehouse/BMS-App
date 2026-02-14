@@ -224,6 +224,24 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     throw createHttpError(400, 'Missing required reservation keys: beNumber and warehouseId.');
   }
 
+  const productSql = `
+    SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved
+    FROM ${VIEW_SQL}
+    WHERE COALESCE([Bestell-Pos], '') = ?
+      AND COALESCE([bePL_LagerID], '') = ?
+  `;
+  const productRows = await runSQLQueryAccess(req.database, productSql, [beNumber, warehouseId]);
+  const productRow = Array.isArray(productRows) && productRows.length ? productRows[0] : null;
+  if (!productRow) {
+    throw createHttpError(404, 'Product availability row not found for reservation.');
+  }
+  const totalAmount = asNumber(getField(productRow, 'amount')) ?? asNumber(getField(productRow, 'Menge')) ?? 0;
+  const alreadyReserved = asNumber(getField(productRow, 'reserved')) ?? asNumber(getField(productRow, 'bePR_Anzahl')) ?? 0;
+  const availableAmount = Math.max(totalAmount - alreadyReserved, 0);
+  if (amount > availableAmount) {
+    throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`);
+  }
+
   const createdBy = String(req.userEmail || '').trim() || null;
   const nowIso = new Date().toISOString();
 
