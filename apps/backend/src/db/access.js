@@ -16,23 +16,31 @@ function buildBaseParts(databaseName, driverName) {
   const server = String(config.sql.instance || '').trim();
   const user = String(config.sql.user || '').trim();
   const password = String(config.sql.password || '');
+  const network = String(config.sql.network || '').trim();
 
   if (!server || !user || !password || !db) {
     throw new Error('Missing SQL Server connection settings in environment.');
   }
 
-  return [
+  const parts = [
     `Driver={${driverName}}`,
     `Server=${server}`,
     `Database=${db}`,
     `Uid=${user}`,
     `Pwd=${password}`,
   ];
+
+  if (network) {
+    parts.push(`Network=${network}`);
+  }
+
+  return parts;
 }
 
 function buildSqlServerConnectionCandidates(databaseName) {
   const encrypt = config.sql.encrypt ? 'yes' : 'no';
   const trustServerCertificate = config.sql.trustServerCertificate ? 'yes' : 'no';
+  const timeout = Math.max(parseInt(config.sql.connectionTimeoutSec || 15, 10) || 15, 5);
 
   const drivers = [
     'ODBC Driver 18 for SQL Server',
@@ -49,7 +57,7 @@ function buildSqlServerConnectionCandidates(databaseName) {
       base.concat([
         `Encrypt=${encrypt}`,
         ...(config.sql.encrypt ? [`TrustServerCertificate=${trustServerCertificate}`] : []),
-        'Connection Timeout=5',
+        `Connection Timeout=${timeout}`,
       ]).join(';') + ';'
     );
 

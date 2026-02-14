@@ -21,12 +21,14 @@ const config = {
   apiBasePath: process.env.API_BASE_PATH || '/api',
 
   sql: {
-    instance: (process.env.BMS_SQL_INSTANCE || '').trim(),
+    instance: (process.env.BMS_SQL_SERVER || process.env.BMS_SQL_INSTANCE || '').trim(),
     database: (process.env.BMS_SQL_DATABASE || 'BMS').trim(),
     user: (process.env.BMS_SQL_USER || '').trim(),
     password: String(process.env.BMS_SQL_PASSWORD || '').trim(),
     encrypt: toBool(process.env.BMS_SQL_ENCRYPT, false),
     trustServerCertificate: toBool(process.env.BMS_SQL_TRUST_SERVER_CERT, true),
+    network: (process.env.BMS_SQL_NETWORK || '').trim(),
+    connectionTimeoutSec: toInt(process.env.BMS_SQL_CONNECTION_TIMEOUT_SEC, 15),
     tables: {
       mitarbeiter: (process.env.BMS_SQL_TABLE_MITARBEITER || 'tblMitarbeiter').trim(),
       mitarbeiterMandant: (process.env.BMS_SQL_TABLE_MITARBEITER_MANDANT || 'tblMitarbeiterMandant').trim(),
