@@ -37,6 +37,30 @@ function buildAddress(row) {
   return [line1, line2, line3].filter(Boolean).join('\n');
 }
 
+function normalizeRepresentatives(item) {
+  const fromApi = Array.isArray(item?.representatives) ? item.representatives : [];
+  const normalizedApi = fromApi
+    .map((rep, idx) => {
+      const name = rep?.name ? String(rep.name).trim() : '';
+      const phone = rep?.phone ? String(rep.phone).trim() : '';
+      const email = rep?.email ? String(rep.email).trim() : '';
+      const key = rep?.id ?? `${name}-${idx}`;
+      return { key, name, phone, email };
+    })
+    .filter((rep) => rep.name || rep.phone || rep.email);
+
+  if (normalizedApi.length) return normalizedApi;
+
+  const legacyName = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
+  const legacyPhone = item?.kd_Telefon ? String(item.kd_Telefon).trim() : '';
+  const legacyEmail = item?.kd_eMail ? String(item.kd_eMail).trim() : '';
+  if (legacyName || legacyPhone || legacyEmail) {
+    return [{ key: 'legacy', name: legacyName, phone: legacyPhone, email: legacyEmail }];
+  }
+
+  return [];
+}
+
 function InfoRow({ icon, label, value, link }) {
   const content = link ? (
     <Box component="a" href={link} sx={{ color: 'primary.main', textDecoration: 'underline' }}>
@@ -94,10 +118,7 @@ export default function CustomerDetail() {
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
-  const repName = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
-  const phone = item?.kd_Telefon ? String(item.kd_Telefon).trim() : '';
-  const email = item?.kd_eMail ? String(item.kd_eMail).trim() : '';
-  const hasRepBlock = repName || phone || email;
+  const representatives = normalizeRepresentatives(item);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
@@ -136,32 +157,37 @@ export default function CustomerDetail() {
               value={address || '-'}
             />
 
-            {hasRepBlock && (
+            {representatives.length > 0 && (
               <>
-                <Divider sx={{ my: 3 }} />
-                {repName && (
-                  <InfoRow
-                    icon={<PersonIcon fontSize="small" />}
-                    label={t('contact_label')}
-                    value={repName}
-                  />
-                )}
-                {phone && (
-                  <InfoRow
-                    icon={<PhoneIcon fontSize="small" />}
-                    label={t('phone_label')}
-                    value={phone}
-                    link={`tel:${phone}`}
-                  />
-                )}
-                {email && (
-                  <InfoRow
-                    icon={<EmailIcon fontSize="small" />}
-                    label={t('email_label')}
-                    value={email}
-                    link={`mailto:${email}`}
-                  />
-                )}
+                {representatives.map((rep, index) => (
+                  <React.Fragment key={rep.key}>
+                    <Divider sx={{ my: 3 }} />
+                    {rep.name && (
+                      <InfoRow
+                        icon={<PersonIcon fontSize="small" />}
+                        label={t('contact_label')}
+                        value={rep.name}
+                      />
+                    )}
+                    {rep.phone && (
+                      <InfoRow
+                        icon={<PhoneIcon fontSize="small" />}
+                        label={t('phone_label')}
+                        value={rep.phone}
+                        link={`tel:${rep.phone}`}
+                      />
+                    )}
+                    {rep.email && (
+                      <InfoRow
+                        icon={<EmailIcon fontSize="small" />}
+                        label={t('email_label')}
+                        value={rep.email}
+                        link={`mailto:${rep.email}`}
+                      />
+                    )}
+                    {index < representatives.length - 1 && <Divider sx={{ my: 1 }} />}
+                  </React.Fragment>
+                ))}
               </>
             )}
           </CardContent>

@@ -42,6 +42,28 @@ function buildWhereClause(q) {
   };
 }
 
+function toText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function mapRepresentatives(rows) {
+  return (rows || [])
+    .map((row) => {
+      const firstName = toText(row.kdA_Vorname);
+      const lastName = toText(row.kdA_Name);
+      const name = toText(row.kdA_Name) || [firstName, lastName].filter(Boolean).join(' ').trim();
+      const phone = toText(row.kdA_Telefon) || toText(row.kdA_PrivatTel) || toText(row.kdA_Handy);
+      const email = toText(row.kdA_eMail);
+      const position = toText(row.kdA_Position);
+      const salutation = toText(row.kdA_Anrede);
+      const id = row.kdA_IdfNR ?? null;
+
+      return { id, name, phone, email, position, salutation };
+    })
+    .filter((rep) => rep.name || rep.phone || rep.email);
+}
+
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
@@ -98,9 +120,23 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(404, `customers not found: ${id}`);
   }
 
+  const repsSql = `
+    SELECT [kdA_IdfNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail]
+    FROM [dbo].[tblKun_Ansprech]
+    WHERE [kdA_KdNR] = ?
+    ORDER BY [kdA_IdfNR] ASC
+  `;
+  const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
+  const representatives = mapRepresentatives(repsRows);
+
+  const detail = {
+    ...item,
+    representatives,
+  };
+
   sendEnvelope(res, {
     status: 200,
-    data: item,
+    data: detail,
     meta: {
       mandant: req.mandant,
       databaseName: req.database?.databaseName || null,
