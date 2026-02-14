@@ -111,12 +111,17 @@ export default function ProductDetail() {
             <InfoRow label={t('product_unit')} value={item.unit} />
             <InfoRow label={t('product_article')} value={item.article} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
+            <InfoRow label={t('product_warehouse_section')} value={item.warehouseSection} />
+            <InfoRow label={t('product_storage_id')} value={item.storageId} />
 
             <Divider sx={{ my: 2 }} />
 
             <InfoRow label={t('product_supplier')} value={item.packaging} />
             <InfoRow label={t('product_description')} value={item.description} />
             <InfoRow label={t('product_mfi')} value={item.mfi} />
+            <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
+            <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
+            <InfoRow label={t('product_reserved_until')} value={item.reservedUntil} />
 
             <Divider sx={{ my: 2 }} />
 

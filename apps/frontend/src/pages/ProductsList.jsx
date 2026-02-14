@@ -2,19 +2,15 @@ import React from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   CircularProgress,
-  Collapse,
   IconButton,
   InputAdornment,
   TextField,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -120,11 +116,6 @@ export default function ProductsList() {
   const { t } = useI18n();
   const [q, setQ] = React.useState('');
   const [items, setItems] = React.useState([]);
-  const [categories, setCategories] = React.useState([]);
-  const [open, setOpen] = React.useState({});
-  const [openGroup, setOpenGroup] = React.useState({});
-  const [groupItems, setGroupItems] = React.useState({});
-  const [groupLoading, setGroupLoading] = React.useState({});
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -140,28 +131,16 @@ export default function ProductsList() {
     qRef.current = q;
   }, [q]);
 
-  const loadCategories = React.useCallback(async () => {
-    try {
-      setError('');
-      const res = await apiRequest('/product-categories');
-      setCategories(res?.data || []);
-    } catch (e) {
-      setError(e?.message || t('loading_categories_error'));
-    }
-  }, []);
-
   const loadProducts = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
     const pageSize = SEARCH_PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
-    const groupId = opts.groupId ?? null;
 
     try {
       setLoading(true);
       setError('');
-      const groupPart = groupId !== null && groupId !== undefined ? `&groupId=${encodeURIComponent(groupId)}` : '';
-      const res = await apiRequest(`/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=agA_Artikelname&dir=ASC${groupPart}`);
+      const res = await apiRequest(`/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=article&dir=ASC`);
       setItems(res?.data || []);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
@@ -171,38 +150,21 @@ export default function ProductsList() {
     }
   }, []);
 
-  const loadGroupItems = React.useCallback(async (groupId) => {
-    try {
-      setError('');
-      setGroupLoading(s => ({ ...s, [groupId]: true }));
-      const res = await apiRequest(`/products?page=1&pageSize=100&q=&sort=agA_Artikelname&dir=ASC&groupId=${encodeURIComponent(groupId)}`);
-      const rows = res?.data || [];
-      setGroupItems(s => ({ ...s, [groupId]: rows }));
-    } catch (e) {
-      setError(e?.message || t('loading_products_error'));
-    } finally {
-      setGroupLoading(s => ({ ...s, [groupId]: false }));
-    }
-  }, []);
-
   React.useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+    loadProducts({ page: 1, q: '' });
+  }, [loadProducts]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => {
       const qVal = q.trim();
-      if (qVal.length >= SEARCH_MIN) {
+      if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
         loadProducts({ page: 1, q: qVal });
-      } else if (qVal.length === 0) {
-        setItems([]);
-        setMeta(m => ({ ...m, page: 1 }));
       }
     }, 300);
     return () => clearTimeout(handle);
   }, [q, loadProducts]);
 
-  const showSearchResults = q.trim().length >= SEARCH_MIN;
+  const showSearchResults = true;
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -281,98 +243,6 @@ export default function ProductsList() {
         </Box>
       )}
 
-      {!showSearchResults && categories.length > 0 && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {categories.map((cat) => {
-            const isOpen = Boolean(open[cat.id]);
-            return (
-              <Card
-                key={cat.id}
-                sx={{
-                  borderRadius: 2,
-                  border: '1px solid rgba(0,0,0,0.08)',
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.06)',
-                }}
-              >
-                <CardContent
-                  sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, cursor: 'pointer' }}
-                  onClick={() => setOpen(s => ({ ...s, [cat.id]: !isOpen }))}
-                >
-                  <Typography variant="body1">{cat.name}</Typography>
-                  {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </CardContent>
-
-                {cat.children && cat.children.length > 0 && (
-                  <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                    <Box sx={{ borderTop: '1px solid rgba(0,0,0,0.08)' }}>
-                      {cat.children.map((child) => {
-                        const isGroupOpen = Boolean(openGroup[child.id]);
-                        const itemsForGroup = groupItems[child.id] || [];
-                        const isGroupLoading = Boolean(groupLoading[child.id]);
-                        return (
-                          <Box key={child.id} sx={{ borderTop: '1px solid rgba(0,0,0,0.08)' }}>
-                            <Box
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                px: 2,
-                                py: 1,
-                                cursor: 'pointer',
-                              }}
-                              onClick={() => {
-                                const next = !isGroupOpen;
-                                setOpenGroup(s => ({ ...s, [child.id]: next }));
-                                if (next && !groupItems[child.id]) {
-                                  loadGroupItems(child.id);
-                                }
-                              }}
-                            >
-                              <Typography variant="body2">{child.name}</Typography>
-                              {isGroupOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                            </Box>
-
-                            <Collapse in={isGroupOpen} timeout="auto" unmountOnExit>
-                              <Box sx={{ px: 3, pb: 1 }}>
-                                {isGroupLoading && (
-                                  <Typography variant="body2" sx={{ opacity: 0.7, py: 0.5 }}>
-                                    {t('products_loading_items')}
-                                  </Typography>
-                                )}
-                                {!isGroupLoading && itemsForGroup.length === 0 && (
-                                  <Typography variant="body2" sx={{ opacity: 0.7, py: 0.5 }}>
-                                    {t('products_empty')}
-                                  </Typography>
-                                )}
-                                {itemsForGroup.map((it) => (
-                                  <Box
-                                    key={it.id}
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      py: 0.5,
-                                      cursor: 'pointer',
-                                    }}
-                                    onClick={() => navigate(`/products/${encodeURIComponent(it.id)}`)}
-                                  >
-                                    <Typography variant="body2">{it.article || it.id}</Typography>
-                                    <ChevronRightIcon sx={{ opacity: 0.5 }} />
-                                  </Box>
-                                ))}
-                              </Box>
-                            </Collapse>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Collapse>
-                )}
-              </Card>
-            );
-          })}
-        </Box>
-      )}
       </Box>
     </Box>
   );
