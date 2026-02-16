@@ -200,7 +200,7 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
 
 router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const userId = userIdentity.personNumber;
+  const userShortCode = String(userIdentity.shortCode || '').trim();
   const amount = Number(req.body?.amount);
   const reservationEndDateRaw = req.body?.reservationEndDate;
   const comment = req.body?.comment ? String(req.body.comment).trim() : '';
@@ -224,6 +224,9 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   if (!beNumber || !warehouseId) {
     throw createHttpError(400, 'Missing required reservation keys: beNumber and warehouseId.');
   }
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.');
+  }
 
   const productSql = `
     SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved
@@ -243,40 +246,57 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`);
   }
 
-  const createdBy = userIdentity.shortCode || userIdentity.fullName || userIdentity.email || null;
   const nowIso = new Date().toISOString();
+  const selectedBy = 'APP';
+  const lastUpdate = `${userShortCode} ${nowIso}`.slice(0, 50);
 
   const insertSql = `
-    INSERT INTO [dbo].[tblReservation]
-      ([BENumber], [WarehouseId], [ReservationUserId], [Amount], [ReservationEndDate], [Comment], [CreatedBy], [CreateDate], [LastModifiedBy], [LastModifiedDate])
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO [dbo].[tblBest_Pos_Reserviert]
+      ([bePR_BEposID], [bePR_LagerID], [bePR_gewaehlt], [bePR_gewaehltWER], [bePR_reserviertVon], [bePR_gueltigBis], [bePR_Anzahl], [bePR_Notiz], [bePR_LastUpdate])
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  await runSQLQueryAccess(req.database, insertSql, [
-    beNumber,
-    warehouseId,
-    userId,
-    amount,
-    reservationEndDate.toISOString(),
-    comment,
-    createdBy,
-    nowIso,
-    createdBy,
-    nowIso,
-  ]);
+  try {
+    await runSQLQueryAccess(req.database, insertSql, [
+      beNumber,
+      warehouseId,
+      1,
+      selectedBy,
+      userShortCode,
+      reservationEndDate.toISOString(),
+      amount,
+      comment,
+      lastUpdate,
+    ]);
+  } catch (error) {
+    const msg = String(error?.message || '').toLowerCase();
+    const detailsMsg = String(error?.details?.message || '').toLowerCase();
+    const duplicate = msg.includes('duplicate') || msg.includes('2601') || msg.includes('2627')
+      || detailsMsg.includes('duplicate') || detailsMsg.includes('2601') || detailsMsg.includes('2627');
+    if (duplicate) {
+      throw createHttpError(409, 'Diese Position wurde bereits reserviert. Wer zuerst reserviert, hat gewonnen.');
+    }
+    throw error;
+  }
 
   const createdSql = `
-    SELECT TOP 1 [Id] AS id, [BENumber] AS beNumber, [WarehouseId] AS warehouseId, [Amount] AS amount, [ReservationEndDate] AS reservationEndDate
-    FROM [dbo].[tblReservation]
-    WHERE [ReservationUserId] = ? AND [BENumber] = ? AND [WarehouseId] = ?
-    ORDER BY [Id] DESC
+    SELECT TOP 1
+      [bePR_BEposID] AS beNumber,
+      [bePR_LagerID] AS warehouseId,
+      [bePR_Anzahl] AS amount,
+      [bePR_gueltigBis] AS reservationEndDate
+    FROM [dbo].[tblBest_Pos_Reserviert]
+    WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
   `;
-  const rows = await runSQLQueryAccess(req.database, createdSql, [userId, beNumber, warehouseId]);
+  const rows = await runSQLQueryAccess(req.database, createdSql, [beNumber, warehouseId]);
   const created = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const createdData = created
+    ? { ...created, id: `${created.beNumber}${ID_SEPARATOR}${created.warehouseId}` }
+    : { id: `${beNumber}${ID_SEPARATOR}${warehouseId}`, beNumber, warehouseId, amount, reservationEndDate };
 
   sendEnvelope(res, {
     status: 201,
-    data: created || { id: null, beNumber, warehouseId, amount, reservationEndDate },
-    meta: { mandant: req.mandant, reservationUserId: userId },
+    data: createdData,
+    meta: { mandant: req.mandant, reservationUserShortCode: userShortCode },
     error: null,
   });
 }));
