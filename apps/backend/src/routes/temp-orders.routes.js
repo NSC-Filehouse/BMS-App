@@ -121,6 +121,25 @@ async function loadPackagingType(database, beNumber) {
   return asText(row?.packagingType || '');
 }
 
+router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHandler(async (req, res) => {
+  const beNumber = asText(req.params?.beNumber);
+  if (!beNumber) {
+    throw createHttpError(400, 'Missing beNumber.', { code: 'MISSING_BE_NUMBER' });
+  }
+
+  const packagingType = await loadPackagingType(req.database, beNumber);
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      beNumber,
+      packagingType,
+      deliveryType: 'LKW',
+    },
+    meta: { mandant: req.mandant },
+    error: null,
+  });
+}));
+
 router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = asText(userIdentity.shortCode);
@@ -313,14 +332,14 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     reservationDate ? reservationDate.toISOString() : null,
     productCtx.about || null,
     productCtx.packaging || '',
-    productCtx.mfi || null,
+    productCtx.mfi || '',
     clientName,
     clientAddress,
     clientRepresentative || null,
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
     'LKW',
-    packagingTypeDerived || null,
+    packagingTypeDerived || '',
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     0,
@@ -433,7 +452,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     asText(req.body?.comment) || null,
     supplier || req.mandant,
     'LKW',
-    packagingTypeDerived || null,
+    packagingTypeDerived || '',
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     userShortCode,

@@ -8,6 +8,10 @@ import {
   CardContent,
   Checkbox,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   IconButton,
   TextField,
@@ -51,6 +55,8 @@ export default function TempOrderForm() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
+  const [validationOpen, setValidationOpen] = React.useState(false);
+  const [validationMessages, setValidationMessages] = React.useState([]);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
@@ -58,7 +64,6 @@ export default function TempOrderForm() {
   const [supplierQuery, setSupplierQuery] = React.useState('');
   const [supplierOptions, setSupplierOptions] = React.useState([]);
   const [selectedSupplier, setSelectedSupplier] = React.useState(null);
-  const [representatives, setRepresentatives] = React.useState([]);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -74,6 +79,7 @@ export default function TempOrderForm() {
     specialPaymentCondition: false,
     comment: '',
     supplier: '',
+    deliveryType: 'LKW',
     packagingType: '',
     deliveryStartDate: tomorrow(),
     deliveryEndDate: inSevenDays(),
@@ -102,6 +108,7 @@ export default function TempOrderForm() {
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
             comment: d.comment || '',
             supplier: d.distributor || '',
+            deliveryType: d.deliveryType || 'LKW',
             packagingType: d.packagingType || '',
             deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
             deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
@@ -136,6 +143,29 @@ export default function TempOrderForm() {
     run();
     return () => { alive = false; };
   }, [id, isEdit, source, t]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      const beNumber = String(form.beNumber || '').trim();
+      if (!beNumber) return;
+      try {
+        const res = await apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(beNumber)}`);
+        if (!alive) return;
+        const meta = res?.data || {};
+        setForm((prev) => ({
+          ...prev,
+          packagingType: String(meta.packagingType || '').trim(),
+          deliveryType: String(meta.deliveryType || 'LKW').trim() || 'LKW',
+        }));
+      } catch {
+        if (!alive) return;
+        setForm((prev) => ({ ...prev, deliveryType: 'LKW' }));
+      }
+    };
+    run();
+    return () => { alive = false; };
+  }, [form.beNumber]);
 
   React.useEffect(() => {
     const h = setTimeout(async () => {
@@ -190,13 +220,10 @@ export default function TempOrderForm() {
     try {
       const detail = await apiRequest(`/customers/${encodeURIComponent(clientReferenceId)}`);
       const reps = Array.isArray(detail?.data?.representatives) ? detail.data.representatives : [];
-      setRepresentatives(reps);
-      if (reps.length === 1) {
+      if (reps.length > 0) {
         setForm((prev) => ({ ...prev, clientRepresentative: reps[0].name || '' }));
       }
-    } catch {
-      setRepresentatives([]);
-    }
+    } catch {}
   };
 
   const onChooseSupplier = (supplier) => {
@@ -206,6 +233,49 @@ export default function TempOrderForm() {
   };
 
   const submit = async () => {
+    const messages = [];
+    const amount = Number(form.amountInKg);
+    const price = Number(form.pricePerKg);
+    const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
+
+    if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
+    if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
+    if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
+    if (!String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      messages.push(t('validation_amount_positive'));
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      messages.push(t('validation_price_positive'));
+    }
+
+    if (reservation !== null) {
+      if (!Number.isFinite(reservation) || reservation <= 0) {
+        messages.push(t('validation_reservation_positive'));
+      }
+      if (Number.isFinite(amount) && Number.isFinite(reservation) && reservation > amount) {
+        messages.push(t('validation_reservation_not_above_amount'));
+      }
+      if (!form.reservationDate) {
+        messages.push(t('validation_reservation_date_required'));
+      }
+    }
+
+    const start = new Date(form.deliveryStartDate);
+    const end = new Date(form.deliveryEndDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      messages.push(t('validation_delivery_dates_required'));
+    } else if (start.getTime() > end.getTime()) {
+      messages.push(t('validation_delivery_range_invalid'));
+    }
+
+    if (messages.length) {
+      setValidationMessages(messages);
+      setValidationOpen(true);
+      return;
+    }
+
     try {
       setSaving(true);
       setError('');
@@ -274,19 +344,8 @@ export default function TempOrderForm() {
             />
 
             <TextField label={t('order_customer')} value={form.clientName} onChange={(e) => setForm((p) => ({ ...p, clientName: e.target.value }))} fullWidth />
-            <TextField label={t('address_label')} value={form.clientAddress} onChange={(e) => setForm((p) => ({ ...p, clientAddress: e.target.value }))} fullWidth />
-
-            {representatives.length > 0 ? (
-              <Autocomplete
-                options={representatives}
-                value={representatives.find((x) => x.name === form.clientRepresentative) || null}
-                getOptionLabel={(opt) => String(opt?.name || '')}
-                onChange={(e, value) => setForm((p) => ({ ...p, clientRepresentative: value?.name || '' }))}
-                renderInput={(params) => <TextField {...params} label={t('contact_label')} fullWidth />}
-              />
-            ) : (
-              <TextField label={t('contact_label')} value={form.clientRepresentative} onChange={(e) => setForm((p) => ({ ...p, clientRepresentative: e.target.value }))} fullWidth />
-            )}
+            <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
+            <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />
@@ -306,6 +365,7 @@ export default function TempOrderForm() {
               onInputChange={(e, value) => setSupplierQuery(value)}
               renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
             />
+            <TextField label={t('delivery_type_label')} value={form.deliveryType} fullWidth disabled />
             <TextField label={t('packaging_type_label')} value={form.packagingType} fullWidth disabled />
             <FormControlLabel
               control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({ ...p, specialPaymentCondition: e.target.checked }))} />}
@@ -314,13 +374,29 @@ export default function TempOrderForm() {
             <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={submit} disabled={saving || !form.clientReferenceId || !form.clientName || !form.clientAddress || !form.amountInKg || !form.pricePerKg || !form.deliveryStartDate || !form.deliveryEndDate}>
+              <Button variant="contained" onClick={submit} disabled={saving}>
                 {t('save_label')}
               </Button>
             </Box>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={validationOpen} onClose={() => setValidationOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('validation_dialog_title')}</DialogTitle>
+        <DialogContent>
+          <Box component="ul" sx={{ my: 0, pl: 3 }}>
+            {validationMessages.map((msg, idx) => (
+              <li key={`${msg}-${idx}`}>
+                <Typography variant="body2">{msg}</Typography>
+              </li>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setValidationOpen(false)}>{t('back_label')}</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
