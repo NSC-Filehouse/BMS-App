@@ -100,7 +100,7 @@ export default function TempOrderDetail() {
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_article')} value={item.article} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
-            <InfoRow label={t('product_amount')} value={item.amountInKg} />
+            <InfoRow label={t('product_amount')} value={item.amountInKg !== null && item.amountInKg !== undefined ? `${item.amountInKg} kg` : ''} />
             <InfoRow label={t('product_price')} value={item.price} />
             <InfoRow label={t('order_reserved_until')} value={formatDateOnly(item.reservationDate)} />
             <InfoRow label={t('customer_select')} value={item.clientName} />

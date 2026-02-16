@@ -168,6 +168,9 @@ export default function TempOrdersList() {
                     <Typography variant="subtitle1">{row.beNumber || row.id}</Typography>
                     <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.article || '-'}</Typography>
                     <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.clientName || '-'}</Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                      {row.amountInKg ?? '-'} kg
+                    </Typography>
                   </Box>
                   <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
                     <ChevronRightIcon />
