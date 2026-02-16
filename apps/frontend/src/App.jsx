@@ -15,6 +15,7 @@ import ProductDetail from './pages/ProductDetail.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
+import OrderCreate from './pages/OrderCreate.jsx';
 import TempOrdersList from './pages/TempOrdersList.jsx';
 import TempOrderDetail from './pages/TempOrderDetail.jsx';
 import TempOrderForm from './pages/TempOrderForm.jsx';
@@ -67,6 +68,14 @@ export default function App() {
           element={
             <MandantGuard>
               <OrdersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/orders/new"
+          element={
+            <MandantGuard>
+              <OrderCreate />
             </MandantGuard>
           }
         />
