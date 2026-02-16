@@ -55,6 +55,9 @@ export default function TempOrderForm() {
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [supplierQuery, setSupplierQuery] = React.useState('');
+  const [supplierOptions, setSupplierOptions] = React.useState([]);
+  const [selectedSupplier, setSelectedSupplier] = React.useState(null);
   const [representatives, setRepresentatives] = React.useState([]);
 
   const [form, setForm] = React.useState({
@@ -70,6 +73,7 @@ export default function TempOrderForm() {
     clientRepresentative: '',
     specialPaymentCondition: false,
     comment: '',
+    supplier: '',
     packagingType: '',
     deliveryStartDate: tomorrow(),
     deliveryEndDate: inSevenDays(),
@@ -97,10 +101,14 @@ export default function TempOrderForm() {
             clientRepresentative: d.clientRepresentative || '',
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
             comment: d.comment || '',
+            supplier: d.distributor || '',
             packagingType: d.packagingType || '',
             deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
             deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
           });
+          if (d.distributor) {
+            setSupplierQuery(String(d.distributor));
+          }
         } catch (e) {
           if (alive) setError(e?.message || t('loading_error'));
         } finally {
@@ -146,6 +154,23 @@ export default function TempOrderForm() {
     return () => clearTimeout(h);
   }, [customerQuery]);
 
+  React.useEffect(() => {
+    const h = setTimeout(async () => {
+      const q = supplierQuery.trim();
+      if (!q) {
+        setSupplierOptions([]);
+        return;
+      }
+      try {
+        const res = await apiRequest(`/customers?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=kd_Name1&dir=ASC`);
+        setSupplierOptions(res?.data || []);
+      } catch {
+        setSupplierOptions([]);
+      }
+    }, 300);
+    return () => clearTimeout(h);
+  }, [supplierQuery]);
+
   const onChooseCustomer = async (customer) => {
     setSelectedCustomer(customer);
     if (!customer) return;
@@ -174,6 +199,12 @@ export default function TempOrderForm() {
     }
   };
 
+  const onChooseSupplier = (supplier) => {
+    setSelectedSupplier(supplier);
+    const supplierName = String(supplier?.kd_Name1 || supplier?.kd_Name2 || supplier?.kd_KdNR || '').trim();
+    setForm((prev) => ({ ...prev, supplier: supplierName }));
+  };
+
   const submit = async () => {
     try {
       setSaving(true);
@@ -192,7 +223,7 @@ export default function TempOrderForm() {
         clientRepresentative: form.clientRepresentative || null,
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
         comment: form.comment || null,
-        packagingType: form.packagingType || null,
+        supplier: form.supplier || null,
         deliveryStartDate: form.deliveryStartDate,
         deliveryEndDate: form.deliveryEndDate,
       };
@@ -266,7 +297,16 @@ export default function TempOrderForm() {
               <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
             </Box>
 
-            <TextField label={t('product_supplier')} value={form.packagingType} onChange={(e) => setForm((p) => ({ ...p, packagingType: e.target.value }))} fullWidth />
+            <Autocomplete
+              options={supplierOptions}
+              value={selectedSupplier}
+              getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
+              onChange={(e, value) => onChooseSupplier(value)}
+              inputValue={supplierQuery}
+              onInputChange={(e, value) => setSupplierQuery(value)}
+              renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
+            />
+            <TextField label={t('packaging_type_label')} value={form.packagingType} fullWidth disabled />
             <FormControlLabel
               control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({ ...p, specialPaymentCondition: e.target.checked }))} />}
               label={t('special_payment_condition')}

@@ -258,6 +258,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const clientName = asText(req.body?.clientName);
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
+  const supplier = asText(req.body?.supplier);
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
@@ -301,7 +302,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   await runSQLQuerySqlServer(config.sql.database, sql, [
     companyId,
     clientReferenceId,
-    req.mandant,
+    supplier || req.mandant,
     null,
     beNumber,
     productCtx.article,
@@ -311,7 +312,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     reservationInKg,
     reservationDate ? reservationDate.toISOString() : null,
     productCtx.about || null,
-    productCtx.packaging || null,
+    productCtx.packaging || '',
     productCtx.mfi || null,
     clientName,
     clientAddress,
@@ -319,7 +320,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
     'LKW',
-    asText(req.body?.packagingType) || packagingTypeDerived || null,
+    packagingTypeDerived || null,
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     0,
@@ -368,6 +369,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const clientName = asText(req.body?.clientName);
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
+  const supplier = asText(req.body?.supplier);
   const amountInKg = asInt(req.body?.amountInKg, 0);
   const pricePerKg = asInt(req.body?.pricePerKg, 0);
   const reservationInKg = req.body?.reservationInKg !== undefined && req.body?.reservationInKg !== null && req.body?.reservationInKg !== ''
@@ -384,6 +386,18 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
   }
 
+  const existingRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1 [ta_be_number] AS beNumber
+    FROM [dbo].[tbl_Temp_Auftraege]
+    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+  `, [id, companyId, userShortCode.toLowerCase()]);
+  const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
+  if (!existing) {
+    throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+  }
+  const packagingTypeDerived = await loadPackagingType(req.database, asText(existing.beNumber));
+
   const updateSql = `
     UPDATE [dbo].[tbl_Temp_Auftraege]
     SET [ta_ClientReferenceId] = ?,
@@ -396,6 +410,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [ta_client_representative] = ?,
         [ta_special_payment_condition] = ?,
         [ta_comment] = ?,
+        [ta_distributor] = ?,
         [ta_delivery_type] = ?,
         [ta_packaging_type] = ?,
         [ta_delivery_start_date] = ?,
@@ -416,8 +431,9 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     clientRepresentative || null,
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
+    supplier || req.mandant,
     'LKW',
-    asText(req.body?.packagingType) || null,
+    packagingTypeDerived || null,
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     userShortCode,
