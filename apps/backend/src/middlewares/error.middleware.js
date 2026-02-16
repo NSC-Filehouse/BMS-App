@@ -83,6 +83,18 @@ const errorTexts = {
     de: 'Route nicht gefunden.',
     en: 'Route not found.',
   },
+  INVALID_COMPANY_ID: {
+    de: 'Ungueltige Mandanten-ID.',
+    en: 'Invalid mandant company ID.',
+  },
+  TEMP_ORDER_MISSING_CLIENT_DATA: {
+    de: 'Fehlende Kundendaten fuer den Auftrag.',
+    en: 'Missing client data for temp order.',
+  },
+  INVALID_TEMP_ORDER_PAYLOAD: {
+    de: 'Ungueltige Auftragsdaten.',
+    en: 'Invalid temp order payload.',
+  },
 };
 
 function localizeMessage({ code, details, fallbackMessage, lang }) {

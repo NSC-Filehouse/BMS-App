@@ -15,6 +15,9 @@ import ProductDetail from './pages/ProductDetail.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
+import TempOrdersList from './pages/TempOrdersList.jsx';
+import TempOrderDetail from './pages/TempOrderDetail.jsx';
+import TempOrderForm from './pages/TempOrderForm.jsx';
 import DatabaseUnavailable from './pages/DatabaseUnavailable.jsx';
 
 export default function App() {
@@ -72,6 +75,39 @@ export default function App() {
           element={
             <MandantGuard>
               <OrderDetail />
+            </MandantGuard>
+          }
+        />
+
+        <Route
+          path="/temp-orders"
+          element={
+            <MandantGuard>
+              <TempOrdersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-orders/new"
+          element={
+            <MandantGuard>
+              <TempOrderForm />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-orders/:id"
+          element={
+            <MandantGuard>
+              <TempOrderDetail />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-orders/:id/edit"
+          element={
+            <MandantGuard>
+              <TempOrderForm />
             </MandantGuard>
           }
         />

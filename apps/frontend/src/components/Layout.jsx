@@ -20,6 +20,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import PeopleIcon from '@mui/icons-material/People';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import DescriptionIcon from '@mui/icons-material/Description';
 import HomeIcon from '@mui/icons-material/Home';
 
 import { apiRequest } from '../api/client.js';
@@ -149,6 +150,7 @@ export default function Layout() {
         <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
         <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
+        <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
       </List>
       <Divider />
       <Box sx={{ p: 2 }}>

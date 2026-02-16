@@ -138,7 +138,7 @@ export default function ProductDetail() {
             <Button
               variant="contained"
               fullWidth
-              sx={{ mb: 2 }}
+              sx={{ mb: 1 }}
               onClick={() => {
                 if (isAlreadyReserved) {
                   const msg = reservedBy
@@ -156,7 +156,25 @@ export default function ProductDetail() {
                 setReserveOpen(true);
               }}
             >
-              {t('product_add_to_order')}
+              {t('product_reserve_submit')}
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              sx={{ mb: 2 }}
+              onClick={() => navigate('/temp-orders/new', {
+                state: {
+                  source: {
+                    beNumber: item?.beNumber,
+                    warehouseId: item?.storageId,
+                    amountInKg: item?.amount,
+                    price: item?.acquisitionPrice,
+                    article: item?.article,
+                  },
+                },
+              })}
+            >
+              {t('product_create_order')}
             </Button>
 
             <Divider sx={{ my: 2 }} />

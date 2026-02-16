@@ -13,6 +13,7 @@ const mandantsRouter = require('./routes/mandants.routes');
 const customersRouter = require('./routes/customers.routes');
 const productsRouter = require('./routes/products.routes');
 const ordersRouter = require('./routes/orders.routes');
+const tempOrdersRouter = require('./routes/temp-orders.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 
@@ -95,6 +96,7 @@ app.use(config.apiBasePath, mandantsRouter);
 app.use(config.apiBasePath, customersRouter);
 app.use(config.apiBasePath, productsRouter);
 app.use(config.apiBasePath, ordersRouter);
+app.use(config.apiBasePath, tempOrdersRouter);
 
 // 404 + error
 app.use(notFound);

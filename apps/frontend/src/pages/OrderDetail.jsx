@@ -2,11 +2,17 @@ import React from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
+  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -56,6 +62,12 @@ export default function OrderDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState('');
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editAmount, setEditAmount] = React.useState('');
+  const [editDate, setEditDate] = React.useState('');
+  const [editComment, setEditComment] = React.useState('');
+  const [editLoading, setEditLoading] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
@@ -107,10 +119,61 @@ export default function OrderDetail() {
       )}
 
       {error && <Alert severity="error">{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       {!loading && !error && item && (
         <Card>
           <CardContent sx={{ pt: 2 }}>
+            {item?.isReserved && (
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setEditAmount(String(item.reserveAmount || ''));
+                    setEditDate(item.reservationDate ? String(item.reservationDate).slice(0, 10) : '');
+                    setEditComment(item.comment || '');
+                    setEditOpen(true);
+                  }}
+                >
+                  {t('reservation_edit')}
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={async () => {
+                    try {
+                      setError('');
+                      setSuccess('');
+                      await apiRequest(`/orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                      setSuccess(t('reservation_deleted'));
+                      navigate('/orders');
+                    } catch (e) {
+                      setError(e?.message || t('loading_error'));
+                    }
+                  }}
+                >
+                  {t('reservation_delete')}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate('/temp-orders/new', {
+                    state: {
+                      source: {
+                        beNumber: item.orderNumber,
+                        warehouseId: item.warehouseId,
+                        reserveAmount: item.reserveAmount,
+                        reservationDate: item.reservationDate,
+                        comment: item.comment,
+                        price: item.price,
+                        article: item.article,
+                      },
+                    },
+                  })}
+                >
+                  {t('product_create_order')}
+                </Button>
+              </Box>
+            )}
             {!isReserved && <InfoRow label={t('order_customer')} value={item.clientName} />}
             <InfoRow label={t('order_distributor')} value={mandant} />
             <InfoRow label={t('order_article')} value={item.article} />
@@ -126,6 +189,71 @@ export default function OrderDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('reservation_edit')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('product_reserve_amount')}
+            value={editAmount}
+            onChange={(e) => setEditAmount(e.target.value)}
+            inputProps={{ min: 1, step: 'any' }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            type="date"
+            label={t('product_reserve_until')}
+            value={editDate}
+            onChange={(e) => setEditDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            multiline
+            minRows={2}
+            label={t('order_comment')}
+            value={editComment}
+            onChange={(e) => setEditComment(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)} disabled={editLoading}>{t('back_label')}</Button>
+          <Button
+            variant="contained"
+            disabled={editLoading || !editAmount || !editDate}
+            onClick={async () => {
+              try {
+                setEditLoading(true);
+                setError('');
+                setSuccess('');
+                await apiRequest(`/orders/${encodeURIComponent(id)}`, {
+                  method: 'PUT',
+                  body: JSON.stringify({
+                    amount: Number(editAmount),
+                    reservationEndDate: editDate,
+                    comment: editComment || '',
+                  }),
+                });
+                setEditOpen(false);
+                setSuccess(t('reservation_updated'));
+                const res = await apiRequest(`/orders/${encodeURIComponent(id)}`);
+                setItem(res?.data || null);
+              } catch (e) {
+                setError(e?.message || t('loading_error'));
+              } finally {
+                setEditLoading(false);
+              }
+            }}
+          >
+            {t('save_label')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -196,4 +196,145 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   });
 }));
 
+router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userShortCode = String(userIdentity.shortCode || '').trim();
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const id = String(req.params.id || '');
+  const parsedId = parseReservationId(id);
+  if (!parsedId.beNumber || !parsedId.warehouseId) {
+    throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
+  }
+
+  const amount = Number(req.body?.amount);
+  const reservationEndDateRaw = req.body?.reservationEndDate;
+  const comment = req.body?.comment ? String(req.body.comment).trim() : '';
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw createHttpError(400, 'Invalid reservation amount.', { code: 'INVALID_RESERVATION_AMOUNT' });
+  }
+  const reservationEndDate = new Date(reservationEndDateRaw);
+  if (!reservationEndDateRaw || Number.isNaN(reservationEndDate.getTime())) {
+    throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
+  }
+
+  const currentSql = `
+    SELECT TOP 1 [bePR_Anzahl] AS currentAmount
+    FROM [dbo].[tblBest_Pos_Reserviert]
+    WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+  `;
+  const currentRows = await runSQLQueryAccess(req.database, currentSql, [
+    parsedId.beNumber,
+    parsedId.warehouseId,
+    userShortCode.toLowerCase(),
+  ]);
+  const current = Array.isArray(currentRows) && currentRows.length ? currentRows[0] : null;
+  if (!current) {
+    throw createHttpError(404, `reservations not found: ${id}`, { code: 'RESERVATION_NOT_FOUND', id });
+  }
+
+  const currentAmount = Number(current.currentAmount || 0);
+  const availableSql = `
+    SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved
+    FROM ${VIEW_SQL}
+    WHERE COALESCE([Bestell-Pos], '') = ? AND COALESCE([bePL_LagerID], '') = ?
+  `;
+  const availableRows = await runSQLQueryAccess(req.database, availableSql, [parsedId.beNumber, parsedId.warehouseId]);
+  const availableRow = Array.isArray(availableRows) && availableRows.length ? availableRows[0] : null;
+  if (!availableRow) {
+    throw createHttpError(404, 'Product availability row not found for reservation.', { code: 'PRODUCT_AVAILABILITY_NOT_FOUND' });
+  }
+  const totalAmount = Number(availableRow.amount || 0);
+  const reservedAmount = Number(availableRow.reserved || 0);
+  const freeAmount = Math.max(totalAmount - reservedAmount, 0);
+  const maxAllowed = freeAmount + (Number.isFinite(currentAmount) ? currentAmount : 0);
+  if (amount > maxAllowed) {
+    throw createHttpError(400, `Reservation amount exceeds available quantity (${maxAllowed}).`, {
+      code: 'RESERVATION_AMOUNT_EXCEEDS_AVAILABLE',
+      availableAmount: maxAllowed,
+    });
+  }
+
+  const updateSql = `
+    UPDATE [dbo].[tblBest_Pos_Reserviert]
+    SET [bePR_Anzahl] = ?,
+        [bePR_gueltigBis] = ?,
+        [bePR_Notiz] = ?,
+        [bePR_LastUpdate] = ?
+    WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+  `;
+  await runSQLQueryAccess(req.database, updateSql, [
+    amount,
+    reservationEndDate.toISOString(),
+    comment,
+    `${userShortCode} ${new Date().toISOString()}`.slice(0, 50),
+    parsedId.beNumber,
+    parsedId.warehouseId,
+    userShortCode.toLowerCase(),
+  ]);
+
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      id,
+      amount,
+      reservationEndDate: reservationEndDate.toISOString(),
+      comment,
+    },
+    meta: { mandant: req.mandant },
+    error: null,
+  });
+}));
+
+router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userShortCode = String(userIdentity.shortCode || '').trim();
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const id = String(req.params.id || '');
+  const parsedId = parseReservationId(id);
+  if (!parsedId.beNumber || !parsedId.warehouseId) {
+    throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
+  }
+
+  const existsSql = `
+    SELECT TOP 1 1 AS ok
+    FROM [dbo].[tblBest_Pos_Reserviert]
+    WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+  `;
+  const existsRows = await runSQLQueryAccess(req.database, existsSql, [
+    parsedId.beNumber,
+    parsedId.warehouseId,
+    userShortCode.toLowerCase(),
+  ]);
+  if (!Array.isArray(existsRows) || !existsRows.length) {
+    throw createHttpError(404, `reservations not found: ${id}`, { code: 'RESERVATION_NOT_FOUND', id });
+  }
+
+  const sql = `
+    DELETE FROM [dbo].[tblBest_Pos_Reserviert]
+    WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+  `;
+  await runSQLQueryAccess(req.database, sql, [
+    parsedId.beNumber,
+    parsedId.warehouseId,
+    userShortCode.toLowerCase(),
+  ]);
+
+  sendEnvelope(res, {
+    status: 200,
+    data: { id, deleted: true },
+    meta: { mandant: req.mandant },
+    error: null,
+  });
+}));
+
 module.exports = router;
