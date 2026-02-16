@@ -66,7 +66,7 @@ export default function TempOrderDetail() {
       navigate('/temp-orders', { state: { listState: fromTempOrders } });
       return;
     }
-    navigate(-1);
+    navigate('/temp-orders');
   }, [location.state, navigate]);
 
   const deleteOrder = async () => {
