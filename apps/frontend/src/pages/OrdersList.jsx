@@ -96,11 +96,11 @@ export default function OrdersList() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5">
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        <Typography variant="h5" sx={{ mr: 1 }}>
           {t('orders_title')}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
             onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
@@ -108,7 +108,7 @@ export default function OrdersList() {
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
+          <Typography variant="body2" sx={{ minWidth: 64, textAlign: 'center' }}>
             {t('page_label')} {meta.page || 1}
           </Typography>
           <IconButton
@@ -120,7 +120,7 @@ export default function OrdersList() {
           >
             <ArrowForwardIcon />
           </IconButton>
-          <IconButton aria-label={t('order_add')} onClick={() => navigate('/orders/new')}>
+          <IconButton aria-label={t('order_add')} color="primary" onClick={() => navigate('/orders/new')}>
             <AddIcon />
           </IconButton>
         </Box>
