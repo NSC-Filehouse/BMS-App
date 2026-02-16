@@ -273,7 +273,23 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     const duplicate = msg.includes('duplicate') || msg.includes('2601') || msg.includes('2627')
       || detailsMsg.includes('duplicate') || detailsMsg.includes('2601') || detailsMsg.includes('2627');
     if (duplicate) {
-      throw createHttpError(409, 'Diese Position wurde bereits reserviert. Wer zuerst reserviert, hat gewonnen.');
+      let existingBy = '';
+      try {
+        const existingSql = `
+          SELECT TOP 1 [bePR_reserviertVon] AS reservedBy
+          FROM [dbo].[tblBest_Pos_Reserviert]
+          WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+        `;
+        const existingRows = await runSQLQueryAccess(req.database, existingSql, [beNumber, warehouseId]);
+        const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
+        existingBy = String(existing?.reservedBy || '').trim();
+      } catch (ignored) {
+        existingBy = '';
+      }
+      const suffix = existingBy
+        ? ` durch ${existingBy}.`
+        : '.';
+      throw createHttpError(409, `Fuer dieses Produkt liegt bereits eine Reservierung${suffix}`);
     }
     throw error;
   }
