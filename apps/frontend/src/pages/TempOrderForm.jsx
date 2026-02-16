@@ -61,6 +61,9 @@ export default function TempOrderForm() {
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [productQuery, setProductQuery] = React.useState('');
+  const [productOptions, setProductOptions] = React.useState([]);
+  const [selectedProduct, setSelectedProduct] = React.useState(null);
   const [supplierQuery, setSupplierQuery] = React.useState('');
   const [supplierOptions, setSupplierOptions] = React.useState([]);
   const [selectedSupplier, setSelectedSupplier] = React.useState(null);
@@ -125,7 +128,6 @@ export default function TempOrderForm() {
       }
 
       if (!source?.beNumber || !source?.warehouseId) {
-        setError('Missing source data for new order.');
         return;
       }
 
@@ -168,6 +170,24 @@ export default function TempOrderForm() {
   }, [form.beNumber]);
 
   React.useEffect(() => {
+    if (isEdit || (source?.beNumber && source?.warehouseId)) return undefined;
+    const h = setTimeout(async () => {
+      const q = productQuery.trim();
+      if (!q) {
+        setProductOptions([]);
+        return;
+      }
+      try {
+        const res = await apiRequest(`/products?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=article&dir=ASC`);
+        setProductOptions(res?.data || []);
+      } catch {
+        setProductOptions([]);
+      }
+    }, 300);
+    return () => clearTimeout(h);
+  }, [isEdit, productQuery, source?.beNumber, source?.warehouseId]);
+
+  React.useEffect(() => {
     const h = setTimeout(async () => {
       const q = customerQuery.trim();
       if (!q) {
@@ -200,6 +220,18 @@ export default function TempOrderForm() {
     }, 300);
     return () => clearTimeout(h);
   }, [supplierQuery]);
+
+  const onChooseProduct = (product) => {
+    setSelectedProduct(product);
+    if (!product) return;
+    setForm((prev) => ({
+      ...prev,
+      beNumber: String(product.beNumber || '').trim(),
+      warehouseId: String(product.storageId || '').trim(),
+      amountInKg: product.amount ?? '',
+      pricePerKg: product.acquisitionPrice ?? '',
+    }));
+  };
 
   const onChooseCustomer = async (customer) => {
     setSelectedCustomer(customer);
@@ -239,6 +271,9 @@ export default function TempOrderForm() {
     const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
 
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
+    if (!String(form.beNumber || '').trim() || !String(form.warehouseId || '').trim()) {
+      messages.push(t('validation_product_required'));
+    }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
     if (!String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
@@ -330,6 +365,17 @@ export default function TempOrderForm() {
       {!loading && (
         <Card>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!isEdit && !(source?.beNumber && source?.warehouseId) && (
+              <Autocomplete
+                options={productOptions}
+                value={selectedProduct}
+                getOptionLabel={(opt) => String(opt?.article || '')}
+                onChange={(e, value) => onChooseProduct(value)}
+                inputValue={productQuery}
+                onInputChange={(e, value) => setProductQuery(value)}
+                renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
+              />
+            )}
             <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
             <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
 
