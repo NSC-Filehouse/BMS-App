@@ -82,6 +82,8 @@ const translations = {
     product_reserve_too_much: 'Reservierung darf die verfügbare Menge nicht überschreiten',
     order_reserve_amount: 'Reservierung',
     order_comment: 'Kommentar',
+    product_already_reserved: 'F\u00FCr dieses Produkt liegt bereits eine Reservierung vor.',
+    product_already_reserved_by: 'F\u00FCr dieses Produkt liegt bereits eine Reservierung durch {by} vor.',
   },
   en: {
     app_title: 'BMS App',
@@ -154,6 +156,8 @@ const translations = {
     product_reserve_too_much: 'Reservation amount must not exceed available quantity',
     order_reserve_amount: 'Reservation',
     order_comment: 'Comment',
+    product_already_reserved: 'A reservation for this product already exists.',
+    product_already_reserved_by: 'A reservation for this product already exists by {by}.',
   },
 };
 
@@ -180,9 +184,14 @@ export function LanguageProvider({ children }) {
     }
   }, []);
 
-  const t = React.useCallback((key) => {
+  const t = React.useCallback((key, vars = null) => {
     const dict = translations[lang] || translations.de;
-    return dict[key] || translations.de[key] || key;
+    const text = dict[key] || translations.de[key] || key;
+    if (!vars || typeof text !== 'string') return text;
+    return Object.keys(vars).reduce(
+      (acc, name) => acc.replace(new RegExp(`\\{${name}\\}`, 'g'), String(vars[name] ?? '')),
+      text
+    );
   }, [lang]);
 
   const value = React.useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);

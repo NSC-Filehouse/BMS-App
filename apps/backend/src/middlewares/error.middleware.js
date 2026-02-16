@@ -69,8 +69,8 @@ const errorTexts = {
   },
   RESERVATION_ALREADY_EXISTS: {
     de: (d) => d?.reservedBy
-      ? `Fuer dieses Produkt liegt bereits eine Reservierung durch ${d.reservedBy} vor.`
-      : 'Fuer dieses Produkt liegt bereits eine Reservierung vor.',
+      ? `F\u00FCr dieses Produkt liegt bereits eine Reservierung durch ${d.reservedBy} vor.`
+      : 'F\u00FCr dieses Produkt liegt bereits eine Reservierung vor.',
     en: (d) => d?.reservedBy
       ? `A reservation for this product already exists by ${d.reservedBy}.`
       : 'A reservation for this product already exists.',

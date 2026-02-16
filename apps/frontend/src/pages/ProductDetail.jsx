@@ -57,6 +57,7 @@ export default function ProductDetail() {
   const [reserveComment, setReserveComment] = React.useState('');
   const [reserveLoading, setReserveLoading] = React.useState(false);
   const [reserveSuccess, setReserveSuccess] = React.useState('');
+  const [reserveInfo, setReserveInfo] = React.useState('');
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
@@ -65,6 +66,11 @@ export default function ProductDetail() {
   }, [item]);
   const reserveAmountNum = Number(reserveAmount);
   const reserveTooMuch = availableAmount !== null && Number.isFinite(reserveAmountNum) && reserveAmountNum > availableAmount;
+  const isAlreadyReserved = React.useMemo(() => {
+    const reserved = Number(item?.reserved ?? 0);
+    return (Number.isFinite(reserved) && reserved > 0) || Boolean(String(item?.reservedBy || '').trim());
+  }, [item]);
+  const reservedBy = React.useMemo(() => String(item?.reservedBy || '').trim(), [item]);
 
   React.useEffect(() => {
     let alive = true;
@@ -114,6 +120,7 @@ export default function ProductDetail() {
       )}
 
       {error && <Alert severity="error">{error}</Alert>}
+      {reserveInfo && <Alert severity="warning" sx={{ mb: 2 }}>{reserveInfo}</Alert>}
       {reserveSuccess && <Alert severity="success" sx={{ mb: 2 }}>{reserveSuccess}</Alert>}
 
       {!loading && !error && item && (
@@ -133,11 +140,19 @@ export default function ProductDetail() {
               fullWidth
               sx={{ mb: 2 }}
               onClick={() => {
+                if (isAlreadyReserved) {
+                  const msg = reservedBy
+                    ? t('product_already_reserved_by', { by: reservedBy })
+                    : t('product_already_reserved');
+                  setReserveInfo(msg);
+                  return;
+                }
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 setReserveDate(tomorrow.toISOString().slice(0, 10));
                 setReserveAmount('');
                 setReserveComment('');
+                setReserveInfo('');
                 setReserveOpen(true);
               }}
             >
@@ -228,6 +243,7 @@ export default function ProductDetail() {
                 setReserveLoading(true);
                 setError('');
                 setReserveSuccess('');
+                setReserveInfo('');
                 await apiRequest('/products/reserve', {
                   method: 'POST',
                   body: JSON.stringify({
@@ -243,7 +259,13 @@ export default function ProductDetail() {
                 setReserveSuccess(t('product_reserve_confirmed'));
                 navigate('/orders');
               } catch (e) {
-                setError(e?.message || t('loading_error'));
+                if (e?.code === 'RESERVATION_ALREADY_EXISTS') {
+                  const by = String(e?.payload?.error?.details?.reservedBy || '').trim();
+                  setReserveOpen(false);
+                  setReserveInfo(by ? t('product_already_reserved_by', { by }) : t('product_already_reserved'));
+                } else {
+                  setError(e?.message || t('loading_error'));
+                }
               } finally {
                 setReserveLoading(false);
               }
