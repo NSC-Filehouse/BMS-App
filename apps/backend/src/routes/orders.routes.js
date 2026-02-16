@@ -56,7 +56,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
-    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.');
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
@@ -131,13 +131,13 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
-    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.');
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
   const id = String(req.params.id || '');
   const parsedId = parseReservationId(id);
   if (!parsedId.beNumber || !parsedId.warehouseId) {
-    throw createHttpError(400, `Invalid reservation id: ${id}`);
+    throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
 
   const sql = `
@@ -166,7 +166,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   ]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
-    throw createHttpError(404, `reservations not found: ${id}`);
+    throw createHttpError(404, `reservations not found: ${id}`, { code: 'RESERVATION_NOT_FOUND', id });
   }
 
   const detail = {

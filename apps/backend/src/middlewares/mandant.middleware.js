@@ -6,12 +6,12 @@ const requireMandant = asyncHandler(async (req, res, next) => {
   const user = getUserContextFromRequest(req);
   const email = String(user.email || '').trim();
   if (!email) {
-    throw createHttpError(401, 'Missing user identity.');
+    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
   const mandant = req.header('x-mandant');
   if (!mandant) {
-    throw createHttpError(400, 'Missing required header: x-mandant');
+    throw createHttpError(400, 'Missing required header: x-mandant', { code: 'MANDANT_HEADER_REQUIRED' });
   }
 
   const database = await getDatabaseConnectionForUser(email, mandant);

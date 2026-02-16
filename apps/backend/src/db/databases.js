@@ -222,7 +222,7 @@ async function loadMandantsForEmail(email) {
 async function getMandantsForUser(email) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
-    throw createHttpError(401, 'Missing user identity.');
+    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
   const cached = getCachedMandants(normalizedEmail);
@@ -241,13 +241,16 @@ async function listMandantsForUser(email) {
 async function getDatabaseConnectionForUser(email, mandantName) {
   const selected = String(mandantName || '').trim().toLowerCase();
   if (!selected) {
-    throw createHttpError(400, 'Missing required header: x-mandant');
+    throw createHttpError(400, 'Missing required header: x-mandant', { code: 'MANDANT_HEADER_REQUIRED' });
   }
 
   const mandants = await getMandantsForUser(email);
   const match = mandants.find((m) => m.name.toLowerCase() === selected);
   if (!match) {
-    throw createHttpError(403, `No permission for mandant: ${mandantName}`, { code: 'MANDANT_FORBIDDEN' });
+    throw createHttpError(403, `No permission for mandant: ${mandantName}`, {
+      code: 'MANDANT_FORBIDDEN',
+      mandant: mandantName,
+    });
   }
 
   const available = await isDatabaseAvailable(match.databaseName);

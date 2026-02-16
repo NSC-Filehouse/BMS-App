@@ -9,7 +9,7 @@ router.get('/mandants', asyncHandler(async (req, res) => {
   const user = getUserContextFromRequest(req);
   const email = String(user.email || '').trim();
   if (!email) {
-    throw createHttpError(401, 'Missing user identity.');
+    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
   const mandants = await listMandantsForUser(email);

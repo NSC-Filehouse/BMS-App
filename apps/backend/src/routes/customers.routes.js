@@ -117,7 +117,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const item = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!item) {
-    throw createHttpError(404, `customers not found: ${id}`);
+    throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
   }
 
   const repsSql = `

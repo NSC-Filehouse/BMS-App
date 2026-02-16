@@ -75,7 +75,7 @@ function mapIdentityRow(row) {
 async function getUserIdentityByEmail(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) {
-    throw createHttpError(401, 'Missing user identity.');
+    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
   const cached = getCachedByEmail(normalized);
@@ -95,7 +95,10 @@ async function getUserIdentityByEmail(email) {
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   const identity = mapIdentityRow(row);
   if (!identity) {
-    throw createHttpError(403, `User not found in BMS Mitarbeiter: ${normalized}`);
+    throw createHttpError(403, `User not found in BMS Mitarbeiter: ${normalized}`, {
+      code: 'USER_NOT_FOUND_IN_BMS',
+      email: normalized,
+    });
   }
 
   setCached(identity);

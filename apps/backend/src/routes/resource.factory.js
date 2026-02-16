@@ -63,7 +63,11 @@ function createResourceRouter(resource) {
 
     const item = Array.isArray(rows) && rows.length ? rows[0] : null;
     if (!item) {
-      throw createHttpError(404, `${resource.key} not found: ${id}`);
+      throw createHttpError(404, `${resource.key} not found: ${id}`, {
+        code: 'RESOURCE_NOT_FOUND',
+        resource: resource.key,
+        id,
+      });
     }
 
     sendEnvelope(res, {

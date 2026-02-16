@@ -187,7 +187,7 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
-    throw createHttpError(404, `products not found: ${id}`);
+    throw createHttpError(404, `products not found: ${id}`, { code: 'PRODUCT_NOT_FOUND', id });
   }
 
   sendEnvelope(res, {
@@ -206,11 +206,11 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   const comment = req.body?.comment ? String(req.body.comment).trim() : '';
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw createHttpError(400, 'Invalid reservation amount.');
+    throw createHttpError(400, 'Invalid reservation amount.', { code: 'INVALID_RESERVATION_AMOUNT' });
   }
   const reservationEndDate = new Date(reservationEndDateRaw);
   if (!reservationEndDateRaw || Number.isNaN(reservationEndDate.getTime())) {
-    throw createHttpError(400, 'Invalid reservation end date.');
+    throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
   }
 
   let beNumber = req.body?.beNumber ? String(req.body.beNumber).trim() : '';
@@ -222,10 +222,10 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   }
 
   if (!beNumber || !warehouseId) {
-    throw createHttpError(400, 'Missing required reservation keys: beNumber and warehouseId.');
+    throw createHttpError(400, 'Missing required reservation keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
   }
   if (!userShortCode) {
-    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.');
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
   const productSql = `
@@ -237,13 +237,16 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   const productRows = await runSQLQueryAccess(req.database, productSql, [beNumber, warehouseId]);
   const productRow = Array.isArray(productRows) && productRows.length ? productRows[0] : null;
   if (!productRow) {
-    throw createHttpError(404, 'Product availability row not found for reservation.');
+    throw createHttpError(404, 'Product availability row not found for reservation.', { code: 'PRODUCT_AVAILABILITY_NOT_FOUND' });
   }
   const totalAmount = asNumber(getField(productRow, 'amount')) ?? asNumber(getField(productRow, 'Menge')) ?? 0;
   const alreadyReserved = asNumber(getField(productRow, 'reserved')) ?? asNumber(getField(productRow, 'bePR_Anzahl')) ?? 0;
   const availableAmount = Math.max(totalAmount - alreadyReserved, 0);
   if (amount > availableAmount) {
-    throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`);
+    throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`, {
+      code: 'RESERVATION_AMOUNT_EXCEEDS_AVAILABLE',
+      availableAmount,
+    });
   }
 
   const nowIso = new Date().toISOString();
@@ -286,10 +289,11 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
       } catch (ignored) {
         existingBy = '';
       }
-      const suffix = existingBy
-        ? ` durch ${existingBy}.`
-        : '.';
-      throw createHttpError(409, `Fuer dieses Produkt liegt bereits eine Reservierung${suffix}`);
+      const suffix = existingBy ? ` durch ${existingBy}.` : '.';
+      throw createHttpError(409, `Fuer dieses Produkt liegt bereits eine Reservierung${suffix}`, {
+        code: 'RESERVATION_ALREADY_EXISTS',
+        reservedBy: existingBy || null,
+      });
     }
     throw error;
   }
