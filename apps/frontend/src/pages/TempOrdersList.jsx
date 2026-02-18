@@ -114,7 +114,7 @@ export default function TempOrdersList() {
           >
             <ArrowForwardIcon />
           </IconButton>
-          <IconButton aria-label={t('temp_order_add')} onClick={() => navigate('/temp-orders/new')}>
+          <IconButton aria-label={t('temp_order_add')} color="primary" onClick={() => navigate('/temp-orders/new')}>
             <AddIcon />
           </IconButton>
         </Box>
