@@ -401,6 +401,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       warehouseId,
       amountInKg,
       pricePerKg,
+      deliveryType: asText(raw?.deliveryType),
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
     });
@@ -416,7 +417,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const productCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
   const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
-  const deliveryType = deliveryTypeDerived || '';
+  const deliveryType = primaryPos.deliveryType || deliveryTypeDerived || '';
   const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const nowIso = new Date().toISOString();
@@ -508,7 +509,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         posCtx.packaging || '',
         posCtx.mfi || '',
         posPackagingType || '',
-        posDeliveryType || '',
+        pos.deliveryType || posDeliveryType || '',
         userShortCode,
         nowIso,
         userShortCode,
@@ -584,6 +585,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       warehouseId,
       amountInKg,
       pricePerKg,
+      deliveryType: asText(raw?.deliveryType),
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
     });
@@ -603,7 +605,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const primaryCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
   const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
-  const deliveryType = deliveryTypeDerived || '';
+  const deliveryType = primaryPos.deliveryType || deliveryTypeDerived || '';
   const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const updateSql = `
@@ -696,7 +698,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       posCtx.packaging || '',
       posCtx.mfi || '',
       posPackagingType || '',
-      posDeliveryType || '',
+      pos.deliveryType || posDeliveryType || '',
       userShortCode,
       nowIso,
       userShortCode,

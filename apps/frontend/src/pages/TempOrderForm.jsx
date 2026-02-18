@@ -142,6 +142,7 @@ export default function TempOrderForm() {
             article: p.article,
             amountInKg: p.amountInKg,
             price: p.price,
+            deliveryType: p.deliveryType || '',
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
           })));
@@ -163,6 +164,7 @@ export default function TempOrderForm() {
             article: x.article,
             amountInKg: x.amountInKg,
             price: x.price,
+            deliveryType: x.deliveryType || '',
             reservationInKg: null,
             reservationDate: null,
           })));
@@ -391,6 +393,7 @@ export default function TempOrderForm() {
           warehouseId: x.warehouseId,
           amountInKg: Number(x.amountInKg),
           pricePerKg: Number(x.price),
+          deliveryType: x.deliveryType || '',
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
         }));
@@ -480,19 +483,7 @@ export default function TempOrderForm() {
                   <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
                 </Box>
 
-                {isPositionsMode ? (
-                  <TextField label={t('supplier_select')} value={form.supplier} fullWidth disabled />
-                ) : (
-                  <Autocomplete
-                    options={supplierOptions}
-                    value={selectedSupplier}
-                    getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
-                    onChange={(e, value) => onChooseSupplier(value)}
-                    inputValue={supplierQuery}
-                    onInputChange={(e, value) => setSupplierQuery(value)}
-                    renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
-                  />
-                )}
+                <TextField label={t('supplier_select')} value={form.supplier} fullWidth disabled />
                 <TextField
                   label={t('delivery_type_label')}
                   value={form.deliveryType}
@@ -551,6 +542,9 @@ export default function TempOrderForm() {
                       </Typography>
                       <Typography variant="caption" sx={{ opacity: 0.75 }}>
                         {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                        {t('delivery_type_label')}: {x.deliveryType || '-'}
                       </Typography>
                     </Box>
                   ))}

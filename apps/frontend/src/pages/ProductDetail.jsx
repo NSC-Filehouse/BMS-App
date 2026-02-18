@@ -93,7 +93,18 @@ export default function ProductDetail() {
         setError('');
         const res = await apiRequest(`/products/${encodeURIComponent(id)}`);
         if (!alive) return;
-        setItem(res?.data || null);
+        const baseItem = res?.data || null;
+        if (!baseItem) {
+          setItem(null);
+          return;
+        }
+        try {
+          const metaRes = await apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(baseItem.beNumber || '')}`);
+          const deliveryType = String(metaRes?.data?.deliveryType || '').trim();
+          setItem({ ...baseItem, deliveryType });
+        } catch {
+          setItem(baseItem);
+        }
       } catch (e) {
         if (!alive) return;
         setError(e?.message || t('loading_error'));
@@ -196,6 +207,7 @@ export default function ProductDetail() {
             <InfoRow label={t('product_mfi')} value={item.mfi} />
             <InfoRow label={t('product_mfi_measured')} value={item.mfiMeasured} />
             <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
+            <InfoRow label={t('delivery_type_label')} value={item.deliveryType} />
             <Divider sx={{ my: 2 }} />
             <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
             <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
