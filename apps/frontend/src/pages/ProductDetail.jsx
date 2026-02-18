@@ -31,6 +31,13 @@ function formatPrice(value) {
   return `${value} EUR`;
 }
 
+function formatDateDe(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('de-DE');
+}
+
 function InfoRow({ label, value }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
@@ -165,24 +172,6 @@ export default function ProductDetail() {
             <Button
               variant="outlined"
               fullWidth
-              sx={{ mb: 1 }}
-              onClick={() => navigate('/temp-orders/new', {
-                state: {
-                  source: {
-                    beNumber: item?.beNumber,
-                    warehouseId: item?.storageId,
-                    amountInKg: item?.amount,
-                    price: item?.acquisitionPrice,
-                    article: item?.article,
-                  },
-                },
-              })}
-            >
-              {t('product_create_order')}
-            </Button>
-            <Button
-              variant="outlined"
-              fullWidth
               startIcon={<ShoppingCartIcon />}
               sx={{ mb: 2 }}
               onClick={() => {
@@ -209,7 +198,7 @@ export default function ProductDetail() {
             <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
             <Divider sx={{ my: 2 }} />
             <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
-            <InfoRow label={t('product_reserved_until')} value={item.reservedUntil} />
+            <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
 
             <Divider sx={{ my: 2 }} />
 
