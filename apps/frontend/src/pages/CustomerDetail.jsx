@@ -193,9 +193,6 @@ export default function CustomerDetail() {
             )}
 
             <Divider sx={{ my: 3 }} />
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-              {t('sales_rep_section')}
-            </Typography>
             <InfoRow
               icon={<PersonIcon fontSize="small" />}
               label={t('sales_rep_label')}
