@@ -112,7 +112,16 @@ function ProductCard({ item, onClick, onAddToCart, t }) {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ width: 78, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box
+          sx={{
+            width: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            py: 0.25,
+          }}
+        >
           <IconButton
             size="small"
             aria-label={t('cart_add')}
