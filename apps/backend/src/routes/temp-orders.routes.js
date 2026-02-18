@@ -159,6 +159,39 @@ async function loadPackagingType(database, beNumber) {
   return asText(row?.packagingType || '');
 }
 
+async function getMandantTableColumns(database, tableName) {
+  const sql = `
+    SELECT [COLUMN_NAME] AS col
+    FROM [INFORMATION_SCHEMA].[COLUMNS]
+    WHERE [TABLE_SCHEMA] = 'dbo' AND [TABLE_NAME] = ?
+  `;
+  const rows = await runSQLQueryAccess(database, sql, [tableName]);
+  return (Array.isArray(rows) ? rows : [])
+    .map((r) => asText(r.col))
+    .filter(Boolean);
+}
+
+async function loadDeliveryType(database, beNumber) {
+  const bestellungCols = await getMandantTableColumns(database, 'tblBestellung');
+  const deliveryCol = resolveColumn(bestellungCols, [
+    'be_Liefertyp',
+    'be_LieferTyp',
+    'be_Lieferart',
+    'be_DeliveryType',
+  ]);
+  if (!deliveryCol) return 'LKW';
+
+  const sql = `
+    SELECT TOP 1 b.[${deliveryCol}] AS deliveryType
+    FROM [dbo].[tblBest_Position] p
+    INNER JOIN [dbo].[tblBestellung] b ON b.[be_Bestellindex] = p.[beP_BestellIndex]
+    WHERE COALESCE(p.[beP_BEposID], '') = ?
+  `;
+  const rows = await runSQLQueryAccess(database, sql, [beNumber]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  return asText(row?.deliveryType || 'LKW') || 'LKW';
+}
+
 async function loadOrderPositions(orderId) {
   try {
     const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
@@ -180,6 +213,7 @@ async function loadOrderPositions(orderId) {
     const cPackaging = resolveColumn(cols, ['tap_packaging', 'taP_packaging', 'packaging']);
     const cMfi = resolveColumn(cols, ['tap_mfi', 'taP_mfi', 'mfi']);
     const cPackagingType = resolveColumn(cols, ['tap_packaging_type', 'taP_packaging_type', 'packaging_type']);
+    const cDeliveryType = resolveColumn(cols, ['tap_deliverytype', 'tap_delivery_type', 'deliverytype', 'delivery_type']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const sql = `
@@ -197,7 +231,8 @@ async function loadOrderPositions(orderId) {
         ${pick(cAbout, 'about')},
         ${pick(cPackaging, 'packaging')},
         ${pick(cMfi, 'mfi')},
-        ${pick(cPackagingType, 'packagingType')}
+        ${pick(cPackagingType, 'packagingType')},
+        ${pick(cDeliveryType, 'deliveryType')}
       FROM [dbo].[tbl_Temp_Auf_Position]
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -216,12 +251,13 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
   }
 
   const packagingType = await loadPackagingType(req.database, beNumber);
+  const deliveryType = await loadDeliveryType(req.database, beNumber);
   sendEnvelope(res, {
     status: 200,
     data: {
       beNumber,
       packagingType,
-      deliveryType: 'LKW',
+      deliveryType,
     },
     meta: { mandant: req.mandant },
     error: null,
@@ -407,6 +443,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
   const productCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
+  const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
 
   const nowIso = new Date().toISOString();
   const sql = `
@@ -441,7 +478,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientRepresentative || null,
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
-    'LKW',
+    deliveryTypeDerived,
     packagingTypeDerived || '',
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
@@ -473,13 +510,14 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
     const posPackagingType = await loadPackagingType(req.database, pos.beNumber);
+    const posDeliveryType = await loadDeliveryType(req.database, pos.beNumber);
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_packaging], [tap_mfi], [tap_packaging_type],
-        [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
+        [tap_deliverytype], [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -496,6 +534,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         posCtx.packaging || '',
         posCtx.mfi || '',
         posPackagingType || '',
+        posDeliveryType || 'LKW',
         userShortCode,
         nowIso,
         userShortCode,
@@ -589,7 +628,8 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   }
   const primaryCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
-  const deliveryType = asText(req.body?.deliveryType) || 'LKW';
+  const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
+  const deliveryType = asText(req.body?.deliveryType) || deliveryTypeDerived || 'LKW';
   const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const updateSql = `
@@ -659,13 +699,14 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
     const posPackagingType = await loadPackagingType(req.database, pos.beNumber);
+    const posDeliveryType = await loadDeliveryType(req.database, pos.beNumber);
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_packaging], [tap_mfi], [tap_packaging_type],
-        [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
+        [tap_deliverytype], [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -681,6 +722,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       posCtx.packaging || '',
       posCtx.mfi || '',
       posPackagingType || '',
+      posDeliveryType || 'LKW',
       userShortCode,
       nowIso,
       userShortCode,
