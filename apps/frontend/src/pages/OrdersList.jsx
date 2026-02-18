@@ -110,20 +110,6 @@ export default function OrdersList() {
         <Typography variant="h5" sx={{ mr: 1 }}>
           {t('orders_title')}
         </Typography>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={scope}
-          onChange={(e, value) => {
-            if (!value) return;
-            setScope(value);
-            load({ page: 1, q, scope: value });
-          }}
-          sx={{ mr: 1 }}
-        >
-          <ToggleButton value="mine">{t('orders_scope_mine')}</ToggleButton>
-          <ToggleButton value="all">{t('orders_scope_all')}</ToggleButton>
-        </ToggleButtonGroup>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
@@ -167,7 +153,20 @@ export default function OrdersList() {
             }}
           />
 
-          <Box sx={{ flexGrow: 1 }} />
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={scope}
+            onChange={(e, value) => {
+              if (!value) return;
+              setScope(value);
+              load({ page: 1, q, scope: value });
+            }}
+            sx={{ ml: 1 }}
+          >
+            <ToggleButton value="mine">{t('orders_scope_mine')}</ToggleButton>
+            <ToggleButton value="all">{t('orders_scope_all')}</ToggleButton>
+          </ToggleButtonGroup>
         </CardContent>
       </Card>
 
@@ -199,17 +198,24 @@ export default function OrdersList() {
                 state: { fromOrders: { page: meta.page || 1, q, scope } },
               })}
             >
-              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
-                <Box sx={{ pr: 2 }}>
-                  <Typography variant="subtitle1">
-                    {row.orderNumber || row.id}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                    {row.clientName || '-'}
-                  </Typography>
-                </Box>
-                <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
-                  <ChevronRightIcon />
+                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
+                  <Box sx={{ pr: 2 }}>
+                    <Typography variant="subtitle1">
+                      {row.orderNumber || row.id}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                        {row.clientName || '-'}
+                      </Typography>
+                      {scope === 'all' && (
+                        <Typography variant="caption" sx={{ opacity: 0.7, whiteSpace: 'nowrap' }}>
+                          {row.reservedBy || '-'}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
+                    <ChevronRightIcon />
                 </Box>
               </CardContent>
             </Card>
