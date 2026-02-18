@@ -28,13 +28,15 @@ function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
   const plz = row?.kd_PLZ ? String(row.kd_PLZ).trim() : '';
   const ort = row?.kd_Ort ? String(row.kd_Ort).trim() : '';
+  const region = row?.kd_Region ? String(row.kd_Region).trim() : '';
   const lk = row?.kd_LK ? String(row.kd_LK).trim() : '';
 
   const line1 = street;
   const line2 = [plz, ort].filter(Boolean).join(' ');
-  const line3 = lk;
+  const line3 = region;
+  const line4 = lk;
 
-  return [line1, line2, line3].filter(Boolean).join('\n');
+  return [line1, line2, line3, line4].filter(Boolean).join('\n');
 }
 
 function normalizeRepresentatives(item) {
@@ -136,7 +138,6 @@ export default function CustomerDetail() {
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
-  const region = item?.kd_Region ? String(item.kd_Region).trim() : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
   const handleBack = React.useCallback(() => {
@@ -184,13 +185,6 @@ export default function CustomerDetail() {
               label={t('address_label')}
               value={address || '-'}
             />
-            {region && (
-              <InfoRow
-                icon={<MapIcon fontSize="small" />}
-                label={t('state_label')}
-                value={region}
-              />
-            )}
 
             <Divider sx={{ my: 3 }} />
             <InfoRow
