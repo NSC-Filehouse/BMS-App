@@ -52,6 +52,7 @@ export default function TempOrderForm() {
 
   const source = location.state?.source || null;
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
+  const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
 
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -288,16 +289,18 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
-    if (!String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
+    if (!isCartCreate && !String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      messages.push(t('validation_amount_positive'));
-    }
-    if (!Number.isFinite(price) || price <= 0) {
-      messages.push(t('validation_price_positive'));
+    if (!isCartCreate) {
+      if (!Number.isFinite(amount) || amount <= 0) {
+        messages.push(t('validation_amount_positive'));
+      }
+      if (!Number.isFinite(price) || price <= 0) {
+        messages.push(t('validation_price_positive'));
+      }
     }
 
-    if (reservation !== null) {
+    if (!isCartCreate && reservation !== null) {
       if (!Number.isFinite(reservation) || reservation <= 0) {
         messages.push(t('validation_reservation_positive'));
       }
@@ -399,10 +402,11 @@ export default function TempOrderForm() {
                 renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
               />
             )}
-            <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
-            <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
-            {Array.isArray(sourceItems) && sourceItems.length > 0 && (
-              <TextField label={t('order_positions_count')} value={sourceItems.length} fullWidth disabled />
+            {!isCartCreate && (
+              <>
+                <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
+                <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
+              </>
             )}
 
             <Autocomplete
@@ -419,31 +423,67 @@ export default function TempOrderForm() {
             <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
             <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-              <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />
-              <TextField type="number" label={t('product_price')} value={form.pricePerKg} onChange={(e) => setForm((p) => ({ ...p, pricePerKg: e.target.value }))} fullWidth />
-              <TextField type="number" label={t('order_reserve_amount')} value={form.reservationInKg} onChange={(e) => setForm((p) => ({ ...p, reservationInKg: e.target.value }))} fullWidth />
-              <TextField type="date" label={t('order_reserved_until')} value={form.reservationDate} onChange={(e) => setForm((p) => ({ ...p, reservationDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-              <TextField type="date" label={t('delivery_start')} value={form.deliveryStartDate} onChange={(e) => setForm((p) => ({ ...p, deliveryStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-              <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-            </Box>
+            {!isCartCreate && (
+              <>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                  <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />
+                  <TextField type="number" label={t('product_price')} value={form.pricePerKg} onChange={(e) => setForm((p) => ({ ...p, pricePerKg: e.target.value }))} fullWidth />
+                  <TextField type="number" label={t('order_reserve_amount')} value={form.reservationInKg} onChange={(e) => setForm((p) => ({ ...p, reservationInKg: e.target.value }))} fullWidth />
+                  <TextField type="date" label={t('order_reserved_until')} value={form.reservationDate} onChange={(e) => setForm((p) => ({ ...p, reservationDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
+                  <TextField type="date" label={t('delivery_start')} value={form.deliveryStartDate} onChange={(e) => setForm((p) => ({ ...p, deliveryStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
+                  <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
+                </Box>
 
-            <Autocomplete
-              options={supplierOptions}
-              value={selectedSupplier}
-              getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
-              onChange={(e, value) => onChooseSupplier(value)}
-              inputValue={supplierQuery}
-              onInputChange={(e, value) => setSupplierQuery(value)}
-              renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
-            />
-            <TextField label={t('delivery_type_label')} value={form.deliveryType} fullWidth disabled />
-            <TextField label={t('packaging_type_label')} value={form.packagingType} fullWidth disabled />
-            <FormControlLabel
-              control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({ ...p, specialPaymentCondition: e.target.checked }))} />}
-              label={t('special_payment_condition')}
-            />
-            <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
+                <Autocomplete
+                  options={supplierOptions}
+                  value={selectedSupplier}
+                  getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
+                  onChange={(e, value) => onChooseSupplier(value)}
+                  inputValue={supplierQuery}
+                  onInputChange={(e, value) => setSupplierQuery(value)}
+                  renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
+                />
+                <TextField label={t('delivery_type_label')} value={form.deliveryType} fullWidth disabled />
+                <TextField label={t('packaging_type_label')} value={form.packagingType} fullWidth disabled />
+                <FormControlLabel
+                  control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({ ...p, specialPaymentCondition: e.target.checked }))} />}
+                  label={t('special_payment_condition')}
+                />
+                <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
+              </>
+            )}
+
+            {isCartCreate && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
+                  {t('order_positions_count')}: {sourceItems.length}
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {sourceItems.map((x, idx) => (
+                    <Box
+                      key={`${x.id || x.beNumber || idx}-${idx}`}
+                      sx={{
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        borderRadius: 1.5,
+                        p: 1.25,
+                        display: 'grid',
+                        gap: 0.25,
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {x.article || '-'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                        {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                        {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={submit} disabled={saving}>
