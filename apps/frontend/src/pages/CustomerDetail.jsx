@@ -136,6 +136,8 @@ export default function CustomerDetail() {
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
+  const region = item?.kd_Region ? String(item.kd_Region).trim() : '';
+  const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
   const handleBack = React.useCallback(() => {
     const fromCustomers = location.state?.fromCustomers;
@@ -181,6 +183,23 @@ export default function CustomerDetail() {
               icon={<MapIcon fontSize="small" />}
               label={t('address_label')}
               value={address || '-'}
+            />
+            {region && (
+              <InfoRow
+                icon={<MapIcon fontSize="small" />}
+                label={t('state_label')}
+                value={region}
+              />
+            )}
+
+            <Divider sx={{ my: 3 }} />
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              {t('sales_rep_section')}
+            </Typography>
+            <InfoRow
+              icon={<PersonIcon fontSize="small" />}
+              label={t('sales_rep_label')}
+              value={salesRep || '-'}
             />
 
             {representatives.length > 0 && (
