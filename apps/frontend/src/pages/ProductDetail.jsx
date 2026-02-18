@@ -188,7 +188,6 @@ export default function ProductDetail() {
 
             <Divider sx={{ my: 2 }} />
 
-            <InfoRow label={t('product_supplier')} value={item.packaging} />
             <InfoRow label={t('product_description')} value={item.description} />
             <InfoRow label={t('product_mfi')} value={item.mfi} />
             <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
