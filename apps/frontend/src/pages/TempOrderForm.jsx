@@ -97,7 +97,7 @@ export default function TempOrderForm() {
     specialPaymentCondition: false,
     comment: '',
     supplier: '',
-    deliveryType: 'LKW',
+    deliveryType: '',
     packagingType: '',
     deliveryStartDate: tomorrow(),
     deliveryEndDate: inSevenDays(),
@@ -126,7 +126,7 @@ export default function TempOrderForm() {
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
             comment: d.comment || '',
             supplier: d.distributor || '',
-            deliveryType: d.deliveryType || 'LKW',
+            deliveryType: d.deliveryType || '',
             packagingType: d.packagingType || '',
             deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
             deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
@@ -204,11 +204,11 @@ export default function TempOrderForm() {
         setForm((prev) => ({
           ...prev,
           packagingType: String(meta.packagingType || '').trim(),
-          deliveryType: String(meta.deliveryType || 'LKW').trim() || 'LKW',
+          deliveryType: String(meta.deliveryType || '').trim(),
         }));
       } catch {
         if (!alive) return;
-        setForm((prev) => ({ ...prev, deliveryType: 'LKW' }));
+        setForm((prev) => ({ ...prev, deliveryType: '' }));
       }
     };
     run();
@@ -380,7 +380,7 @@ export default function TempOrderForm() {
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
         comment: form.comment || null,
         supplier: form.supplier || null,
-        deliveryType: form.deliveryType || 'LKW',
+        deliveryType: form.deliveryType || '',
         packagingType: form.packagingType || '',
         deliveryStartDate: form.deliveryStartDate,
         deliveryEndDate: form.deliveryEndDate,
@@ -496,8 +496,8 @@ export default function TempOrderForm() {
                 <TextField
                   label={t('delivery_type_label')}
                   value={form.deliveryType}
-                  onChange={(e) => setForm((p) => ({ ...p, deliveryType: e.target.value }))}
                   fullWidth
+                  disabled
                 />
                 <TextField
                   select

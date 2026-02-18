@@ -159,37 +159,9 @@ async function loadPackagingType(database, beNumber) {
   return asText(row?.packagingType || '');
 }
 
-async function getMandantTableColumns(database, tableName) {
-  const sql = `
-    SELECT [COLUMN_NAME] AS col
-    FROM [INFORMATION_SCHEMA].[COLUMNS]
-    WHERE [TABLE_SCHEMA] = 'dbo' AND [TABLE_NAME] = ?
-  `;
-  const rows = await runSQLQueryAccess(database, sql, [tableName]);
-  return (Array.isArray(rows) ? rows : [])
-    .map((r) => asText(r.col))
-    .filter(Boolean);
-}
-
 async function loadDeliveryType(database, beNumber) {
-  const bestellungCols = await getMandantTableColumns(database, 'tblBestellung');
-  const deliveryCol = resolveColumn(bestellungCols, [
-    'be_Liefertyp',
-    'be_LieferTyp',
-    'be_Lieferart',
-    'be_DeliveryType',
-  ]);
-  if (!deliveryCol) return 'LKW';
-
-  const sql = `
-    SELECT TOP 1 b.[${deliveryCol}] AS deliveryType
-    FROM [dbo].[tblBest_Position] p
-    INNER JOIN [dbo].[tblBestellung] b ON b.[be_Bestellindex] = p.[beP_BestellIndex]
-    WHERE COALESCE(p.[beP_BEposID], '') = ?
-  `;
-  const rows = await runSQLQueryAccess(database, sql, [beNumber]);
-  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
-  return asText(row?.deliveryType || 'LKW') || 'LKW';
+  // Business rule from legacy app: delivery type is read via be_Verpackung chain.
+  return loadPackagingType(database, beNumber);
 }
 
 async function loadOrderPositions(orderId) {
@@ -444,7 +416,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const productCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
   const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
-  const deliveryType = asText(req.body?.deliveryType) || deliveryTypeDerived || 'LKW';
+  const deliveryType = deliveryTypeDerived || '';
   const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const nowIso = new Date().toISOString();
@@ -536,7 +508,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         posCtx.packaging || '',
         posCtx.mfi || '',
         posPackagingType || '',
-        posDeliveryType || 'LKW',
+        posDeliveryType || '',
         userShortCode,
         nowIso,
         userShortCode,
@@ -631,7 +603,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const primaryCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
   const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
-  const deliveryType = asText(req.body?.deliveryType) || deliveryTypeDerived || 'LKW';
+  const deliveryType = deliveryTypeDerived || '';
   const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const updateSql = `
@@ -724,7 +696,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       posCtx.packaging || '',
       posCtx.mfi || '',
       posPackagingType || '',
-      posDeliveryType || 'LKW',
+      posDeliveryType || '',
       userShortCode,
       nowIso,
       userShortCode,
