@@ -208,7 +208,7 @@ export default function OrdersList() {
                         {row.clientName || '-'}
                       </Typography>
                       {scope === 'all' && (
-                        <Typography variant="caption" sx={{ opacity: 0.7, whiteSpace: 'nowrap' }}>
+                        <Typography variant="caption" sx={{ opacity: 0.7, whiteSpace: 'nowrap', textAlign: 'right', minWidth: 44 }}>
                           {row.reservedBy || '-'}
                         </Typography>
                       )}
