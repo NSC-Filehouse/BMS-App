@@ -184,10 +184,7 @@ export default function ProductDetail() {
             <InfoRow label={t('product_category')} value={item.category} />
             <InfoRow label={t('product_amount')} value={item.amount} />
             <InfoRow label={t('product_unit')} value={item.unit} />
-            <InfoRow label={t('product_article')} value={item.article} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
-            <InfoRow label={t('product_warehouse_section')} value={item.warehouseSection} />
-            <InfoRow label={t('product_storage_id')} value={item.storageId} />
 
             <Divider sx={{ my: 2 }} />
 
