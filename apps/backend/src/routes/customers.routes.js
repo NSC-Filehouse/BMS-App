@@ -21,6 +21,9 @@ function resolveSortField(sort) {
     kd_KdNR: '[kd_KdNR]',
     kd_Name1: '[kd_Name1]',
     kd_Name2: '[kd_Name2]',
+    kd_PLZ: '[kd_PLZ]',
+    kd_Aussendienst: '[kd_Aussendienst]',
+    kd_Region: '[kd_Region]',
     kd_Ort: '[kd_Ort]',
     kd_LK: '[kd_LK]',
     kd_eMail: '[kd_eMail]',
@@ -34,7 +37,17 @@ function buildWhereClause(q) {
   if (!text) return { whereSql: '', params: [] };
 
   const like = `%${text}%`;
-  const fields = ['[kd_KdNR]', '[kd_Name1]', '[kd_Name2]', '[kd_Ort]', '[kd_eMail]', '[kd_Telefon]'];
+  const fields = [
+    '[kd_KdNR]',
+    '[kd_Name1]',
+    '[kd_Name2]',
+    '[kd_PLZ]',
+    '[kd_Aussendienst]',
+    '[kd_Region]',
+    '[kd_Ort]',
+    '[kd_eMail]',
+    '[kd_Telefon]',
+  ];
   const clauses = fields.map((f) => `${f} LIKE ?`);
   return {
     whereSql: `WHERE (${clauses.join(' OR ')})`,
