@@ -74,6 +74,7 @@ function mapProductRow(row) {
     beNumber: asText(getField(row, 'Bestell-Pos')),
     packaging: asText(getField(row, 'beP_Additive')),
     mfi,
+    mfiMeasured,
     reservedBy: asText(getField(row, 'bePR_reserviertVon')),
     reservedUntil: asText(getField(row, 'bePR_gueltigBis')),
     mfiTestMethod: asText(getField(row, 'beP_MFI_Pruefmethode')),
