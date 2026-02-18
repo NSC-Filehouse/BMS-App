@@ -198,24 +198,26 @@ export default function OrdersList() {
                 state: { fromOrders: { page: meta.page || 1, q, scope } },
               })}
             >
-                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
-                  <Box sx={{ pr: 2 }}>
-                    <Typography variant="subtitle1">
-                      {row.orderNumber || row.id}
+              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
+                <Box sx={{ pr: 2, flexGrow: 1, minWidth: 0 }}>
+                  <Typography variant="subtitle1">
+                    {row.orderNumber || row.id}
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: 1, alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ opacity: 0.7, minWidth: 0 }}>
+                      {row.clientName || '-'}
                     </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                        {row.clientName || '-'}
+                    {scope === 'all' ? (
+                      <Typography variant="caption" sx={{ opacity: 0.7, whiteSpace: 'nowrap', textAlign: 'right', minWidth: 56 }}>
+                        {row.reservedBy || '-'}
                       </Typography>
-                      {scope === 'all' && (
-                        <Typography variant="caption" sx={{ opacity: 0.7, whiteSpace: 'nowrap', textAlign: 'right', minWidth: 44 }}>
-                          {row.reservedBy || '-'}
-                        </Typography>
-                      )}
-                    </Box>
+                    ) : (
+                      <Box />
+                    )}
                   </Box>
-                  <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
-                    <ChevronRightIcon />
+                </Box>
+                <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
+                  <ChevronRightIcon />
                 </Box>
               </CardContent>
             </Card>
