@@ -159,24 +159,6 @@ export default function OrderDetail() {
                     {t('reservation_delete')}
                   </Button>
                 )}
-                <Button
-                  variant="outlined"
-                  onClick={() => navigate('/temp-orders/new', {
-                    state: {
-                      source: {
-                        beNumber: item.orderNumber,
-                        warehouseId: item.warehouseId,
-                        reserveAmount: item.reserveAmount,
-                        reservationDate: item.reservationDate,
-                        comment: item.comment,
-                        price: item.price,
-                        article: item.article,
-                      },
-                    },
-                  })}
-                >
-                  {t('product_create_order')}
-                </Button>
               </Box>
             )}
             {!isReserved && <InfoRow label={t('order_customer')} value={item.clientName} />}

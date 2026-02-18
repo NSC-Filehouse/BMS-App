@@ -14,7 +14,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import AddIcon from '@mui/icons-material/Add';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
@@ -113,9 +112,6 @@ export default function TempOrdersList() {
               : false}
           >
             <ArrowForwardIcon />
-          </IconButton>
-          <IconButton aria-label={t('temp_order_add')} color="primary" onClick={() => navigate('/temp-orders/new')}>
-            <AddIcon />
           </IconButton>
         </Box>
       </Box>

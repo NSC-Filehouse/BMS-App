@@ -22,6 +22,15 @@ function formatDateOnly(value) {
   return d.toLocaleDateString('de-DE');
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (Number.isFinite(num)) {
+    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+  }
+  return String(value);
+}
+
 function InfoRow({ label, value }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
@@ -97,20 +106,12 @@ export default function TempOrderDetail() {
               <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
             </Box>
 
-            <InfoRow label={t('product_be_number')} value={item.beNumber} />
-            <InfoRow label={t('product_article')} value={item.article} />
-            <InfoRow label={t('product_warehouse')} value={item.warehouse} />
-            <InfoRow label={t('product_amount')} value={item.amountInKg !== null && item.amountInKg !== undefined ? `${item.amountInKg} kg` : ''} />
-            <InfoRow label={t('product_price')} value={item.price} />
-            <InfoRow label={t('order_reserve_amount')} value={item.reservationInKg !== null && item.reservationInKg !== undefined ? `${item.reservationInKg} kg` : ''} />
-            <InfoRow label={t('order_reserved_until')} value={formatDateOnly(item.reservationDate)} />
             <InfoRow label={t('customer_select')} value={item.clientName} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
             <InfoRow label={t('product_supplier')} value={item.distributor} />
             <InfoRow label={t('delivery_type_label')} value={item.deliveryType} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType} />
-            <InfoRow label={t('product_mfi')} value={item.mfi} />
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_comment')} value={item.comment} />
             <InfoRow label={t('delivery_start')} value={formatDateOnly(item.deliveryStartDate)} />
@@ -121,7 +122,39 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_completed')} value={item.completed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
-            <Divider sx={{ mt: 2 }} />
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
+              {t('order_positions_count')}: {Array.isArray(item.positions) ? item.positions.length : 0}
+            </Typography>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {(Array.isArray(item.positions) ? item.positions : []).map((pos, idx) => (
+                <Box
+                  key={`${pos.id || pos.beNumber || idx}-${idx}`}
+                  sx={{
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    borderRadius: 1.5,
+                    p: 1.25,
+                    display: 'grid',
+                    gap: 0.35,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {pos.article || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('product_price')}: {formatPrice(pos.price)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
           </CardContent>
         </Card>
       )}

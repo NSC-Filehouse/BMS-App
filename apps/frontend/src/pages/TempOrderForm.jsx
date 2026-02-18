@@ -54,6 +54,12 @@ export default function TempOrderForm() {
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
 
+  React.useEffect(() => {
+    if (!isEdit && !isCartCreate) {
+      navigate('/order-cart', { replace: true });
+    }
+  }, [isEdit, isCartCreate, navigate]);
+
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
