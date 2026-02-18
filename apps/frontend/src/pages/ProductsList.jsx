@@ -40,26 +40,26 @@ function ProductCard({ item, onClick, t }) {
       }}
       onClick={onClick}
     >
-      <CardContent sx={{ display: 'flex', gap: 2 }}>
+      <CardContent sx={{ display: 'flex', gap: 1.5, p: 1.25 }}>
         <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+          <Typography variant="body2" sx={{ mb: 0.25, fontWeight: 600 }}>
             {item.article || '-'}
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>{item.category || '-'}</Typography>
-            <Typography variant="body2">{item.amount || ''} {item.unit || ''}</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>{item.category || '-'}</Typography>
+            <Typography variant="caption">{item.amount || ''} {item.unit || ''}</Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('product_reserved')}</Typography>
-            <Typography variant="body2">{item.reserved || ''}</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>{t('product_reserved')}</Typography>
+            <Typography variant="caption">{item.reserved || ''}</Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="body2" sx={{ width: '70%' }}>{item.about || ''}</Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{formatPrice(item.acquisitionPrice)}</Typography>
+            <Typography variant="caption" sx={{ width: '70%' }}>{item.about || ''}</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>{formatPrice(item.acquisitionPrice)}</Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('product_warehouse')}</Typography>
-            <Typography variant="body2">{item.warehouse || ''}</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>{t('product_warehouse')}</Typography>
+            <Typography variant="caption">{item.warehouse || ''}</Typography>
           </Box>
         </Box>
         <Box sx={{ width: 38, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -206,7 +206,7 @@ export default function ProductsList() {
                   expanded={catExpanded}
                   onChange={(e, expanded) => setExpandedPlastics((prev) => ({ ...prev, [plastic]: expanded }))}
                 >
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 0.5 } }}>
                     <Typography variant="subtitle1">
                       {plastic || t('product_group_empty')}
                     </Typography>
@@ -214,7 +214,7 @@ export default function ProductsList() {
                       ({cat.total || 0})
                     </Typography>
                   </AccordionSummary>
-                  <AccordionDetails>
+                  <AccordionDetails sx={{ pt: 0.5, pb: 1, pl: 1, pr: 1 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {subCategories.map((subEntry) => {
                         const sub = String(subEntry?.sub || '');
@@ -232,15 +232,15 @@ export default function ProductsList() {
                               }
                             }}
                           >
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                              <Typography variant="body1">
+                            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
                                 {sub || t('product_subgroup_empty')}
                               </Typography>
-                              <Typography variant="body2" sx={{ ml: 1, opacity: 0.7 }}>
+                              <Typography variant="caption" sx={{ ml: 1, opacity: 0.7 }}>
                                 ({subEntry.total || 0})
                               </Typography>
                             </AccordionSummary>
-                            <AccordionDetails>
+                            <AccordionDetails sx={{ pt: 0.5, pb: 0.75, pl: 0.5, pr: 0.5 }}>
                               {bucket.loading && (
                                 <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
                                   <CircularProgress size={22} />
@@ -279,4 +279,3 @@ export default function ProductsList() {
     </Box>
   );
 }
-
