@@ -30,6 +30,25 @@ function formatPrice(value) {
 }
 
 function ProductCard({ item, onClick, t }) {
+  const reserveText = item.reserved !== null && item.reserved !== undefined && item.reserved !== ''
+    ? `${item.reserved}`
+    : '-';
+  const amountText = `${item.amount || ''} ${item.unit || ''}`.trim() || '-';
+
+  const Row = ({ label, value, strong = false }) => (
+    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: 1.5, alignItems: 'start' }}>
+      <Typography variant="caption" sx={{ opacity: 0.75 }}>
+        {label}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{ textAlign: 'right', fontWeight: strong ? 700 : 400, whiteSpace: strong ? 'nowrap' : 'normal' }}
+      >
+        {value || '-'}
+      </Typography>
+    </Box>
+  );
+
   return (
     <Card
       sx={{
@@ -45,22 +64,14 @@ function ProductCard({ item, onClick, t }) {
           <Typography variant="body2" sx={{ mb: 0.25, fontWeight: 600 }}>
             {item.article || '-'}
           </Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>{item.category || '-'}</Typography>
-            <Typography variant="caption">{item.amount || ''} {item.unit || ''}</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>{t('product_reserved')}</Typography>
-            <Typography variant="caption">{item.reserved || ''}</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ width: '70%' }}>{item.about || ''}</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>{formatPrice(item.acquisitionPrice)}</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>{t('product_warehouse')}</Typography>
-            <Typography variant="caption">{item.warehouse || ''}</Typography>
-          </Box>
+          <Row label={t('product_category')} value={item.category || '-'} />
+          <Row label={t('product_amount')} value={amountText} />
+          <Row label={t('product_reserved')} value={reserveText} />
+          <Row label={t('product_price')} value={formatPrice(item.acquisitionPrice)} strong />
+          <Row label={t('product_warehouse')} value={item.warehouse || '-'} />
+          <Row label={t('product_be_number')} value={item.beNumber || '-'} />
+          {item.description ? <Row label={t('product_description')} value={item.description} /> : null}
+          {item.about ? <Row label={t('product_extra')} value={item.about} /> : null}
         </Box>
         <Box sx={{ width: 38, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ChevronRightIcon />
