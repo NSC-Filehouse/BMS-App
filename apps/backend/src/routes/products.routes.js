@@ -85,15 +85,37 @@ function mapProductRow(row) {
   };
 }
 
-function buildWhereClause(q) {
-  const text = asText(q);
-  if (!text) return { whereSql: '', params: [] };
-  const like = `%${text}%`;
-  const fields = ['[Artikel]', '[Kunststoff]', '[Kunststoff_Untergruppe]', '[Lagerort]', '[Bestell-Pos]'];
-  const clauses = fields.map((f) => `${f} LIKE ?`);
+function buildWhereClause(filters = {}) {
+  const text = asText(filters.q);
+  const plastic = asText(filters.plastic);
+  const sub = asText(filters.sub);
+  const subEmpty = String(filters.subEmpty || '') === '1';
+
+  const clauses = [];
+  const params = [];
+
+  if (text) {
+    const like = `%${text}%`;
+    const fields = ['[Artikel]', '[Kunststoff]', '[Kunststoff_Untergruppe]', '[Lagerort]', '[Bestell-Pos]'];
+    clauses.push(`(${fields.map((f) => `${f} LIKE ?`).join(' OR ')})`);
+    params.push(...fields.map(() => like));
+  }
+
+  if (plastic) {
+    clauses.push(`COALESCE([Kunststoff], '') = ?`);
+    params.push(plastic);
+  }
+
+  if (subEmpty) {
+    clauses.push(`COALESCE([Kunststoff_Untergruppe], '') = ''`);
+  } else if (sub) {
+    clauses.push(`COALESCE([Kunststoff_Untergruppe], '') = ?`);
+    params.push(sub);
+  }
+
   return {
-    whereSql: `WHERE (${clauses.join(' OR ')})`,
-    params: fields.map(() => like),
+    whereSql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+    params,
   };
 }
 
@@ -129,7 +151,12 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
 
   const safeSort = resolveSort(sort);
   const safeDir = normalizeDir(dir);
-  const { whereSql, params } = buildWhereClause(q);
+  const { whereSql, params } = buildWhereClause({
+    q,
+    plastic: req.query?.plastic,
+    sub: req.query?.sub,
+    subEmpty: req.query?.subEmpty,
+  });
   const offset = (page - 1) * pageSize;
 
   const countSql = `SELECT COUNT(*) AS total FROM ${VIEW_SQL} ${whereSql}`;
@@ -157,6 +184,9 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
       count: data.length,
       total,
       q,
+      plastic: asText(req.query?.plastic),
+      sub: asText(req.query?.sub),
+      subEmpty: String(req.query?.subEmpty || '') === '1',
       sort: String(sort || 'article'),
       dir: safeDir,
     },
@@ -323,10 +353,37 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
 
 // No category tree for availability view; keep endpoint for frontend compatibility.
 router.get('/product-categories', requireMandant, asyncHandler(async (req, res) => {
+  const { whereSql, params } = buildWhereClause({ q: req.query?.q });
+  const sql = `
+    SELECT
+      COALESCE([Kunststoff], '') AS plastic,
+      COALESCE([Kunststoff_Untergruppe], '') AS sub,
+      COUNT(*) AS total
+    FROM ${VIEW_SQL}
+    ${whereSql}
+    GROUP BY COALESCE([Kunststoff], ''), COALESCE([Kunststoff_Untergruppe], '')
+    ORDER BY COALESCE([Kunststoff], '') ASC, COALESCE([Kunststoff_Untergruppe], '') ASC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, params);
+
+  const grouped = new Map();
+  for (const row of (rows || [])) {
+    const plastic = asText(row.plastic);
+    const sub = asText(row.sub);
+    const total = asNumber(row.total) || 0;
+    if (!grouped.has(plastic)) {
+      grouped.set(plastic, { plastic, total: 0, subCategories: [] });
+    }
+    const entry = grouped.get(plastic);
+    entry.total += total;
+    entry.subCategories.push({ sub, total });
+  }
+  const data = Array.from(grouped.values());
+
   sendEnvelope(res, {
     status: 200,
-    data: [],
-    meta: { mandant: req.mandant, count: 0 },
+    data,
+    meta: { mandant: req.mandant, count: data.length, q: asText(req.query?.q) },
     error: null,
   });
 }));
