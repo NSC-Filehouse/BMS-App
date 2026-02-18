@@ -536,21 +536,46 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
   const supplier = asText(req.body?.supplier);
-  const amountInKg = asInt(req.body?.amountInKg, 0);
-  const pricePerKg = asInt(req.body?.pricePerKg, 0);
-  const reservationInKg = req.body?.reservationInKg !== undefined && req.body?.reservationInKg !== null && req.body?.reservationInKg !== ''
-    ? asInt(req.body?.reservationInKg, 0)
-    : null;
-  const reservationDate = req.body?.reservationDate ? new Date(req.body.reservationDate) : null;
   const deliveryStartDate = new Date(req.body?.deliveryStartDate);
   const deliveryEndDate = new Date(req.body?.deliveryEndDate);
 
-  if (!clientReferenceId || !clientName || !clientAddress || amountInKg <= 0 || pricePerKg <= 0 || Number.isNaN(deliveryStartDate.getTime()) || Number.isNaN(deliveryEndDate.getTime())) {
+  if (!clientReferenceId || !clientName || !clientAddress || Number.isNaN(deliveryStartDate.getTime()) || Number.isNaN(deliveryEndDate.getTime())) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
-  if (req.body?.reservationDate && Number.isNaN(reservationDate.getTime())) {
-    throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
+
+  const positionsInput = normalizePositionsInput(req.body);
+  if (!Array.isArray(positionsInput) || !positionsInput.length) {
+    throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
+  const normalizedPositions = [];
+  for (const raw of positionsInput) {
+    const beNumber = asText(raw?.beNumber);
+    const warehouseId = asText(raw?.warehouseId);
+    const amountInKg = asInt(raw?.amountInKg, 0);
+    const pricePerKg = asInt(raw?.pricePerKg, 0);
+    if (!beNumber || !warehouseId) {
+      throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
+    }
+    if (amountInKg <= 0 || pricePerKg <= 0) {
+      throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    const reservationInKg = raw?.reservationInKg !== undefined && raw?.reservationInKg !== null && raw?.reservationInKg !== ''
+      ? asInt(raw?.reservationInKg, 0)
+      : null;
+    const reservationDate = raw?.reservationDate ? new Date(raw.reservationDate) : null;
+    if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
+      throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
+    }
+    normalizedPositions.push({
+      beNumber,
+      warehouseId,
+      amountInKg,
+      pricePerKg,
+      reservationInKg,
+      reservationDate: reservationDate ? reservationDate.toISOString() : null,
+    });
+  }
+  const primaryPos = normalizedPositions[0];
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ta_be_number] AS beNumber
@@ -562,15 +587,24 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
-  const packagingTypeDerived = await loadPackagingType(req.database, asText(existing.beNumber));
+  const primaryCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
+  const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
+  const deliveryType = asText(req.body?.deliveryType) || 'LKW';
+  const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const updateSql = `
     UPDATE [dbo].[tbl_Temp_Auftraege]
     SET [ta_ClientReferenceId] = ?,
+        [ta_be_number] = ?,
+        [ta_article] = ?,
+        [ta_warehouse] = ?,
         [ta_amount_in_kg] = ?,
         [ta_price] = ?,
         [ta_reservation_in_kg] = ?,
         [ta_reservation_date] = ?,
+        [ta_about] = ?,
+        [ta_packaging] = ?,
+        [ta_mfi] = ?,
         [ta_client_name] = ?,
         [ta_client_address] = ?,
         [ta_client_representative] = ?,
@@ -588,18 +622,24 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   `;
   await runSQLQuerySqlServer(config.sql.database, updateSql, [
     clientReferenceId,
-    amountInKg,
-    pricePerKg,
-    reservationInKg,
-    reservationDate ? reservationDate.toISOString() : null,
+    primaryPos.beNumber,
+    primaryCtx.article,
+    primaryCtx.warehouse,
+    primaryPos.amountInKg,
+    primaryPos.pricePerKg,
+    primaryPos.reservationInKg,
+    primaryPos.reservationDate,
+    primaryCtx.about || null,
+    primaryCtx.packaging || '',
+    primaryCtx.mfi || '',
     clientName,
     clientAddress,
     clientRepresentative || null,
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
     supplier || req.mandant,
-    'LKW',
-    packagingTypeDerived || '',
+    deliveryType,
+    packagingType,
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     userShortCode,
@@ -608,6 +648,45 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     companyId,
     userShortCode.toLowerCase(),
   ]);
+
+  await runSQLQuerySqlServer(config.sql.database, `
+    DELETE FROM [dbo].[tbl_Temp_Auf_Position]
+    WHERE [tap_ta_id] = ?
+  `, [id]);
+
+  const nowIso = new Date().toISOString();
+  for (let i = 0; i < normalizedPositions.length; i += 1) {
+    const pos = normalizedPositions[i];
+    const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
+    const posPackagingType = await loadPackagingType(req.database, pos.beNumber);
+    const posSql = `
+      INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
+        [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
+        [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_packaging], [tap_mfi], [tap_packaging_type],
+        [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    await runSQLQuerySqlServer(config.sql.database, posSql, [
+      id,
+      i + 1,
+      pos.beNumber,
+      posCtx.article,
+      pos.amountInKg,
+      posCtx.warehouse,
+      pos.pricePerKg,
+      pos.reservationInKg,
+      pos.reservationDate,
+      posCtx.about || null,
+      posCtx.packaging || '',
+      posCtx.mfi || '',
+      posPackagingType || '',
+      userShortCode,
+      nowIso,
+      userShortCode,
+      nowIso,
+    ]);
+  }
 
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
@@ -622,7 +701,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
   sendEnvelope(res, {
     status: 200,
-    data: mapTempOrderRow(row),
+    data: { ...mapTempOrderRow(row), positions: await loadOrderPositions(id) },
     meta: { mandant: req.mandant, id },
     error: null,
   });
@@ -652,12 +731,15 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
 
-  const sql = `
+  await runSQLQuerySqlServer(config.sql.database, `
+    DELETE FROM [dbo].[tbl_Temp_Auf_Position]
+    WHERE [tap_ta_id] = ?
+  `, [id]);
+  await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM [dbo].[tbl_Temp_Auftraege]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-  `;
-  await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, userShortCode.toLowerCase()]);
+  `, [id, companyId, userShortCode.toLowerCase()]);
 
   sendEnvelope(res, {
     status: 200,

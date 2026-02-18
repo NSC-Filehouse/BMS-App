@@ -122,7 +122,7 @@ const translations = {
     customer_select: 'Kunde wählen',
     product_select: 'Produkt wählen',
     supplier_select: 'Lieferant wählen',
-    delivery_type_label: 'Liefertyp',
+    delivery_type_label: 'Lieferart',
     packaging_type_label: 'Verpackungsart',
     delivery_start: 'Lieferstart',
     delivery_end: 'Lieferende',
