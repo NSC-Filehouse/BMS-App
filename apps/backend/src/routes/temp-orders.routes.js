@@ -88,6 +88,31 @@ function normalizePositionsInput(body) {
   }];
 }
 
+function toId(name) {
+  return `[${String(name || '').replace(/]/g, ']]')}]`;
+}
+
+async function getTableColumns(database, tableName) {
+  const sql = `
+    SELECT [COLUMN_NAME] AS col
+    FROM [INFORMATION_SCHEMA].[COLUMNS]
+    WHERE [TABLE_SCHEMA] = 'dbo' AND [TABLE_NAME] = ?
+  `;
+  const rows = await runSQLQuerySqlServer(database, sql, [tableName]);
+  return (Array.isArray(rows) ? rows : [])
+    .map((r) => asText(r.col))
+    .filter(Boolean);
+}
+
+function resolveColumn(columns, candidates) {
+  const byLower = new Map((columns || []).map((c) => [String(c).toLowerCase(), c]));
+  for (const c of candidates) {
+    const hit = byLower.get(String(c).toLowerCase());
+    if (hit) return hit;
+  }
+  return null;
+}
+
 async function loadProductContext(database, beNumber, warehouseId) {
   const sql = `
     SELECT TOP 1
@@ -135,27 +160,48 @@ async function loadPackagingType(database, beNumber) {
 }
 
 async function loadOrderPositions(orderId) {
-  const sql = `
-    SELECT
-      [tap_id] AS id,
-      [tap_ta_id] AS orderId,
-      [tap_line_no] AS lineNo,
-      [tap_be_number] AS beNumber,
-      [tap_article] AS article,
-      [tap_amount_in_kg] AS amountInKg,
-      [tap_warehouse] AS warehouse,
-      [tap_price] AS price,
-      [tap_reservation_in_kg] AS reservationInKg,
-      [tap_reservation_date] AS reservationDate,
-      [tap_about] AS about,
-      [tap_packaging] AS packaging,
-      [tap_mfi] AS mfi,
-      [tap_packaging_type] AS packagingType
-    FROM [dbo].[tbl_Temp_Auf_Position]
-    WHERE [tap_ta_id] = ?
-    ORDER BY [tap_line_no] ASC
-  `;
   try {
+    const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+    if (!cols.length) return [];
+
+    const cOrderId = resolveColumn(cols, ['tap_ta_id', 'taP_ta_id', 'ta_id']);
+    if (!cOrderId) return [];
+
+    const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
+    const cId = resolveColumn(cols, ['tap_id', 'taP_id', 'id']);
+    const cBeNumber = resolveColumn(cols, ['tap_be_number', 'taP_be_number', 'be_number']);
+    const cArticle = resolveColumn(cols, ['tap_article', 'taP_article', 'article']);
+    const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
+    const cWarehouse = resolveColumn(cols, ['tap_warehouse', 'taP_warehouse', 'warehouse']);
+    const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
+    const cReservationInKg = resolveColumn(cols, ['tap_reservation_in_kg', 'taP_reservation_in_kg', 'reservation_in_kg']);
+    const cReservationDate = resolveColumn(cols, ['tap_reservation_date', 'taP_reservation_date', 'reservation_date']);
+    const cAbout = resolveColumn(cols, ['tap_about', 'taP_about', 'about']);
+    const cPackaging = resolveColumn(cols, ['tap_packaging', 'taP_packaging', 'packaging']);
+    const cMfi = resolveColumn(cols, ['tap_mfi', 'taP_mfi', 'mfi']);
+    const cPackagingType = resolveColumn(cols, ['tap_packaging_type', 'taP_packaging_type', 'packaging_type']);
+
+    const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
+    const sql = `
+      SELECT
+        ${pick(cId, 'id')},
+        ${pick(cOrderId, 'orderId')},
+        ${pick(cLineNo, 'lineNo')},
+        ${pick(cBeNumber, 'beNumber')},
+        ${pick(cArticle, 'article')},
+        ${pick(cAmount, 'amountInKg')},
+        ${pick(cWarehouse, 'warehouse')},
+        ${pick(cPrice, 'price')},
+        ${pick(cReservationInKg, 'reservationInKg')},
+        ${pick(cReservationDate, 'reservationDate')},
+        ${pick(cAbout, 'about')},
+        ${pick(cPackaging, 'packaging')},
+        ${pick(cMfi, 'mfi')},
+        ${pick(cPackagingType, 'packagingType')}
+      FROM [dbo].[tbl_Temp_Auf_Position]
+      WHERE ${toId(cOrderId)} = ?
+      ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
+    `;
     const rows = await runSQLQuerySqlServer(config.sql.database, sql, [orderId]);
     return Array.isArray(rows) ? rows : [];
   } catch {
