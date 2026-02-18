@@ -16,9 +16,11 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { addOrderCartItem } from '../utils/orderCart.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -58,6 +60,9 @@ export default function ProductDetail() {
   const [reserveLoading, setReserveLoading] = React.useState(false);
   const [reserveSuccess, setReserveSuccess] = React.useState('');
   const [reserveInfo, setReserveInfo] = React.useState('');
+  const [cartOpen, setCartOpen] = React.useState(false);
+  const [cartQty, setCartQty] = React.useState('');
+  const [cartSuccess, setCartSuccess] = React.useState('');
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
@@ -122,6 +127,7 @@ export default function ProductDetail() {
       {error && <Alert severity="error">{error}</Alert>}
       {reserveInfo && <Alert severity="warning" sx={{ mb: 2 }}>{reserveInfo}</Alert>}
       {reserveSuccess && <Alert severity="success" sx={{ mb: 2 }}>{reserveSuccess}</Alert>}
+      {cartSuccess && <Alert severity="success" sx={{ mb: 2 }}>{cartSuccess}</Alert>}
 
       {!loading && !error && item && (
         <Card>
@@ -159,7 +165,7 @@ export default function ProductDetail() {
             <Button
               variant="outlined"
               fullWidth
-              sx={{ mb: 2 }}
+              sx={{ mb: 1 }}
               onClick={() => navigate('/temp-orders/new', {
                 state: {
                   source: {
@@ -173,6 +179,18 @@ export default function ProductDetail() {
               })}
             >
               {t('product_create_order')}
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              startIcon={<ShoppingCartIcon />}
+              sx={{ mb: 2 }}
+              onClick={() => {
+                setCartQty('');
+                setCartOpen(true);
+              }}
+            >
+              {t('cart_add')}
             </Button>
 
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
@@ -285,6 +303,44 @@ export default function ProductDetail() {
             }}
           >
             {t('product_reserve_submit')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={cartOpen} onClose={() => setCartOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('cart_add')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('cart_quantity')}
+            value={cartQty}
+            onChange={(e) => setCartQty(e.target.value)}
+            inputProps={{ min: 1, step: 'any' }}
+            helperText={availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : ''}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCartOpen(false)}>{t('back_label')}</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const qty = Number(cartQty);
+              if (!Number.isFinite(qty) || qty <= 0) {
+                setError(t('validation_cart_quantity_positive'));
+                return;
+              }
+              if (availableAmount !== null && qty > availableAmount) {
+                setError(t('validation_cart_quantity_not_above_available'));
+                return;
+              }
+              addOrderCartItem(item, qty);
+              setCartOpen(false);
+              setCartSuccess(t('cart_added'));
+            }}
+          >
+            {t('cart_add')}
           </Button>
         </DialogActions>
       </Dialog>

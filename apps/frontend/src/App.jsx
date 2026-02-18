@@ -12,6 +12,7 @@ import CustomerDetail from './pages/CustomerDetail.jsx';
 
 import ProductsList from './pages/ProductsList.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
+import OrderCart from './pages/OrderCart.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
@@ -59,6 +60,14 @@ export default function App() {
           element={
             <MandantGuard>
               <ProductDetail />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/order-cart"
+          element={
+            <MandantGuard>
+              <OrderCart />
             </MandantGuard>
           }
         />

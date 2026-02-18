@@ -21,6 +21,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { clearOrderCart } from '../utils/orderCart.js';
 
 function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
@@ -50,6 +51,7 @@ export default function TempOrderForm() {
   const { t } = useI18n();
 
   const source = location.state?.source || null;
+  const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
 
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -128,6 +130,16 @@ export default function TempOrderForm() {
       }
 
       if (!source?.beNumber || !source?.warehouseId) {
+        if (Array.isArray(sourceItems) && sourceItems.length > 0) {
+          const first = sourceItems[0];
+          setForm((prev) => ({
+            ...prev,
+            beNumber: first.beNumber || '',
+            warehouseId: first.warehouseId || '',
+            amountInKg: first.amountInKg ?? '',
+            pricePerKg: first.price ?? '',
+          }));
+        }
         return;
       }
 
@@ -144,7 +156,7 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, t]);
+  }, [id, isEdit, source, sourceItems, t]);
 
   React.useEffect(() => {
     let alive = true;
@@ -271,7 +283,7 @@ export default function TempOrderForm() {
     const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
 
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
-    if (!String(form.beNumber || '').trim() || !String(form.warehouseId || '').trim()) {
+    if (!Array.isArray(sourceItems) && (!String(form.beNumber || '').trim() || !String(form.warehouseId || '').trim())) {
       messages.push(t('validation_product_required'));
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
@@ -332,6 +344,16 @@ export default function TempOrderForm() {
         deliveryStartDate: form.deliveryStartDate,
         deliveryEndDate: form.deliveryEndDate,
       };
+      if (Array.isArray(sourceItems) && sourceItems.length > 0) {
+        payload.positions = sourceItems.map((x) => ({
+          beNumber: x.beNumber,
+          warehouseId: x.warehouseId,
+          amountInKg: Number(x.amountInKg),
+          pricePerKg: Number(x.price),
+          reservationInKg: null,
+          reservationDate: null,
+        }));
+      }
 
       const res = isEdit
         ? await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })
@@ -340,6 +362,7 @@ export default function TempOrderForm() {
       setSuccess(t('temp_order_saved'));
       const newId = res?.data?.id;
       if (newId) {
+        if (Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
         navigate(`/temp-orders/${encodeURIComponent(newId)}`);
       } else {
         navigate('/temp-orders');
@@ -365,7 +388,7 @@ export default function TempOrderForm() {
       {!loading && (
         <Card>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!isEdit && !(source?.beNumber && source?.warehouseId) && (
+            {!isEdit && !(source?.beNumber && source?.warehouseId) && !Array.isArray(sourceItems) && (
               <Autocomplete
                 options={productOptions}
                 value={selectedProduct}
@@ -378,6 +401,9 @@ export default function TempOrderForm() {
             )}
             <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
             <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
+            {Array.isArray(sourceItems) && sourceItems.length > 0 && (
+              <TextField label={t('order_positions_count')} value={sourceItems.length} fullWidth disabled />
+            )}
 
             <Autocomplete
               options={customerOptions}

@@ -4,10 +4,17 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Badge,
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
   InputAdornment,
   TextField,
   Typography,
@@ -15,10 +22,12 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -29,7 +38,7 @@ function formatPrice(value) {
   return `${value} EUR`;
 }
 
-function ProductCard({ item, onClick, t }) {
+function ProductCard({ item, onClick, onAddToCart, t }) {
   return (
     <Card
       sx={{
@@ -103,7 +112,18 @@ function ProductCard({ item, onClick, t }) {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ width: 38, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 78, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <IconButton
+            size="small"
+            aria-label={t('cart_add')}
+            color="primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToCart(item);
+            }}
+          >
+            <ShoppingCartIcon fontSize="small" />
+          </IconButton>
           <ChevronRightIcon />
         </Box>
       </CardContent>
@@ -128,6 +148,11 @@ export default function ProductsList() {
   const [searchResults, setSearchResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
+  const [addDialogOpen, setAddDialogOpen] = React.useState(false);
+  const [addItem, setAddItem] = React.useState(null);
+  const [addQty, setAddQty] = React.useState('');
+  const [addSuccess, setAddSuccess] = React.useState('');
 
   const qRef = React.useRef(q);
   React.useEffect(() => { qRef.current = q; }, [q]);
@@ -209,6 +234,10 @@ export default function ProductsList() {
   }, [loadCategories, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
+    setCartCount(getOrderCartCount());
+  }, [addDialogOpen]);
+
+  React.useEffect(() => {
     const h = setTimeout(() => {
       const query = q.trim();
       if (query.length === 0) {
@@ -226,6 +255,11 @@ export default function ProductsList() {
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">{t('products_title')}</Typography>
+        <IconButton aria-label={t('cart_open')} color="primary" onClick={() => navigate('/order-cart')}>
+          <Badge badgeContent={cartCount} color="error">
+            <ShoppingCartIcon />
+          </Badge>
+        </IconButton>
       </Box>
 
       <Card sx={{ mb: 2 }}>
@@ -255,6 +289,7 @@ export default function ProductsList() {
         )}
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {addSuccess && <Alert severity="success" sx={{ mb: 2 }}>{addSuccess}</Alert>}
 
         {!loading && !error && q.trim().length === 0 && categories.length === 0 && (
           <Typography sx={{ opacity: 0.7 }}>{t('products_empty')}</Typography>
@@ -271,6 +306,11 @@ export default function ProductsList() {
                 key={item.id}
                 item={item}
                 t={t}
+                onAddToCart={(product) => {
+                  setAddItem(product);
+                  setAddQty('');
+                  setAddDialogOpen(true);
+                }}
                 onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
                   state: { fromProducts: { q } },
                 })}
@@ -342,6 +382,11 @@ export default function ProductsList() {
                                       key={item.id}
                                       item={item}
                                       t={t}
+                                      onAddToCart={(product) => {
+                                        setAddItem(product);
+                                        setAddQty('');
+                                        setAddDialogOpen(true);
+                                      }}
                                       onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
                                         state: { fromProducts: { q } },
                                       })}
@@ -361,6 +406,47 @@ export default function ProductsList() {
           </Box>
         )}
       </Box>
+
+      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('cart_add')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1 }}>{addItem?.article || '-'}</Typography>
+          <TextField
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('cart_quantity')}
+            value={addQty}
+            onChange={(e) => setAddQty(e.target.value)}
+            inputProps={{ min: 1, step: 'any' }}
+            helperText={addItem ? `${t('product_available_now')}: ${Math.max(Number(addItem.amount || 0) - Number(addItem.reserved || 0), 0)} ${addItem.unit || ''}` : ''}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddDialogOpen(false)}>{t('back_label')}</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const qty = Number(addQty);
+              const available = Math.max(Number(addItem?.amount || 0) - Number(addItem?.reserved || 0), 0);
+              if (!Number.isFinite(qty) || qty <= 0) {
+                setError(t('validation_cart_quantity_positive'));
+                return;
+              }
+              if (qty > available) {
+                setError(t('validation_cart_quantity_not_above_available'));
+                return;
+              }
+              addOrderCartItem(addItem, qty);
+              setCartCount(getOrderCartCount());
+              setAddDialogOpen(false);
+              setAddSuccess(t('cart_added'));
+            }}
+          >
+            {t('cart_add')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
