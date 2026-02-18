@@ -185,10 +185,10 @@ export default function ProductDetail() {
             <InfoRow label={t('product_amount')} value={item.amount} />
             <InfoRow label={t('product_unit')} value={item.unit} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
+            <InfoRow label={t('product_description')} value={item.description} />
 
             <Divider sx={{ my: 2 }} />
 
-            <InfoRow label={t('product_description')} value={item.description} />
             <InfoRow label={t('product_mfi')} value={item.mfi} />
             <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
             <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
