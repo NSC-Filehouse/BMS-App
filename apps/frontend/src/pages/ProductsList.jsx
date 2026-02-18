@@ -125,6 +125,7 @@ export default function ProductsList() {
   const [expandedPlastics, setExpandedPlastics] = React.useState({});
   const [expandedSubs, setExpandedSubs] = React.useState({});
   const [productsBySub, setProductsBySub] = React.useState({});
+  const [searchResults, setSearchResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
@@ -140,9 +141,29 @@ export default function ProductsList() {
       setExpandedPlastics({});
       setExpandedSubs({});
       setProductsBySub({});
+      setSearchResults([]);
     } catch (e) {
       setError(e?.message || t('loading_products_error'));
       setCategories([]);
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  const loadSearchResults = React.useCallback(async (query) => {
+    try {
+      setLoading(true);
+      setError('');
+      const res = await apiRequest(`/products?page=1&pageSize=300&q=${encodeURIComponent(query)}&sort=article&dir=ASC`);
+      setSearchResults(res?.data || []);
+      setCategories([]);
+      setExpandedPlastics({});
+      setExpandedSubs({});
+      setProductsBySub({});
+    } catch (e) {
+      setError(e?.message || t('loading_products_error'));
+      setSearchResults([]);
     } finally {
       setLoading(false);
     }
@@ -190,12 +211,16 @@ export default function ProductsList() {
   React.useEffect(() => {
     const h = setTimeout(() => {
       const query = q.trim();
-      if (query.length === 0 || query.length >= SEARCH_MIN) {
-        loadCategories(query);
+      if (query.length === 0) {
+        loadCategories('');
+        return;
+      }
+      if (query.length >= SEARCH_MIN) {
+        loadSearchResults(query);
       }
     }, 300);
     return () => clearTimeout(h);
-  }, [q, loadCategories]);
+  }, [q, loadCategories, loadSearchResults]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -231,11 +256,30 @@ export default function ProductsList() {
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {!loading && !error && categories.length === 0 && (
+        {!loading && !error && q.trim().length === 0 && categories.length === 0 && (
           <Typography sx={{ opacity: 0.7 }}>{t('products_empty')}</Typography>
         )}
 
-        {!loading && !error && categories.length > 0 && (
+        {!loading && !error && q.trim().length >= SEARCH_MIN && searchResults.length === 0 && (
+          <Typography sx={{ opacity: 0.7 }}>{t('products_empty')}</Typography>
+        )}
+
+        {!loading && !error && q.trim().length >= SEARCH_MIN && searchResults.length > 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {searchResults.map((item) => (
+              <ProductCard
+                key={item.id}
+                item={item}
+                t={t}
+                onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
+                  state: { fromProducts: { q } },
+                })}
+              />
+            ))}
+          </Box>
+        )}
+
+        {!loading && !error && q.trim().length === 0 && categories.length > 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {categories.map((cat) => {
               const plastic = String(cat?.plastic || '');
