@@ -126,8 +126,6 @@ export default function ProductDetail() {
       {!loading && !error && item && (
         <Card>
           <CardContent sx={{ pt: 2 }}>
-            <Divider sx={{ mb: 2 }} />
-
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="subtitle2" color="text.secondary">
                 {t('product_price')}
@@ -176,8 +174,6 @@ export default function ProductDetail() {
             >
               {t('product_create_order')}
             </Button>
-
-            <Divider sx={{ my: 2 }} />
 
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_category')} value={item.category} />
