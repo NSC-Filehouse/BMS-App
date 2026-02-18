@@ -444,6 +444,8 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const productCtx = await loadProductContext(req.database, primaryPos.beNumber, primaryPos.warehouseId);
   const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
   const deliveryTypeDerived = await loadDeliveryType(req.database, primaryPos.beNumber);
+  const deliveryType = asText(req.body?.deliveryType) || deliveryTypeDerived || 'LKW';
+  const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
 
   const nowIso = new Date().toISOString();
   const sql = `
@@ -478,8 +480,8 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientRepresentative || null,
     asBit(req.body?.specialPaymentCondition, 0),
     asText(req.body?.comment) || null,
-    deliveryTypeDerived,
-    packagingTypeDerived || '',
+    deliveryType,
+    packagingType,
     deliveryStartDate.toISOString(),
     deliveryEndDate.toISOString(),
     0,

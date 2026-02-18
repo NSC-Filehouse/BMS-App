@@ -57,6 +57,7 @@ export default function TempOrderForm() {
   const source = location.state?.source || null;
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
+  const isPositionsMode = isEdit || isCartCreate;
 
   React.useEffect(() => {
     if (!isEdit && !isCartCreate) {
@@ -324,9 +325,9 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
-    if (!isCartCreate && !String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
+    if (!isPositionsMode && !String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
 
-    if (!isCartCreate && !isEdit) {
+    if (!isPositionsMode) {
       if (!Number.isFinite(amount) || amount <= 0) {
         messages.push(t('validation_amount_positive'));
       }
@@ -335,7 +336,7 @@ export default function TempOrderForm() {
       }
     }
 
-    if (!isCartCreate && !isEdit && reservation !== null) {
+    if (!isPositionsMode && reservation !== null) {
       if (!Number.isFinite(reservation) || reservation <= 0) {
         messages.push(t('validation_reservation_positive'));
       }
@@ -445,7 +446,7 @@ export default function TempOrderForm() {
                 renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
               />
             )}
-            {!isCartCreate && !isEdit && (
+            {!isPositionsMode && (
               <>
                 <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
                 <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
@@ -466,20 +467,20 @@ export default function TempOrderForm() {
             <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
             <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
 
-            {!isCartCreate && (
+            {(
               <>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                  {!isEdit && <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />}
-                  {!isEdit && <TextField type="number" label={t('product_price')} value={form.pricePerKg} onChange={(e) => setForm((p) => ({ ...p, pricePerKg: e.target.value }))} fullWidth />}
-                  {!isEdit && (
+                  {!isPositionsMode && <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />}
+                  {!isPositionsMode && <TextField type="number" label={t('product_price')} value={form.pricePerKg} onChange={(e) => setForm((p) => ({ ...p, pricePerKg: e.target.value }))} fullWidth />}
+                  {!isPositionsMode && (
                     <TextField type="number" label={t('order_reserve_amount')} value={form.reservationInKg} onChange={(e) => setForm((p) => ({ ...p, reservationInKg: e.target.value }))} fullWidth />
                   )}
-                  {!isEdit && <TextField type="date" label={t('order_reserved_until')} value={form.reservationDate} onChange={(e) => setForm((p) => ({ ...p, reservationDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />}
-                  <TextField type="date" label={t('delivery_start')} value={form.deliveryStartDate} onChange={(e) => setForm((p) => ({ ...p, deliveryStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isEdit} />
-                  <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isEdit} />
+                  {!isPositionsMode && <TextField type="date" label={t('order_reserved_until')} value={form.reservationDate} onChange={(e) => setForm((p) => ({ ...p, reservationDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />}
+                  <TextField type="date" label={t('delivery_start')} value={form.deliveryStartDate} onChange={(e) => setForm((p) => ({ ...p, deliveryStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
+                  <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
                 </Box>
 
-                {isEdit ? (
+                {isPositionsMode ? (
                   <TextField label={t('supplier_select')} value={form.supplier} fullWidth disabled />
                 ) : (
                   <Autocomplete
@@ -492,7 +493,12 @@ export default function TempOrderForm() {
                     renderInput={(params) => <TextField {...params} label={t('supplier_select')} fullWidth />}
                   />
                 )}
-                <TextField label={t('delivery_type_label')} value={form.deliveryType} fullWidth disabled />
+                <TextField
+                  label={t('delivery_type_label')}
+                  value={form.deliveryType}
+                  onChange={(e) => setForm((p) => ({ ...p, deliveryType: e.target.value }))}
+                  fullWidth
+                />
                 <TextField
                   select
                   label={t('packaging_type_label')}
@@ -512,7 +518,7 @@ export default function TempOrderForm() {
               </>
             )}
 
-            {isCartCreate && (
+            {isPositionsMode && (
               <Box sx={{ mt: 1 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
                   {t('order_positions_count')}: {positions.length}
@@ -532,47 +538,14 @@ export default function TempOrderForm() {
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {x.article || '-'}
                       </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
-                      </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            )}
-
-            {isEdit && (
-              <Box sx={{ mt: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
-                  {t('order_positions_count')}: {positions.length}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {positions.map((x, idx) => (
-                    <Box
-                      key={`${x.id || x.beNumber || idx}-${idx}`}
-                      sx={{
-                        border: '1px solid rgba(0,0,0,0.12)',
-                        borderRadius: 1.5,
-                        p: 1.25,
-                        display: 'grid',
-                        gap: 0.25,
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                          {x.article || '-'}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => setPositions((prev) => prev.filter((_, i) => i !== idx))}
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => setPositions((prev) => prev.filter((_, i) => i !== idx))}
+                        sx={{ justifySelf: 'end' }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
                       <Typography variant="caption" sx={{ opacity: 0.75 }}>
                         {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                       </Typography>
