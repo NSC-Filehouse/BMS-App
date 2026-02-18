@@ -8,6 +8,8 @@ import {
   IconButton,
   InputAdornment,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -31,9 +33,11 @@ export default function OrdersList() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
+  const [scope, setScope] = React.useState('mine');
 
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
+  const scopeRef = React.useRef(scope);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
   React.useEffect(() => {
@@ -42,16 +46,20 @@ export default function OrdersList() {
   React.useEffect(() => {
     qRef.current = q;
   }, [q]);
+  React.useEffect(() => {
+    scopeRef.current = scope;
+  }, [scope]);
 
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
     const pageSize = PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
+    const scopeVal = opts.scope ?? scopeRef.current ?? 'mine';
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=au_Auftragsdatum&dir=DESC`);
+      const res = await apiRequest(`/orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&scope=${encodeURIComponent(scopeVal)}&sort=au_Auftragsdatum&dir=DESC`);
       const rows = res?.data || [];
       setItems(rows.slice(0, PAGE_SIZE));
       setMeta(res?.meta || { page, pageSize, total: null });
@@ -60,7 +68,7 @@ export default function OrdersList() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   React.useEffect(() => {
     if (hydratedFromStateRef.current) return;
@@ -70,14 +78,16 @@ export default function OrdersList() {
     if (listState && (listState.page || listState.q !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
+      const restoredScope = String(listState.scope || 'mine') === 'all' ? 'all' : 'mine';
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
-      load({ page: restoredPage, q: restoredQ });
+      setScope(restoredScope);
+      load({ page: restoredPage, q: restoredQ, scope: restoredScope });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
 
-    load({ page: 1, q: '' });
+    load({ page: 1, q: '', scope: 'mine' });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -88,11 +98,11 @@ export default function OrdersList() {
         return;
       }
       if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal });
+        load({ page: 1, q: qVal, scope });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, load]);
+  }, [q, scope, load]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -100,6 +110,20 @@ export default function OrdersList() {
         <Typography variant="h5" sx={{ mr: 1 }}>
           {t('orders_title')}
         </Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={scope}
+          onChange={(e, value) => {
+            if (!value) return;
+            setScope(value);
+            load({ page: 1, q, scope: value });
+          }}
+          sx={{ mr: 1 }}
+        >
+          <ToggleButton value="mine">{t('orders_scope_mine')}</ToggleButton>
+          <ToggleButton value="all">{t('orders_scope_all')}</ToggleButton>
+        </ToggleButtonGroup>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
@@ -172,7 +196,7 @@ export default function OrdersList() {
                 cursor: 'pointer',
               }}
               onClick={() => navigate(`/orders/${encodeURIComponent(row.id)}`, {
-                state: { fromOrders: { page: meta.page || 1, q } },
+                state: { fromOrders: { page: meta.page || 1, q, scope } },
               })}
             >
               <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>

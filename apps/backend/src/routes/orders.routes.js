@@ -21,6 +21,10 @@ function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 }
 
+function normalizeScope(scope) {
+  return String(scope || '').toLowerCase() === 'all' ? 'all' : 'mine';
+}
+
 function normalizeTotal(rows) {
   const row = Array.isArray(rows) ? rows[0] : rows;
   if (!row || typeof row !== 'object') return null;
@@ -68,20 +72,24 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
 
   const safeSort = resolveSort(sort);
   const safeDir = normalizeDir(dir);
+  const scope = normalizeScope(req.query?.scope);
   const { whereSql, params } = buildWhereClause(q);
   const offset = (page - 1) * pageSize;
+  const scopeWhere = scope === 'mine' ? 'AND LOWER(COALESCE(r.[bePR_reserviertVon], \'\')) = ?' : '';
+  const scopeParams = scope === 'mine' ? [userShortCode.toLowerCase()] : [];
 
   const fromSql = `
     FROM [dbo].[tblBest_Pos_Reserviert] AS r
     LEFT JOIN ${VIEW_SQL} AS v
       ON COALESCE(v.[Bestell-Pos], '') = COALESCE(r.[bePR_BEposID], '')
      AND COALESCE(v.[bePL_LagerID], '') = COALESCE(r.[bePR_LagerID], '')
-    WHERE LOWER(COALESCE(r.[bePR_reserviertVon], '')) = ?
+    WHERE 1 = 1
+    ${scopeWhere}
     ${whereSql}
   `;
 
   const countSql = `SELECT COUNT(*) AS total ${fromSql}`;
-  const totalRows = await runSQLQueryAccess(req.database, countSql, [userShortCode.toLowerCase(), ...params]);
+  const totalRows = await runSQLQueryAccess(req.database, countSql, [...scopeParams, ...params]);
   const total = normalizeTotal(totalRows);
 
   const dataSql = `
@@ -89,6 +97,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
       r.[bePR_BEposID] AS beNumber,
       r.[bePR_LagerID] AS warehouseId,
       COALESCE(v.[Artikel], r.[bePR_BEposID]) AS clientName,
+      r.[bePR_reserviertVon] AS reservedBy,
       r.[bePR_Anzahl] AS reserveAmount,
       r.[bePR_gueltigBis] AS reservationDate,
       r.[bePR_gueltigBis] AS createdAt
@@ -96,7 +105,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
-  const rows = await runSQLQueryAccess(req.database, dataSql, [userShortCode.toLowerCase(), ...params, offset, pageSize]);
+  const rows = await runSQLQueryAccess(req.database, dataSql, [...scopeParams, ...params, offset, pageSize]);
   const data = (rows || []).map((row) => {
     const beNumber = row.beNumber || null;
     const warehouseId = row.warehouseId || null;
@@ -104,6 +113,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
       id: buildReservationId(beNumber, warehouseId),
       orderNumber: beNumber,
       clientName: row.clientName || beNumber,
+      reservedBy: row.reservedBy || null,
       reserveAmount: row.reserveAmount,
       reservationDate: row.reservationDate,
       createdAt: row.createdAt,
@@ -120,6 +130,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
       count: data.length,
       total,
       q,
+      scope,
       sort: String(sort || 'createdAt'),
       dir: safeDir,
     },
@@ -157,12 +168,10 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       ON COALESCE(v.[Bestell-Pos], '') = COALESCE(r.[bePR_BEposID], '')
      AND COALESCE(v.[bePL_LagerID], '') = COALESCE(r.[bePR_LagerID], '')
     WHERE r.[bePR_BEposID] = ? AND r.[bePR_LagerID] = ?
-      AND LOWER(COALESCE(r.[bePR_reserviertVon], '')) = ?
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [
     parsedId.beNumber,
     parsedId.warehouseId,
-    userShortCode.toLowerCase(),
   ]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
@@ -186,6 +195,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     comment: row.comment || null,
     unit: row.unit || null,
     warehouseId: row.warehouseId || null,
+    canEdit: String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase(),
   };
 
   sendEnvelope(res, {

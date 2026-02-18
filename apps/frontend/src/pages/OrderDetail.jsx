@@ -92,6 +92,7 @@ export default function OrderDetail() {
 
   const mandant = getMandant();
   const isReserved = Boolean(item?.isReserved);
+  const canEdit = Boolean(item?.canEdit);
   const handleBack = React.useCallback(() => {
     const fromOrders = location.state?.fromOrders;
     if (fromOrders) {
@@ -126,34 +127,38 @@ export default function OrderDetail() {
           <CardContent sx={{ pt: 2 }}>
             {item?.isReserved && (
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setEditAmount(String(item.reserveAmount || ''));
-                    setEditDate(item.reservationDate ? String(item.reservationDate).slice(0, 10) : '');
-                    setEditComment(item.comment || '');
-                    setEditOpen(true);
-                  }}
-                >
-                  {t('reservation_edit')}
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={async () => {
-                    try {
-                      setError('');
-                      setSuccess('');
-                      await apiRequest(`/orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
-                      setSuccess(t('reservation_deleted'));
-                      navigate('/orders');
-                    } catch (e) {
-                      setError(e?.message || t('loading_error'));
-                    }
-                  }}
-                >
-                  {t('reservation_delete')}
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setEditAmount(String(item.reserveAmount || ''));
+                      setEditDate(item.reservationDate ? String(item.reservationDate).slice(0, 10) : '');
+                      setEditComment(item.comment || '');
+                      setEditOpen(true);
+                    }}
+                  >
+                    {t('reservation_edit')}
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={async () => {
+                      try {
+                        setError('');
+                        setSuccess('');
+                        await apiRequest(`/orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                        setSuccess(t('reservation_deleted'));
+                        navigate('/orders');
+                      } catch (e) {
+                        setError(e?.message || t('loading_error'));
+                      }
+                    }}
+                  >
+                    {t('reservation_delete')}
+                  </Button>
+                )}
                 <Button
                   variant="outlined"
                   onClick={() => navigate('/temp-orders/new', {
