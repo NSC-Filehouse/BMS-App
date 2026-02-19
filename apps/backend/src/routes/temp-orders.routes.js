@@ -114,6 +114,8 @@ function normalizePositionsInput(body) {
     warehouseId: body?.warehouseId,
     amountInKg: body?.amountInKg,
     pricePerKg: body?.pricePerKg,
+    salePricePerKg: body?.salePricePerKg,
+    costPricePerKg: body?.costPricePerKg,
     reservationInKg: body?.reservationInKg,
     reservationDate: body?.reservationDate,
   }];
@@ -303,6 +305,7 @@ async function loadOrderPositions(orderId) {
     const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
     const cWarehouse = resolveColumn(cols, ['tap_warehouse', 'taP_warehouse', 'warehouse']);
     const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
+    const cEp = resolveColumn(cols, ['tap_ep', 'taP_ep', 'ep']);
     const cReservationInKg = resolveColumn(cols, ['tap_reservation_in_kg', 'taP_reservation_in_kg', 'reservation_in_kg']);
     const cReservationDate = resolveColumn(cols, ['tap_reservation_date', 'taP_reservation_date', 'reservation_date']);
     const cAbout = resolveColumn(cols, ['tap_about', 'taP_about', 'about']);
@@ -319,6 +322,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cAmount, 'amountInKg')},
         ${pick(cWarehouse, 'warehouse')},
         ${pick(cPrice, 'price')},
+        ${pick(cEp, 'costPrice')},
         ${pick(cReservationInKg, 'reservationInKg')},
         ${pick(cReservationDate, 'reservationDate')},
         ${pick(cAbout, 'about')},
@@ -570,11 +574,12 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     const beNumber = asText(raw?.beNumber);
     const warehouseId = asText(raw?.warehouseId);
     const amountInKg = asInt(raw?.amountInKg, 0);
-    const pricePerKg = asInt(raw?.pricePerKg, 0);
+    const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
+    const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
     }
-    if (amountInKg <= 0 || pricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     const reservationInKg = raw?.reservationInKg !== undefined && raw?.reservationInKg !== null && raw?.reservationInKg !== ''
@@ -588,7 +593,8 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       beNumber,
       warehouseId,
       amountInKg,
-      pricePerKg,
+      salePricePerKg,
+      costPricePerKg,
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
     });
@@ -659,10 +665,10 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
-        [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
+        [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -672,7 +678,8 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         posCtx.article,
         pos.amountInKg,
         pos.warehouseId,
-        pos.pricePerKg,
+        pos.salePricePerKg,
+        pos.costPricePerKg,
         pos.reservationInKg,
         pos.reservationDate,
         posCtx.about || null,
@@ -751,11 +758,12 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     const beNumber = asText(raw?.beNumber);
     const warehouseId = asText(raw?.warehouseId);
     const amountInKg = asInt(raw?.amountInKg, 0);
-    const pricePerKg = asInt(raw?.pricePerKg, 0);
+    const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
+    const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
     }
-    if (amountInKg <= 0 || pricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     const reservationInKg = raw?.reservationInKg !== undefined && raw?.reservationInKg !== null && raw?.reservationInKg !== ''
@@ -769,7 +777,8 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       beNumber,
       warehouseId,
       amountInKg,
-      pricePerKg,
+      salePricePerKg,
+      costPricePerKg,
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
     });
@@ -842,10 +851,10 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
-        [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
+        [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -854,7 +863,8 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       posCtx.article,
       pos.amountInKg,
       pos.warehouseId,
-      pos.pricePerKg,
+      pos.salePricePerKg,
+      pos.costPricePerKg,
       pos.reservationInKg,
       pos.reservationDate,
       posCtx.about || null,

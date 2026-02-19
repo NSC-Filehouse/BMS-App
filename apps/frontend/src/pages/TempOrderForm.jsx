@@ -104,6 +104,7 @@ export default function TempOrderForm() {
   const [addPosOptions, setAddPosOptions] = React.useState([]);
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
+  const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -185,6 +186,7 @@ export default function TempOrderForm() {
             article: p.article,
             amountInKg: p.amountInKg,
             price: p.price,
+            costPrice: p.costPrice ?? null,
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
           })));
@@ -205,7 +207,8 @@ export default function TempOrderForm() {
             warehouseId: x.warehouseId,
             article: x.article,
             amountInKg: x.amountInKg,
-            price: x.price,
+            price: x.salePrice ?? x.price,
+            costPrice: x.costPrice ?? x.price,
             reservationInKg: null,
             reservationDate: null,
           })));
@@ -455,14 +458,16 @@ export default function TempOrderForm() {
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           amountInKg: Number(x.amountInKg),
-          pricePerKg: Number(x.price),
+          salePricePerKg: Number(x.price),
+          costPricePerKg: Number(x.costPrice ?? x.price),
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
         }));
         payload.beNumber = payload.positions[0].beNumber;
         payload.warehouseId = payload.positions[0].warehouseId;
         payload.amountInKg = payload.positions[0].amountInKg;
-        payload.pricePerKg = payload.positions[0].pricePerKg;
+        payload.salePricePerKg = payload.positions[0].salePricePerKg;
+        payload.costPricePerKg = payload.positions[0].costPricePerKg;
         payload.reservationInKg = payload.positions[0].reservationInKg;
         payload.reservationDate = payload.positions[0].reservationDate;
       }
@@ -607,6 +612,7 @@ export default function TempOrderForm() {
                         setAddPosOptions([]);
                         setAddPosProduct(null);
                         setAddPosQty('');
+                        setAddPosSalePrice('');
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -640,7 +646,7 @@ export default function TempOrderForm() {
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                       <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
+                        {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('order_sale_price')}: {x.price ?? '-'} | {t('product_price')}: {x.costPrice ?? '-'}
                       </Typography>
                     </Box>
                   ))}
@@ -733,6 +739,14 @@ export default function TempOrderForm() {
             inputProps={{ min: 1, step: 'any' }}
             fullWidth
           />
+          <TextField
+            type="number"
+            label={t('order_sale_price')}
+            value={addPosSalePrice}
+            onChange={(e) => setAddPosSalePrice(e.target.value)}
+            inputProps={{ min: 0.01, step: 'any' }}
+            fullWidth
+          />
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             {addPosAvailableAmount === null
               ? `${t('product_available_now')}: -`
@@ -745,6 +759,7 @@ export default function TempOrderForm() {
             variant="contained"
             onClick={() => {
               const qty = Number(addPosQty);
+              const salePrice = Number(addPosSalePrice);
               const product = addPosProduct;
               if (!product) {
                 setError(t('validation_product_required'));
@@ -759,6 +774,10 @@ export default function TempOrderForm() {
                 setError(t('validation_price_positive'));
                 return;
               }
+              if (!Number.isFinite(salePrice) || salePrice <= 0) {
+                setError(t('validation_sale_price_positive'));
+                return;
+              }
               setPositions((prev) => ([
                 ...prev,
                 {
@@ -767,7 +786,8 @@ export default function TempOrderForm() {
                   warehouseId: String(product.storageId || '').trim(),
                   article: product.article,
                   amountInKg: qty,
-                  price,
+                  price: salePrice,
+                  costPrice: price,
                   reservationInKg: null,
                   reservationDate: null,
                 },

@@ -151,7 +151,7 @@ export default function TempOrderDetail() {
                     {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                    {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('product_price')}: {formatPrice(pos.price)}
+                    {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('order_sale_price')}: {formatPrice(pos.price)} | {t('product_price')}: {formatPrice(pos.costPrice)}
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
                     {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}

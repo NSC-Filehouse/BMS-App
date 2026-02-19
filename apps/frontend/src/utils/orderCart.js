@@ -52,6 +52,17 @@ export function updateOrderCartQuantity(productId, quantityKg) {
   return next;
 }
 
+export function updateOrderCartSalePrice(productId, salePrice) {
+  const price = Number(salePrice);
+  const next = read().map((x) => (
+    String(x.id || '') === String(productId || '')
+      ? { ...x, salePrice: Number.isFinite(price) ? price : x.salePrice }
+      : x
+  ));
+  write(next);
+  return next;
+}
+
 export function addOrderCartItem(item, quantityKg) {
   const qty = Number(quantityKg);
   if (!item || !Number.isFinite(qty) || qty <= 0) return read();
@@ -67,6 +78,7 @@ export function addOrderCartItem(item, quantityKg) {
     availableAmount: Number(item.amount || 0) - Number(item.reserved || 0),
     amountTotal: item.amount ?? null,
     acquisitionPrice: item.acquisitionPrice ?? null,
+    salePrice: item.acquisitionPrice ?? null,
     quantityKg: qty,
   };
   if (idx >= 0) {

@@ -17,6 +17,7 @@ import {
   getOrderCartItems,
   removeOrderCartItem,
   updateOrderCartQuantity,
+  updateOrderCartSalePrice,
 } from '../utils/orderCart.js';
 
 function formatPrice(value) {
@@ -42,6 +43,17 @@ export default function OrderCart() {
     }
   };
 
+  const onSalePriceChange = (id, value) => {
+    const price = Number(value);
+    if (Number.isFinite(price) && price > 0) {
+      setItems(updateOrderCartSalePrice(id, price));
+    } else {
+      setItems((prev) => prev.map((x) => (
+        String(x.id) === String(id) ? { ...x, salePrice: value } : x
+      )));
+    }
+  };
+
   const validate = () => {
     const messages = [];
     for (const x of items) {
@@ -53,6 +65,10 @@ export default function OrderCart() {
       const available = Number(x.availableAmount);
       if (Number.isFinite(available) && qty > available) {
         messages.push(`${x.article || x.beNumber}: ${t('validation_cart_quantity_not_above_available')}`);
+      }
+      const salePrice = Number(x.salePrice);
+      if (!Number.isFinite(salePrice) || salePrice <= 0) {
+        messages.push(`${x.article || x.beNumber}: ${t('validation_sale_price_positive')}`);
       }
     }
     return messages;
@@ -99,6 +115,14 @@ export default function OrderCart() {
                   inputProps={{ min: 1, step: 'any' }}
                   size="small"
                 />
+                <TextField
+                  type="number"
+                  label={t('order_sale_price')}
+                  value={row.salePrice ?? ''}
+                  onChange={(e) => onSalePriceChange(row.id, e.target.value)}
+                  inputProps={{ min: 0.01, step: 'any' }}
+                  size="small"
+                />
               </CardContent>
             </Card>
           ))}
@@ -120,7 +144,8 @@ export default function OrderCart() {
                       beNumber: x.beNumber,
                       warehouseId: x.warehouseId,
                       amountInKg: Number(x.quantityKg),
-                      price: x.acquisitionPrice,
+                      salePrice: Number(x.salePrice),
+                      costPrice: Number(x.acquisitionPrice),
                     })),
                   },
                 });
