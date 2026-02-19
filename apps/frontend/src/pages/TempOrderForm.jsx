@@ -695,12 +695,19 @@ export default function TempOrderForm() {
                   display: 'flex !important',
                   flexDirection: 'column',
                   alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
                   gap: 0.1,
+                  width: '100%',
+                  textAlign: 'left',
                 }}
               >
-                <Typography variant="body2">{String(option?.article || '')}</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {`${String(option?.warehouse || '-')}; ${option?.amount ?? '-'} ${String(option?.unit || 'kg')}`}
+                <Typography variant="body2" sx={{ width: '100%', textAlign: 'left' }}>
+                  {String(option?.article || '')}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', width: '100%', textAlign: 'left' }}>
+                  {`${String(option?.warehouse || '-')}; ${option?.amount ?? '-'} ${String(option?.unit || 'kg')}; ${Number.isFinite(Number(option?.acquisitionPrice))
+                    ? Number(option.acquisitionPrice).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : '-'} EUR`}
                 </Typography>
               </Box>
             )}
