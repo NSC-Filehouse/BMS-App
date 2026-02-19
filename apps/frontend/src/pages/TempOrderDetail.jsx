@@ -112,6 +112,12 @@ export default function TempOrderDetail() {
             <InfoRow label={t('product_supplier')} value={item.distributor} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType} />
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
+            {item.specialPaymentCondition && (
+              <InfoRow
+                label={t('special_payment_text_label')}
+                value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
+              />
+            )}
             <InfoRow label={t('order_comment')} value={item.comment} />
             <InfoRow label={t('delivery_start')} value={formatDateOnly(item.deliveryStartDate)} />
             <InfoRow label={t('delivery_end')} value={formatDateOnly(item.deliveryEndDate)} />

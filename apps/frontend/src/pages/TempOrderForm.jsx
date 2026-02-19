@@ -99,6 +99,7 @@ export default function TempOrderForm() {
   const [productOptions, setProductOptions] = React.useState([]);
   const [selectedProduct, setSelectedProduct] = React.useState(null);
   const [positions, setPositions] = React.useState([]);
+  const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -112,6 +113,8 @@ export default function TempOrderForm() {
     clientAddress: '',
     clientRepresentative: '',
     specialPaymentCondition: false,
+    specialPaymentText: '',
+    specialPaymentId: '',
     comment: '',
     supplier: '',
     packagingType: '',
@@ -140,6 +143,8 @@ export default function TempOrderForm() {
             clientAddress: d.clientAddress || '',
             clientRepresentative: d.clientRepresentative || '',
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
+            specialPaymentText: d.specialPaymentText || '',
+            specialPaymentId: d.specialPaymentId ?? '',
             comment: d.comment || '',
             supplier: d.distributor || '',
             packagingType: d.packagingType || '',
@@ -203,6 +208,22 @@ export default function TempOrderForm() {
     run();
     return () => { alive = false; };
   }, [id, isEdit, source, sourceItems, t]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      try {
+        const res = await apiRequest('/temp-orders/payment-texts');
+        if (!alive) return;
+        setPaymentTextOptions(Array.isArray(res?.data) ? res.data : []);
+      } catch {
+        if (!alive) return;
+        setPaymentTextOptions([]);
+      }
+    };
+    run();
+    return () => { alive = false; };
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -337,6 +358,9 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
+    if (form.specialPaymentCondition && !Number(form.specialPaymentId)) {
+      messages.push(t('validation_special_payment_text_required'));
+    }
 
     if (!isPositionsMode) {
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -389,6 +413,8 @@ export default function TempOrderForm() {
         clientAddress: form.clientAddress,
         clientRepresentative: form.clientRepresentative || null,
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
+        specialPaymentText: form.specialPaymentText || null,
+        specialPaymentId: form.specialPaymentId === '' ? null : Number(form.specialPaymentId),
         comment: form.comment || null,
         supplier: form.supplier || null,
         packagingType: form.packagingType || '',
@@ -502,9 +528,34 @@ export default function TempOrderForm() {
                   ))}
                 </TextField>
                 <FormControlLabel
-                  control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({ ...p, specialPaymentCondition: e.target.checked }))} />}
+                  control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({
+                    ...p,
+                    specialPaymentCondition: e.target.checked,
+                    ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
+                  }))} />}
                   label={t('special_payment_condition')}
                 />
+                {Boolean(form.specialPaymentCondition) && (
+                  <TextField
+                    select
+                    label={t('special_payment_text_label')}
+                    value={form.specialPaymentId}
+                    onChange={(e) => {
+                      const selectedId = Number(e.target.value);
+                      const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
+                      setForm((p) => ({
+                        ...p,
+                        specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
+                        specialPaymentText: selected?.text || '',
+                      }));
+                    }}
+                    fullWidth
+                  >
+                    {paymentTextOptions.map((x) => (
+                      <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
               </>
             )}

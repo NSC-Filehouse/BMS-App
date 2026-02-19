@@ -29,6 +29,11 @@ function asInt(value, fallback = 0) {
   return Math.round(n);
 }
 
+function resolveLang(req) {
+  const raw = String(req?.header?.('x-lang') || '').trim().toLowerCase();
+  return raw === 'en' ? 'en' : 'de';
+}
+
 function normalizeTotal(rows) {
   const row = Array.isArray(rows) ? rows[0] : rows;
   if (!row || typeof row !== 'object') return null;
@@ -56,6 +61,8 @@ function mapTempOrderRow(row) {
     clientAddress: row.ta_client_address,
     clientRepresentative: row.ta_client_representative,
     specialPaymentCondition: Boolean(row.ta_special_payment_condition),
+    specialPaymentText: asText(row.ta_special_payment_text),
+    specialPaymentId: row.ta_special_payment_id === null || row.ta_special_payment_id === undefined ? null : Number(row.ta_special_payment_id),
     comment: row.ta_comment,
     deliveryType: row.ta_delivery_type,
     packagingType: row.ta_packaging_type,
@@ -164,6 +171,41 @@ async function loadDeliveryType(database, beNumber) {
   return loadPackagingType(database, beNumber);
 }
 
+async function loadPaymentTexts(lang) {
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const sql = `
+    SELECT [zaS_ID] AS id, [zaS_Zahl_Text] AS text
+    FROM [dbo].[tblZahltext_Sprachen]
+    WHERE LOWER(COALESCE([zaS_SprachID], '')) = ?
+      AND COALESCE([zaS_Zahl_Text], '') <> ''
+    ORDER BY [zaS_Zahl_Text] ASC
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [safeLang]);
+  return (Array.isArray(rows) ? rows : []).map((r) => ({
+    id: Number(r.id),
+    text: asText(r.text),
+  })).filter((x) => Number.isFinite(x.id) && x.id > 0 && x.text);
+}
+
+async function loadPaymentTextById(paymentId, lang) {
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const id = asInt(paymentId, 0);
+  if (!id) return null;
+  const sql = `
+    SELECT TOP 1 [zaS_ID] AS id, [zaS_Zahl_Text] AS text
+    FROM [dbo].[tblZahltext_Sprachen]
+    WHERE [zaS_ID] = ?
+      AND LOWER(COALESCE([zaS_SprachID], '')) = ?
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, safeLang]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    text: asText(row.text),
+  };
+}
+
 async function loadOrderPositions(orderId) {
   try {
     const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
@@ -232,6 +274,17 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
       deliveryType,
     },
     meta: { mandant: req.mandant },
+    error: null,
+  });
+}));
+
+router.get('/temp-orders/payment-texts', requireMandant, asyncHandler(async (req, res) => {
+  const lang = resolveLang(req);
+  const data = await loadPaymentTexts(lang);
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, lang },
     error: null,
   });
 }));
@@ -373,8 +426,18 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
   const supplier = asText(req.body?.supplier);
+  const specialPaymentConditionBit = asBit(req.body?.specialPaymentCondition, 0);
+  const specialPaymentIdInput = req.body?.specialPaymentId;
+  const lang = resolveLang(req);
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
+  }
+  let specialPayment = null;
+  if (specialPaymentConditionBit) {
+    specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
+    if (!specialPayment) {
+      throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
   }
 
   const normalizedPositions = [];
@@ -426,12 +489,12 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [ta_company_id], [ta_ClientReferenceId], [ta_distributor], [ta_distributorLogo], [ta_be_number], [ta_article],
       [ta_amount_in_kg], [ta_warehouse], [ta_price], [ta_reservation_in_kg], [ta_reservation_date], [ta_about],
       [ta_packaging], [ta_mfi], [ta_client_name], [ta_client_address], [ta_client_representative],
-      [ta_special_payment_condition], [ta_comment], [ta_delivery_type], [ta_packaging_type],
+      [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_comment], [ta_delivery_type], [ta_packaging_type],
       [ta_delivery_start_date], [ta_delivery_end_date], [ta_completed], [ta_closing_date],
       [ta_CreatedBy], [ta_CreateDate], [ta_LastModifiedBy], [ta_LastModifiedDate],
       [ta_PassedTo], [ta_ReceivedFrom], [ta_PassedToUserId], [ta_ReceivedFromUserId], [ta_IsConfirmed]
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   await runSQLQuerySqlServer(config.sql.database, sql, [
     companyId,
@@ -451,7 +514,9 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientName,
     clientAddress,
     clientRepresentative || null,
-    asBit(req.body?.specialPaymentCondition, 0),
+    specialPaymentConditionBit,
+    specialPayment?.text || null,
+    specialPayment?.id || null,
     asText(req.body?.comment) || null,
     deliveryType,
     packagingType,
@@ -552,9 +617,19 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const supplier = asText(req.body?.supplier);
   const deliveryStartDate = new Date(req.body?.deliveryStartDate);
   const deliveryEndDate = new Date(req.body?.deliveryEndDate);
+  const specialPaymentConditionBit = asBit(req.body?.specialPaymentCondition, 0);
+  const specialPaymentIdInput = req.body?.specialPaymentId;
+  const lang = resolveLang(req);
 
   if (!clientReferenceId || !clientName || !clientAddress || Number.isNaN(deliveryStartDate.getTime()) || Number.isNaN(deliveryEndDate.getTime())) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+  }
+  let specialPayment = null;
+  if (specialPaymentConditionBit) {
+    specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
+    if (!specialPayment) {
+      throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
   }
 
   const positionsInput = normalizePositionsInput(req.body);
@@ -625,6 +700,8 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [ta_client_address] = ?,
         [ta_client_representative] = ?,
         [ta_special_payment_condition] = ?,
+        [ta_special_payment_text] = ?,
+        [ta_special_payment_id] = ?,
         [ta_comment] = ?,
         [ta_distributor] = ?,
         [ta_delivery_type] = ?,
@@ -651,7 +728,9 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     clientName,
     clientAddress,
     clientRepresentative || null,
-    asBit(req.body?.specialPaymentCondition, 0),
+    specialPaymentConditionBit,
+    specialPayment?.text || null,
+    specialPayment?.id || null,
     asText(req.body?.comment) || null,
     supplier || req.mandant,
     deliveryType,
