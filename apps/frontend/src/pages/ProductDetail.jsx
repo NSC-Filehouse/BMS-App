@@ -70,6 +70,8 @@ export default function ProductDetail() {
   const [cartOpen, setCartOpen] = React.useState(false);
   const [cartQty, setCartQty] = React.useState('');
   const [cartSuccess, setCartSuccess] = React.useState('');
+  const [wpzExists, setWpzExists] = React.useState(false);
+  const [wpzLoading, setWpzLoading] = React.useState(false);
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
@@ -91,12 +93,23 @@ export default function ProductDetail() {
       try {
         setLoading(true);
         setError('');
+        setWpzLoading(true);
+        setWpzExists(false);
         const res = await apiRequest(`/products/${encodeURIComponent(id)}`);
         if (!alive) return;
         const baseItem = res?.data || null;
         if (!baseItem) {
           setItem(null);
+          setWpzLoading(false);
           return;
+        }
+        try {
+          const wpzRes = await apiRequest(`/products/${encodeURIComponent(id)}/wpz`);
+          if (alive) setWpzExists(Boolean(wpzRes?.data?.exists));
+        } catch {
+          if (alive) setWpzExists(false);
+        } finally {
+          if (alive) setWpzLoading(false);
         }
         try {
           const metaRes = await apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(baseItem.beNumber || '')}`);
@@ -108,6 +121,7 @@ export default function ProductDetail() {
       } catch (e) {
         if (!alive) return;
         setError(e?.message || t('loading_error'));
+        setWpzLoading(false);
       } finally {
         if (alive) setLoading(false);
       }
@@ -208,6 +222,23 @@ export default function ProductDetail() {
             <InfoRow label={t('product_mfi')} value={item.mfi} />
             <InfoRow label={t('product_mfi_measured')} value={item.mfiMeasured} />
             <InfoRow label={t('product_mfi_method')} value={item.mfiTestMethod} />
+            <InfoRow
+              label={t('wpz_label')}
+              value={
+                wpzLoading ? t('products_loading_items') : (
+                  wpzExists ? (
+                    <Button
+                      size="small"
+                      onClick={() => navigate(`/products/${encodeURIComponent(id)}/wpz`, {
+                        state: { fromProduct: { fromProducts: location.state?.fromProducts || null } },
+                      })}
+                    >
+                      {t('wpz_available')}
+                    </Button>
+                  ) : t('wpz_not_available')
+                )
+              }
+            />
             <Divider sx={{ my: 2 }} />
             <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
             <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />

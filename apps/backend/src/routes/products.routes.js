@@ -229,6 +229,49 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
   });
 }));
 
+router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  const key = parseProductId(id);
+  const beNumber = asText(key.beNumber);
+  if (!beNumber) {
+    throw createHttpError(400, `Invalid product id for WPZ: ${id}`, { code: 'PRODUCT_NOT_FOUND', id });
+  }
+
+  const sql = `
+    SELECT TOP 1 *
+    FROM [dbo].[tblBest_Pos_WPZ]
+    WHERE COALESCE([bePZ_BEposID], '') = ?
+    ORDER BY [bePZ_ID] DESC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [beNumber]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+
+  if (!row) {
+    sendEnvelope(res, {
+      status: 200,
+      data: { exists: false, beNumber, fields: [] },
+      meta: { mandant: req.mandant, idField: 'id', id },
+      error: null,
+    });
+    return;
+  }
+
+  const excluded = new Set(['bepz_id', 'ssma_timestamp']);
+  const fields = Object.keys(row)
+    .filter((k) => !excluded.has(String(k || '').toLowerCase()))
+    .map((k) => ({
+      key: k,
+      value: row[k] === undefined ? null : row[k],
+    }));
+
+  sendEnvelope(res, {
+    status: 200,
+    data: { exists: true, beNumber, fields },
+    meta: { mandant: req.mandant, idField: 'id', id },
+    error: null,
+  });
+}));
+
 router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = String(userIdentity.shortCode || '').trim();

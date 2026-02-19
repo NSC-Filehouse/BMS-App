@@ -12,6 +12,7 @@ import CustomerDetail from './pages/CustomerDetail.jsx';
 
 import ProductsList from './pages/ProductsList.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
+import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
@@ -60,6 +61,14 @@ export default function App() {
           element={
             <MandantGuard>
               <ProductDetail />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/products/:id/wpz"
+          element={
+            <MandantGuard>
+              <ProductWpzDetail />
             </MandantGuard>
           }
         />
