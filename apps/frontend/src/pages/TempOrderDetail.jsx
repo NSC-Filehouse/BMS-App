@@ -110,6 +110,7 @@ export default function TempOrderDetail() {
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
             <InfoRow label={t('product_supplier')} value={item.distributor} />
+            <InfoRow label={t('incoterm_label')} value={item.incotermText || item.deliveryType || ''} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType} />
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
             {item.specialPaymentCondition && (

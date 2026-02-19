@@ -100,6 +100,7 @@ export default function TempOrderForm() {
   const [selectedProduct, setSelectedProduct] = React.useState(null);
   const [positions, setPositions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
+  const [incotermOptions, setIncotermOptions] = React.useState([]);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -115,6 +116,8 @@ export default function TempOrderForm() {
     specialPaymentCondition: false,
     specialPaymentText: '',
     specialPaymentId: '',
+    incotermText: '',
+    incotermId: '',
     comment: '',
     supplier: '',
     packagingType: '',
@@ -145,6 +148,8 @@ export default function TempOrderForm() {
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
             specialPaymentText: d.specialPaymentText || '',
             specialPaymentId: d.specialPaymentId ?? '',
+            incotermText: d.incotermText || d.deliveryType || '',
+            incotermId: d.incotermId ?? d.deliveryTypeId ?? '',
             comment: d.comment || '',
             supplier: d.distributor || '',
             packagingType: d.packagingType || '',
@@ -219,6 +224,22 @@ export default function TempOrderForm() {
       } catch {
         if (!alive) return;
         setPaymentTextOptions([]);
+      }
+    };
+    run();
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      try {
+        const res = await apiRequest('/temp-orders/incoterms');
+        if (!alive) return;
+        setIncotermOptions(Array.isArray(res?.data) ? res.data : []);
+      } catch {
+        if (!alive) return;
+        setIncotermOptions([]);
       }
     };
     run();
@@ -415,6 +436,8 @@ export default function TempOrderForm() {
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
         specialPaymentText: form.specialPaymentText || null,
         specialPaymentId: form.specialPaymentId === '' ? null : Number(form.specialPaymentId),
+        incotermText: form.incotermText || null,
+        incotermId: form.incotermId === '' ? null : Number(form.incotermId),
         comment: form.comment || null,
         supplier: form.supplier || null,
         packagingType: form.packagingType || '',
@@ -516,6 +539,25 @@ export default function TempOrderForm() {
                   <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
                 </Box>
 
+                <TextField
+                  select
+                  label={t('incoterm_label')}
+                  value={form.incotermId}
+                  onChange={(e) => {
+                    const selectedId = Number(e.target.value);
+                    const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
+                    setForm((p) => ({
+                      ...p,
+                      incotermId: Number.isFinite(selectedId) ? selectedId : '',
+                      incotermText: selected?.text || '',
+                    }));
+                  }}
+                  fullWidth
+                >
+                  {incotermOptions.map((x) => (
+                    <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   select
                   label={t('packaging_type_label')}
