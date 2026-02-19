@@ -71,6 +71,8 @@ export default function TempOrderForm() {
   const [success, setSuccess] = React.useState('');
   const [validationOpen, setValidationOpen] = React.useState(false);
   const [validationMessages, setValidationMessages] = React.useState([]);
+  const [deleteLastConfirmOpen, setDeleteLastConfirmOpen] = React.useState(false);
+  const [deletingOrder, setDeletingOrder] = React.useState(false);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
@@ -312,6 +314,33 @@ export default function TempOrderForm() {
     setForm((prev) => ({ ...prev, supplier: supplierName }));
   };
 
+  const deleteOrder = React.useCallback(async () => {
+    if (!isEdit || !id) return;
+    try {
+      setDeletingOrder(true);
+      setError('');
+      setSuccess('');
+      await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setSuccess(t('temp_order_deleted'));
+      navigate('/temp-orders');
+    } catch (e) {
+      setError(e?.message || t('loading_error'));
+    } finally {
+      setDeletingOrder(false);
+      setDeleteLastConfirmOpen(false);
+    }
+  }, [id, isEdit, navigate, t]);
+
+  const onRemovePosition = React.useCallback((idx) => {
+    if (!Array.isArray(positions) || idx < 0 || idx >= positions.length) return;
+    const isLastPosition = positions.length === 1;
+    if (isLastPosition && isEdit) {
+      setDeleteLastConfirmOpen(true);
+      return;
+    }
+    setPositions((prev) => prev.filter((_, i) => i !== idx));
+  }, [isEdit, positions]);
+
   const submit = async () => {
     const messages = [];
     const amount = Number(form.amountInKg);
@@ -532,7 +561,7 @@ export default function TempOrderForm() {
                       <IconButton
                         size="small"
                         color="error"
-                        onClick={() => setPositions((prev) => prev.filter((_, i) => i !== idx))}
+                        onClick={() => onRemovePosition(idx)}
                         sx={{ justifySelf: 'end' }}
                       >
                         <DeleteOutlineIcon fontSize="small" />
@@ -553,7 +582,7 @@ export default function TempOrderForm() {
             )}
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={submit} disabled={saving}>
+              <Button variant="contained" onClick={submit} disabled={saving || deletingOrder}>
                 {t('save_label')}
               </Button>
             </Box>
@@ -574,6 +603,21 @@ export default function TempOrderForm() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setValidationOpen(false)}>{t('back_label')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteLastConfirmOpen} onClose={() => (!deletingOrder ? setDeleteLastConfirmOpen(false) : undefined)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('temp_order_delete_last_position_title')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {t('temp_order_delete_last_position_text')}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteLastConfirmOpen(false)} disabled={deletingOrder}>{t('back_label')}</Button>
+          <Button color="error" variant="contained" onClick={deleteOrder} disabled={deletingOrder}>
+            {t('delete_label')}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
