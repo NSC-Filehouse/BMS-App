@@ -109,7 +109,6 @@ export default function TempOrderDetail() {
             <InfoRow label={t('customer_select')} value={item.clientName} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
-            <InfoRow label={t('product_supplier')} value={item.distributor} />
             <InfoRow label={t('incoterm_label')} value={item.incotermText || item.deliveryType || ''} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType} />
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
@@ -119,15 +118,14 @@ export default function TempOrderDetail() {
                 value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
               />
             )}
-            <InfoRow label={t('order_comment')} value={item.comment} />
             <InfoRow label={t('delivery_start')} value={formatDateOnly(item.deliveryStartDate)} />
             <InfoRow label={t('delivery_end')} value={formatDateOnly(item.deliveryEndDate)} />
-            <InfoRow label={t('order_closing')} value={formatDateOnly(item.closingDate)} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
             <InfoRow label={t('order_received_from')} value={item.receivedFrom} />
             <InfoRow label={t('order_completed')} value={item.completed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
+            <InfoRow label={t('order_comment')} value={item.comment} />
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" sx={{ mb: 1.25 }}>

@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -95,12 +96,14 @@ export default function TempOrderForm() {
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
-  const [productQuery, setProductQuery] = React.useState('');
-  const [productOptions, setProductOptions] = React.useState([]);
-  const [selectedProduct, setSelectedProduct] = React.useState(null);
   const [positions, setPositions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [incotermOptions, setIncotermOptions] = React.useState([]);
+  const [addPosOpen, setAddPosOpen] = React.useState(false);
+  const [addPosQuery, setAddPosQuery] = React.useState('');
+  const [addPosOptions, setAddPosOptions] = React.useState([]);
+  const [addPosProduct, setAddPosProduct] = React.useState(null);
+  const [addPosQty, setAddPosQty] = React.useState('');
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -266,22 +269,22 @@ export default function TempOrderForm() {
   }, [form.beNumber]);
 
   React.useEffect(() => {
-    if (isEdit || (source?.beNumber && source?.warehouseId)) return undefined;
+    if (!addPosOpen) return undefined;
     const h = setTimeout(async () => {
-      const q = productQuery.trim();
+      const q = addPosQuery.trim();
       if (!q) {
-        setProductOptions([]);
+        setAddPosOptions([]);
         return;
       }
       try {
         const res = await apiRequest(`/products?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=article&dir=ASC`);
-        setProductOptions(res?.data || []);
+        setAddPosOptions(res?.data || []);
       } catch {
-        setProductOptions([]);
+        setAddPosOptions([]);
       }
     }, 300);
     return () => clearTimeout(h);
-  }, [isEdit, productQuery, source?.beNumber, source?.warehouseId]);
+  }, [addPosOpen, addPosQuery]);
 
   React.useEffect(() => {
     const h = setTimeout(async () => {
@@ -299,18 +302,6 @@ export default function TempOrderForm() {
     }, 300);
     return () => clearTimeout(h);
   }, [customerQuery]);
-
-  const onChooseProduct = (product) => {
-    setSelectedProduct(product);
-    if (!product) return;
-    setForm((prev) => ({
-      ...prev,
-      beNumber: String(product.beNumber || '').trim(),
-      warehouseId: String(product.storageId || '').trim(),
-      amountInKg: product.amount ?? '',
-      pricePerKg: product.acquisitionPrice ?? '',
-    }));
-  };
 
   const onChooseCustomer = async (customer) => {
     setSelectedCustomer(customer);
@@ -371,9 +362,6 @@ export default function TempOrderForm() {
     const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
 
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
-    if (!isEdit && !Array.isArray(sourceItems) && (!String(form.beNumber || '').trim() || !String(form.warehouseId || '').trim())) {
-      messages.push(t('validation_product_required'));
-    }
     if ((isEdit || isCartCreate) && (!Array.isArray(positions) || positions.length === 0)) {
       messages.push('Mindestens eine Position muss vorhanden sein.');
     }
@@ -494,24 +482,6 @@ export default function TempOrderForm() {
       {!loading && (
         <Card>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!isEdit && !(source?.beNumber && source?.warehouseId) && !Array.isArray(sourceItems) && (
-              <Autocomplete
-                options={productOptions}
-                value={selectedProduct}
-                getOptionLabel={(opt) => String(opt?.article || '')}
-                onChange={(e, value) => onChooseProduct(value)}
-                inputValue={productQuery}
-                onInputChange={(e, value) => setProductQuery(value)}
-                renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
-              />
-            )}
-            {!isPositionsMode && (
-              <>
-                <TextField label={t('product_be_number')} value={form.beNumber} fullWidth disabled />
-                <TextField label={t('product_storage_id')} value={form.warehouseId} fullWidth disabled />
-              </>
-            )}
-
             <Autocomplete
               options={customerOptions}
               value={selectedCustomer}
@@ -604,9 +574,27 @@ export default function TempOrderForm() {
 
             {isPositionsMode && (
               <Box sx={{ mt: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
-                  {t('order_positions_count')}: {positions.length}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography variant="subtitle2">
+                    {t('order_positions_count')}: {positions.length}
+                  </Typography>
+                  {isEdit && (
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      aria-label="add-position"
+                      onClick={() => {
+                        setAddPosOpen(true);
+                        setAddPosQuery('');
+                        setAddPosOptions([]);
+                        setAddPosProduct(null);
+                        setAddPosQty('');
+                      }}
+                    >
+                      <AddCircleOutlineIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {positions.map((x, idx) => (
                     <Box
@@ -622,6 +610,9 @@ export default function TempOrderForm() {
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {x.article || '-'}
                       </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                        {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
+                      </Typography>
                       <IconButton
                         size="small"
                         color="error"
@@ -630,9 +621,6 @@ export default function TempOrderForm() {
                       >
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
-                      </Typography>
                       <Typography variant="caption" sx={{ opacity: 0.75 }}>
                         {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
                       </Typography>
@@ -678,6 +666,68 @@ export default function TempOrderForm() {
           <Button onClick={() => setDeleteLastConfirmOpen(false)} disabled={deletingOrder}>{t('back_label')}</Button>
           <Button color="error" variant="contained" onClick={deleteOrder} disabled={deletingOrder}>
             {t('delete_label')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addPosOpen} onClose={() => setAddPosOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('product_select')}</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
+          <Autocomplete
+            options={addPosOptions}
+            value={addPosProduct}
+            getOptionLabel={(opt) => String(opt?.article || '')}
+            onChange={(e, value) => setAddPosProduct(value)}
+            inputValue={addPosQuery}
+            onInputChange={(e, value) => setAddPosQuery(value)}
+            renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
+          />
+          <TextField
+            type="number"
+            label={t('product_amount')}
+            value={addPosQty}
+            onChange={(e) => setAddPosQty(e.target.value)}
+            inputProps={{ min: 1, step: 'any' }}
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const qty = Number(addPosQty);
+              const product = addPosProduct;
+              if (!product) {
+                setError(t('validation_product_required'));
+                return;
+              }
+              if (!Number.isFinite(qty) || qty <= 0) {
+                setError(t('validation_amount_positive'));
+                return;
+              }
+              const price = Number(product.acquisitionPrice);
+              if (!Number.isFinite(price) || price <= 0) {
+                setError(t('validation_price_positive'));
+                return;
+              }
+              setPositions((prev) => ([
+                ...prev,
+                {
+                  id: `${String(product.beNumber || 'pos')}-${String(product.storageId || '')}-${Date.now()}`,
+                  beNumber: String(product.beNumber || '').trim(),
+                  warehouseId: String(product.storageId || '').trim(),
+                  article: product.article,
+                  amountInKg: qty,
+                  price,
+                  reservationInKg: null,
+                  reservationDate: null,
+                },
+              ]));
+              setAddPosOpen(false);
+            }}
+          >
+            {t('save_label')}
           </Button>
         </DialogActions>
       </Dialog>
