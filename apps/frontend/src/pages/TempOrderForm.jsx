@@ -98,9 +98,6 @@ export default function TempOrderForm() {
   const [productQuery, setProductQuery] = React.useState('');
   const [productOptions, setProductOptions] = React.useState([]);
   const [selectedProduct, setSelectedProduct] = React.useState(null);
-  const [supplierQuery, setSupplierQuery] = React.useState('');
-  const [supplierOptions, setSupplierOptions] = React.useState([]);
-  const [selectedSupplier, setSelectedSupplier] = React.useState(null);
   const [positions, setPositions] = React.useState([]);
 
   const [form, setForm] = React.useState({
@@ -149,9 +146,6 @@ export default function TempOrderForm() {
             deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
             deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
           });
-          if (d.distributor) {
-            setSupplierQuery(String(d.distributor));
-          }
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
             id: p.id,
@@ -264,23 +258,6 @@ export default function TempOrderForm() {
     return () => clearTimeout(h);
   }, [customerQuery]);
 
-  React.useEffect(() => {
-    const h = setTimeout(async () => {
-      const q = supplierQuery.trim();
-      if (!q) {
-        setSupplierOptions([]);
-        return;
-      }
-      try {
-        const res = await apiRequest(`/customers?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=kd_Name1&dir=ASC`);
-        setSupplierOptions(res?.data || []);
-      } catch {
-        setSupplierOptions([]);
-      }
-    }, 300);
-    return () => clearTimeout(h);
-  }, [supplierQuery]);
-
   const onChooseProduct = (product) => {
     setSelectedProduct(product);
     if (!product) return;
@@ -316,12 +293,6 @@ export default function TempOrderForm() {
         setForm((prev) => ({ ...prev, clientRepresentative: reps[0].name || '' }));
       }
     } catch {}
-  };
-
-  const onChooseSupplier = (supplier) => {
-    setSelectedSupplier(supplier);
-    const supplierName = String(supplier?.kd_Name1 || supplier?.kd_Name2 || supplier?.kd_KdNR || '').trim();
-    setForm((prev) => ({ ...prev, supplier: supplierName }));
   };
 
   const deleteOrder = React.useCallback(async () => {
@@ -366,7 +337,6 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
-    if (!isPositionsMode && !String(form.supplier || '').trim()) messages.push(t('validation_supplier_required'));
 
     if (!isPositionsMode) {
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -520,7 +490,6 @@ export default function TempOrderForm() {
                   <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
                 </Box>
 
-                <TextField label={t('supplier_select')} value={form.supplier} fullWidth disabled />
                 <TextField
                   select
                   label={t('packaging_type_label')}
