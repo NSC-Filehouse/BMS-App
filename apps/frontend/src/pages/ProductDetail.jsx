@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -20,7 +21,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem } from '../utils/orderCart.js';
+import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -70,6 +71,7 @@ export default function ProductDetail() {
   const [cartOpen, setCartOpen] = React.useState(false);
   const [cartQty, setCartQty] = React.useState('');
   const [cartSuccess, setCartSuccess] = React.useState('');
+  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzLoading, setWpzLoading] = React.useState(false);
   const availableAmount = React.useMemo(() => {
@@ -124,6 +126,10 @@ export default function ProductDetail() {
     return () => { alive = false; };
   }, [id, t]);
 
+  React.useEffect(() => {
+    setCartCount(getOrderCartCount());
+  }, [cartOpen, cartSuccess]);
+
   const handleBack = React.useCallback(() => {
     const fromProducts = location.state?.fromProducts;
     if (fromProducts) {
@@ -135,13 +141,20 @@ export default function ProductDetail() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="back" onClick={handleBack}>
-          <ArrowBackIcon />
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton aria-label="back" onClick={handleBack}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h5">
+            {item?.article || id}
+          </Typography>
+        </Box>
+        <IconButton aria-label={t('cart_open')} onClick={() => navigate('/order-cart')}>
+          <Badge badgeContent={cartCount} color="error">
+            <ShoppingCartIcon />
+          </Badge>
         </IconButton>
-        <Typography variant="h5">
-          {item?.article || id}
-        </Typography>
       </Box>
 
       {loading && (
@@ -363,6 +376,7 @@ export default function ProductDetail() {
               addOrderCartItem(item, qty);
               setCartOpen(false);
               setCartSuccess(t('cart_added'));
+              setCartCount(getOrderCartCount());
             }}
           >
             {t('cart_add')}
