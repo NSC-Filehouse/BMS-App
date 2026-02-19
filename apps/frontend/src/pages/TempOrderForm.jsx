@@ -104,6 +104,13 @@ export default function TempOrderForm() {
   const [addPosOptions, setAddPosOptions] = React.useState([]);
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
+  const addPosAvailableAmount = React.useMemo(() => {
+    const total = Number(addPosProduct?.amount);
+    const reserved = Number(addPosProduct?.reserved);
+    if (!Number.isFinite(total)) return null;
+    if (!Number.isFinite(reserved)) return total;
+    return Math.max(total - reserved, 0);
+  }, [addPosProduct]);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -681,10 +688,10 @@ export default function TempOrderForm() {
             inputValue={addPosQuery}
             onInputChange={(e, value) => setAddPosQuery(value)}
             renderOption={(props, option) => (
-              <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
+              <Box component="li" {...props} sx={{ display: 'grid', gap: 0.1 }}>
                 <Typography variant="body2">{String(option?.article || '')}</Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  ({t('product_warehouse')}: {String(option?.warehouse || '-')})
+                  {`${String(option?.warehouse || '-')}; ${option?.amount ?? '-'} ${String(option?.unit || 'kg')}`}
                 </Typography>
               </Box>
             )}
@@ -698,6 +705,11 @@ export default function TempOrderForm() {
             inputProps={{ min: 1, step: 'any' }}
             fullWidth
           />
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {addPosAvailableAmount === null
+              ? `${t('product_available_now')}: -`
+              : `${t('product_available_now')}: ${addPosAvailableAmount} ${String(addPosProduct?.unit || 'kg')}`}
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
