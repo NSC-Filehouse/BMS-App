@@ -143,7 +143,11 @@ async function loadProductContext(database, beNumber, warehouseId) {
   const rows = await runSQLQueryAccess(database, sql, [beNumber, warehouseId]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
-    throw createHttpError(404, 'Product availability row not found for reservation.', { code: 'PRODUCT_AVAILABILITY_NOT_FOUND' });
+    throw createHttpError(404, 'Product availability row not found for reservation.', {
+      code: 'PRODUCT_AVAILABILITY_NOT_FOUND',
+      beNumber,
+      warehouseId,
+    });
   }
 
   const measured = Number(row.mfiMeasured);

@@ -104,6 +104,11 @@ export default function TempOrderForm() {
   const [addPosOptions, setAddPosOptions] = React.useState([]);
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
+  const addPosOptionsWithSelection = React.useMemo(() => {
+    if (!addPosProduct) return addPosOptions;
+    const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
+    return exists ? addPosOptions : [addPosProduct, ...addPosOptions];
+  }, [addPosOptions, addPosProduct]);
   const addPosAvailableAmount = React.useMemo(() => {
     const total = Number(addPosProduct?.amount);
     const reserved = Number(addPosProduct?.reserved);
@@ -681,8 +686,9 @@ export default function TempOrderForm() {
         <DialogTitle>{t('product_select')}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
           <Autocomplete
-            options={addPosOptions}
+            options={addPosOptionsWithSelection}
             value={addPosProduct}
+            isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
             getOptionLabel={(opt) => String(opt?.article || '')}
             onChange={(e, value) => setAddPosProduct(value)}
             inputValue={addPosQuery}
