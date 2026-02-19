@@ -111,13 +111,7 @@ export default function ProductDetail() {
         } finally {
           if (alive) setWpzLoading(false);
         }
-        try {
-          const metaRes = await apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(baseItem.beNumber || '')}`);
-          const deliveryType = String(metaRes?.data?.deliveryType || '').trim();
-          setItem({ ...baseItem, deliveryType });
-        } catch {
-          setItem(baseItem);
-        }
+        setItem(baseItem);
       } catch (e) {
         if (!alive) return;
         setError(e?.message || t('loading_error'));
@@ -215,7 +209,6 @@ export default function ProductDetail() {
             <Divider sx={{ my: 2 }} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
             <InfoRow label={t('product_description')} value={item.description} />
-            <InfoRow label={t('delivery_type_label')} value={item.deliveryType} />
 
             <Divider sx={{ my: 2 }} />
 

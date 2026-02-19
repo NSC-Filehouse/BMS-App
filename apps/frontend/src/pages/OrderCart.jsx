@@ -121,7 +121,6 @@ export default function OrderCart() {
                       warehouseId: x.warehouseId,
                       amountInKg: Number(x.quantityKg),
                       price: x.acquisitionPrice,
-                      deliveryType: x.deliveryType || '',
                     })),
                   },
                 });

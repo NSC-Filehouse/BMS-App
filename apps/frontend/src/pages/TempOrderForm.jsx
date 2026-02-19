@@ -45,14 +45,32 @@ function inSevenDays() {
   return d.toISOString().slice(0, 10);
 }
 
-const DUMMY_PACKAGING_TYPES = ['Sackware', 'BigBag', 'Bulk'];
+const PACKAGING_TYPES_DE = [
+  'Sackware',
+  'Siloware',
+  'Big Bags',
+  'Octa',
+  'Andere',
+  'NEUTRALE Sackware',
+  'NEUTRALE Oktabins',
+];
+
+const PACKAGING_TYPES_EN = [
+  'Bags',
+  'Silo/bulk',
+  'Big Bags',
+  'Octabins',
+  'Others',
+  'NEUTRAL Bags',
+  'NEUTRAL Octas',
+];
 
 export default function TempOrderForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   const source = location.state?.source || null;
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
@@ -99,7 +117,6 @@ export default function TempOrderForm() {
     specialPaymentCondition: false,
     comment: '',
     supplier: '',
-    deliveryType: '',
     packagingType: '',
     deliveryStartDate: tomorrow(),
     deliveryEndDate: inSevenDays(),
@@ -128,7 +145,6 @@ export default function TempOrderForm() {
             specialPaymentCondition: Boolean(d.specialPaymentCondition),
             comment: d.comment || '',
             supplier: d.distributor || '',
-            deliveryType: d.deliveryType || '',
             packagingType: d.packagingType || '',
             deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
             deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
@@ -144,7 +160,6 @@ export default function TempOrderForm() {
             article: p.article,
             amountInKg: p.amountInKg,
             price: p.price,
-            deliveryType: p.deliveryType || '',
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
           })));
@@ -166,7 +181,6 @@ export default function TempOrderForm() {
             article: x.article,
             amountInKg: x.amountInKg,
             price: x.price,
-            deliveryType: x.deliveryType || '',
             reservationInKg: null,
             reservationDate: null,
           })));
@@ -208,12 +222,8 @@ export default function TempOrderForm() {
         setForm((prev) => ({
           ...prev,
           packagingType: String(meta.packagingType || '').trim(),
-          deliveryType: String(meta.deliveryType || '').trim(),
         }));
-      } catch {
-        if (!alive) return;
-        setForm((prev) => ({ ...prev, deliveryType: '' }));
-      }
+      } catch {}
     };
     run();
     return () => { alive = false; };
@@ -411,7 +421,6 @@ export default function TempOrderForm() {
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
         comment: form.comment || null,
         supplier: form.supplier || null,
-        deliveryType: form.deliveryType || '',
         packagingType: form.packagingType || '',
         deliveryStartDate: form.deliveryStartDate,
         deliveryEndDate: form.deliveryEndDate,
@@ -422,7 +431,6 @@ export default function TempOrderForm() {
           warehouseId: x.warehouseId,
           amountInKg: Number(x.amountInKg),
           pricePerKg: Number(x.price),
-          deliveryType: x.deliveryType || '',
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
         }));
@@ -514,19 +522,13 @@ export default function TempOrderForm() {
 
                 <TextField label={t('supplier_select')} value={form.supplier} fullWidth disabled />
                 <TextField
-                  label={t('delivery_type_label')}
-                  value={form.deliveryType}
-                  fullWidth
-                  disabled
-                />
-                <TextField
                   select
                   label={t('packaging_type_label')}
                   value={form.packagingType}
                   onChange={(e) => setForm((p) => ({ ...p, packagingType: e.target.value }))}
                   fullWidth
                 >
-                  {DUMMY_PACKAGING_TYPES.map((x) => (
+                  {(lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE).map((x) => (
                     <MenuItem key={x} value={x}>{x}</MenuItem>
                   ))}
                 </TextField>
@@ -571,9 +573,6 @@ export default function TempOrderForm() {
                       </Typography>
                       <Typography variant="caption" sx={{ opacity: 0.75 }}>
                         {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('product_price')}: {x.price ?? '-'}
-                      </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('delivery_type_label')}: {x.deliveryType || '-'}
                       </Typography>
                     </Box>
                   ))}

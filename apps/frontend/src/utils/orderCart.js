@@ -67,7 +67,6 @@ export function addOrderCartItem(item, quantityKg) {
     availableAmount: Number(item.amount || 0) - Number(item.reserved || 0),
     amountTotal: item.amount ?? null,
     acquisitionPrice: item.acquisitionPrice ?? null,
-    deliveryType: item.deliveryType ?? '',
     quantityKg: qty,
   };
   if (idx >= 0) {
