@@ -41,7 +41,7 @@ function normalizeTotal(rows) {
 }
 
 function mapTempOrderRow(row) {
-  const incotermText = asText(row.ta_deleivery_type || row.ta_delivery_type || '');
+  const incotermText = asText(row.ta_delivery_type || row.ta_deleivery_type || '');
   const incotermId = row.ta_delivery_type_id === null || row.ta_delivery_type_id === undefined
     ? null
     : Number(row.ta_delivery_type_id);
@@ -548,7 +548,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [ta_company_id], [ta_ClientReferenceId], [ta_distributor], [ta_distributorLogo], [ta_be_number], [ta_article],
       [ta_amount_in_kg], [ta_warehouse], [ta_price], [ta_reservation_in_kg], [ta_reservation_date], [ta_about],
       [ta_packaging], [ta_mfi], [ta_client_name], [ta_client_address], [ta_client_representative],
-      [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_comment], [ta_deleivery_type], [ta_delivery_type_id], [ta_packaging_type],
+      [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_comment], [ta_delivery_type], [ta_delivery_type_id], [ta_packaging_type],
       [ta_delivery_start_date], [ta_delivery_end_date], [ta_completed], [ta_closing_date],
       [ta_CreatedBy], [ta_CreateDate], [ta_LastModifiedBy], [ta_LastModifiedDate],
       [ta_PassedTo], [ta_ReceivedFrom], [ta_PassedToUserId], [ta_ReceivedFromUserId], [ta_IsConfirmed]
@@ -770,7 +770,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [ta_special_payment_id] = ?,
         [ta_comment] = ?,
         [ta_distributor] = ?,
-        [ta_deleivery_type] = ?,
+        [ta_delivery_type] = ?,
         [ta_delivery_type_id] = ?,
         [ta_packaging_type] = ?,
         [ta_delivery_start_date] = ?,
