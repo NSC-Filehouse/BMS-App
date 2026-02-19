@@ -116,12 +116,6 @@ export default function TempOrderForm() {
     if (!Number.isFinite(reserved)) return total;
     return Math.max(total - reserved, 0);
   }, [addPosProduct]);
-  const packagingOptions = React.useMemo(() => {
-    const base = lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE;
-    const current = String(form.packagingType || '').trim();
-    if (!current) return base;
-    return base.includes(current) ? base : [current, ...base];
-  }, [form.packagingType, lang]);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -145,6 +139,12 @@ export default function TempOrderForm() {
     deliveryStartDate: tomorrow(),
     deliveryEndDate: inSevenDays(),
   });
+  const packagingOptions = React.useMemo(() => {
+    const base = lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE;
+    const current = String(form.packagingType || '').trim();
+    if (!current) return base;
+    return base.includes(current) ? base : [current, ...base];
+  }, [form.packagingType, lang]);
 
   React.useEffect(() => {
     let alive = true;
