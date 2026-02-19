@@ -145,7 +145,7 @@ function resolveColumn(columns, candidates) {
 }
 
 async function loadProductContext(database, beNumber, warehouseId) {
-  const sql = `
+  const sqlByStorageId = `
     SELECT TOP 1
       [Artikel] AS article,
       [Lagerort] AS warehouse,
@@ -157,8 +157,27 @@ async function loadProductContext(database, beNumber, warehouseId) {
     WHERE COALESCE([Bestell-Pos], '') = ?
       AND COALESCE([bePL_LagerID], '') = ?
   `;
-  const rows = await runSQLQueryAccess(database, sql, [beNumber, warehouseId]);
-  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const rowsByStorageId = await runSQLQueryAccess(database, sqlByStorageId, [beNumber, warehouseId]);
+  let row = Array.isArray(rowsByStorageId) && rowsByStorageId.length ? rowsByStorageId[0] : null;
+
+  // Backward compatibility: older position rows might store Lagerort text in tap_warehouse.
+  if (!row) {
+    const sqlByWarehouseName = `
+      SELECT TOP 1
+        [Artikel] AS article,
+        [Lagerort] AS warehouse,
+        [beP_VLbemerkung] AS about,
+        [beP_Additive] AS packaging,
+        [beP_MFIgemessen] AS mfiMeasured,
+        [beP_MFI] AS mfiBase
+      FROM ${VIEW_SQL}
+      WHERE COALESCE([Bestell-Pos], '') = ?
+        AND COALESCE([Lagerort], '') = ?
+    `;
+    const rowsByWarehouseName = await runSQLQueryAccess(database, sqlByWarehouseName, [beNumber, warehouseId]);
+    row = Array.isArray(rowsByWarehouseName) && rowsByWarehouseName.length ? rowsByWarehouseName[0] : null;
+  }
+
   if (!row) {
     throw createHttpError(404, 'Product availability row not found for reservation.', {
       code: 'PRODUCT_AVAILABILITY_NOT_FOUND',
@@ -652,7 +671,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         pos.beNumber,
         posCtx.article,
         pos.amountInKg,
-        posCtx.warehouse,
+        pos.warehouseId,
         pos.pricePerKg,
         pos.reservationInKg,
         pos.reservationDate,
@@ -834,7 +853,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       pos.beNumber,
       posCtx.article,
       pos.amountInKg,
-      posCtx.warehouse,
+      pos.warehouseId,
       pos.pricePerKg,
       pos.reservationInKg,
       pos.reservationDate,
