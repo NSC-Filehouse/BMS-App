@@ -680,6 +680,14 @@ export default function TempOrderForm() {
             onChange={(e, value) => setAddPosProduct(value)}
             inputValue={addPosQuery}
             onInputChange={(e, value) => setAddPosQuery(value)}
+            renderOption={(props, option) => (
+              <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
+                <Typography variant="body2">{String(option?.article || '')}</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  ({t('product_warehouse')}: {String(option?.warehouse || '-')})
+                </Typography>
+              </Box>
+            )}
             renderInput={(params) => <TextField {...params} label={t('product_select')} fullWidth />}
           />
           <TextField
