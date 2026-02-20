@@ -220,7 +220,7 @@ export default function ProductDetail() {
         </Box>
       )}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && !cartOpen && <Alert severity="error">{error}</Alert>}
       {reserveInfo && <Alert severity="warning" sx={{ mb: 2 }}>{reserveInfo}</Alert>}
       {reserveSuccess && <Alert severity="success" sx={{ mb: 2 }}>{reserveSuccess}</Alert>}
       {cartSuccess && <Alert severity="success" sx={{ mb: 2 }}>{cartSuccess}</Alert>}
@@ -266,6 +266,7 @@ export default function ProductDetail() {
               onClick={() => {
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
+                setError('');
                 setCartQty('');
                 setCartSalePrice(item?.acquisitionPrice ?? '');
                 setCartDeliveryDate(tomorrow.toISOString().slice(0, 10));
