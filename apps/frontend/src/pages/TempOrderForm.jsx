@@ -66,6 +66,54 @@ function createPositionDefaults(overrides = {}) {
   };
 }
 
+function formatDeliveryAddressParts(addr) {
+  const text = String(addr?.text || '').trim();
+  const primary = [String(addr?.name1 || '').trim(), String(addr?.name2 || '').trim()]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  if (!text) {
+    return { primary: primary || '-', secondary: '' };
+  }
+  const parts = text.split(',').map((x) => x.trim()).filter(Boolean);
+  if (!primary) {
+    return {
+      primary: parts[0] || text,
+      secondary: parts.slice(1).join(', '),
+    };
+  }
+  const lowerPrimary = primary.toLowerCase();
+  const secondaryFromText = text.toLowerCase().startsWith(`${lowerPrimary},`)
+    ? text.slice(primary.length + 1).trim()
+    : parts.slice(1).join(', ');
+  return { primary, secondary: secondaryFromText };
+}
+
+function renderDeliveryAddressOption(addr) {
+  const { primary, secondary } = formatDeliveryAddressParts(addr);
+  return (
+    <Box sx={{ display: 'grid', minWidth: 0 }}>
+      <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+        {primary}
+      </Typography>
+      {secondary && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            lineHeight: 1.2,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {secondary}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 const PACKAGING_TYPES_DE = [
   'Sackware',
   'Siloware',
@@ -706,13 +754,21 @@ export default function TempOrderForm() {
                                 onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
                                 size="small"
                                 fullWidth
+                                SelectProps={{
+                                  renderValue: (selected) => {
+                                    const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
+                                    return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
+                                  },
+                                }}
                               >
                                 <MenuItem value="">{'-'}</MenuItem>
                                 {String(x.deliveryAddress || '').trim()
                                   && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(x.deliveryAddress || ''))
                                   && <MenuItem value={x.deliveryAddress}>{x.deliveryAddress}</MenuItem>}
                                 {deliveryAddressOptions.map((addr) => (
-                                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>{addr.text}</MenuItem>
+                                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
+                                    {renderDeliveryAddressOption(addr)}
+                                  </MenuItem>
                                 ))}
                               </TextField>
                             )}
@@ -908,10 +964,18 @@ export default function TempOrderForm() {
                 value={addPosDeliveryAddress}
                 onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
                 fullWidth
+                SelectProps={{
+                  renderValue: (selected) => {
+                    const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
+                    return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
+                  },
+                }}
               >
                 <MenuItem value="">{'-'}</MenuItem>
                 {deliveryAddressOptions.map((addr) => (
-                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>{addr.text}</MenuItem>
+                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
+                    {renderDeliveryAddressOption(addr)}
+                  </MenuItem>
                 ))}
               </TextField>
             )}
