@@ -767,7 +767,13 @@ export default function TempOrderForm() {
             value={addPosProduct}
             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
             getOptionLabel={(opt) => String(opt?.article || '')}
-            onChange={(e, value) => setAddPosProduct(value)}
+            onChange={(e, value) => {
+              setAddPosProduct(value);
+              const acquisition = Number(value?.acquisitionPrice);
+              if (Number.isFinite(acquisition) && acquisition > 0) {
+                setAddPosSalePrice(String(acquisition));
+              }
+            }}
             inputValue={addPosQuery}
             onInputChange={(e, value) => setAddPosQuery(value)}
             renderOption={(props, option) => (
@@ -804,6 +810,11 @@ export default function TempOrderForm() {
             inputProps={{ min: 1, step: 'any' }}
             fullWidth
           />
+          <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
+            {addPosAvailableAmount === null
+              ? `${t('product_available_now')}: -`
+              : `${t('product_available_now')}: ${addPosAvailableAmount} ${String(addPosProduct?.unit || 'kg')}`}
+          </Typography>
           <TextField
             type="number"
             label={t('order_sale_price')}
@@ -886,11 +897,6 @@ export default function TempOrderForm() {
               ))}
             </TextField>
           )}
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {addPosAvailableAmount === null
-              ? `${t('product_available_now')}: -`
-              : `${t('product_available_now')}: ${addPosAvailableAmount} ${String(addPosProduct?.unit || 'kg')}`}
-          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
