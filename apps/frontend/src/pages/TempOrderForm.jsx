@@ -123,6 +123,7 @@ export default function TempOrderForm() {
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
+  const [addPosError, setAddPosError] = React.useState('');
   const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
   const [addPosDeliveryAddress, setAddPosDeliveryAddress] = React.useState('');
   const [addPosPackagingType, setAddPosPackagingType] = React.useState('');
@@ -559,6 +560,7 @@ export default function TempOrderForm() {
                       aria-label="add-position"
                       onClick={() => {
                         setAddPosOpen(true);
+                        setAddPosError('');
                         setAddPosQuery('');
                         setAddPosOptions([]);
                         setAddPosProduct(null);
@@ -762,6 +764,7 @@ export default function TempOrderForm() {
       <Dialog open={addPosOpen} onClose={() => setAddPosOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('product_select')}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
+          {addPosError && <Alert severity="error">{addPosError}</Alert>}
           <Autocomplete
             options={addPosOptionsWithSelection}
             value={addPosProduct}
@@ -907,38 +910,39 @@ export default function TempOrderForm() {
               const salePrice = Number(addPosSalePrice);
               const product = addPosProduct;
               if (!product) {
-                setError(t('validation_product_required'));
+                setAddPosError(t('validation_product_required'));
                 return;
               }
               if (!Number.isFinite(qty) || qty <= 0) {
-                setError(t('validation_amount_positive'));
+                setAddPosError(t('validation_amount_positive'));
                 return;
               }
               const price = Number(product.acquisitionPrice);
               if (!Number.isFinite(price) || price <= 0) {
-                setError(t('validation_price_positive'));
+                setAddPosError(t('validation_price_positive'));
                 return;
               }
               if (!Number.isFinite(salePrice) || salePrice <= 0) {
-                setError(t('validation_sale_price_positive'));
+                setAddPosError(t('validation_sale_price_positive'));
                 return;
               }
               if (!addPosDeliveryDate) {
-                setError(t('validation_delivery_date_required'));
+                setAddPosError(t('validation_delivery_date_required'));
                 return;
               }
               if (!addPosIncotermId) {
-                setError(t('validation_incoterm_required'));
+                setAddPosError(t('validation_incoterm_required'));
                 return;
               }
               if (!addPosPackagingType) {
-                setError(t('validation_packaging_required'));
+                setAddPosError(t('validation_packaging_required'));
                 return;
               }
               if (addPosSpecialPaymentCondition && !addPosSpecialPaymentId) {
-                setError(t('validation_special_payment_text_required'));
+                setAddPosError(t('validation_special_payment_text_required'));
                 return;
               }
+              setAddPosError('');
               setPositions((prev) => ([
                 ...prev,
                 {
@@ -963,6 +967,7 @@ export default function TempOrderForm() {
                   }),
                 },
               ]));
+              setAddPosError('');
               setAddPosOpen(false);
             }}
           >
