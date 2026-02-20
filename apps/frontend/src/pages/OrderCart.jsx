@@ -107,28 +107,28 @@ export default function OrderCart() {
     for (const x of items) {
       const qty = Number(x.quantityKg);
       if (!Number.isFinite(qty) || qty <= 0) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_cart_quantity_positive')}`);
+        messages.push(t('validation_cart_quantity_positive'));
         continue;
       }
       const available = Number(x.availableAmount);
       if (Number.isFinite(available) && qty > available) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_cart_quantity_not_above_available')}`);
+        messages.push(t('validation_cart_quantity_not_above_available'));
       }
       const salePrice = Number(x.salePrice);
       if (!Number.isFinite(salePrice) || salePrice <= 0) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_sale_price_positive')}`);
+        messages.push(t('validation_sale_price_positive'));
       }
       if (!x.deliveryDate) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_delivery_date_required')}`);
+        messages.push(t('validation_delivery_date_required'));
       }
       if (!x.incotermId) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_incoterm_required')}`);
+        messages.push(t('validation_incoterm_required'));
       }
       if (!x.packagingType) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_packaging_required')}`);
+        messages.push(t('validation_packaging_required'));
       }
       if (x.specialPaymentCondition && !x.specialPaymentId) {
-        messages.push(`${x.article || x.beNumber}: ${t('validation_special_payment_text_required')}`);
+        messages.push(t('validation_special_payment_text_required'));
       }
     }
     return messages;
