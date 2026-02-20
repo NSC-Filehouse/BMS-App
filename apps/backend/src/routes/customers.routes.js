@@ -77,6 +77,17 @@ function mapRepresentatives(rows) {
     .filter((rep) => rep.name || rep.phone || rep.email);
 }
 
+function buildAddressText(row) {
+  const name1 = toText(row?.kdL_Name1);
+  const name2 = toText(row?.kdL_Name2);
+  const street = toText(row?.kdL_Strasse);
+  const plz = toText(row?.kdL_PLZ);
+  const city = toText(row?.kdL_Ort);
+  const country = toText(row?.kdL_LK);
+  const plzCity = [plz, city].filter(Boolean).join(' ');
+  return [name1, name2, street, plzCity, country].filter(Boolean).join(', ');
+}
+
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
@@ -155,6 +166,56 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
       databaseName: req.database?.databaseName || null,
       idField: 'kd_KdNR',
       id,
+    },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(async (req, res) => {
+  const id = toText(req.params.id);
+  if (!id) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const sql = `
+    SELECT
+      [kdL_KdNR],
+      [kdL_Lieferanschrift_Nr],
+      [kdL_Kurz],
+      [kdL_Name1],
+      [kdL_Name2],
+      [kdL_Strasse],
+      [kdL_LK],
+      [kdL_PLZ],
+      [kdL_Ort],
+      [kdL_Region],
+      [kdL_Kontrakt],
+      [kdL_Abhol]
+    FROM [dbo].[tblKun_LiefAdress]
+    WHERE COALESCE([kdL_KdNR], '') = ?
+    ORDER BY [kdL_Lieferanschrift_Nr] ASC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [id]);
+  const data = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      id: toText(row.kdL_Lieferanschrift_Nr),
+      customerId: toText(row.kdL_KdNR),
+      text: buildAddressText(row),
+      short: toText(row.kdL_Kurz),
+      name1: toText(row.kdL_Name1),
+      name2: toText(row.kdL_Name2),
+    }))
+    .filter((x) => x.text);
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      databaseName: req.database?.databaseName || null,
+      idField: 'kdL_KdNR',
+      id,
+      count: data.length,
     },
     error: null,
   });

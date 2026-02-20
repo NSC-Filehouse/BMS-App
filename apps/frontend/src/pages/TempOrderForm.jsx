@@ -25,6 +25,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -60,6 +61,7 @@ function createPositionDefaults(overrides = {}) {
     packagingType: '',
     deliveryDate: tomorrow(),
     deliveryAddress: '',
+    deliveryAddressManual: false,
     ...overrides,
   };
 }
@@ -115,6 +117,7 @@ export default function TempOrderForm() {
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
   const [positions, setPositions] = React.useState([]);
+  const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [incotermOptions, setIncotermOptions] = React.useState([]);
   const [addPosOpen, setAddPosOpen] = React.useState(false);
@@ -126,6 +129,7 @@ export default function TempOrderForm() {
   const [addPosError, setAddPosError] = React.useState('');
   const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
   const [addPosDeliveryAddress, setAddPosDeliveryAddress] = React.useState('');
+  const [addPosDeliveryAddressManual, setAddPosDeliveryAddressManual] = React.useState(false);
   const [addPosPackagingType, setAddPosPackagingType] = React.useState('');
   const [addPosIncotermId, setAddPosIncotermId] = React.useState('');
   const [addPosIncotermText, setAddPosIncotermText] = React.useState('');
@@ -184,6 +188,7 @@ export default function TempOrderForm() {
             comment: d.comment || '',
             supplier: d.distributor || '',
           });
+          await loadDeliveryAddresses(d.clientReferenceId || '');
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
             id: p.id,
@@ -203,7 +208,8 @@ export default function TempOrderForm() {
               incotermId: p.deliveryTypeId ?? p.incotermId ?? '',
               packagingType: p.packagingType || '',
               deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : tomorrow(),
-              deliveryAddress: p.deliveryAddress || d.clientAddress || '',
+              deliveryAddress: p.deliveryAddress || '',
+              deliveryAddressManual: false,
             }),
           })));
         } catch (e) {
@@ -236,6 +242,7 @@ export default function TempOrderForm() {
               packagingType: x.packagingType || '',
               deliveryDate: x.deliveryDate || tomorrow(),
               deliveryAddress: x.deliveryAddress || '',
+              deliveryAddressManual: false,
             }),
           })));
           setForm((prev) => ({
@@ -262,7 +269,7 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t]);
+  }, [id, isEdit, source, sourceItems, t, loadDeliveryAddresses]);
 
   React.useEffect(() => {
     let alive = true;
@@ -278,6 +285,23 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
+  }, []);
+
+  const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
+    const id = String(clientReferenceId || '').trim();
+    if (!id) {
+      setDeliveryAddressOptions([]);
+      return [];
+    }
+    try {
+      const res = await apiRequest(`/customers/${encodeURIComponent(id)}/delivery-addresses`);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setDeliveryAddressOptions(list);
+      return list;
+    } catch {
+      setDeliveryAddressOptions([]);
+      return [];
+    }
   }, []);
 
   React.useEffect(() => {
@@ -333,7 +357,10 @@ export default function TempOrderForm() {
 
   const onChooseCustomer = async (customer) => {
     setSelectedCustomer(customer);
-    if (!customer) return;
+    if (!customer) {
+      setDeliveryAddressOptions([]);
+      return;
+    }
 
     const clientReferenceId = String(customer.kd_KdNR || '').trim();
     const clientName = String(customer.kd_Name1 || customer.kd_Name2 || '').trim();
@@ -346,11 +373,7 @@ export default function TempOrderForm() {
       clientAddress,
       clientRepresentative: '',
     }));
-    setPositions((prev) => prev.map((pos) => (
-      String(pos.deliveryAddress || '').trim()
-        ? pos
-        : { ...pos, deliveryAddress: clientAddress }
-    )));
+    await loadDeliveryAddresses(clientReferenceId);
 
     try {
       const detail = await apiRequest(`/customers/${encodeURIComponent(clientReferenceId)}`);
@@ -435,6 +458,9 @@ export default function TempOrderForm() {
       }
       if (!pos.deliveryDate) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
+      }
+      if (!String(pos.deliveryAddress || '').trim()) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_address_required')}`);
       }
       if (!pos.incotermId) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_incoterm_required')}`);
@@ -567,7 +593,8 @@ export default function TempOrderForm() {
                         setAddPosQty('');
                         setAddPosSalePrice('');
                         setAddPosDeliveryDate(tomorrow());
-                        setAddPosDeliveryAddress(form.clientAddress || '');
+                        setAddPosDeliveryAddress('');
+                        setAddPosDeliveryAddressManual(false);
                         setAddPosPackagingType('');
                         setAddPosIncotermId('');
                         setAddPosIncotermText('');
@@ -663,13 +690,46 @@ export default function TempOrderForm() {
                             </TextField>
                           </Box>
 
-                          <TextField
-                            label={t('delivery_address_label')}
-                            value={x.deliveryAddress || ''}
-                            onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
-                            size="small"
-                            fullWidth
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {x.deliveryAddressManual ? (
+                              <TextField
+                                label={t('delivery_address_label')}
+                                value={x.deliveryAddress || ''}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
+                                size="small"
+                                fullWidth
+                              />
+                            ) : (
+                              <TextField
+                                select
+                                label={t('delivery_address_label')}
+                                value={x.deliveryAddress || ''}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
+                                size="small"
+                                fullWidth
+                              >
+                                <MenuItem value="">{'-'}</MenuItem>
+                                {String(x.deliveryAddress || '').trim()
+                                  && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(x.deliveryAddress || ''))
+                                  && <MenuItem value={x.deliveryAddress}>{x.deliveryAddress}</MenuItem>}
+                                {deliveryAddressOptions.map((addr) => (
+                                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>{addr.text}</MenuItem>
+                                ))}
+                              </TextField>
+                            )}
+                            <IconButton
+                              size="small"
+                              onClick={() => setPositions((prev) => prev.map((p, i) => (i === idx
+                                ? {
+                                    ...p,
+                                    deliveryAddress: '',
+                                    deliveryAddressManual: !p.deliveryAddressManual,
+                                  }
+                                : p)))}
+                            >
+                              {x.deliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
+                            </IconButton>
+                          </Box>
                           <FormControlLabel
                             control={(
                               <Checkbox
@@ -834,12 +894,38 @@ export default function TempOrderForm() {
             InputLabelProps={{ shrink: true }}
             fullWidth
           />
-          <TextField
-            label={t('delivery_address_label')}
-            value={addPosDeliveryAddress}
-            onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
-            fullWidth
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {addPosDeliveryAddressManual ? (
+              <TextField
+                label={t('delivery_address_label')}
+                value={addPosDeliveryAddress}
+                onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
+                fullWidth
+              />
+            ) : (
+              <TextField
+                select
+                label={t('delivery_address_label')}
+                value={addPosDeliveryAddress}
+                onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{'-'}</MenuItem>
+                {deliveryAddressOptions.map((addr) => (
+                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>{addr.text}</MenuItem>
+                ))}
+              </TextField>
+            )}
+            <IconButton
+              size="small"
+              onClick={() => {
+                setAddPosDeliveryAddress('');
+                setAddPosDeliveryAddressManual((prev) => !prev);
+              }}
+            >
+              {addPosDeliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
+            </IconButton>
+          </Box>
           <TextField
             select
             label={t('incoterm_label')}
@@ -930,6 +1016,10 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_delivery_date_required'));
                 return;
               }
+              if (!String(addPosDeliveryAddress || '').trim()) {
+                setAddPosError(t('validation_delivery_address_required'));
+                return;
+              }
               if (!addPosIncotermId) {
                 setAddPosError(t('validation_incoterm_required'));
                 return;
@@ -963,7 +1053,8 @@ export default function TempOrderForm() {
                     incotermId: addPosIncotermId || '',
                     packagingType: addPosPackagingType || '',
                     deliveryDate: addPosDeliveryDate,
-                    deliveryAddress: addPosDeliveryAddress || form.clientAddress || '',
+                    deliveryAddress: addPosDeliveryAddress,
+                    deliveryAddressManual: addPosDeliveryAddressManual,
                   }),
                 },
               ]));
