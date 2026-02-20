@@ -164,6 +164,22 @@ export default function TempOrderForm() {
     supplier: '',
   });
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
+  const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
+    const id = String(clientReferenceId || '').trim();
+    if (!id) {
+      setDeliveryAddressOptions([]);
+      return [];
+    }
+    try {
+      const res = await apiRequest(`/customers/${encodeURIComponent(id)}/delivery-addresses`);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setDeliveryAddressOptions(list);
+      return list;
+    } catch {
+      setDeliveryAddressOptions([]);
+      return [];
+    }
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -285,23 +301,6 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, []);
-
-  const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
-    const id = String(clientReferenceId || '').trim();
-    if (!id) {
-      setDeliveryAddressOptions([]);
-      return [];
-    }
-    try {
-      const res = await apiRequest(`/customers/${encodeURIComponent(id)}/delivery-addresses`);
-      const list = Array.isArray(res?.data) ? res.data : [];
-      setDeliveryAddressOptions(list);
-      return list;
-    } catch {
-      setDeliveryAddressOptions([]);
-      return [];
-    }
   }, []);
 
   React.useEffect(() => {
