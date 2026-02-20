@@ -63,6 +63,16 @@ export function updateOrderCartSalePrice(productId, salePrice) {
   return next;
 }
 
+export function updateOrderCartItem(productId, patch) {
+  const next = read().map((x) => (
+    String(x.id || '') === String(productId || '')
+      ? { ...x, ...(patch || {}) }
+      : x
+  ));
+  write(next);
+  return next;
+}
+
 export function addOrderCartItem(item, quantityKg) {
   const qty = Number(quantityKg);
   if (!item || !Number.isFinite(qty) || qty <= 0) return read();
@@ -80,6 +90,14 @@ export function addOrderCartItem(item, quantityKg) {
     acquisitionPrice: item.acquisitionPrice ?? null,
     salePrice: item.acquisitionPrice ?? null,
     quantityKg: qty,
+    specialPaymentCondition: Boolean(item.specialPaymentCondition),
+    specialPaymentText: item.specialPaymentText || '',
+    specialPaymentId: item.specialPaymentId ?? '',
+    incotermText: item.incotermText || '',
+    incotermId: item.incotermId ?? '',
+    packagingType: item.packagingType || '',
+    deliveryDate: item.deliveryDate || '',
+    deliveryAddress: item.deliveryAddress || '',
   };
   if (idx >= 0) {
     current[idx] = payload;

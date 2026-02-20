@@ -109,17 +109,6 @@ export default function TempOrderDetail() {
             <InfoRow label={t('customer_select')} value={item.clientName} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
-            <InfoRow label={t('incoterm_label')} value={item.incotermText || item.deliveryType || ''} />
-            <InfoRow label={t('packaging_type_label')} value={item.packagingType} />
-            <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
-            {item.specialPaymentCondition && (
-              <InfoRow
-                label={t('special_payment_text_label')}
-                value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
-              />
-            )}
-            <InfoRow label={t('delivery_start')} value={formatDateOnly(item.deliveryStartDate)} />
-            <InfoRow label={t('delivery_end')} value={formatDateOnly(item.deliveryEndDate)} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
             <InfoRow label={t('order_received_from')} value={item.receivedFrom} />
             <InfoRow label={t('order_completed')} value={item.completed ? t('yes_label') : t('no_label')} />
@@ -155,6 +144,18 @@ export default function TempOrderDetail() {
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
                     {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('delivery_date')}: {formatDateOnly(pos.deliveryDate)} | {t('delivery_address_label')}: {pos.deliveryAddress || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('incoterm_label')}: {pos.deliveryType || '-'} | {t('packaging_type_label')}: {pos.packagingType || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('special_payment_condition')}: {pos.specialPaymentCondition ? t('yes_label') : t('no_label')}
+                    {pos.specialPaymentCondition
+                      ? ` | ${t('special_payment_text_label')}: ${pos.specialPaymentText ? `${pos.specialPaymentText}${pos.specialPaymentId ? ` (#${pos.specialPaymentId})` : ''}` : '-'}`
+                      : ''}
                   </Typography>
                 </Box>
               ))}

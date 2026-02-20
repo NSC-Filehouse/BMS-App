@@ -1,5 +1,8 @@
 import React from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Autocomplete,
   Box,
@@ -21,6 +24,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -44,6 +48,20 @@ function inSevenDays() {
   const d = new Date();
   d.setDate(d.getDate() + 7);
   return d.toISOString().slice(0, 10);
+}
+
+function createPositionDefaults(overrides = {}) {
+  return {
+    specialPaymentCondition: false,
+    specialPaymentText: '',
+    specialPaymentId: '',
+    incotermText: '',
+    incotermId: '',
+    packagingType: '',
+    deliveryDate: tomorrow(),
+    deliveryAddress: '',
+    ...overrides,
+  };
 }
 
 const PACKAGING_TYPES_DE = [
@@ -105,6 +123,14 @@ export default function TempOrderForm() {
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
+  const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
+  const [addPosDeliveryAddress, setAddPosDeliveryAddress] = React.useState('');
+  const [addPosPackagingType, setAddPosPackagingType] = React.useState('');
+  const [addPosIncotermId, setAddPosIncotermId] = React.useState('');
+  const [addPosIncotermText, setAddPosIncotermText] = React.useState('');
+  const [addPosSpecialPaymentCondition, setAddPosSpecialPaymentCondition] = React.useState(false);
+  const [addPosSpecialPaymentId, setAddPosSpecialPaymentId] = React.useState('');
+  const [addPosSpecialPaymentText, setAddPosSpecialPaymentText] = React.useState('');
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -129,23 +155,10 @@ export default function TempOrderForm() {
     clientName: '',
     clientAddress: '',
     clientRepresentative: '',
-    specialPaymentCondition: false,
-    specialPaymentText: '',
-    specialPaymentId: '',
-    incotermText: '',
-    incotermId: '',
     comment: '',
     supplier: '',
-    packagingType: '',
-    deliveryStartDate: tomorrow(),
-    deliveryEndDate: inSevenDays(),
   });
-  const packagingOptions = React.useMemo(() => {
-    const base = lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE;
-    const current = String(form.packagingType || '').trim();
-    if (!current) return base;
-    return base.includes(current) ? base : [current, ...base];
-  }, [form.packagingType, lang]);
+  const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
 
   React.useEffect(() => {
     let alive = true;
@@ -167,16 +180,8 @@ export default function TempOrderForm() {
             clientName: d.clientName || '',
             clientAddress: d.clientAddress || '',
             clientRepresentative: d.clientRepresentative || '',
-            specialPaymentCondition: Boolean(d.specialPaymentCondition),
-            specialPaymentText: d.specialPaymentText || '',
-            specialPaymentId: d.specialPaymentId ?? '',
-            incotermText: d.incotermText || d.deliveryType || '',
-            incotermId: d.incotermId ?? d.deliveryTypeId ?? '',
             comment: d.comment || '',
             supplier: d.distributor || '',
-            packagingType: d.packagingType || '',
-            deliveryStartDate: d.deliveryStartDate ? String(d.deliveryStartDate).slice(0, 10) : tomorrow(),
-            deliveryEndDate: d.deliveryEndDate ? String(d.deliveryEndDate).slice(0, 10) : inSevenDays(),
           });
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
@@ -189,6 +194,16 @@ export default function TempOrderForm() {
             costPrice: p.costPrice ?? null,
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
+            ...createPositionDefaults({
+              specialPaymentCondition: Boolean(p.specialPaymentCondition),
+              specialPaymentText: p.specialPaymentText || '',
+              specialPaymentId: p.specialPaymentId ?? '',
+              incotermText: p.deliveryType || p.incotermText || '',
+              incotermId: p.deliveryTypeId ?? p.incotermId ?? '',
+              packagingType: p.packagingType || '',
+              deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : tomorrow(),
+              deliveryAddress: p.deliveryAddress || d.clientAddress || '',
+            }),
           })));
         } catch (e) {
           if (alive) setError(e?.message || t('loading_error'));
@@ -211,6 +226,16 @@ export default function TempOrderForm() {
             costPrice: x.costPrice ?? x.price,
             reservationInKg: null,
             reservationDate: null,
+            ...createPositionDefaults({
+              specialPaymentCondition: Boolean(x.specialPaymentCondition),
+              specialPaymentText: x.specialPaymentText || '',
+              specialPaymentId: x.specialPaymentId ?? '',
+              incotermText: x.incotermText || '',
+              incotermId: x.incotermId ?? '',
+              packagingType: x.packagingType || '',
+              deliveryDate: x.deliveryDate || tomorrow(),
+              deliveryAddress: x.deliveryAddress || '',
+            }),
           })));
           setForm((prev) => ({
             ...prev,
@@ -271,25 +296,6 @@ export default function TempOrderForm() {
   }, []);
 
   React.useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      const beNumber = String(form.beNumber || '').trim();
-      if (!beNumber) return;
-      try {
-        const res = await apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(beNumber)}`);
-        if (!alive) return;
-        const meta = res?.data || {};
-        setForm((prev) => ({
-          ...prev,
-          packagingType: String(meta.packagingType || '').trim(),
-        }));
-      } catch {}
-    };
-    run();
-    return () => { alive = false; };
-  }, [form.beNumber]);
-
-  React.useEffect(() => {
     if (!addPosOpen) return undefined;
     const h = setTimeout(async () => {
       const q = addPosQuery.trim();
@@ -339,6 +345,11 @@ export default function TempOrderForm() {
       clientAddress,
       clientRepresentative: '',
     }));
+    setPositions((prev) => prev.map((pos) => (
+      String(pos.deliveryAddress || '').trim()
+        ? pos
+        : { ...pos, deliveryAddress: clientAddress }
+    )));
 
     try {
       const detail = await apiRequest(`/customers/${encodeURIComponent(clientReferenceId)}`);
@@ -378,47 +389,61 @@ export default function TempOrderForm() {
 
   const submit = async () => {
     const messages = [];
-    const amount = Number(form.amountInKg);
-    const price = Number(form.pricePerKg);
-    const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
-
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
     if ((isEdit || isCartCreate) && (!Array.isArray(positions) || positions.length === 0)) {
       messages.push('Mindestens eine Position muss vorhanden sein.');
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
-    if (form.specialPaymentCondition && !Number(form.specialPaymentId)) {
-      messages.push(t('validation_special_payment_text_required'));
-    }
 
     if (!isPositionsMode) {
+      const amount = Number(form.amountInKg);
+      const price = Number(form.pricePerKg);
+      const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
       if (!Number.isFinite(amount) || amount <= 0) {
         messages.push(t('validation_amount_positive'));
       }
       if (!Number.isFinite(price) || price <= 0) {
         messages.push(t('validation_price_positive'));
       }
+      if (reservation !== null) {
+        if (!Number.isFinite(reservation) || reservation <= 0) {
+          messages.push(t('validation_reservation_positive'));
+        }
+        if (Number.isFinite(amount) && Number.isFinite(reservation) && reservation > amount) {
+          messages.push(t('validation_reservation_not_above_amount'));
+        }
+        if (!form.reservationDate) {
+          messages.push(t('validation_reservation_date_required'));
+        }
+      }
     }
 
-    if (!isPositionsMode && reservation !== null) {
-      if (!Number.isFinite(reservation) || reservation <= 0) {
-        messages.push(t('validation_reservation_positive'));
+    for (const pos of (Array.isArray(positions) ? positions : [])) {
+      const amount = Number(pos.amountInKg);
+      const salePrice = Number(pos.price);
+      const costPrice = Number(pos.costPrice);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_amount_positive')}`);
       }
-      if (Number.isFinite(amount) && Number.isFinite(reservation) && reservation > amount) {
-        messages.push(t('validation_reservation_not_above_amount'));
+      if (!Number.isFinite(salePrice) || salePrice <= 0) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_sale_price_positive')}`);
       }
-      if (!form.reservationDate) {
-        messages.push(t('validation_reservation_date_required'));
+      if (!Number.isFinite(costPrice) || costPrice <= 0) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_price_positive')}`);
       }
-    }
-
-    const start = new Date(form.deliveryStartDate);
-    const end = new Date(form.deliveryEndDate);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      messages.push(t('validation_delivery_dates_required'));
-    } else if (start.getTime() > end.getTime()) {
-      messages.push(t('validation_delivery_range_invalid'));
+      if (!pos.deliveryDate) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
+      }
+      if (!pos.incotermId) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_incoterm_required')}`);
+      }
+      if (!pos.packagingType) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_packaging_required')}`);
+      }
+      if (pos.specialPaymentCondition && !pos.specialPaymentId) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_special_payment_text_required')}`);
+      }
     }
 
     if (messages.length) {
@@ -442,16 +467,8 @@ export default function TempOrderForm() {
         clientName: form.clientName,
         clientAddress: form.clientAddress,
         clientRepresentative: form.clientRepresentative || null,
-        specialPaymentCondition: Boolean(form.specialPaymentCondition),
-        specialPaymentText: form.specialPaymentText || null,
-        specialPaymentId: form.specialPaymentId === '' ? null : Number(form.specialPaymentId),
-        incotermText: form.incotermText || null,
-        incotermId: form.incotermId === '' ? null : Number(form.incotermId),
         comment: form.comment || null,
         supplier: form.supplier || null,
-        packagingType: form.packagingType || '',
-        deliveryStartDate: form.deliveryStartDate,
-        deliveryEndDate: form.deliveryEndDate,
       };
       if ((isEdit || isCartCreate) && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
@@ -462,6 +479,14 @@ export default function TempOrderForm() {
           costPricePerKg: Number(x.costPrice ?? x.price),
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
+          specialPaymentCondition: Boolean(x.specialPaymentCondition),
+          specialPaymentText: x.specialPaymentText || null,
+          specialPaymentId: x.specialPaymentId === '' ? null : Number(x.specialPaymentId),
+          incotermText: x.incotermText || null,
+          incotermId: x.incotermId === '' ? null : Number(x.incotermId),
+          packagingType: x.packagingType || '',
+          deliveryDate: x.deliveryDate || null,
+          deliveryAddress: x.deliveryAddress || null,
         }));
         payload.beNumber = payload.positions[0].beNumber;
         payload.warehouseId = payload.positions[0].warehouseId;
@@ -519,81 +544,7 @@ export default function TempOrderForm() {
             <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
             <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
 
-            {(
-              <>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                  {!isPositionsMode && <TextField type="number" label={t('product_amount')} value={form.amountInKg} onChange={(e) => setForm((p) => ({ ...p, amountInKg: e.target.value }))} fullWidth />}
-                  {!isPositionsMode && <TextField type="number" label={t('product_price')} value={form.pricePerKg} onChange={(e) => setForm((p) => ({ ...p, pricePerKg: e.target.value }))} fullWidth />}
-                  {!isPositionsMode && (
-                    <TextField type="number" label={t('order_reserve_amount')} value={form.reservationInKg} onChange={(e) => setForm((p) => ({ ...p, reservationInKg: e.target.value }))} fullWidth />
-                  )}
-                  {!isPositionsMode && <TextField type="date" label={t('order_reserved_until')} value={form.reservationDate} onChange={(e) => setForm((p) => ({ ...p, reservationDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />}
-                  <TextField type="date" label={t('delivery_start')} value={form.deliveryStartDate} onChange={(e) => setForm((p) => ({ ...p, deliveryStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
-                  <TextField type="date" label={t('delivery_end')} value={form.deliveryEndDate} onChange={(e) => setForm((p) => ({ ...p, deliveryEndDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth disabled={isPositionsMode} />
-                </Box>
-
-                <TextField
-                  select
-                  label={t('incoterm_label')}
-                  value={form.incotermId}
-                  onChange={(e) => {
-                    const selectedId = Number(e.target.value);
-                    const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
-                    setForm((p) => ({
-                      ...p,
-                      incotermId: Number.isFinite(selectedId) ? selectedId : '',
-                      incotermText: selected?.text || '',
-                    }));
-                  }}
-                  fullWidth
-                >
-                  {incotermOptions.map((x) => (
-                    <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  label={t('packaging_type_label')}
-                  value={form.packagingType}
-                  onChange={(e) => setForm((p) => ({ ...p, packagingType: e.target.value }))}
-                  fullWidth
-                >
-                  {packagingOptions.map((x) => (
-                    <MenuItem key={x} value={x}>{x}</MenuItem>
-                  ))}
-                </TextField>
-                <FormControlLabel
-                  control={<Checkbox checked={Boolean(form.specialPaymentCondition)} onChange={(e) => setForm((p) => ({
-                    ...p,
-                    specialPaymentCondition: e.target.checked,
-                    ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
-                  }))} />}
-                  label={t('special_payment_condition')}
-                />
-                {Boolean(form.specialPaymentCondition) && (
-                  <TextField
-                    select
-                    label={t('special_payment_text_label')}
-                    value={form.specialPaymentId}
-                    onChange={(e) => {
-                      const selectedId = Number(e.target.value);
-                      const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
-                      setForm((p) => ({
-                        ...p,
-                        specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
-                        specialPaymentText: selected?.text || '',
-                      }));
-                    }}
-                    fullWidth
-                  >
-                    {paymentTextOptions.map((x) => (
-                      <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
-                    ))}
-                  </TextField>
-                )}
-                <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
-              </>
-            )}
+            <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 
             {isPositionsMode && (
               <Box sx={{ mt: 1 }}>
@@ -613,6 +564,14 @@ export default function TempOrderForm() {
                         setAddPosProduct(null);
                         setAddPosQty('');
                         setAddPosSalePrice('');
+                        setAddPosDeliveryDate(tomorrow());
+                        setAddPosDeliveryAddress(form.clientAddress || '');
+                        setAddPosPackagingType('');
+                        setAddPosIncotermId('');
+                        setAddPosIncotermText('');
+                        setAddPosSpecialPaymentCondition(false);
+                        setAddPosSpecialPaymentId('');
+                        setAddPosSpecialPaymentText('');
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -620,36 +579,142 @@ export default function TempOrderForm() {
                   )}
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {positions.map((x, idx) => (
-                    <Box
-                      key={`${x.id || x.beNumber || idx}-${idx}`}
-                      sx={{
-                        border: '1px solid rgba(0,0,0,0.12)',
-                        borderRadius: 1.5,
-                        p: 1.25,
-                        display: 'grid',
-                        gap: 0.25,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {x.article || '-'}
-                      </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => onRemovePosition(idx)}
-                        sx={{ justifySelf: 'end' }}
-                      >
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
-                      <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                        {t('product_amount')}: {x.amountInKg ?? '-'} kg | {t('order_sale_price')}: {x.price ?? '-'} | {t('product_price')}: {x.costPrice ?? '-'}
-                      </Typography>
-                    </Box>
-                  ))}
+                  {positions.map((x, idx) => {
+                    const deliveryDateValue = x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : '';
+                    return (
+                      <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Box sx={{ display: 'grid', width: '100%', gap: 0.35 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {x.article || '-'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                              {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
+                            </Typography>
+                          </Box>
+                        </AccordionSummary>
+                        <AccordionDetails sx={{ display: 'grid', gap: 1.1 }}>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                            <TextField
+                              type="number"
+                              label={t('product_amount')}
+                              value={x.amountInKg ?? ''}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, amountInKg: e.target.value } : p)))}
+                              inputProps={{ min: 1, step: 'any' }}
+                              size="small"
+                            />
+                            <TextField
+                              type="number"
+                              label={t('order_sale_price')}
+                              value={x.price ?? ''}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, price: e.target.value } : p)))}
+                              inputProps={{ min: 0.01, step: 'any' }}
+                              size="small"
+                            />
+                            <TextField
+                              type="number"
+                              label={t('product_price')}
+                              value={x.costPrice ?? ''}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, costPrice: e.target.value } : p)))}
+                              inputProps={{ min: 0.01, step: 'any' }}
+                              size="small"
+                            />
+                            <TextField
+                              type="date"
+                              label={t('delivery_date')}
+                              value={deliveryDateValue}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryDate: e.target.value } : p)))}
+                              InputLabelProps={{ shrink: true }}
+                              size="small"
+                            />
+                            <TextField
+                              select
+                              label={t('incoterm_label')}
+                              value={x.incotermId ?? ''}
+                              onChange={(e) => {
+                                const selectedId = Number(e.target.value);
+                                const selected = incotermOptions.find((z) => Number(z.id) === selectedId);
+                                setPositions((prev) => prev.map((p, i) => (i === idx
+                                  ? {
+                                      ...p,
+                                      incotermId: Number.isFinite(selectedId) ? selectedId : '',
+                                      incotermText: selected?.text || '',
+                                    }
+                                  : p)));
+                              }}
+                              size="small"
+                            >
+                              {incotermOptions.map((z) => (
+                                <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
+                              ))}
+                            </TextField>
+                            <TextField
+                              select
+                              label={t('packaging_type_label')}
+                              value={x.packagingType || ''}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, packagingType: e.target.value } : p)))}
+                              size="small"
+                            >
+                              {packagingOptions.map((z) => (
+                                <MenuItem key={z} value={z}>{z}</MenuItem>
+                              ))}
+                            </TextField>
+                          </Box>
+
+                          <TextField
+                            label={t('delivery_address_label')}
+                            value={x.deliveryAddress || ''}
+                            onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
+                            size="small"
+                            fullWidth
+                          />
+                          <FormControlLabel
+                            control={(
+                              <Checkbox
+                                checked={Boolean(x.specialPaymentCondition)}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx
+                                  ? {
+                                      ...p,
+                                      specialPaymentCondition: e.target.checked,
+                                      ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
+                                    }
+                                  : p)))}
+                              />
+                            )}
+                            label={t('special_payment_condition')}
+                          />
+                          {Boolean(x.specialPaymentCondition) && (
+                            <TextField
+                              select
+                              label={t('special_payment_text_label')}
+                              value={x.specialPaymentId ?? ''}
+                              onChange={(e) => {
+                                const selectedId = Number(e.target.value);
+                                const selected = paymentTextOptions.find((z) => Number(z.id) === selectedId);
+                                setPositions((prev) => prev.map((p, i) => (i === idx
+                                  ? {
+                                      ...p,
+                                      specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
+                                      specialPaymentText: selected?.text || '',
+                                    }
+                                  : p)));
+                              }}
+                              size="small"
+                            >
+                              {paymentTextOptions.map((z) => (
+                                <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
+                              ))}
+                            </TextField>
+                          )}
+                          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </AccordionDetails>
+                      </Accordion>
+                    );
+                  })}
                 </Box>
               </Box>
             )}
@@ -747,6 +812,80 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
+          <TextField
+            type="date"
+            label={t('delivery_date')}
+            value={addPosDeliveryDate}
+            onChange={(e) => setAddPosDeliveryDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            fullWidth
+          />
+          <TextField
+            label={t('delivery_address_label')}
+            value={addPosDeliveryAddress}
+            onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            select
+            label={t('incoterm_label')}
+            value={addPosIncotermId}
+            onChange={(e) => {
+              const selectedId = Number(e.target.value);
+              const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
+              setAddPosIncotermId(Number.isFinite(selectedId) ? selectedId : '');
+              setAddPosIncotermText(selected?.text || '');
+            }}
+            fullWidth
+          >
+            {incotermOptions.map((x) => (
+              <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label={t('packaging_type_label')}
+            value={addPosPackagingType}
+            onChange={(e) => setAddPosPackagingType(e.target.value)}
+            fullWidth
+          >
+            {packagingOptions.map((x) => (
+              <MenuItem key={x} value={x}>{x}</MenuItem>
+            ))}
+          </TextField>
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={addPosSpecialPaymentCondition}
+                onChange={(e) => {
+                  setAddPosSpecialPaymentCondition(e.target.checked);
+                  if (!e.target.checked) {
+                    setAddPosSpecialPaymentId('');
+                    setAddPosSpecialPaymentText('');
+                  }
+                }}
+              />
+            )}
+            label={t('special_payment_condition')}
+          />
+          {addPosSpecialPaymentCondition && (
+            <TextField
+              select
+              label={t('special_payment_text_label')}
+              value={addPosSpecialPaymentId}
+              onChange={(e) => {
+                const selectedId = Number(e.target.value);
+                const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
+                setAddPosSpecialPaymentId(Number.isFinite(selectedId) ? selectedId : '');
+                setAddPosSpecialPaymentText(selected?.text || '');
+              }}
+              fullWidth
+            >
+              {paymentTextOptions.map((x) => (
+                <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+              ))}
+            </TextField>
+          )}
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             {addPosAvailableAmount === null
               ? `${t('product_available_now')}: -`
@@ -778,6 +917,22 @@ export default function TempOrderForm() {
                 setError(t('validation_sale_price_positive'));
                 return;
               }
+              if (!addPosDeliveryDate) {
+                setError(t('validation_delivery_date_required'));
+                return;
+              }
+              if (!addPosIncotermId) {
+                setError(t('validation_incoterm_required'));
+                return;
+              }
+              if (!addPosPackagingType) {
+                setError(t('validation_packaging_required'));
+                return;
+              }
+              if (addPosSpecialPaymentCondition && !addPosSpecialPaymentId) {
+                setError(t('validation_special_payment_text_required'));
+                return;
+              }
               setPositions((prev) => ([
                 ...prev,
                 {
@@ -790,6 +945,16 @@ export default function TempOrderForm() {
                   costPrice: price,
                   reservationInKg: null,
                   reservationDate: null,
+                  ...createPositionDefaults({
+                    specialPaymentCondition: addPosSpecialPaymentCondition,
+                    specialPaymentText: addPosSpecialPaymentText || '',
+                    specialPaymentId: addPosSpecialPaymentId || '',
+                    incotermText: addPosIncotermText || '',
+                    incotermId: addPosIncotermId || '',
+                    packagingType: addPosPackagingType || '',
+                    deliveryDate: addPosDeliveryDate,
+                    deliveryAddress: addPosDeliveryAddress || form.clientAddress || '',
+                  }),
                 },
               ]));
               setAddPosOpen(false);

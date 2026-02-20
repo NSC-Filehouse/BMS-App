@@ -6,13 +6,16 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
@@ -22,6 +25,26 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
+
+const PACKAGING_TYPES_DE = [
+  'Sackware',
+  'Siloware',
+  'Big Bags',
+  'Octa',
+  'Andere',
+  'NEUTRALE Sackware',
+  'NEUTRALE Oktabins',
+];
+
+const PACKAGING_TYPES_EN = [
+  'Bags',
+  'Silo/bulk',
+  'Big Bags',
+  'Octabins',
+  'Others',
+  'NEUTRAL Bags',
+  'NEUTRAL Octas',
+];
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -56,7 +79,7 @@ export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -70,6 +93,17 @@ export default function ProductDetail() {
   const [reserveInfo, setReserveInfo] = React.useState('');
   const [cartOpen, setCartOpen] = React.useState(false);
   const [cartQty, setCartQty] = React.useState('');
+  const [cartSalePrice, setCartSalePrice] = React.useState('');
+  const [cartDeliveryDate, setCartDeliveryDate] = React.useState('');
+  const [cartDeliveryAddress, setCartDeliveryAddress] = React.useState('');
+  const [cartPackagingType, setCartPackagingType] = React.useState('');
+  const [cartIncotermId, setCartIncotermId] = React.useState('');
+  const [cartIncotermText, setCartIncotermText] = React.useState('');
+  const [cartSpecialPaymentCondition, setCartSpecialPaymentCondition] = React.useState(false);
+  const [cartSpecialPaymentId, setCartSpecialPaymentId] = React.useState('');
+  const [cartSpecialPaymentText, setCartSpecialPaymentText] = React.useState('');
+  const [incotermOptions, setIncotermOptions] = React.useState([]);
+  const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [cartSuccess, setCartSuccess] = React.useState('');
   const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [wpzExists, setWpzExists] = React.useState(false);
@@ -87,6 +121,7 @@ export default function ProductDetail() {
     return (Number.isFinite(reserved) && reserved > 0) || Boolean(String(item?.reservedBy || '').trim());
   }, [item]);
   const reservedBy = React.useMemo(() => String(item?.reservedBy || '').trim(), [item]);
+  const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
 
   React.useEffect(() => {
     let alive = true;
@@ -129,6 +164,27 @@ export default function ProductDetail() {
   React.useEffect(() => {
     setCartCount(getOrderCartCount());
   }, [cartOpen, cartSuccess]);
+
+  React.useEffect(() => {
+    if (!cartOpen) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const [incRes, payRes] = await Promise.all([
+          apiRequest('/temp-orders/incoterms'),
+          apiRequest('/temp-orders/payment-texts'),
+        ]);
+        if (!alive) return;
+        setIncotermOptions(Array.isArray(incRes?.data) ? incRes.data : []);
+        setPaymentTextOptions(Array.isArray(payRes?.data) ? payRes.data : []);
+      } catch {
+        if (!alive) return;
+        setIncotermOptions([]);
+        setPaymentTextOptions([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [cartOpen]);
 
   const handleBack = React.useCallback(() => {
     const fromProducts = location.state?.fromProducts;
@@ -207,7 +263,18 @@ export default function ProductDetail() {
               startIcon={<ShoppingCartIcon />}
               sx={{ mb: 2 }}
               onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
                 setCartQty('');
+                setCartSalePrice(item?.acquisitionPrice ?? '');
+                setCartDeliveryDate(tomorrow.toISOString().slice(0, 10));
+                setCartDeliveryAddress('');
+                setCartPackagingType('');
+                setCartIncotermId('');
+                setCartIncotermText('');
+                setCartSpecialPaymentCondition(false);
+                setCartSpecialPaymentId('');
+                setCartSpecialPaymentText('');
                 setCartOpen(true);
               }}
             >
@@ -358,6 +425,94 @@ export default function ProductDetail() {
             inputProps={{ min: 1, step: 'any' }}
             helperText={availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : ''}
           />
+          <TextField
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('order_sale_price')}
+            value={cartSalePrice}
+            onChange={(e) => setCartSalePrice(e.target.value)}
+            inputProps={{ min: 0.01, step: 'any' }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            type="date"
+            label={t('delivery_date')}
+            value={cartDeliveryDate}
+            onChange={(e) => setCartDeliveryDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            margin="dense"
+            fullWidth
+            label={t('delivery_address_label')}
+            value={cartDeliveryAddress}
+            onChange={(e) => setCartDeliveryAddress(e.target.value)}
+          />
+          <TextField
+            margin="dense"
+            select
+            fullWidth
+            label={t('incoterm_label')}
+            value={cartIncotermId}
+            onChange={(e) => {
+              const selectedId = Number(e.target.value);
+              const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
+              setCartIncotermId(Number.isFinite(selectedId) ? selectedId : '');
+              setCartIncotermText(selected?.text || '');
+            }}
+          >
+            {incotermOptions.map((x) => (
+              <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            margin="dense"
+            select
+            fullWidth
+            label={t('packaging_type_label')}
+            value={cartPackagingType}
+            onChange={(e) => setCartPackagingType(e.target.value)}
+          >
+            {packagingOptions.map((x) => (
+              <MenuItem key={x} value={x}>{x}</MenuItem>
+            ))}
+          </TextField>
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={cartSpecialPaymentCondition}
+                onChange={(e) => {
+                  setCartSpecialPaymentCondition(e.target.checked);
+                  if (!e.target.checked) {
+                    setCartSpecialPaymentId('');
+                    setCartSpecialPaymentText('');
+                  }
+                }}
+              />
+            )}
+            label={t('special_payment_condition')}
+          />
+          {cartSpecialPaymentCondition && (
+            <TextField
+              margin="dense"
+              select
+              fullWidth
+              label={t('special_payment_text_label')}
+              value={cartSpecialPaymentId}
+              onChange={(e) => {
+                const selectedId = Number(e.target.value);
+                const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
+                setCartSpecialPaymentId(Number.isFinite(selectedId) ? selectedId : '');
+                setCartSpecialPaymentText(selected?.text || '');
+              }}
+            >
+              {paymentTextOptions.map((x) => (
+                <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+              ))}
+            </TextField>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCartOpen(false)}>{t('back_label')}</Button>
@@ -365,6 +520,7 @@ export default function ProductDetail() {
             variant="contained"
             onClick={() => {
               const qty = Number(cartQty);
+              const salePrice = Number(cartSalePrice);
               if (!Number.isFinite(qty) || qty <= 0) {
                 setError(t('validation_cart_quantity_positive'));
                 return;
@@ -373,7 +529,38 @@ export default function ProductDetail() {
                 setError(t('validation_cart_quantity_not_above_available'));
                 return;
               }
-              addOrderCartItem(item, qty);
+              if (!Number.isFinite(salePrice) || salePrice <= 0) {
+                setError(t('validation_sale_price_positive'));
+                return;
+              }
+              if (!cartDeliveryDate) {
+                setError(t('validation_delivery_date_required'));
+                return;
+              }
+              if (!cartIncotermId) {
+                setError(t('validation_incoterm_required'));
+                return;
+              }
+              if (!cartPackagingType) {
+                setError(t('validation_packaging_required'));
+                return;
+              }
+              if (cartSpecialPaymentCondition && !cartSpecialPaymentId) {
+                setError(t('validation_special_payment_text_required'));
+                return;
+              }
+              addOrderCartItem({
+                ...item,
+                salePrice,
+                deliveryDate: cartDeliveryDate,
+                deliveryAddress: cartDeliveryAddress,
+                packagingType: cartPackagingType,
+                incotermId: cartIncotermId,
+                incotermText: cartIncotermText,
+                specialPaymentCondition: cartSpecialPaymentCondition,
+                specialPaymentId: cartSpecialPaymentId,
+                specialPaymentText: cartSpecialPaymentText,
+              }, qty);
               setCartOpen(false);
               setCartSuccess(t('cart_added'));
               setCartCount(getOrderCartCount());

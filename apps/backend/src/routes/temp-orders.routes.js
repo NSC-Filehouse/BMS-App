@@ -91,7 +91,16 @@ function mapTempOrderRow(row) {
 
 function mapTempOrderWithPositions(row, positions) {
   const base = mapTempOrderRow(row);
-  const list = Array.isArray(positions) ? positions : [];
+  const list = (Array.isArray(positions) ? positions : []).map((p) => ({
+    ...p,
+    specialPaymentCondition: Boolean(p.specialPaymentCondition),
+    specialPaymentText: asText(p.specialPaymentText),
+    specialPaymentId: p.specialPaymentId === null || p.specialPaymentId === undefined ? null : Number(p.specialPaymentId),
+    deliveryTypeId: p.deliveryTypeId === null || p.deliveryTypeId === undefined ? null : Number(p.deliveryTypeId),
+    deliveryType: asText(p.deliveryType),
+    packagingType: asText(p.packagingType),
+    deliveryAddress: asText(p.deliveryAddress),
+  }));
   const first = list.length ? list[0] : null;
   return {
     ...base,
@@ -118,6 +127,14 @@ function normalizePositionsInput(body) {
     costPricePerKg: body?.costPricePerKg,
     reservationInKg: body?.reservationInKg,
     reservationDate: body?.reservationDate,
+    specialPaymentCondition: body?.specialPaymentCondition,
+    specialPaymentText: body?.specialPaymentText,
+    specialPaymentId: body?.specialPaymentId,
+    incotermText: body?.incotermText,
+    incotermId: body?.incotermId ?? body?.deliveryTypeId,
+    packagingType: body?.packagingType,
+    deliveryDate: body?.deliveryDate,
+    deliveryAddress: body?.deliveryAddress ?? body?.clientAddress,
   }];
 }
 
@@ -310,6 +327,14 @@ async function loadOrderPositions(orderId) {
     const cReservationDate = resolveColumn(cols, ['tap_reservation_date', 'taP_reservation_date', 'reservation_date']);
     const cAbout = resolveColumn(cols, ['tap_about', 'taP_about', 'about']);
     const cMfi = resolveColumn(cols, ['tap_mfi', 'taP_mfi', 'mfi']);
+    const cSpecialPaymentCondition = resolveColumn(cols, ['tap_special_payment_condition']);
+    const cSpecialPaymentText = resolveColumn(cols, ['tap_special_payment_text']);
+    const cSpecialPaymentId = resolveColumn(cols, ['tap_special_payment_id']);
+    const cDeliveryTypeId = resolveColumn(cols, ['tap_delivery_type_id']);
+    const cDeliveryType = resolveColumn(cols, ['tap_delivery_type']);
+    const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
+    const cPackagingType = resolveColumn(cols, ['tap_packaging_type']);
+    const cDeliveryAddress = resolveColumn(cols, ['tap_delivery_address']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const sql = `
@@ -328,8 +353,14 @@ async function loadOrderPositions(orderId) {
         ${pick(cAbout, 'about')},
         ${pick(cMfi, 'mfi')},
         NULL AS [packaging],
-        NULL AS [packagingType],
-        NULL AS [deliveryType]
+        ${pick(cPackagingType, 'packagingType')},
+        ${pick(cDeliveryType, 'deliveryType')},
+        ${pick(cDeliveryTypeId, 'deliveryTypeId')},
+        ${pick(cSpecialPaymentCondition, 'specialPaymentCondition')},
+        ${pick(cSpecialPaymentText, 'specialPaymentText')},
+        ${pick(cSpecialPaymentId, 'specialPaymentId')},
+        ${pick(cDeliveryDate, 'deliveryDate')},
+        ${pick(cDeliveryAddress, 'deliveryAddress')}
       FROM [dbo].[tbl_Temp_Auf_Position]
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -547,26 +578,9 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
   const supplier = asText(req.body?.supplier);
-  const specialPaymentConditionBit = asBit(req.body?.specialPaymentCondition, 0);
-  const specialPaymentIdInput = req.body?.specialPaymentId;
-  const incotermIdInput = req.body?.incotermId ?? req.body?.deliveryTypeId;
   const lang = resolveLang(req);
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
-  }
-  let specialPayment = null;
-  if (specialPaymentConditionBit) {
-    specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
-    if (!specialPayment) {
-      throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-    }
-  }
-  let incoterm = null;
-  if (incotermIdInput !== undefined && incotermIdInput !== null && incotermIdInput !== '') {
-    incoterm = await loadIncotermById(req.database, incotermIdInput, lang);
-    if (!incoterm) {
-      throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-    }
   }
 
   const normalizedPositions = [];
@@ -589,6 +603,31 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
+    const specialPaymentCondition = asBit(raw?.specialPaymentCondition, 0);
+    const specialPaymentIdInput = raw?.specialPaymentId;
+    let specialPayment = null;
+    if (specialPaymentCondition) {
+      specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
+      if (!specialPayment) {
+        throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      }
+    }
+    const incotermIdInput = raw?.incotermId ?? raw?.deliveryTypeId;
+    let incoterm = null;
+    if (incotermIdInput !== undefined && incotermIdInput !== null && incotermIdInput !== '') {
+      incoterm = await loadIncotermById(req.database, incotermIdInput, lang);
+      if (!incoterm) {
+        throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      }
+    }
+    const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : null;
+    if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
+      throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    const packagingType = asText(raw?.packagingType);
+    if (!packagingType) {
+      throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
     normalizedPositions.push({
       beNumber,
       warehouseId,
@@ -597,18 +636,18 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       costPricePerKg,
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
+      specialPaymentCondition,
+      specialPaymentText: specialPayment?.text || null,
+      specialPaymentId: specialPayment?.id || null,
+      incotermText: incoterm?.text || null,
+      incotermId: incoterm?.id || null,
+      packagingType,
+      deliveryDate: deliveryDate.toISOString(),
+      deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
     });
   }
   const primaryPos = normalizedPositions[0];
-
-  const deliveryStartDate = new Date(req.body?.deliveryStartDate);
-  const deliveryEndDate = new Date(req.body?.deliveryEndDate);
-  if (Number.isNaN(deliveryStartDate.getTime()) || Number.isNaN(deliveryEndDate.getTime())) {
-    throw createHttpError(400, 'Invalid delivery date range.', { code: 'INVALID_RESERVATION_END_DATE' });
-  }
-
-  const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
-  const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
+  const fallbackDeliveryDate = new Date(primaryPos.deliveryDate);
 
   const nowIso = new Date().toISOString();
   const sql = `
@@ -627,15 +666,15 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientName,
     clientAddress,
     clientRepresentative || null,
-    specialPaymentConditionBit,
-    specialPayment?.text || null,
-    specialPayment?.id || null,
+    primaryPos.specialPaymentCondition,
+    primaryPos.specialPaymentText,
+    primaryPos.specialPaymentId,
     asText(req.body?.comment) || null,
-    incoterm?.text || null,
-    incoterm?.id || null,
-    packagingType,
-    deliveryStartDate.toISOString(),
-    deliveryEndDate.toISOString(),
+    primaryPos.incotermText,
+    primaryPos.incotermId,
+    primaryPos.packagingType,
+    fallbackDeliveryDate.toISOString(),
+    fallbackDeliveryDate.toISOString(),
     0,
     userShortCode,
     nowIso,
@@ -666,9 +705,11 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
+        [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_packaging_type], [tap_delivery_address],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -684,6 +725,14 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         pos.reservationDate,
         posCtx.about || null,
         posCtx.mfi || '',
+        pos.specialPaymentCondition,
+        pos.specialPaymentText,
+        pos.specialPaymentId,
+        pos.incotermId,
+        pos.incotermText,
+        pos.deliveryDate,
+        pos.packagingType,
+        pos.deliveryAddress,
         userShortCode,
         nowIso,
         userShortCode,
@@ -724,29 +773,10 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   const clientAddress = asText(req.body?.clientAddress);
   const clientRepresentative = asText(req.body?.clientRepresentative);
   const supplier = asText(req.body?.supplier);
-  const deliveryStartDate = new Date(req.body?.deliveryStartDate);
-  const deliveryEndDate = new Date(req.body?.deliveryEndDate);
-  const specialPaymentConditionBit = asBit(req.body?.specialPaymentCondition, 0);
-  const specialPaymentIdInput = req.body?.specialPaymentId;
-  const incotermIdInput = req.body?.incotermId ?? req.body?.deliveryTypeId;
   const lang = resolveLang(req);
 
-  if (!clientReferenceId || !clientName || !clientAddress || Number.isNaN(deliveryStartDate.getTime()) || Number.isNaN(deliveryEndDate.getTime())) {
+  if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-  }
-  let specialPayment = null;
-  if (specialPaymentConditionBit) {
-    specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
-    if (!specialPayment) {
-      throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-    }
-  }
-  let incoterm = null;
-  if (incotermIdInput !== undefined && incotermIdInput !== null && incotermIdInput !== '') {
-    incoterm = await loadIncotermById(req.database, incotermIdInput, lang);
-    if (!incoterm) {
-      throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-    }
   }
 
   const positionsInput = normalizePositionsInput(req.body);
@@ -773,6 +803,31 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
+    const specialPaymentCondition = asBit(raw?.specialPaymentCondition, 0);
+    const specialPaymentIdInput = raw?.specialPaymentId;
+    let specialPayment = null;
+    if (specialPaymentCondition) {
+      specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
+      if (!specialPayment) {
+        throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      }
+    }
+    const incotermIdInput = raw?.incotermId ?? raw?.deliveryTypeId;
+    let incoterm = null;
+    if (incotermIdInput !== undefined && incotermIdInput !== null && incotermIdInput !== '') {
+      incoterm = await loadIncotermById(req.database, incotermIdInput, lang);
+      if (!incoterm) {
+        throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      }
+    }
+    const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : null;
+    if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
+      throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    const packagingType = asText(raw?.packagingType);
+    if (!packagingType) {
+      throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
     normalizedPositions.push({
       beNumber,
       warehouseId,
@@ -781,9 +836,18 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       costPricePerKg,
       reservationInKg,
       reservationDate: reservationDate ? reservationDate.toISOString() : null,
+      specialPaymentCondition,
+      specialPaymentText: specialPayment?.text || null,
+      specialPaymentId: specialPayment?.id || null,
+      incotermText: incoterm?.text || null,
+      incotermId: incoterm?.id || null,
+      packagingType,
+      deliveryDate: deliveryDate.toISOString(),
+      deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
     });
   }
   const primaryPos = normalizedPositions[0];
+  const fallbackDeliveryDate = new Date(primaryPos.deliveryDate);
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ta_id] AS id
@@ -795,9 +859,6 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
-  const packagingTypeDerived = await loadPackagingType(req.database, primaryPos.beNumber);
-  const packagingType = asText(req.body?.packagingType) || packagingTypeDerived || '';
-
   const updateSql = `
     UPDATE [dbo].[tbl_Temp_Auftraege]
     SET [ta_ClientReferenceId] = ?,
@@ -823,15 +884,15 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     clientName,
     clientAddress,
     clientRepresentative || null,
-    specialPaymentConditionBit,
-    specialPayment?.text || null,
-    specialPayment?.id || null,
+    primaryPos.specialPaymentCondition,
+    primaryPos.specialPaymentText,
+    primaryPos.specialPaymentId,
     asText(req.body?.comment) || null,
-    incoterm?.text || null,
-    incoterm?.id || null,
-    packagingType,
-    deliveryStartDate.toISOString(),
-    deliveryEndDate.toISOString(),
+    primaryPos.incotermText,
+    primaryPos.incotermId,
+    primaryPos.packagingType,
+    fallbackDeliveryDate.toISOString(),
+    fallbackDeliveryDate.toISOString(),
     userShortCode,
     new Date().toISOString(),
     id,
@@ -852,9 +913,11 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
+        [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_packaging_type], [tap_delivery_address],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -869,6 +932,14 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       pos.reservationDate,
       posCtx.about || null,
       posCtx.mfi || '',
+      pos.specialPaymentCondition,
+      pos.specialPaymentText,
+      pos.specialPaymentId,
+      pos.incotermId,
+      pos.incotermText,
+      pos.deliveryDate,
+      pos.packagingType,
+      pos.deliveryAddress,
       userShortCode,
       nowIso,
       userShortCode,

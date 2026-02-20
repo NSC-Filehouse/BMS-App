@@ -5,20 +5,45 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   IconButton,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import {
   getOrderCartItems,
   removeOrderCartItem,
   updateOrderCartQuantity,
   updateOrderCartSalePrice,
+  updateOrderCartItem,
 } from '../utils/orderCart.js';
+
+const PACKAGING_TYPES_DE = [
+  'Sackware',
+  'Siloware',
+  'Big Bags',
+  'Octa',
+  'Andere',
+  'NEUTRALE Sackware',
+  'NEUTRALE Oktabins',
+];
+
+const PACKAGING_TYPES_EN = [
+  'Bags',
+  'Silo/bulk',
+  'Big Bags',
+  'Octabins',
+  'Others',
+  'NEUTRAL Bags',
+  'NEUTRAL Octas',
+];
 
 function formatPrice(value) {
   const n = Number(value);
@@ -28,9 +53,32 @@ function formatPrice(value) {
 
 export default function OrderCart() {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [items, setItems] = React.useState(() => getOrderCartItems());
   const [error, setError] = React.useState('');
+  const [incotermOptions, setIncotermOptions] = React.useState([]);
+  const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
+  const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [incRes, payRes] = await Promise.all([
+          apiRequest('/temp-orders/incoterms'),
+          apiRequest('/temp-orders/payment-texts'),
+        ]);
+        if (!alive) return;
+        setIncotermOptions(Array.isArray(incRes?.data) ? incRes.data : []);
+        setPaymentTextOptions(Array.isArray(payRes?.data) ? payRes.data : []);
+      } catch {
+        if (!alive) return;
+        setIncotermOptions([]);
+        setPaymentTextOptions([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const onQtyChange = (id, value) => {
     const qty = Number(value);
@@ -69,6 +117,18 @@ export default function OrderCart() {
       const salePrice = Number(x.salePrice);
       if (!Number.isFinite(salePrice) || salePrice <= 0) {
         messages.push(`${x.article || x.beNumber}: ${t('validation_sale_price_positive')}`);
+      }
+      if (!x.deliveryDate) {
+        messages.push(`${x.article || x.beNumber}: ${t('validation_delivery_date_required')}`);
+      }
+      if (!x.incotermId) {
+        messages.push(`${x.article || x.beNumber}: ${t('validation_incoterm_required')}`);
+      }
+      if (!x.packagingType) {
+        messages.push(`${x.article || x.beNumber}: ${t('validation_packaging_required')}`);
+      }
+      if (x.specialPaymentCondition && !x.specialPaymentId) {
+        messages.push(`${x.article || x.beNumber}: ${t('validation_special_payment_text_required')}`);
       }
     }
     return messages;
@@ -123,6 +183,81 @@ export default function OrderCart() {
                   inputProps={{ min: 0.01, step: 'any' }}
                   size="small"
                 />
+                <TextField
+                  type="date"
+                  label={t('delivery_date')}
+                  value={row.deliveryDate || ''}
+                  onChange={(e) => setItems(updateOrderCartItem(row.id, { deliveryDate: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                />
+                <TextField
+                  label={t('delivery_address_label')}
+                  value={row.deliveryAddress || ''}
+                  onChange={(e) => setItems(updateOrderCartItem(row.id, { deliveryAddress: e.target.value }))}
+                  size="small"
+                />
+                <TextField
+                  select
+                  label={t('incoterm_label')}
+                  value={row.incotermId || ''}
+                  onChange={(e) => {
+                    const selectedId = Number(e.target.value);
+                    const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
+                    setItems(updateOrderCartItem(row.id, {
+                      incotermId: Number.isFinite(selectedId) ? selectedId : '',
+                      incotermText: selected?.text || '',
+                    }));
+                  }}
+                  size="small"
+                >
+                  {incotermOptions.map((x) => (
+                    <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label={t('packaging_type_label')}
+                  value={row.packagingType || ''}
+                  onChange={(e) => setItems(updateOrderCartItem(row.id, { packagingType: e.target.value }))}
+                  size="small"
+                >
+                  {packagingOptions.map((x) => (
+                    <MenuItem key={x} value={x}>{x}</MenuItem>
+                  ))}
+                </TextField>
+                <FormControlLabel
+                  control={(
+                    <Checkbox
+                      checked={Boolean(row.specialPaymentCondition)}
+                      onChange={(e) => setItems(updateOrderCartItem(row.id, {
+                        specialPaymentCondition: e.target.checked,
+                        ...(e.target.checked ? {} : { specialPaymentId: '', specialPaymentText: '' }),
+                      }))}
+                    />
+                  )}
+                  label={t('special_payment_condition')}
+                />
+                {Boolean(row.specialPaymentCondition) && (
+                  <TextField
+                    select
+                    label={t('special_payment_text_label')}
+                    value={row.specialPaymentId || ''}
+                    onChange={(e) => {
+                      const selectedId = Number(e.target.value);
+                      const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
+                      setItems(updateOrderCartItem(row.id, {
+                        specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
+                        specialPaymentText: selected?.text || '',
+                      }));
+                    }}
+                    size="small"
+                  >
+                    {paymentTextOptions.map((x) => (
+                      <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
+                    ))}
+                  </TextField>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -146,6 +281,14 @@ export default function OrderCart() {
                       amountInKg: Number(x.quantityKg),
                       salePrice: Number(x.salePrice),
                       costPrice: Number(x.acquisitionPrice),
+                      specialPaymentCondition: Boolean(x.specialPaymentCondition),
+                      specialPaymentText: x.specialPaymentText || '',
+                      specialPaymentId: x.specialPaymentId === '' ? null : Number(x.specialPaymentId),
+                      incotermText: x.incotermText || '',
+                      incotermId: x.incotermId === '' ? null : Number(x.incotermId),
+                      packagingType: x.packagingType || '',
+                      deliveryDate: x.deliveryDate || '',
+                      deliveryAddress: x.deliveryAddress || '',
                     })),
                   },
                 });
