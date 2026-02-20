@@ -138,6 +138,10 @@ export default function CustomerDetail() {
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
+  const homepageRaw = item?.kd_HomePage ? String(item.kd_HomePage).trim() : '';
+  const homepageLink = homepageRaw
+    ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
+    : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
   const handleBack = React.useCallback(() => {
@@ -184,6 +188,12 @@ export default function CustomerDetail() {
               icon={<MapIcon fontSize="small" />}
               label={t('address_label')}
               value={address || '-'}
+            />
+            <InfoRow
+              icon={<MapIcon fontSize="small" />}
+              label={t('homepage_label')}
+              value={homepageRaw || '-'}
+              link={homepageLink || undefined}
             />
 
             <Divider sx={{ my: 3 }} />
