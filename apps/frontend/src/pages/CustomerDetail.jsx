@@ -138,6 +138,10 @@ export default function CustomerDetail() {
   const name = getCustomerName(item);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
+  const addressForMap = address ? String(address).replace(/\n/g, ', ') : '';
+  const addressLink = addressForMap
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressForMap)}`
+    : '';
   const homepageRaw = item?.kd_HomePage ? String(item.kd_HomePage).trim() : '';
   const homepageLink = homepageRaw
     ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
@@ -188,6 +192,7 @@ export default function CustomerDetail() {
               icon={<MapIcon fontSize="small" />}
               label={t('address_label')}
               value={address || '-'}
+              link={addressLink || undefined}
             />
             <InfoRow
               icon={<MapIcon fontSize="small" />}
