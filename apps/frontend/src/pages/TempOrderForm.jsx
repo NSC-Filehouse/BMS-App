@@ -92,8 +92,17 @@ function formatDeliveryAddressParts(addr) {
 function renderDeliveryAddressOption(addr) {
   const { primary, secondary } = formatDeliveryAddressParts(addr);
   return (
-    <Box sx={{ display: 'grid', minWidth: 0 }}>
-      <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+    <Box sx={{ display: 'grid', minWidth: 0, width: '100%' }}>
+      <Typography
+        variant="body2"
+        sx={{
+          fontWeight: 600,
+          lineHeight: 1.2,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
         {primary}
       </Typography>
       {secondary && (
@@ -754,6 +763,12 @@ export default function TempOrderForm() {
                                 onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
                                 size="small"
                                 fullWidth
+                                sx={{
+                                  '& .MuiSelect-select': {
+                                    minWidth: 0,
+                                    overflow: 'hidden',
+                                  },
+                                }}
                                 SelectProps={{
                                   renderValue: (selected) => {
                                     const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
@@ -964,6 +979,12 @@ export default function TempOrderForm() {
                 value={addPosDeliveryAddress}
                 onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
                 fullWidth
+                sx={{
+                  '& .MuiSelect-select': {
+                    minWidth: 0,
+                    overflow: 'hidden',
+                  },
+                }}
                 SelectProps={{
                   renderValue: (selected) => {
                     const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
