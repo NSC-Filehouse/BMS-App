@@ -92,6 +92,7 @@ export default function ProductDetail() {
   const [reserveSuccess, setReserveSuccess] = React.useState('');
   const [reserveInfo, setReserveInfo] = React.useState('');
   const [cartOpen, setCartOpen] = React.useState(false);
+  const [cartError, setCartError] = React.useState('');
   const [cartQty, setCartQty] = React.useState('');
   const [cartSalePrice, setCartSalePrice] = React.useState('');
   const [cartDeliveryDate, setCartDeliveryDate] = React.useState('');
@@ -275,6 +276,7 @@ export default function ProductDetail() {
                 setCartSpecialPaymentCondition(false);
                 setCartSpecialPaymentId('');
                 setCartSpecialPaymentText('');
+                setCartError('');
                 setCartOpen(true);
               }}
             >
@@ -415,6 +417,7 @@ export default function ProductDetail() {
       <Dialog open={cartOpen} onClose={() => setCartOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('cart_add')}</DialogTitle>
         <DialogContent>
+          {cartError && <Alert severity="error" sx={{ mb: 1 }}>{cartError}</Alert>}
           <TextField
             margin="dense"
             fullWidth
@@ -522,33 +525,34 @@ export default function ProductDetail() {
               const qty = Number(cartQty);
               const salePrice = Number(cartSalePrice);
               if (!Number.isFinite(qty) || qty <= 0) {
-                setError(t('validation_cart_quantity_positive'));
+                setCartError(t('validation_cart_quantity_positive'));
                 return;
               }
               if (availableAmount !== null && qty > availableAmount) {
-                setError(t('validation_cart_quantity_not_above_available'));
+                setCartError(t('validation_cart_quantity_not_above_available'));
                 return;
               }
               if (!Number.isFinite(salePrice) || salePrice <= 0) {
-                setError(t('validation_sale_price_positive'));
+                setCartError(t('validation_sale_price_positive'));
                 return;
               }
               if (!cartDeliveryDate) {
-                setError(t('validation_delivery_date_required'));
+                setCartError(t('validation_delivery_date_required'));
                 return;
               }
               if (!cartIncotermId) {
-                setError(t('validation_incoterm_required'));
+                setCartError(t('validation_incoterm_required'));
                 return;
               }
               if (!cartPackagingType) {
-                setError(t('validation_packaging_required'));
+                setCartError(t('validation_packaging_required'));
                 return;
               }
               if (cartSpecialPaymentCondition && !cartSpecialPaymentId) {
-                setError(t('validation_special_payment_text_required'));
+                setCartError(t('validation_special_payment_text_required'));
                 return;
               }
+              setCartError('');
               addOrderCartItem({
                 ...item,
                 salePrice,
