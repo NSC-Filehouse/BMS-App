@@ -248,9 +248,14 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('offer_date_label')}: {formatDateOnly(offer.offerDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {offer.paymentText || '-'}</Typography>
                       {(Array.isArray(offer.positions) ? offer.positions : []).map((pos, pIdx) => (
-                        <Typography key={`${offer.id || idx}-pos-${pIdx}`} variant="caption">
-                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${t('offered_price_label')}: ${formatMoney(pos.offeredPrice)}`}
-                        </Typography>
+                        <Box key={`${offer.id || idx}-pos-${pIdx}`} sx={{ display: 'grid', gap: 0.1 }}>
+                          <Typography variant="caption">
+                            {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}`}
+                          </Typography>
+                          <Typography variant="caption">
+                            {`${t('offered_price_label')}: ${formatMoney(pos.offeredPrice)}`}
+                          </Typography>
+                        </Box>
                       ))}
                     </CardContent>
                   </Card>
@@ -273,8 +278,8 @@ export default function CustomerDetail() {
                     <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
                       <Typography variant="caption">{t('contact_label')}: {order.contact || '-'}</Typography>
                       <Typography variant="caption">{t('order_date_label')}: {formatDateOnly(order.orderDate)}</Typography>
-                      <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
+                      <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
                         <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption">
                           {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}`}
