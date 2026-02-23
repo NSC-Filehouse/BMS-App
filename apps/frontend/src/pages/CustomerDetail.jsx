@@ -301,8 +301,8 @@ export default function CustomerDetail() {
                     <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
-                      <Typography variant="caption">{t('amount_label')}: {formatMoney(invoice.amount)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
+                      <Typography variant="caption">{t('amount_label')}: {formatMoney(invoice.amount)}</Typography>
                     </CardContent>
                   </Card>
                 ))}
