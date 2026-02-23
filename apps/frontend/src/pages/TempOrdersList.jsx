@@ -166,11 +166,14 @@ export default function TempOrdersList() {
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ pr: 2 }}>
                     <Typography variant="subtitle1">{row.clientName || row.id}</Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.article || '-'}</Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.beNumber || '-'}</Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                      {row.amountInKg ?? '-'} kg
-                    </Typography>
+                    {(Array.isArray(row.positions) && row.positions.length > 0
+                      ? row.positions
+                      : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]
+                    ).map((pos, idx) => (
+                      <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ opacity: 0.7 }}>
+                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg`}
+                      </Typography>
+                    ))}
                   </Box>
                   <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
                     <ChevronRightIcon />

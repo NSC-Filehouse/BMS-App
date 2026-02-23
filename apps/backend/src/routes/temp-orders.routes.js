@@ -365,6 +365,40 @@ async function loadOrderPositions(orderId) {
   }
 }
 
+async function loadPositionSummariesForOrders(orderIds) {
+  const ids = Array.isArray(orderIds)
+    ? orderIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : [];
+  if (!ids.length) return new Map();
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const sql = `
+    SELECT
+      [tap_ta_id] AS orderId,
+      [tap_line_no] AS lineNo,
+      [tap_article] AS article,
+      [tap_be_number] AS beNumber,
+      [tap_amount_in_kg] AS amountInKg
+    FROM [dbo].[tbl_Temp_Auf_Position]
+    WHERE [tap_ta_id] IN (${placeholders})
+    ORDER BY [tap_ta_id] ASC, [tap_line_no] ASC
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, ids);
+  const map = new Map();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const orderId = Number(row.orderId);
+    if (!Number.isFinite(orderId) || orderId <= 0) continue;
+    if (!map.has(orderId)) map.set(orderId, []);
+    map.get(orderId).push({
+      lineNo: Number(row.lineNo),
+      article: asText(row.article),
+      beNumber: asText(row.beNumber),
+      amountInKg: row.amountInKg,
+    });
+  }
+  return map;
+}
+
 router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHandler(async (req, res) => {
   const beNumber = asText(req.params?.beNumber);
   if (!beNumber) {
@@ -491,6 +525,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     offset,
     pageSize,
   ]);
+  const summariesByOrderId = await loadPositionSummariesForOrders((rows || []).map((x) => x.id));
 
   const data = (rows || []).map((row) => ({
     id: row.id,
@@ -502,6 +537,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     createdAt: row.createdAt,
     completed: Boolean(row.completed),
     isConfirmed: Boolean(row.isConfirmed),
+    positions: summariesByOrderId.get(Number(row.id)) || [],
   }));
 
   sendEnvelope(res, {
