@@ -235,7 +235,7 @@ export default function CustomerDetail() {
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle1">{t('customer_docs_offers')}</Typography>
               </AccordionSummary>
-              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+              <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.offers.loading && <CircularProgress size={20} />}
                 {docs.offers.error && <Alert severity="error">{docs.offers.error}</Alert>}
                 {!docs.offers.loading && !docs.offers.error && docs.offers.items.length === 0 && (
@@ -243,12 +243,12 @@ export default function CustomerDetail() {
                 )}
                 {!docs.offers.loading && !docs.offers.error && docs.offers.items.map((offer, idx) => (
                   <Card key={`${offer.id || idx}-offer`} variant="outlined">
-                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                    <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                       <Typography variant="caption">{t('contact_label')}: {offer.contact || '-'}</Typography>
                       <Typography variant="caption">{t('offer_date_label')}: {formatDateOnly(offer.offerDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {offer.paymentText || '-'}</Typography>
                       {(Array.isArray(offer.positions) ? offer.positions : []).map((pos, pIdx) => (
-                        <Typography key={`${offer.id || idx}-pos-${pIdx}`} variant="caption">
+                        <Typography key={`${offer.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
                           {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatMoney(pos.offeredPrice)}`}
                         </Typography>
                       ))}
@@ -262,7 +262,7 @@ export default function CustomerDetail() {
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle1">{t('customer_docs_orders')}</Typography>
               </AccordionSummary>
-              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+              <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.orders.loading && <CircularProgress size={20} />}
                 {docs.orders.error && <Alert severity="error">{docs.orders.error}</Alert>}
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.length === 0 && (
@@ -270,13 +270,13 @@ export default function CustomerDetail() {
                 )}
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.map((order, idx) => (
                   <Card key={`${order.id || idx}-order`} variant="outlined">
-                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                    <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                       <Typography variant="caption">{t('contact_label')}: {order.contact || '-'}</Typography>
                       <Typography variant="caption">{t('order_date_label')}: {formatDateOnly(order.orderDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
-                        <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption">
+                        <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
                           {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}`}
                         </Typography>
                       ))}
@@ -290,7 +290,7 @@ export default function CustomerDetail() {
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle1">{t('customer_docs_invoices')}</Typography>
               </AccordionSummary>
-              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+              <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.invoices.loading && <CircularProgress size={20} />}
                 {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
@@ -298,7 +298,7 @@ export default function CustomerDetail() {
                 )}
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.map((invoice, idx) => (
                   <Card key={`${invoice.id || idx}-invoice`} variant="outlined">
-                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                    <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
