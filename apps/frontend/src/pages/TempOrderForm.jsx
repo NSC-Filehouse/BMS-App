@@ -155,14 +155,17 @@ export default function TempOrderForm() {
 
   const source = location.state?.source || null;
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
+  const copyOrder = location.state?.copyOrder || null;
+  const copyPositions = Array.isArray(copyOrder?.positions) ? copyOrder.positions : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
-  const isPositionsMode = isEdit || isCartCreate;
+  const isCopyCreate = !isEdit && Array.isArray(copyPositions) && copyPositions.length > 0;
+  const isPositionsMode = isEdit || isCartCreate || isCopyCreate;
 
   React.useEffect(() => {
-    if (!isEdit && !isCartCreate) {
+    if (!isEdit && !isCartCreate && !isCopyCreate) {
       navigate('/order-cart', { replace: true });
     }
-  }, [isEdit, isCartCreate, navigate]);
+  }, [isEdit, isCartCreate, isCopyCreate, navigate]);
 
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -290,6 +293,44 @@ export default function TempOrderForm() {
         return;
       }
 
+      if (isCopyCreate && Array.isArray(copyPositions) && copyPositions.length > 0) {
+        setForm((prev) => ({
+          ...prev,
+          clientReferenceId: copyOrder?.clientReferenceId || '',
+          clientName: copyOrder?.clientName || '',
+          clientAddress: copyOrder?.clientAddress || '',
+          clientRepresentative: copyOrder?.clientRepresentative || '',
+          comment: copyOrder?.comment || '',
+        }));
+        await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
+        setPositions(copyPositions.map((x, idx) => ({
+          id: x.id || `${x.beNumber || 'pos'}-${idx}`,
+          beNumber: x.beNumber,
+          warehouseId: x.warehouseId || x.warehouse,
+          article: x.article,
+          amountInKg: x.amountInKg,
+          price: x.salePrice ?? x.price,
+          costPrice: x.costPrice ?? x.ep ?? x.price,
+          reservationInKg: x.reservationInKg ?? null,
+          reservationDate: x.reservationDate ?? null,
+          ...createPositionDefaults({
+            specialPaymentCondition: Boolean(x.specialPaymentCondition),
+            specialPaymentText: x.specialPaymentText || '',
+            specialPaymentId: x.specialPaymentId ?? '',
+            incotermText: x.deliveryType || x.incotermText || '',
+            incotermId: x.deliveryTypeId ?? x.incotermId ?? '',
+            packagingType: x.packagingType || '',
+            deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
+            deliveryAddress: x.deliveryAddress || '',
+            deliveryAddressManual: false,
+            wpzId: x.wpzId ?? null,
+            wpzOriginal: x.wpzOriginal ?? true,
+            wpzComment: x.wpzComment || '',
+          }),
+        })));
+        return;
+      }
+
       if (!source?.beNumber || !source?.warehouseId) {
         if (Array.isArray(sourceItems) && sourceItems.length > 0) {
           setPositions(sourceItems.map((x, idx) => ({
@@ -328,7 +369,7 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t, loadDeliveryAddresses]);
+  }, [id, isEdit, source, sourceItems, t, loadDeliveryAddresses, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
     let alive = true;
@@ -513,7 +554,7 @@ export default function TempOrderForm() {
         comment: form.comment || null,
         supplier: form.supplier || null,
       };
-      if ((isEdit || isCartCreate) && Array.isArray(positions) && positions.length > 0) {
+      if ((isEdit || isCartCreate || isCopyCreate) && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
@@ -543,7 +584,7 @@ export default function TempOrderForm() {
       setSuccess(t('temp_order_saved'));
       const newId = res?.data?.id;
       if (newId) {
-        if (Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
+        if (!isCopyCreate && Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
         navigate(`/temp-orders/${encodeURIComponent(newId)}`);
       } else {
         navigate('/temp-orders');

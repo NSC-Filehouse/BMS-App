@@ -103,6 +103,23 @@ export default function TempOrderDetail() {
           <CardContent sx={{ pt: 2 }}>
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
               <Button variant="outlined" onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}>{t('edit_label')}</Button>
+              <Button
+                variant="outlined"
+                onClick={() => navigate('/temp-orders/new', {
+                  state: {
+                    copyOrder: {
+                      clientReferenceId: item.clientReferenceId || '',
+                      clientName: item.clientName || '',
+                      clientAddress: item.clientAddress || '',
+                      clientRepresentative: item.clientRepresentative || '',
+                      comment: item.comment || '',
+                      positions: Array.isArray(item.positions) ? item.positions : [],
+                    },
+                  },
+                })}
+              >
+                {t('copy_label')}
+              </Button>
               <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
             </Box>
 
