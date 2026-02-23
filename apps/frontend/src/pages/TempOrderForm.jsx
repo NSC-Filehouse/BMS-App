@@ -213,12 +213,6 @@ export default function TempOrderForm() {
   }, [addPosProduct]);
 
   const [form, setForm] = React.useState({
-    beNumber: '',
-    warehouseId: '',
-    amountInKg: '',
-    pricePerKg: '',
-    reservationInKg: '',
-    reservationDate: '',
     clientReferenceId: '',
     clientName: '',
     clientAddress: '',
@@ -254,12 +248,6 @@ export default function TempOrderForm() {
           if (!alive) return;
           const d = res?.data || {};
           setForm({
-            beNumber: d.beNumber || '',
-            warehouseId: d.warehouse || '',
-            amountInKg: d.amountInKg ?? '',
-            pricePerKg: d.price ?? '',
-            reservationInKg: d.reservationInKg ?? '',
-            reservationDate: d.reservationDate ? String(d.reservationDate).slice(0, 10) : '',
             clientReferenceId: d.clientReferenceId || '',
             clientName: d.clientName || '',
             clientAddress: d.clientAddress || '',
@@ -304,7 +292,6 @@ export default function TempOrderForm() {
 
       if (!source?.beNumber || !source?.warehouseId) {
         if (Array.isArray(sourceItems) && sourceItems.length > 0) {
-          const first = sourceItems[0];
           setPositions(sourceItems.map((x, idx) => ({
             id: x.id || `${x.beNumber || 'pos'}-${idx}`,
             beNumber: x.beNumber,
@@ -330,25 +317,12 @@ export default function TempOrderForm() {
               wpzComment: x.wpzComment || '',
             }),
           })));
-          setForm((prev) => ({
-            ...prev,
-            beNumber: first.beNumber || '',
-            warehouseId: first.warehouseId || '',
-            amountInKg: first.amountInKg ?? '',
-            pricePerKg: first.price ?? '',
-          }));
         }
         return;
       }
 
       setForm((prev) => ({
         ...prev,
-        beNumber: source.beNumber,
-        warehouseId: source.warehouseId,
-        amountInKg: source.amountInKg ?? source.reserveAmount ?? '',
-        pricePerKg: source.price ?? '',
-        reservationInKg: source.reserveAmount ?? '',
-        reservationDate: source.reservationDate ? String(source.reservationDate).slice(0, 10) : '',
         comment: source.comment || '',
       }));
     };
@@ -488,29 +462,6 @@ export default function TempOrderForm() {
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
 
-    if (!isPositionsMode) {
-      const amount = Number(form.amountInKg);
-      const price = Number(form.pricePerKg);
-      const reservation = form.reservationInKg === '' ? null : Number(form.reservationInKg);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        messages.push(t('validation_amount_positive'));
-      }
-      if (!Number.isFinite(price) || price <= 0) {
-        messages.push(t('validation_price_positive'));
-      }
-      if (reservation !== null) {
-        if (!Number.isFinite(reservation) || reservation <= 0) {
-          messages.push(t('validation_reservation_positive'));
-        }
-        if (Number.isFinite(amount) && Number.isFinite(reservation) && reservation > amount) {
-          messages.push(t('validation_reservation_not_above_amount'));
-        }
-        if (!form.reservationDate) {
-          messages.push(t('validation_reservation_date_required'));
-        }
-      }
-    }
-
     for (const pos of (Array.isArray(positions) ? positions : [])) {
       const amount = Number(pos.amountInKg);
       const salePrice = Number(pos.price);
@@ -555,12 +506,6 @@ export default function TempOrderForm() {
       setError('');
       setSuccess('');
       const payload = {
-        beNumber: form.beNumber,
-        warehouseId: form.warehouseId,
-        amountInKg: Number(form.amountInKg),
-        pricePerKg: Number(form.pricePerKg),
-        reservationInKg: form.reservationInKg === '' ? null : Number(form.reservationInKg),
-        reservationDate: form.reservationDate || null,
         clientReferenceId: form.clientReferenceId,
         clientName: form.clientName,
         clientAddress: form.clientAddress,
@@ -589,13 +534,6 @@ export default function TempOrderForm() {
           wpzOriginal: x.wpzId ? Boolean(x.wpzOriginal) : null,
           wpzComment: x.wpzComment || null,
         }));
-        payload.beNumber = payload.positions[0].beNumber;
-        payload.warehouseId = payload.positions[0].warehouseId;
-        payload.amountInKg = payload.positions[0].amountInKg;
-        payload.salePricePerKg = payload.positions[0].salePricePerKg;
-        payload.costPricePerKg = payload.positions[0].costPricePerKg;
-        payload.reservationInKg = payload.positions[0].reservationInKg;
-        payload.reservationDate = payload.positions[0].reservationDate;
       }
 
       const res = isEdit

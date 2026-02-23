@@ -92,7 +92,7 @@ export default function TempOrderDetail() {
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <IconButton aria-label="back" onClick={handleBack}><ArrowBackIcon /></IconButton>
-        <Typography variant="h5">{item?.beNumber || id}</Typography>
+        <Typography variant="h5">{item?.clientName || id}</Typography>
       </Box>
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}

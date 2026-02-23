@@ -165,9 +165,9 @@ export default function TempOrdersList() {
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ pr: 2 }}>
-                    <Typography variant="subtitle1">{row.beNumber || row.id}</Typography>
+                    <Typography variant="subtitle1">{row.clientName || row.id}</Typography>
                     <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.article || '-'}</Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.clientName || '-'}</Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.7 }}>{row.beNumber || '-'}</Typography>
                     <Typography variant="body2" sx={{ opacity: 0.7 }}>
                       {row.amountInKg ?? '-'} kg
                     </Typography>
