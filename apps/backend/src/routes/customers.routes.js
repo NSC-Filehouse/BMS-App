@@ -270,7 +270,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
   const orders = Array.isArray(rows) ? rows : [];
-  const indices = orders.map((x) => Number(x.orderIndex)).filter((x) => Number.isFinite(x));
+  const indices = orders.map((x) => toText(x.orderIndex)).filter(Boolean);
   const paymentMap = await loadPaymentTextMap(orders.map((x) => x.paymentTextId), lang);
 
   let posMap = new Map();
@@ -289,8 +289,8 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
     const posRows = await runSQLQueryAccess(req.database, posSql, indices);
     posMap = new Map();
     for (const row of (Array.isArray(posRows) ? posRows : [])) {
-      const key = Number(row.orderIndex);
-      if (!Number.isFinite(key)) continue;
+      const key = toText(row.orderIndex);
+      if (!key) continue;
       if (!posMap.has(key)) posMap.set(key, []);
       posMap.get(key).push({
         article: toText(row.article),
@@ -301,10 +301,10 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   }
 
   const data = orders.map((row) => {
-    const idx = Number(row.orderIndex);
+    const idx = toText(row.orderIndex);
     const paymentId = Number(row.paymentTextId);
     return {
-      id: idx,
+      id: idx || null,
       contact: toText(row.contact),
       orderDate: row.orderDate || null,
       dueDate: row.dueDate || null,
