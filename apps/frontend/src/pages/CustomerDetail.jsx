@@ -249,7 +249,7 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('payment_terms_label')}: {offer.paymentText || '-'}</Typography>
                       {(Array.isArray(offer.positions) ? offer.positions : []).map((pos, pIdx) => (
                         <Typography key={`${offer.id || idx}-pos-${pIdx}`} variant="caption">
-                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${t('offered_price_label')}: ${formatMoney(pos.offeredPrice)}`}
+                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatMoney(pos.offeredPrice)}`}
                         </Typography>
                       ))}
                     </CardContent>
