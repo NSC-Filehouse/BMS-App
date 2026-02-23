@@ -261,7 +261,7 @@ export default function OrderCart() {
                     ))}
                   </TextField>
                 )}
-                {row.wpzId && (
+                {row.wpzId ? (
                   <>
                     <FormControlLabel
                       control={(
@@ -286,6 +286,10 @@ export default function OrderCart() {
                       />
                     )}
                   </>
+                ) : (
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {t('wpz_label')}: {t('wpz_not_available')}
+                  </Typography>
                 )}
               </CardContent>
             </Card>

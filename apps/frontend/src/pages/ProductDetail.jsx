@@ -530,7 +530,7 @@ export default function ProductDetail() {
               ))}
             </TextField>
           )}
-          {wpzExists && (
+          {wpzExists ? (
             <>
               <FormControlLabel
                 control={(
@@ -556,6 +556,10 @@ export default function ProductDetail() {
                 />
               )}
             </>
+          ) : (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {t('wpz_label')}: {t('wpz_not_available')}
+            </Typography>
           )}
         </DialogContent>
         <DialogActions>

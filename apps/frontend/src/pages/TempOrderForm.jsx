@@ -859,7 +859,7 @@ export default function TempOrderForm() {
                               ))}
                             </TextField>
                           )}
-                          {x.wpzId && (
+                          {x.wpzId ? (
                             <>
                               <FormControlLabel
                                 control={(
@@ -884,6 +884,10 @@ export default function TempOrderForm() {
                                 />
                               )}
                             </>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                              {t('wpz_label')}: {t('wpz_not_available')}
+                            </Typography>
                           )}
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
@@ -1131,7 +1135,7 @@ export default function TempOrderForm() {
               ))}
             </TextField>
           )}
-          {addPosWpzId && (
+          {addPosProduct && (addPosWpzId ? (
             <>
               <FormControlLabel
                 control={(
@@ -1156,7 +1160,11 @@ export default function TempOrderForm() {
                 />
               )}
             </>
-          )}
+          ) : (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {t('wpz_label')}: {t('wpz_not_available')}
+            </Typography>
+          ))}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
