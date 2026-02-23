@@ -106,7 +106,7 @@ export default function TempOrderDetail() {
               <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
             </Box>
 
-            <InfoRow label={t('customer_select')} value={item.clientName} />
+            <InfoRow label={t('order_customer')} value={item.clientName} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
