@@ -41,10 +41,6 @@ function normalizeTotal(rows) {
 }
 
 function mapTempOrderRow(row) {
-  const incotermText = asText(row.ta_delivery_type || row.ta_deleivery_type || '');
-  const incotermId = row.ta_delivery_type_id === null || row.ta_delivery_type_id === undefined
-    ? null
-    : Number(row.ta_delivery_type_id);
   return {
     id: row.ta_id,
     companyId: row.ta_company_id,
@@ -64,17 +60,7 @@ function mapTempOrderRow(row) {
     clientName: row.ta_client_name,
     clientAddress: row.ta_client_address,
     clientRepresentative: row.ta_client_representative,
-    specialPaymentCondition: Boolean(row.ta_special_payment_condition),
-    specialPaymentText: asText(row.ta_special_payment_text),
-    specialPaymentId: row.ta_special_payment_id === null || row.ta_special_payment_id === undefined ? null : Number(row.ta_special_payment_id),
     comment: row.ta_comment,
-    incotermText,
-    incotermId,
-    deliveryType: incotermText,
-    deliveryTypeId: incotermId,
-    packagingType: row.ta_packaging_type,
-    deliveryStartDate: row.ta_delivery_start_date,
-    deliveryEndDate: row.ta_delivery_end_date,
     completed: Boolean(row.ta_completed),
     closingDate: row.ta_closing_date,
     createdBy: row.ta_CreatedBy,
@@ -114,6 +100,16 @@ function mapTempOrderWithPositions(row, positions) {
     price: base.price ?? first?.price ?? null,
     reservationInKg: base.reservationInKg ?? first?.reservationInKg ?? null,
     reservationDate: base.reservationDate || first?.reservationDate || null,
+    specialPaymentCondition: Boolean(first?.specialPaymentCondition),
+    specialPaymentText: asText(first?.specialPaymentText),
+    specialPaymentId: first?.specialPaymentId === null || first?.specialPaymentId === undefined ? null : Number(first?.specialPaymentId),
+    incotermText: asText(first?.deliveryType),
+    incotermId: first?.deliveryTypeId === null || first?.deliveryTypeId === undefined ? null : Number(first?.deliveryTypeId),
+    deliveryType: asText(first?.deliveryType),
+    deliveryTypeId: first?.deliveryTypeId === null || first?.deliveryTypeId === undefined ? null : Number(first?.deliveryTypeId),
+    packagingType: asText(first?.packagingType),
+    deliveryStartDate: first?.deliveryDate || null,
+    deliveryEndDate: first?.deliveryDate || null,
     positions: list,
   };
 }
@@ -498,8 +494,6 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [fp].[amountInKg] AS amountInKg,
       [o].[ta_client_name] AS clientName,
       [o].[ta_CreateDate] AS createdAt,
-      [o].[ta_delivery_start_date] AS deliveryStartDate,
-      [o].[ta_delivery_end_date] AS deliveryEndDate,
       [o].[ta_completed] AS completed,
       [o].[ta_IsConfirmed] AS isConfirmed
     FROM [dbo].[tbl_Temp_Auftraege] o
@@ -534,8 +528,6 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     price: row.price,
     amountInKg: row.amountInKg,
     createdAt: row.createdAt,
-    deliveryStartDate: row.deliveryStartDate,
-    deliveryEndDate: row.deliveryEndDate,
     completed: Boolean(row.completed),
     isConfirmed: Boolean(row.isConfirmed),
   }));
@@ -681,19 +673,16 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       wpzComment,
     });
   }
-  const primaryPos = normalizedPositions[0];
-  const fallbackDeliveryDate = new Date(primaryPos.deliveryDate);
 
   const nowIso = new Date().toISOString();
   const sql = `
     INSERT INTO [dbo].[tbl_Temp_Auftraege] (
       [ta_company_id], [ta_ClientReferenceId], [ta_client_name], [ta_client_address], [ta_client_representative],
-      [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_comment], [ta_delivery_type], [ta_delivery_type_id], [ta_packaging_type],
-      [ta_delivery_start_date], [ta_delivery_end_date], [ta_completed],
+      [ta_comment], [ta_completed],
       [ta_CreatedBy], [ta_CreateDate], [ta_LastModifiedBy], [ta_LastModifiedDate],
       [ta_PassedTo], [ta_ReceivedFrom], [ta_PassedToUserId], [ta_ReceivedFromUserId], [ta_IsConfirmed]
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   await runSQLQuerySqlServer(config.sql.database, sql, [
     companyId,
@@ -701,15 +690,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientName,
     clientAddress,
     clientRepresentative || null,
-    primaryPos.specialPaymentCondition,
-    primaryPos.specialPaymentText,
-    primaryPos.specialPaymentId,
     asText(req.body?.comment) || null,
-    primaryPos.incotermText,
-    primaryPos.incotermId,
-    primaryPos.packagingType,
-    fallbackDeliveryDate.toISOString(),
-    fallbackDeliveryDate.toISOString(),
     0,
     userShortCode,
     nowIso,
@@ -894,8 +875,6 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       wpzComment,
     });
   }
-  const primaryPos = normalizedPositions[0];
-  const fallbackDeliveryDate = new Date(primaryPos.deliveryDate);
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ta_id] AS id
@@ -913,15 +892,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [ta_client_name] = ?,
         [ta_client_address] = ?,
         [ta_client_representative] = ?,
-        [ta_special_payment_condition] = ?,
-        [ta_special_payment_text] = ?,
-        [ta_special_payment_id] = ?,
         [ta_comment] = ?,
-        [ta_delivery_type] = ?,
-        [ta_delivery_type_id] = ?,
-        [ta_packaging_type] = ?,
-        [ta_delivery_start_date] = ?,
-        [ta_delivery_end_date] = ?,
         [ta_LastModifiedBy] = ?,
         [ta_LastModifiedDate] = ?
     WHERE [ta_id] = ? AND [ta_company_id] = ?
@@ -932,15 +903,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     clientName,
     clientAddress,
     clientRepresentative || null,
-    primaryPos.specialPaymentCondition,
-    primaryPos.specialPaymentText,
-    primaryPos.specialPaymentId,
     asText(req.body?.comment) || null,
-    primaryPos.incotermText,
-    primaryPos.incotermId,
-    primaryPos.packagingType,
-    fallbackDeliveryDate.toISOString(),
-    fallbackDeliveryDate.toISOString(),
     userShortCode,
     new Date().toISOString(),
     id,
