@@ -375,7 +375,6 @@ async function loadPositionSummariesForOrders(orderIds) {
   const sql = `
     SELECT
       [tap_ta_id] AS orderId,
-      [tap_line_no] AS lineNo,
       [tap_article] AS article,
       [tap_be_number] AS beNumber,
       [tap_amount_in_kg] AS amountInKg
@@ -390,7 +389,6 @@ async function loadPositionSummariesForOrders(orderIds) {
     if (!Number.isFinite(orderId) || orderId <= 0) continue;
     if (!map.has(orderId)) map.set(orderId, []);
     map.get(orderId).push({
-      lineNo: Number(row.lineNo),
       article: asText(row.article),
       beNumber: asText(row.beNumber),
       amountInKg: row.amountInKg,
