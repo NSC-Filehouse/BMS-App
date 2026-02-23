@@ -249,7 +249,7 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
   if (!row) {
     sendEnvelope(res, {
       status: 200,
-      data: { exists: false, beNumber, fields: [] },
+      data: { exists: false, wpzId: null, beNumber, fields: [] },
       meta: { mandant: req.mandant, idField: 'id', id },
       error: null,
     });
@@ -266,7 +266,7 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
 
   sendEnvelope(res, {
     status: 200,
-    data: { exists: true, beNumber, fields },
+    data: { exists: true, wpzId: Number(row?.bePZ_ID || null), beNumber, fields },
     meta: { mandant: req.mandant, idField: 'id', id },
     error: null,
   });

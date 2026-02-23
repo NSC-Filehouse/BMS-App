@@ -98,6 +98,9 @@ export function addOrderCartItem(item, quantityKg) {
     packagingType: item.packagingType || '',
     deliveryDate: item.deliveryDate || '',
     deliveryAddress: item.deliveryAddress || '',
+    wpzId: item.wpzId ?? null,
+    wpzOriginal: item.wpzOriginal ?? true,
+    wpzComment: item.wpzComment || '',
   };
   if (idx >= 0) {
     current[idx] = payload;

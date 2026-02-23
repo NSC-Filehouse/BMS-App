@@ -103,11 +103,14 @@ export default function ProductDetail() {
   const [cartSpecialPaymentCondition, setCartSpecialPaymentCondition] = React.useState(false);
   const [cartSpecialPaymentId, setCartSpecialPaymentId] = React.useState('');
   const [cartSpecialPaymentText, setCartSpecialPaymentText] = React.useState('');
+  const [cartWpzOriginal, setCartWpzOriginal] = React.useState(true);
+  const [cartWpzComment, setCartWpzComment] = React.useState('');
   const [incotermOptions, setIncotermOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [cartSuccess, setCartSuccess] = React.useState('');
   const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [wpzExists, setWpzExists] = React.useState(false);
+  const [wpzId, setWpzId] = React.useState(null);
   const [wpzLoading, setWpzLoading] = React.useState(false);
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
@@ -133,6 +136,7 @@ export default function ProductDetail() {
         setError('');
         setWpzLoading(true);
         setWpzExists(false);
+        setWpzId(null);
         const res = await apiRequest(`/products/${encodeURIComponent(id)}`);
         if (!alive) return;
         const baseItem = res?.data || null;
@@ -143,9 +147,16 @@ export default function ProductDetail() {
         }
         try {
           const wpzRes = await apiRequest(`/products/${encodeURIComponent(id)}/wpz`);
-          if (alive) setWpzExists(Boolean(wpzRes?.data?.exists));
+          if (alive) {
+            setWpzExists(Boolean(wpzRes?.data?.exists));
+            const idNum = Number(wpzRes?.data?.wpzId);
+            setWpzId(Number.isFinite(idNum) && idNum > 0 ? idNum : null);
+          }
         } catch {
-          if (alive) setWpzExists(false);
+          if (alive) {
+            setWpzExists(false);
+            setWpzId(null);
+          }
         } finally {
           if (alive) setWpzLoading(false);
         }
@@ -277,6 +288,8 @@ export default function ProductDetail() {
                 setCartSpecialPaymentCondition(false);
                 setCartSpecialPaymentId('');
                 setCartSpecialPaymentText('');
+                setCartWpzOriginal(true);
+                setCartWpzComment('');
                 setCartError('');
                 setCartOpen(true);
               }}
@@ -517,6 +530,33 @@ export default function ProductDetail() {
               ))}
             </TextField>
           )}
+          {wpzExists && (
+            <>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={cartWpzOriginal}
+                    onChange={(e) => {
+                      setCartWpzOriginal(e.target.checked);
+                      if (e.target.checked) setCartWpzComment('');
+                    }}
+                  />
+                )}
+                label={t('wpz_original_use')}
+              />
+              {!cartWpzOriginal && (
+                <TextField
+                  margin="dense"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label={t('wpz_comment_label')}
+                  value={cartWpzComment}
+                  onChange={(e) => setCartWpzComment(e.target.value)}
+                />
+              )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCartOpen(false)}>{t('back_label')}</Button>
@@ -553,6 +593,10 @@ export default function ProductDetail() {
                 setCartError(t('validation_special_payment_text_required'));
                 return;
               }
+              if (wpzExists && !cartWpzOriginal && !String(cartWpzComment || '').trim()) {
+                setCartError(t('validation_wpz_comment_required'));
+                return;
+              }
               setCartError('');
               addOrderCartItem({
                 ...item,
@@ -565,6 +609,9 @@ export default function ProductDetail() {
                 specialPaymentCondition: cartSpecialPaymentCondition,
                 specialPaymentId: cartSpecialPaymentId,
                 specialPaymentText: cartSpecialPaymentText,
+                wpzId,
+                wpzOriginal: wpzExists ? cartWpzOriginal : null,
+                wpzComment: wpzExists && !cartWpzOriginal ? cartWpzComment : '',
               }, qty);
               setCartOpen(false);
               setCartSuccess(t('cart_added'));

@@ -130,6 +130,9 @@ export default function OrderCart() {
       if (x.specialPaymentCondition && !x.specialPaymentId) {
         messages.push(t('validation_special_payment_text_required'));
       }
+      if (x.wpzId && x.wpzOriginal === false && !String(x.wpzComment || '').trim()) {
+        messages.push(t('validation_wpz_comment_required'));
+      }
     }
     return messages;
   };
@@ -258,6 +261,32 @@ export default function OrderCart() {
                     ))}
                   </TextField>
                 )}
+                {row.wpzId && (
+                  <>
+                    <FormControlLabel
+                      control={(
+                        <Checkbox
+                          checked={row.wpzOriginal !== false}
+                          onChange={(e) => setItems(updateOrderCartItem(row.id, {
+                            wpzOriginal: e.target.checked,
+                            ...(e.target.checked ? { wpzComment: '' } : {}),
+                          }))}
+                        />
+                      )}
+                      label={t('wpz_original_use')}
+                    />
+                    {row.wpzOriginal === false && (
+                      <TextField
+                        label={t('wpz_comment_label')}
+                        value={row.wpzComment || ''}
+                        onChange={(e) => setItems(updateOrderCartItem(row.id, { wpzComment: e.target.value }))}
+                        multiline
+                        minRows={2}
+                        size="small"
+                      />
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -289,6 +318,9 @@ export default function OrderCart() {
                       packagingType: x.packagingType || '',
                       deliveryDate: x.deliveryDate || '',
                       deliveryAddress: x.deliveryAddress || '',
+                      wpzId: x.wpzId ?? null,
+                      wpzOriginal: x.wpzOriginal ?? true,
+                      wpzComment: x.wpzComment || '',
                     })),
                   },
                 });

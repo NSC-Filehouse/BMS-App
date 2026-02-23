@@ -157,6 +157,12 @@ export default function TempOrderDetail() {
                       ? ` | ${t('special_payment_text_label')}: ${pos.specialPaymentText ? `${pos.specialPaymentText}${pos.specialPaymentId ? ` (#${pos.specialPaymentId})` : ''}` : '-'}`
                       : ''}
                   </Typography>
+                  {pos.wpzId && (
+                    <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                      {t('wpz_label')}: #{pos.wpzId} | {t('wpz_original_use')}: {pos.wpzOriginal ? t('yes_label') : t('no_label')}
+                      {pos.wpzOriginal ? '' : ` | ${t('wpz_comment_label')}: ${pos.wpzComment || '-'}`}
+                    </Typography>
+                  )}
                 </Box>
               ))}
             </Box>

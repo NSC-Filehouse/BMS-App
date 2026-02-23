@@ -100,6 +100,9 @@ function mapTempOrderWithPositions(row, positions) {
     deliveryType: asText(p.deliveryType),
     packagingType: asText(p.packagingType),
     deliveryAddress: asText(p.deliveryAddress),
+    wpzId: p.wpzId === null || p.wpzId === undefined ? null : Number(p.wpzId),
+    wpzOriginal: p.wpzOriginal === null || p.wpzOriginal === undefined ? null : Boolean(p.wpzOriginal),
+    wpzComment: asText(p.wpzComment),
   }));
   const first = list.length ? list[0] : null;
   return {
@@ -135,6 +138,9 @@ function normalizePositionsInput(body) {
     packagingType: body?.packagingType,
     deliveryDate: body?.deliveryDate,
     deliveryAddress: body?.deliveryAddress ?? body?.clientAddress,
+    wpzId: body?.wpzId,
+    wpzOriginal: body?.wpzOriginal,
+    wpzComment: body?.wpzComment,
   }];
 }
 
@@ -237,6 +243,19 @@ async function loadDeliveryType(database, beNumber) {
   return loadPackagingType(database, beNumber);
 }
 
+async function loadLatestWpzId(database, beNumber) {
+  const sql = `
+    SELECT TOP 1 [bePZ_ID] AS wpzId
+    FROM [dbo].[tblBest_Pos_WPZ]
+    WHERE COALESCE([bePZ_BEposID], '') = ?
+    ORDER BY [bePZ_ID] DESC
+  `;
+  const rows = await runSQLQueryAccess(database, sql, [beNumber]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const id = Number(row?.wpzId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 async function loadIncoterms(database, lang) {
   const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
   const sql = `
@@ -335,6 +354,9 @@ async function loadOrderPositions(orderId) {
     const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
     const cPackagingType = resolveColumn(cols, ['tap_packaging_type']);
     const cDeliveryAddress = resolveColumn(cols, ['tap_delivery_address']);
+    const cWpzId = resolveColumn(cols, ['tap_wpz_id']);
+    const cWpzOriginal = resolveColumn(cols, ['tap_wpz_original']);
+    const cWpzComment = resolveColumn(cols, ['tap_wpz_comment']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const sql = `
@@ -360,7 +382,10 @@ async function loadOrderPositions(orderId) {
         ${pick(cSpecialPaymentText, 'specialPaymentText')},
         ${pick(cSpecialPaymentId, 'specialPaymentId')},
         ${pick(cDeliveryDate, 'deliveryDate')},
-        ${pick(cDeliveryAddress, 'deliveryAddress')}
+        ${pick(cDeliveryAddress, 'deliveryAddress')},
+        ${pick(cWpzId, 'wpzId')},
+        ${pick(cWpzOriginal, 'wpzOriginal')},
+        ${pick(cWpzComment, 'wpzComment')}
       FROM [dbo].[tbl_Temp_Auf_Position]
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -628,6 +653,12 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     if (!packagingType) {
       throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
+    const wpzId = await loadLatestWpzId(req.database, beNumber);
+    const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
+    const wpzComment = wpzId && wpzOriginal === 0 ? asText(raw?.wpzComment) : null;
+    if (wpzId && wpzOriginal === 0 && !wpzComment) {
+      throw createHttpError(400, 'Invalid WPZ comment.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
     normalizedPositions.push({
       beNumber,
       warehouseId,
@@ -644,6 +675,9 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       packagingType,
       deliveryDate: deliveryDate.toISOString(),
       deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
+      wpzId,
+      wpzOriginal,
+      wpzComment,
     });
   }
   const primaryPos = normalizedPositions[0];
@@ -706,10 +740,10 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
-        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_packaging_type], [tap_delivery_address],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -731,6 +765,9 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         pos.incotermId,
         pos.incotermText,
         pos.deliveryDate,
+        pos.wpzOriginal,
+        pos.wpzComment,
+        pos.wpzId,
         pos.packagingType,
         pos.deliveryAddress,
         userShortCode,
@@ -828,6 +865,12 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     if (!packagingType) {
       throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
+    const wpzId = await loadLatestWpzId(req.database, beNumber);
+    const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
+    const wpzComment = wpzId && wpzOriginal === 0 ? asText(raw?.wpzComment) : null;
+    if (wpzId && wpzOriginal === 0 && !wpzComment) {
+      throw createHttpError(400, 'Invalid WPZ comment.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
     normalizedPositions.push({
       beNumber,
       warehouseId,
@@ -844,6 +887,9 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       packagingType,
       deliveryDate: deliveryDate.toISOString(),
       deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
+      wpzId,
+      wpzOriginal,
+      wpzComment,
     });
   }
   const primaryPos = normalizedPositions[0];
@@ -914,10 +960,10 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
-        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_packaging_type], [tap_delivery_address],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -938,6 +984,9 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       pos.incotermId,
       pos.incotermText,
       pos.deliveryDate,
+      pos.wpzOriginal,
+      pos.wpzComment,
+      pos.wpzId,
       pos.packagingType,
       pos.deliveryAddress,
       userShortCode,

@@ -62,6 +62,9 @@ function createPositionDefaults(overrides = {}) {
     deliveryDate: tomorrow(),
     deliveryAddress: '',
     deliveryAddressManual: false,
+    wpzId: null,
+    wpzOriginal: true,
+    wpzComment: '',
     ...overrides,
   };
 }
@@ -193,6 +196,9 @@ export default function TempOrderForm() {
   const [addPosSpecialPaymentCondition, setAddPosSpecialPaymentCondition] = React.useState(false);
   const [addPosSpecialPaymentId, setAddPosSpecialPaymentId] = React.useState('');
   const [addPosSpecialPaymentText, setAddPosSpecialPaymentText] = React.useState('');
+  const [addPosWpzId, setAddPosWpzId] = React.useState(null);
+  const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
+  const [addPosWpzComment, setAddPosWpzComment] = React.useState('');
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -283,6 +289,9 @@ export default function TempOrderForm() {
               deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : tomorrow(),
               deliveryAddress: p.deliveryAddress || '',
               deliveryAddressManual: false,
+              wpzId: p.wpzId ?? null,
+              wpzOriginal: p.wpzOriginal ?? true,
+              wpzComment: p.wpzComment || '',
             }),
           })));
         } catch (e) {
@@ -316,6 +325,9 @@ export default function TempOrderForm() {
               deliveryDate: x.deliveryDate || tomorrow(),
               deliveryAddress: x.deliveryAddress || '',
               deliveryAddressManual: false,
+              wpzId: x.wpzId ?? null,
+              wpzOriginal: x.wpzOriginal ?? true,
+              wpzComment: x.wpzComment || '',
             }),
           })));
           setForm((prev) => ({
@@ -527,6 +539,9 @@ export default function TempOrderForm() {
       if (pos.specialPaymentCondition && !pos.specialPaymentId) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_special_payment_text_required')}`);
       }
+      if (pos.wpzId && !pos.wpzOriginal && !String(pos.wpzComment || '').trim()) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_wpz_comment_required')}`);
+      }
     }
 
     if (messages.length) {
@@ -570,6 +585,9 @@ export default function TempOrderForm() {
           packagingType: x.packagingType || '',
           deliveryDate: x.deliveryDate || null,
           deliveryAddress: x.deliveryAddress || null,
+          wpzId: x.wpzId ?? null,
+          wpzOriginal: x.wpzId ? Boolean(x.wpzOriginal) : null,
+          wpzComment: x.wpzId && !x.wpzOriginal ? (x.wpzComment || null) : null,
         }));
         payload.beNumber = payload.positions[0].beNumber;
         payload.warehouseId = payload.positions[0].warehouseId;
@@ -657,6 +675,9 @@ export default function TempOrderForm() {
                         setAddPosSpecialPaymentCondition(false);
                         setAddPosSpecialPaymentId('');
                         setAddPosSpecialPaymentText('');
+                        setAddPosWpzId(null);
+                        setAddPosWpzOriginal(true);
+                        setAddPosWpzComment('');
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -838,6 +859,32 @@ export default function TempOrderForm() {
                               ))}
                             </TextField>
                           )}
+                          {x.wpzId && (
+                            <>
+                              <FormControlLabel
+                                control={(
+                                  <Checkbox
+                                    checked={Boolean(x.wpzOriginal)}
+                                    onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx
+                                      ? { ...p, wpzOriginal: e.target.checked, ...(e.target.checked ? { wpzComment: '' } : {}) }
+                                      : p)))}
+                                  />
+                                )}
+                                label={t('wpz_original_use')}
+                              />
+                              {!x.wpzOriginal && (
+                                <TextField
+                                  label={t('wpz_comment_label')}
+                                  value={x.wpzComment || ''}
+                                  onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, wpzComment: e.target.value } : p)))}
+                                  size="small"
+                                  multiline
+                                  minRows={2}
+                                  fullWidth
+                                />
+                              )}
+                            </>
+                          )}
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
                               <DeleteOutlineIcon fontSize="small" />
@@ -905,6 +952,20 @@ export default function TempOrderForm() {
               const acquisition = Number(value?.acquisitionPrice);
               if (Number.isFinite(acquisition) && acquisition > 0) {
                 setAddPosSalePrice(String(acquisition));
+              }
+              setAddPosWpzId(null);
+              setAddPosWpzOriginal(true);
+              setAddPosWpzComment('');
+              if (value?.id) {
+                (async () => {
+                  try {
+                    const wpzRes = await apiRequest(`/products/${encodeURIComponent(value.id)}/wpz`);
+                    const idNum = Number(wpzRes?.data?.wpzId);
+                    setAddPosWpzId(Number.isFinite(idNum) && idNum > 0 ? idNum : null);
+                  } catch {
+                    setAddPosWpzId(null);
+                  }
+                })();
               }
             }}
             inputValue={addPosQuery}
@@ -1070,6 +1131,32 @@ export default function TempOrderForm() {
               ))}
             </TextField>
           )}
+          {addPosWpzId && (
+            <>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={addPosWpzOriginal}
+                    onChange={(e) => {
+                      setAddPosWpzOriginal(e.target.checked);
+                      if (e.target.checked) setAddPosWpzComment('');
+                    }}
+                  />
+                )}
+                label={t('wpz_original_use')}
+              />
+              {!addPosWpzOriginal && (
+                <TextField
+                  label={t('wpz_comment_label')}
+                  value={addPosWpzComment}
+                  onChange={(e) => setAddPosWpzComment(e.target.value)}
+                  multiline
+                  minRows={2}
+                  fullWidth
+                />
+              )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
@@ -1116,6 +1203,10 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_special_payment_text_required'));
                 return;
               }
+              if (addPosWpzId && !addPosWpzOriginal && !String(addPosWpzComment || '').trim()) {
+                setAddPosError(t('validation_wpz_comment_required'));
+                return;
+              }
               setAddPosError('');
               setPositions((prev) => ([
                 ...prev,
@@ -1139,6 +1230,9 @@ export default function TempOrderForm() {
                     deliveryDate: addPosDeliveryDate,
                     deliveryAddress: addPosDeliveryAddress,
                     deliveryAddressManual: addPosDeliveryAddressManual,
+                    wpzId: addPosWpzId,
+                    wpzOriginal: addPosWpzOriginal,
+                    wpzComment: addPosWpzOriginal ? '' : addPosWpzComment,
                   }),
                 },
               ]));
