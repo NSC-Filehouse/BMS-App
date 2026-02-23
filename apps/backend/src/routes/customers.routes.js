@@ -409,7 +409,6 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
 
   const sql = `
     SELECT
-      [re_reIndex] AS invoiceId,
       [re_rgDatum] AS invoiceDate,
       [re_RGfaellig] AS dueDate,
       [re_Zahltext] AS paymentTextId,
@@ -424,13 +423,14 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   const invoices = Array.isArray(rows) ? rows : [];
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
 
-  const data = invoices.map((row) => {
+  const data = invoices.map((row, idx) => {
     const paymentId = Number(row.paymentTextId);
     const eu = Number(row.grossEu);
     const dm = Number(row.grossDm);
+    const invoiceDate = row.invoiceDate || null;
     return {
-      id: Number(row.invoiceId),
-      invoiceDate: row.invoiceDate || null,
+      id: `${invoiceDate || 'inv'}-${idx + 1}`,
+      invoiceDate,
       dueDate: row.dueDate || null,
       amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
       paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
