@@ -1,5 +1,8 @@
 import React from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   IconButton,
@@ -9,6 +12,7 @@ import {
   Divider,
   Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MapIcon from '@mui/icons-material/Map';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -63,6 +67,19 @@ function normalizeRepresentatives(item) {
   return [];
 }
 
+function formatDateOnly(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('de-DE');
+}
+
+function formatMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+}
+
 function InfoRow({ icon, label, value, link }) {
   const content = link ? (
     <Box
@@ -113,6 +130,11 @@ export default function CustomerDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [docs, setDocs] = React.useState({
+    offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+    orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+    invoices: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+  });
 
   React.useEffect(() => {
     let alive = true;
@@ -148,6 +170,36 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
+  const loadDocSection = React.useCallback(async (section, endpoint) => {
+    setDocs((prev) => ({
+      ...prev,
+      [section]: { ...prev[section], loading: true, error: '' },
+    }));
+    try {
+      const res = await apiRequest(endpoint);
+      const items = Array.isArray(res?.data) ? res.data : [];
+      setDocs((prev) => ({
+        ...prev,
+        [section]: { ...prev[section], loading: false, loaded: true, error: '', items },
+      }));
+    } catch (e) {
+      setDocs((prev) => ({
+        ...prev,
+        [section]: { ...prev[section], loading: false, loaded: true, error: e?.message || t('loading_error') },
+      }));
+    }
+  }, [t]);
+
+  const onToggleSection = React.useCallback((section, endpoint) => (_event, expanded) => {
+    setDocs((prev) => ({
+      ...prev,
+      [section]: { ...prev[section], expanded },
+    }));
+    if (expanded && !docs[section].loaded && !docs[section].loading) {
+      loadDocSection(section, endpoint);
+    }
+  }, [docs, loadDocSection]);
+
   const handleBack = React.useCallback(() => {
     const fromCustomers = location.state?.fromCustomers;
     if (fromCustomers) {
@@ -179,6 +231,86 @@ export default function CustomerDetail() {
       {!loading && !error && item && (
         <Card>
           <CardContent sx={{ pt: 2 }}>
+            <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', `/customers/${encodeURIComponent(id)}/offers`)}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">{t('customer_docs_offers')}</Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+                {docs.offers.loading && <CircularProgress size={20} />}
+                {docs.offers.error && <Alert severity="error">{docs.offers.error}</Alert>}
+                {!docs.offers.loading && !docs.offers.error && docs.offers.items.length === 0 && (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_offers')}</Typography>
+                )}
+                {!docs.offers.loading && !docs.offers.error && docs.offers.items.map((offer, idx) => (
+                  <Card key={`${offer.id || idx}-offer`} variant="outlined">
+                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                      <Typography variant="caption">{t('contact_label')}: {offer.contact || '-'}</Typography>
+                      <Typography variant="caption">{t('offer_date_label')}: {formatDateOnly(offer.offerDate)}</Typography>
+                      <Typography variant="caption">{t('payment_terms_label')}: {offer.paymentText || '-'}</Typography>
+                      {(Array.isArray(offer.positions) ? offer.positions : []).map((pos, pIdx) => (
+                        <Typography key={`${offer.id || idx}-pos-${pIdx}`} variant="caption">
+                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${t('offered_price_label')}: ${formatMoney(pos.offeredPrice)}`}
+                        </Typography>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', `/customers/${encodeURIComponent(id)}/orders`)}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">{t('customer_docs_orders')}</Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+                {docs.orders.loading && <CircularProgress size={20} />}
+                {docs.orders.error && <Alert severity="error">{docs.orders.error}</Alert>}
+                {!docs.orders.loading && !docs.orders.error && docs.orders.items.length === 0 && (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_orders')}</Typography>
+                )}
+                {!docs.orders.loading && !docs.orders.error && docs.orders.items.map((order, idx) => (
+                  <Card key={`${order.id || idx}-order`} variant="outlined">
+                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                      <Typography variant="caption">{t('contact_label')}: {order.contact || '-'}</Typography>
+                      <Typography variant="caption">{t('order_date_label')}: {formatDateOnly(order.orderDate)}</Typography>
+                      <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
+                      <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
+                      {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
+                        <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption">
+                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}`}
+                        </Typography>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion expanded={docs.invoices.expanded} onChange={onToggleSection('invoices', `/customers/${encodeURIComponent(id)}/invoices`)}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">{t('customer_docs_invoices')}</Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ display: 'grid', gap: 1 }}>
+                {docs.invoices.loading && <CircularProgress size={20} />}
+                {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
+                {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_invoices')}</Typography>
+                )}
+                {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.map((invoice, idx) => (
+                  <Card key={`${invoice.id || idx}-invoice`} variant="outlined">
+                    <CardContent sx={{ py: '10px !important', display: 'grid', gap: 0.4 }}>
+                      <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
+                      <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
+                      <Typography variant="caption">{t('amount_label')}: {formatMoney(invoice.amount)}</Typography>
+                      <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </AccordionDetails>
+            </Accordion>
+
+            <Divider sx={{ my: 3 }} />
+
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
               {t('desc_label')}
             </Typography>

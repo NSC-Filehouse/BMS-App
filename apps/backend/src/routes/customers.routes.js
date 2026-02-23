@@ -1,7 +1,8 @@
 const express = require('express');
+const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
-const { runSQLQueryAccess } = require('../db/access');
+const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 
 const router = express.Router();
 
@@ -86,6 +87,33 @@ function buildAddressText(row) {
   const country = toText(row?.kdL_LK);
   const plzCity = [plz, city].filter(Boolean).join(' ');
   return [name1, name2, street, plzCity, country].filter(Boolean).join(', ');
+}
+
+function resolveLang(req) {
+  const raw = String(req?.header?.('x-lang') || '').trim().toLowerCase();
+  return raw === 'en' ? 'en' : 'de';
+}
+
+async function loadPaymentTextMap(ids, lang) {
+  const list = Array.isArray(ids)
+    ? ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : [];
+  if (!list.length) return new Map();
+  const placeholders = list.map(() => '?').join(', ');
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const sql = `
+    SELECT [zaS_ID] AS id, [zaS_Zahl_Text] AS text
+    FROM [dbo].[tblZahltext_Sprachen]
+    WHERE LOWER(COALESCE([zaS_SprachID], '')) = ?
+      AND [zaS_ID] IN (${placeholders})
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [safeLang, ...list]);
+  const map = new Map();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const id = Number(row.id);
+    if (Number.isFinite(id) && id > 0) map.set(id, toText(row.text));
+  }
+  return map;
 }
 
 // LIST (all columns from dbo.tblKunden)
@@ -217,6 +245,203 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
       id,
       count: data.length,
     },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const lang = resolveLang(req);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const sql = `
+    SELECT
+      [au_Auftragsindex] AS orderIndex,
+      [au_KontaktpersonAU] AS contact,
+      [au_Zahltext] AS paymentTextId,
+      [au_RGfaellig] AS dueDate,
+      [au_Auftragsdatum] AS orderDate
+    FROM [dbo].[tblAuftrag]
+    WHERE COALESCE([au_KdNr], '') = ?
+      AND COALESCE([au_Abgeschlossen], 0) <> 1
+    ORDER BY [au_Auftragsdatum] DESC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
+  const orders = Array.isArray(rows) ? rows : [];
+  const indices = orders.map((x) => Number(x.orderIndex)).filter((x) => Number.isFinite(x));
+  const paymentMap = await loadPaymentTextMap(orders.map((x) => x.paymentTextId), lang);
+
+  let posMap = new Map();
+  if (indices.length) {
+    const placeholders = indices.map(() => '?').join(', ');
+    const posSql = `
+      SELECT
+        [auP_Auftragsindex] AS orderIndex,
+        [auP_Artikel] AS article,
+        [auP_Anzahl] AS amount,
+        [auP_Einheit] AS unit
+      FROM [dbo].[tblAuf_Position]
+      WHERE [auP_Auftragsindex] IN (${placeholders})
+      ORDER BY [auP_Auftragsindex] ASC
+    `;
+    const posRows = await runSQLQueryAccess(req.database, posSql, indices);
+    posMap = new Map();
+    for (const row of (Array.isArray(posRows) ? posRows : [])) {
+      const key = Number(row.orderIndex);
+      if (!Number.isFinite(key)) continue;
+      if (!posMap.has(key)) posMap.set(key, []);
+      posMap.get(key).push({
+        article: toText(row.article),
+        amount: row.amount,
+        unit: toText(row.unit),
+      });
+    }
+  }
+
+  const data = orders.map((row) => {
+    const idx = Number(row.orderIndex);
+    const paymentId = Number(row.paymentTextId);
+    return {
+      id: idx,
+      contact: toText(row.contact),
+      orderDate: row.orderDate || null,
+      dueDate: row.dueDate || null,
+      paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
+      paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
+      positions: posMap.get(idx) || [],
+    };
+  });
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, id: customerId },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const lang = resolveLang(req);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
+
+  const sql = `
+    SELECT
+      [an_Angebotsnummer] AS offerNo,
+      [an_Kontaktperson] AS contact,
+      [an_Zahltext] AS paymentTextId,
+      [an_Angebotsdatum] AS offerDate
+    FROM [dbo].[tblAngebot]
+    WHERE COALESCE([an_KdNr], '') = ?
+      AND [an_Angebotsdatum] >= ?
+    ORDER BY [an_Angebotsdatum] DESC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId, cutoff.toISOString()]);
+  const offers = Array.isArray(rows) ? rows : [];
+  const offerNos = offers.map((x) => toText(x.offerNo)).filter(Boolean);
+  const paymentMap = await loadPaymentTextMap(offers.map((x) => x.paymentTextId), lang);
+
+  let posMap = new Map();
+  if (offerNos.length) {
+    const placeholders = offerNos.map(() => '?').join(', ');
+    const posSql = `
+      SELECT
+        [anP_AngebotsNr] AS offerNo,
+        [anP_Artikel] AS article,
+        [anP_Anzahl] AS amount,
+        [anP_Einheit] AS unit,
+        [anP_VK_EU] AS priceEu,
+        [anP_VK_DM] AS priceDm
+      FROM [dbo].[tblAng_Position]
+      WHERE COALESCE([anP_AngebotsNr], '') IN (${placeholders})
+      ORDER BY [anP_AngebotsNr] ASC
+    `;
+    const posRows = await runSQLQueryAccess(req.database, posSql, offerNos);
+    posMap = new Map();
+    for (const row of (Array.isArray(posRows) ? posRows : [])) {
+      const key = toText(row.offerNo);
+      if (!key) continue;
+      if (!posMap.has(key)) posMap.set(key, []);
+      const eu = Number(row.priceEu);
+      const dm = Number(row.priceDm);
+      posMap.get(key).push({
+        article: toText(row.article),
+        amount: row.amount,
+        unit: toText(row.unit),
+        offeredPrice: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
+      });
+    }
+  }
+
+  const data = offers.map((row) => {
+    const offerNo = toText(row.offerNo);
+    const paymentId = Number(row.paymentTextId);
+    return {
+      id: offerNo,
+      contact: toText(row.contact),
+      offerDate: row.offerDate || null,
+      paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
+      paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
+      positions: posMap.get(offerNo) || [],
+    };
+  });
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, id: customerId, days: 90 },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const lang = resolveLang(req);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const sql = `
+    SELECT
+      [re_reIndex] AS invoiceId,
+      [re_rgDatum] AS invoiceDate,
+      [re_RGfaellig] AS dueDate,
+      [re_Zahltext] AS paymentTextId,
+      [re_Bruttosumme_EU] AS grossEu,
+      [re_Bruttosumme_DM] AS grossDm
+    FROM [dbo].[tblRechnung]
+    WHERE COALESCE([re_KdNr], '') = ?
+      AND COALESCE([re_Bezahlt], 0) <> 1
+    ORDER BY [re_rgDatum] DESC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
+  const invoices = Array.isArray(rows) ? rows : [];
+  const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
+
+  const data = invoices.map((row) => {
+    const paymentId = Number(row.paymentTextId);
+    const eu = Number(row.grossEu);
+    const dm = Number(row.grossDm);
+    return {
+      id: Number(row.invoiceId),
+      invoiceDate: row.invoiceDate || null,
+      dueDate: row.dueDate || null,
+      amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
+      paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
+      paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
+    };
+  });
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, id: customerId },
     error: null,
   });
 }));
