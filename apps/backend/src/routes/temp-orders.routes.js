@@ -655,7 +655,8 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     }
     const wpzId = await loadLatestWpzId(req.database, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
-    const wpzComment = wpzId && wpzOriginal === 0 ? asText(raw?.wpzComment) : null;
+    const wpzCommentText = asText(raw?.wpzComment);
+    const wpzComment = wpzCommentText || null;
     if (wpzId && wpzOriginal === 0 && !wpzComment) {
       throw createHttpError(400, 'Invalid WPZ comment.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
@@ -867,7 +868,8 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     }
     const wpzId = await loadLatestWpzId(req.database, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
-    const wpzComment = wpzId && wpzOriginal === 0 ? asText(raw?.wpzComment) : null;
+    const wpzCommentText = asText(raw?.wpzComment);
+    const wpzComment = wpzCommentText || null;
     if (wpzId && wpzOriginal === 0 && !wpzComment) {
       throw createHttpError(400, 'Invalid WPZ comment.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }

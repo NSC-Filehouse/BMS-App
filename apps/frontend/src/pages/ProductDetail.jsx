@@ -544,23 +544,21 @@ export default function ProductDetail() {
                 )}
                 label={t('wpz_original_use')}
               />
-              {!cartWpzOriginal && (
-                <TextField
-                  margin="dense"
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  label={t('wpz_comment_label')}
-                  value={cartWpzComment}
-                  onChange={(e) => setCartWpzComment(e.target.value)}
-                />
-              )}
             </>
           ) : (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {t('wpz_label')}: {t('wpz_not_available')}
             </Typography>
           )}
+          <TextField
+            margin="dense"
+            fullWidth
+            multiline
+            minRows={2}
+            label={t('wpz_comment_label')}
+            value={cartWpzComment}
+            onChange={(e) => setCartWpzComment(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCartOpen(false)}>{t('back_label')}</Button>
@@ -615,7 +613,7 @@ export default function ProductDetail() {
                 specialPaymentText: cartSpecialPaymentText,
                 wpzId,
                 wpzOriginal: wpzExists ? cartWpzOriginal : null,
-                wpzComment: wpzExists && !cartWpzOriginal ? cartWpzComment : '',
+                wpzComment: cartWpzComment || '',
               }, qty);
               setCartOpen(false);
               setCartSuccess(t('cart_added'));

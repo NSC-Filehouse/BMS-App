@@ -275,22 +275,20 @@ export default function OrderCart() {
                       )}
                       label={t('wpz_original_use')}
                     />
-                    {row.wpzOriginal === false && (
-                      <TextField
-                        label={t('wpz_comment_label')}
-                        value={row.wpzComment || ''}
-                        onChange={(e) => setItems(updateOrderCartItem(row.id, { wpzComment: e.target.value }))}
-                        multiline
-                        minRows={2}
-                        size="small"
-                      />
-                    )}
                   </>
                 ) : (
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                     {t('wpz_label')}: {t('wpz_not_available')}
                   </Typography>
                 )}
+                <TextField
+                  label={t('wpz_comment_label')}
+                  value={row.wpzComment || ''}
+                  onChange={(e) => setItems(updateOrderCartItem(row.id, { wpzComment: e.target.value }))}
+                  multiline
+                  minRows={2}
+                  size="small"
+                />
               </CardContent>
             </Card>
           ))}

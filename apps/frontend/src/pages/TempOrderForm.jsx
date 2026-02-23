@@ -587,7 +587,7 @@ export default function TempOrderForm() {
           deliveryAddress: x.deliveryAddress || null,
           wpzId: x.wpzId ?? null,
           wpzOriginal: x.wpzId ? Boolean(x.wpzOriginal) : null,
-          wpzComment: x.wpzId && !x.wpzOriginal ? (x.wpzComment || null) : null,
+          wpzComment: x.wpzComment || null,
         }));
         payload.beNumber = payload.positions[0].beNumber;
         payload.warehouseId = payload.positions[0].warehouseId;
@@ -872,23 +872,21 @@ export default function TempOrderForm() {
                                 )}
                                 label={t('wpz_original_use')}
                               />
-                              {!x.wpzOriginal && (
-                                <TextField
-                                  label={t('wpz_comment_label')}
-                                  value={x.wpzComment || ''}
-                                  onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, wpzComment: e.target.value } : p)))}
-                                  size="small"
-                                  multiline
-                                  minRows={2}
-                                  fullWidth
-                                />
-                              )}
                             </>
                           ) : (
                             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                               {t('wpz_label')}: {t('wpz_not_available')}
                             </Typography>
                           )}
+                          <TextField
+                            label={t('wpz_comment_label')}
+                            value={x.wpzComment || ''}
+                            onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, wpzComment: e.target.value } : p)))}
+                            size="small"
+                            multiline
+                            minRows={2}
+                            fullWidth
+                          />
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
                               <DeleteOutlineIcon fontSize="small" />
@@ -1149,22 +1147,22 @@ export default function TempOrderForm() {
                 )}
                 label={t('wpz_original_use')}
               />
-              {!addPosWpzOriginal && (
-                <TextField
-                  label={t('wpz_comment_label')}
-                  value={addPosWpzComment}
-                  onChange={(e) => setAddPosWpzComment(e.target.value)}
-                  multiline
-                  minRows={2}
-                  fullWidth
-                />
-              )}
             </>
           ) : (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {t('wpz_label')}: {t('wpz_not_available')}
             </Typography>
           ))}
+          {addPosProduct && (
+            <TextField
+              label={t('wpz_comment_label')}
+              value={addPosWpzComment}
+              onChange={(e) => setAddPosWpzComment(e.target.value)}
+              multiline
+              minRows={2}
+              fullWidth
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPosOpen(false)}>{t('back_label')}</Button>
@@ -1240,7 +1238,7 @@ export default function TempOrderForm() {
                     deliveryAddressManual: addPosDeliveryAddressManual,
                     wpzId: addPosWpzId,
                     wpzOriginal: addPosWpzOriginal,
-                    wpzComment: addPosWpzOriginal ? '' : addPosWpzComment,
+                    wpzComment: addPosWpzComment || '',
                   }),
                 },
               ]));
