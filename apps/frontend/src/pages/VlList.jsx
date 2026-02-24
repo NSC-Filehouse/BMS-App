@@ -132,7 +132,7 @@ export default function VlList() {
                 mb: 0.4,
                 cursor: 'pointer',
               }}
-              onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
+              onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, { state: { fromVl: true } })}
             >
               {showHeader && (
                 <Typography variant="subtitle2" sx={{ mt: 1.2, mb: 0.35, fontWeight: 700 }}>

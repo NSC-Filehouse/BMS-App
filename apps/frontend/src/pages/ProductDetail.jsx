@@ -199,6 +199,11 @@ export default function ProductDetail() {
   }, [cartOpen]);
 
   const handleBack = React.useCallback(() => {
+    const fromVl = Boolean(location.state?.fromVl);
+    if (fromVl) {
+      navigate('/vl');
+      return;
+    }
     const fromProducts = location.state?.fromProducts;
     if (fromProducts) {
       navigate('/products', { state: { listState: fromProducts } });
@@ -319,7 +324,12 @@ export default function ProductDetail() {
                     <Button
                       size="small"
                       onClick={() => navigate(`/products/${encodeURIComponent(id)}/wpz`, {
-                        state: { fromProduct: { fromProducts: location.state?.fromProducts || null } },
+                        state: {
+                          fromProduct: {
+                            fromProducts: location.state?.fromProducts || null,
+                            fromVl: Boolean(location.state?.fromVl),
+                          },
+                        },
                       })}
                     >
                       {t('wpz_available')}

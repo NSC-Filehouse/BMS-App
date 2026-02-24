@@ -64,7 +64,10 @@ export default function ProductWpzDetail() {
   const handleBack = React.useCallback(() => {
     const fromProduct = location.state?.fromProduct || {};
     navigate(`/products/${encodeURIComponent(id)}`, {
-      state: { fromProducts: fromProduct.fromProducts || null },
+      state: {
+        fromProducts: fromProduct.fromProducts || null,
+        fromVl: Boolean(fromProduct.fromVl),
+      },
     });
   }, [id, location.state, navigate]);
 
