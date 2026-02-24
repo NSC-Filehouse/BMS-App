@@ -97,7 +97,23 @@ function buildWhereClause(filters = {}) {
 
   if (text) {
     const like = `%${text}%`;
-    const fields = ['[Artikel]', '[Kunststoff]', '[Kunststoff_Untergruppe]', '[Lagerort]', '[Bestell-Pos]'];
+    const fields = [
+      "COALESCE([Artikel], '')",
+      "COALESCE([Kunststoff], '')",
+      "COALESCE([Kunststoff_Untergruppe], '')",
+      "COALESCE([Lagerort], '')",
+      "COALESCE([Bestell-Pos], '')",
+      "COALESCE([Einheit], '')",
+      "COALESCE([beP_MFI_Pruefmethode], '')",
+      "COALESCE([beP_VLbemerkung], '')",
+      "COALESCE([beP_Additive], '')",
+      "COALESCE([txtLagerInfo], '')",
+      "CONVERT(nvarchar(64), [Menge])",
+      "CONVERT(nvarchar(64), [EP])",
+      "CONVERT(nvarchar(64), [beP_MFI])",
+      "CONVERT(nvarchar(64), [beP_MFIgemessen])",
+      "CONVERT(nvarchar(64), [bePR_Anzahl])",
+    ];
     clauses.push(`(${fields.map((f) => `${f} LIKE ?`).join(' OR ')})`);
     params.push(...fields.map(() => like));
   }

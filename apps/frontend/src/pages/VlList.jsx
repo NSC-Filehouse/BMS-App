@@ -1,5 +1,7 @@
 import React from 'react';
-import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -57,6 +59,8 @@ function buildLine(item) {
 export default function VlList() {
   const navigate = useNavigate();
   const { lang } = useI18n();
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchInput, setSearchInput] = React.useState('');
   const [items, setItems] = React.useState([]);
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
@@ -67,21 +71,29 @@ export default function VlList() {
   const hasMore = items.length < total;
   const sentinelRef = React.useRef(null);
   const loadingRef = React.useRef(false);
+  const normalizedSearch = String(searchInput || '').trim();
+  const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
 
-  const loadNextPage = React.useCallback(async () => {
+  const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (loadingRef.current) return;
-    if (initialLoaded && !hasMore) return;
 
     loadingRef.current = true;
     setLoading(true);
     setError('');
 
-    const nextPage = page + 1;
     try {
-      const res = await apiRequest(`/products?page=${nextPage}&pageSize=${PAGE_SIZE}&sort=vl&dir=ASC`);
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        pageSize: String(PAGE_SIZE),
+        sort: 'vl',
+        dir: 'ASC',
+      });
+      if (query) params.set('q', query);
+
+      const res = await apiRequest(`/products?${params.toString()}`);
       const data = Array.isArray(res?.data) ? res.data : [];
       const nextTotal = Number(res?.meta?.total || 0);
-      setItems((prev) => [...prev, ...data]);
+      setItems((prev) => (replace ? data : [...prev, ...data]));
       setPage(nextPage);
       setTotal(nextTotal);
       setInitialLoaded(true);
@@ -91,11 +103,22 @@ export default function VlList() {
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [hasMore, initialLoaded, page]);
+  }, []);
+
+  const loadNextPage = React.useCallback(async () => {
+    if (loadingRef.current) return;
+    if (initialLoaded && !hasMore) return;
+    const nextPage = page + 1;
+    await loadPage(nextPage, effectiveQuery, false);
+  }, [effectiveQuery, hasMore, initialLoaded, loadPage, page]);
 
   React.useEffect(() => {
-    void loadNextPage();
-  }, []);
+    setItems([]);
+    setPage(0);
+    setTotal(0);
+    setInitialLoaded(false);
+    void loadPage(1, effectiveQuery, true);
+  }, [effectiveQuery, loadPage]);
 
   React.useEffect(() => {
     const node = sentinelRef.current;
@@ -115,7 +138,55 @@ export default function VlList() {
 
   return (
     <Box sx={{ maxWidth: 980, mx: 'auto', pb: 2 }}>
-      <Typography variant="h5" sx={{ mb: 1.5 }}>VL</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+        <Typography variant="h5">VL</Typography>
+        <IconButton
+          aria-label="vl-search-toggle"
+          onClick={() => {
+            if (searchOpen) {
+              setSearchInput('');
+              setSearchOpen(false);
+              return;
+            }
+            setSearchOpen(true);
+          }}
+        >
+          <SearchIcon />
+        </IconButton>
+      </Box>
+
+      {searchOpen && (
+        <TextField
+          fullWidth
+          size="small"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          autoFocus
+          placeholder="Suchen..."
+          sx={{ mb: 1.25 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ opacity: 0.65 }} />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  aria-label="clear-search"
+                  onClick={() => {
+                    setSearchInput('');
+                    setSearchOpen(false);
+                  }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
