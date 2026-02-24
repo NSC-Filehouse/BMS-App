@@ -336,7 +336,7 @@ export default function OrderCart() {
                 const { messages, nextFieldErrors } = validate();
                 if (messages.length) {
                   setFieldErrors(nextFieldErrors);
-                  setError(messages.join(' | '));
+                  setError(t('validation_fill_required_fields'));
                   return;
                 }
                 setFieldErrors({});
