@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -54,6 +55,7 @@ function buildLine(item) {
 }
 
 export default function VlList() {
+  const navigate = useNavigate();
   const { lang } = useI18n();
   const [items, setItems] = React.useState([]);
   const [page, setPage] = React.useState(0);
@@ -124,7 +126,14 @@ export default function VlList() {
           if (showHeader) lastGroup = group;
 
           return (
-            <Box key={item.id} sx={{ mb: 0.4 }}>
+            <Box
+              key={item.id}
+              sx={{
+                mb: 0.4,
+                cursor: 'pointer',
+              }}
+              onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
+            >
               {showHeader && (
                 <Typography variant="subtitle2" sx={{ mt: 1.2, mb: 0.35, fontWeight: 700 }}>
                   {group}
