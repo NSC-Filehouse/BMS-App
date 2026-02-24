@@ -97,6 +97,7 @@ export default function VlList() {
 
   const hasMore = items.length < total;
   const sentinelRef = React.useRef(null);
+  const listRef = React.useRef(null);
   const loadingRef = React.useRef(false);
   const touchRef = React.useRef({ x: 0, y: 0 });
   const normalizedSearch = String(searchInput || '').trim();
@@ -164,7 +165,7 @@ export default function VlList() {
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       void loadNextPage();
-    }, { rootMargin: '250px 0px' });
+    }, { root: listRef.current, rootMargin: '250px 0px' });
 
     observer.observe(node);
     return () => observer.disconnect();
@@ -181,7 +182,7 @@ export default function VlList() {
   let lastGroup = '';
 
   return (
-    <Box sx={{ maxWidth: 980, mx: 'auto', pb: 2 }}>
+    <Box sx={{ maxWidth: 980, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
         <Typography variant="h5">VL</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
@@ -243,6 +244,7 @@ export default function VlList() {
 
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
+      <Box ref={listRef} sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.25 }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {items.map((item, index) => {
           const group = buildGroupTitle(item, lang);
@@ -378,6 +380,7 @@ export default function VlList() {
           <CircularProgress size={22} />
         </Box>
       )}
+      </Box>
 
       <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('cart_add')}</DialogTitle>
