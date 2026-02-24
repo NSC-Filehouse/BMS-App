@@ -131,10 +131,6 @@ export default function VlList() {
               sx={{
                 mb: 0.4,
                 cursor: 'pointer',
-                px: 0.75,
-                py: 0.45,
-                borderRadius: 0.5,
-                backgroundColor: index % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent',
               }}
               onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
             >
@@ -146,6 +142,10 @@ export default function VlList() {
               <Typography
                 variant="body2"
                 sx={{
+                  px: 0.75,
+                  py: 0.45,
+                  borderRadius: 0.5,
+                  backgroundColor: index % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent',
                   whiteSpace: 'normal',
                   wordBreak: 'break-word',
                   overflowWrap: 'anywhere',
