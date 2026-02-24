@@ -11,6 +11,7 @@ import CustomersList from './pages/CustomersList.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
 
 import ProductsList from './pages/ProductsList.jsx';
+import VlList from './pages/VlList.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
 import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
@@ -53,6 +54,14 @@ export default function App() {
           element={
             <MandantGuard>
               <ProductsList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/vl"
+          element={
+            <MandantGuard>
+              <VlList />
             </MandantGuard>
           }
         />

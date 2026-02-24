@@ -124,6 +124,7 @@ function resolveSort(sort) {
   const map = {
     article: '[Artikel]',
     category: '[Kunststoff_Untergruppe]',
+    vl: '[Kunststoff], [Kunststoff_Untergruppe], [Artikel]',
     amount: '[Menge]',
     warehouse: '[Lagerort]',
     reserved: '[bePR_Anzahl]',
