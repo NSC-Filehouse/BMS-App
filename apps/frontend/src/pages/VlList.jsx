@@ -177,7 +177,6 @@ export default function VlList() {
                   aria-label="clear-search"
                   onClick={() => {
                     setSearchInput('');
-                    setSearchOpen(false);
                   }}
                 >
                   <CloseIcon fontSize="small" />
