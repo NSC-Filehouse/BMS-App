@@ -56,6 +56,7 @@ export default function OrderCart() {
   const { t, lang } = useI18n();
   const [items, setItems] = React.useState(() => getOrderCartItems());
   const [error, setError] = React.useState('');
+  const [fieldErrors, setFieldErrors] = React.useState({});
   const [incotermOptions, setIncotermOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
@@ -104,37 +105,55 @@ export default function OrderCart() {
 
   const validate = () => {
     const messages = [];
+    const nextFieldErrors = {};
+    const pushFieldError = (rowId, field) => {
+      const key = String(rowId || '');
+      if (!nextFieldErrors[key]) nextFieldErrors[key] = {};
+      nextFieldErrors[key][field] = true;
+    };
     for (const x of items) {
       const qty = Number(x.quantityKg);
       if (!Number.isFinite(qty) || qty <= 0) {
         messages.push(t('validation_cart_quantity_positive'));
+        pushFieldError(x.id, 'quantityKg');
         continue;
       }
       const available = Number(x.availableAmount);
       if (Number.isFinite(available) && qty > available) {
         messages.push(t('validation_cart_quantity_not_above_available'));
+        pushFieldError(x.id, 'quantityKg');
       }
       const salePrice = Number(x.salePrice);
       if (!Number.isFinite(salePrice) || salePrice <= 0) {
         messages.push(t('validation_sale_price_positive'));
+        pushFieldError(x.id, 'salePrice');
       }
       if (!x.deliveryDate) {
         messages.push(t('validation_delivery_date_required'));
+        pushFieldError(x.id, 'deliveryDate');
       }
       if (!x.incotermId) {
         messages.push(t('validation_incoterm_required'));
+        pushFieldError(x.id, 'incotermId');
       }
       if (!x.packagingType) {
         messages.push(t('validation_packaging_required'));
+        pushFieldError(x.id, 'packagingType');
+      }
+      if (!String(x.deliveryAddress || '').trim()) {
+        messages.push(t('validation_delivery_address_required'));
+        pushFieldError(x.id, 'deliveryAddress');
       }
       if (x.specialPaymentCondition && !x.specialPaymentId) {
         messages.push(t('validation_special_payment_text_required'));
+        pushFieldError(x.id, 'specialPaymentId');
       }
       if (x.wpzId && x.wpzOriginal === false && !String(x.wpzComment || '').trim()) {
         messages.push(t('validation_wpz_comment_required'));
+        pushFieldError(x.id, 'wpzComment');
       }
     }
-    return messages;
+    return { messages, nextFieldErrors };
   };
 
   return (
@@ -146,7 +165,6 @@ export default function OrderCart() {
         <Typography variant="h5">{t('cart_title')}</Typography>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {items.length === 0 && <Typography sx={{ opacity: 0.7 }}>{t('cart_empty')}</Typography>}
 
       {items.length > 0 && (
@@ -170,6 +188,10 @@ export default function OrderCart() {
                 <Typography variant="caption" sx={{ opacity: 0.7 }}>
                   {t('product_available_now')}: {row.availableAmount ?? '-'} {row.unit || 'kg'} | {t('product_price')}: {formatPrice(row.acquisitionPrice)}
                 </Typography>
+            {(() => {
+              const rowErr = fieldErrors[String(row.id || '')] || {};
+              return (
+                <>
                 <TextField
                   type="number"
                   label={t('cart_quantity')}
@@ -177,6 +199,9 @@ export default function OrderCart() {
                   onChange={(e) => onQtyChange(row.id, e.target.value)}
                   inputProps={{ min: 1, step: 'any' }}
                   size="small"
+                  required
+                  error={Boolean(rowErr.quantityKg)}
+                  helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
                 />
                 <TextField
                   type="number"
@@ -185,6 +210,9 @@ export default function OrderCart() {
                   onChange={(e) => onSalePriceChange(row.id, e.target.value)}
                   inputProps={{ min: 0.01, step: 'any' }}
                   size="small"
+                  required
+                  error={Boolean(rowErr.salePrice)}
+                  helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
                 <TextField
                   type="date"
@@ -193,12 +221,18 @@ export default function OrderCart() {
                   onChange={(e) => setItems(updateOrderCartItem(row.id, { deliveryDate: e.target.value }))}
                   InputLabelProps={{ shrink: true }}
                   size="small"
+                  required
+                  error={Boolean(rowErr.deliveryDate)}
+                  helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
                 />
                 <TextField
                   label={t('delivery_address_label')}
                   value={row.deliveryAddress || ''}
                   onChange={(e) => setItems(updateOrderCartItem(row.id, { deliveryAddress: e.target.value }))}
                   size="small"
+                  required
+                  error={Boolean(rowErr.deliveryAddress)}
+                  helperText={rowErr.deliveryAddress ? t('validation_delivery_address_required') : ''}
                 />
                 <TextField
                   select
@@ -213,6 +247,9 @@ export default function OrderCart() {
                     }));
                   }}
                   size="small"
+                  required
+                  error={Boolean(rowErr.incotermId)}
+                  helperText={rowErr.incotermId ? t('validation_incoterm_required') : ''}
                 >
                   {incotermOptions.map((x) => (
                     <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
@@ -224,6 +261,9 @@ export default function OrderCart() {
                   value={row.packagingType || ''}
                   onChange={(e) => setItems(updateOrderCartItem(row.id, { packagingType: e.target.value }))}
                   size="small"
+                  required
+                  error={Boolean(rowErr.packagingType)}
+                  helperText={rowErr.packagingType ? t('validation_packaging_required') : ''}
                 >
                   {packagingOptions.map((x) => (
                     <MenuItem key={x} value={x}>{x}</MenuItem>
@@ -255,6 +295,9 @@ export default function OrderCart() {
                       }));
                     }}
                     size="small"
+                    required
+                    error={Boolean(rowErr.specialPaymentId)}
+                    helperText={rowErr.specialPaymentId ? t('validation_special_payment_text_required') : ''}
                   >
                     {paymentTextOptions.map((x) => (
                       <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
@@ -288,20 +331,29 @@ export default function OrderCart() {
                   multiline
                   minRows={2}
                   size="small"
+                  error={Boolean(rowErr.wpzComment)}
+                  helperText={rowErr.wpzComment ? t('validation_wpz_comment_required') : ''}
                 />
+                </>
+              );
+            })()}
               </CardContent>
             </Card>
           ))}
 
+          {error && <Alert severity="error" sx={{ mb: 0.5 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button
               variant="contained"
               onClick={() => {
-                const msgs = validate();
-                if (msgs.length) {
-                  setError(msgs.join(' | '));
+                const { messages, nextFieldErrors } = validate();
+                if (messages.length) {
+                  setFieldErrors(nextFieldErrors);
+                  setError(messages.join(' | '));
                   return;
                 }
+                setFieldErrors({});
+                setError('');
                 navigate('/temp-orders/new', {
                   state: {
                     sourceItems: items.map((x) => ({
