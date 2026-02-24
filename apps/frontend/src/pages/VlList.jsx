@@ -272,6 +272,8 @@ export default function VlList() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       bgcolor: 'primary.main',
+                      transform: isRevealed ? 'translateX(0)' : 'translateX(100%)',
+                      transition: 'transform 160ms ease',
                     }}
                   >
                     <Button
