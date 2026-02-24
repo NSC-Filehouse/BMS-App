@@ -120,7 +120,7 @@ export default function VlList() {
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        {items.map((item) => {
+        {items.map((item, index) => {
           const group = buildGroupTitle(item, lang);
           const showHeader = group !== lastGroup;
           if (showHeader) lastGroup = group;
@@ -131,6 +131,10 @@ export default function VlList() {
               sx={{
                 mb: 0.4,
                 cursor: 'pointer',
+                px: 0.75,
+                py: 0.45,
+                borderRadius: 0.5,
+                backgroundColor: index % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent',
               }}
               onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`)}
             >
