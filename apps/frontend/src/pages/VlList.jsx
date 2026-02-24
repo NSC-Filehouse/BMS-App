@@ -186,14 +186,6 @@ export default function VlList() {
         <Typography variant="h5">VL</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
           <IconButton
-            aria-label={t('cart_open')}
-            onClick={() => navigate('/order-cart', { state: { fromVl: true } })}
-          >
-            <Badge badgeContent={cartCount} color="error">
-              <ShoppingCartIcon />
-            </Badge>
-          </IconButton>
-          <IconButton
             aria-label="vl-search-toggle"
             onClick={() => {
               if (searchOpen) {
@@ -205,6 +197,14 @@ export default function VlList() {
             }}
           >
             <SearchIcon />
+          </IconButton>
+          <IconButton
+            aria-label={t('cart_open')}
+            onClick={() => navigate('/order-cart', { state: { fromVl: true } })}
+          >
+            <Badge badgeContent={cartCount} color="error">
+              <ShoppingCartIcon />
+            </Badge>
           </IconButton>
         </Box>
       </Box>
