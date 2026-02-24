@@ -140,10 +140,6 @@ export default function OrderCart() {
         messages.push(t('validation_packaging_required'));
         pushFieldError(x.id, 'packagingType');
       }
-      if (!String(x.deliveryAddress || '').trim()) {
-        messages.push(t('validation_delivery_address_required'));
-        pushFieldError(x.id, 'deliveryAddress');
-      }
       if (x.specialPaymentCondition && !x.specialPaymentId) {
         messages.push(t('validation_special_payment_text_required'));
         pushFieldError(x.id, 'specialPaymentId');
@@ -224,15 +220,6 @@ export default function OrderCart() {
                   required
                   error={Boolean(rowErr.deliveryDate)}
                   helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
-                />
-                <TextField
-                  label={t('delivery_address_label')}
-                  value={row.deliveryAddress || ''}
-                  onChange={(e) => setItems(updateOrderCartItem(row.id, { deliveryAddress: e.target.value }))}
-                  size="small"
-                  required
-                  error={Boolean(rowErr.deliveryAddress)}
-                  helperText={rowErr.deliveryAddress ? t('validation_delivery_address_required') : ''}
                 />
                 <TextField
                   select
