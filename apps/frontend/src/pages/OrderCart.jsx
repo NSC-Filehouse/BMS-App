@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import {
@@ -53,6 +53,7 @@ function formatPrice(value) {
 
 export default function OrderCart() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, lang } = useI18n();
   const [items, setItems] = React.useState(() => getOrderCartItems());
   const [error, setError] = React.useState('');
@@ -155,7 +156,20 @@ export default function OrderCart() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton aria-label="back" onClick={() => navigate('/products')}>
+        <IconButton
+          aria-label="back"
+          onClick={() => {
+            if (location.state?.fromVl) {
+              navigate('/vl');
+              return;
+            }
+            if (window.history.length > 1) {
+              navigate(-1);
+              return;
+            }
+            navigate('/products');
+          }}
+        >
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5">{t('cart_title')}</Typography>

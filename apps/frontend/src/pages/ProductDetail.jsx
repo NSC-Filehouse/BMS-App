@@ -223,7 +223,10 @@ export default function ProductDetail() {
             {item?.article || id}
           </Typography>
         </Box>
-        <IconButton aria-label={t('cart_open')} onClick={() => navigate('/order-cart')}>
+        <IconButton
+          aria-label={t('cart_open')}
+          onClick={() => navigate('/order-cart', { state: { fromVl: Boolean(location.state?.fromVl) } })}
+        >
           <Badge badgeContent={cartCount} color="error">
             <ShoppingCartIcon />
           </Badge>
