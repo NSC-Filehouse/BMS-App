@@ -76,6 +76,7 @@ function mapTempOrderWithPositions(row, positions) {
     deliveryType: asText(p.deliveryType),
     packagingType: asText(p.packagingType),
     deliveryAddress: asText(p.deliveryAddress),
+    deliveryAddressChanged: Boolean(p.deliveryAddressChanged),
     wpzId: p.wpzId === null || p.wpzId === undefined ? null : Number(p.wpzId),
     wpzOriginal: p.wpzOriginal === null || p.wpzOriginal === undefined ? null : Boolean(p.wpzOriginal),
     wpzComment: asText(p.wpzComment),
@@ -106,6 +107,7 @@ function normalizePositionsInput(body) {
     packagingType: body?.packagingType,
     deliveryDate: body?.deliveryDate,
     deliveryAddress: body?.deliveryAddress ?? body?.clientAddress,
+    deliveryAddressChanged: body?.deliveryAddressChanged ?? body?.deliveryAddressManual,
     wpzId: body?.wpzId,
     wpzOriginal: body?.wpzOriginal,
     wpzComment: body?.wpzComment,
@@ -322,6 +324,7 @@ async function loadOrderPositions(orderId) {
     const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
     const cPackagingType = resolveColumn(cols, ['tap_packaging_type']);
     const cDeliveryAddress = resolveColumn(cols, ['tap_delivery_address']);
+    const cDeliveryAddressChanged = resolveColumn(cols, ['tap_delivery_address_changed']);
     const cWpzId = resolveColumn(cols, ['tap_wpz_id']);
     const cWpzOriginal = resolveColumn(cols, ['tap_wpz_original']);
     const cWpzComment = resolveColumn(cols, ['tap_wpz_comment']);
@@ -351,6 +354,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cSpecialPaymentId, 'specialPaymentId')},
         ${pick(cDeliveryDate, 'deliveryDate')},
         ${pick(cDeliveryAddress, 'deliveryAddress')},
+        ${pick(cDeliveryAddressChanged, 'deliveryAddressChanged')},
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')}
@@ -674,6 +678,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       packagingType,
       deliveryDate: deliveryDate.toISOString(),
       deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
+      deliveryAddressChanged: asBit(raw?.deliveryAddressChanged ?? raw?.deliveryAddressManual, 0),
       wpzId,
       wpzOriginal,
       wpzComment,
@@ -728,10 +733,10 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
-        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address], [tap_delivery_address_changed],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -758,6 +763,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         pos.wpzId,
         pos.packagingType,
         pos.deliveryAddress,
+        pos.deliveryAddressChanged,
         userShortCode,
         nowIso,
         userShortCode,
@@ -876,6 +882,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       packagingType,
       deliveryDate: deliveryDate.toISOString(),
       deliveryAddress: asText(raw?.deliveryAddress || clientAddress) || null,
+      deliveryAddressChanged: asBit(raw?.deliveryAddressChanged ?? raw?.deliveryAddressManual, 0),
       wpzId,
       wpzOriginal,
       wpzComment,
@@ -931,10 +938,10 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
         [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
         [tap_special_payment_condition], [tap_special_payment_text], [tap_special_payment_id],
-        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address],
+        [tap_delivery_type_id], [tap_delivery_type], [tap_delivery_date], [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id], [tap_packaging_type], [tap_delivery_address], [tap_delivery_address_changed],
         [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -960,6 +967,7 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       pos.wpzId,
       pos.packagingType,
       pos.deliveryAddress,
+      pos.deliveryAddressChanged,
       userShortCode,
       nowIso,
       userShortCode,
