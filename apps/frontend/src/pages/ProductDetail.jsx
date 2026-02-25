@@ -96,7 +96,6 @@ export default function ProductDetail() {
   const [cartQty, setCartQty] = React.useState('');
   const [cartSalePrice, setCartSalePrice] = React.useState('');
   const [cartDeliveryDate, setCartDeliveryDate] = React.useState('');
-  const [cartDeliveryAddress, setCartDeliveryAddress] = React.useState('');
   const [cartPackagingType, setCartPackagingType] = React.useState('');
   const [cartIncotermId, setCartIncotermId] = React.useState('');
   const [cartIncotermText, setCartIncotermText] = React.useState('');
@@ -289,7 +288,6 @@ export default function ProductDetail() {
                 setCartQty('');
                 setCartSalePrice(item?.acquisitionPrice ?? '');
                 setCartDeliveryDate(tomorrow.toISOString().slice(0, 10));
-                setCartDeliveryAddress('');
                 setCartPackagingType('');
                 setCartIncotermId('');
                 setCartIncotermText('');
@@ -475,13 +473,6 @@ export default function ProductDetail() {
           />
           <TextField
             margin="dense"
-            fullWidth
-            label={t('delivery_address_label')}
-            value={cartDeliveryAddress}
-            onChange={(e) => setCartDeliveryAddress(e.target.value)}
-          />
-          <TextField
-            margin="dense"
             select
             fullWidth
             label={t('incoterm_label')}
@@ -617,7 +608,6 @@ export default function ProductDetail() {
                 ...item,
                 salePrice,
                 deliveryDate: cartDeliveryDate,
-                deliveryAddress: cartDeliveryAddress,
                 packagingType: cartPackagingType,
                 incotermId: cartIncotermId,
                 incotermText: cartIncotermText,
