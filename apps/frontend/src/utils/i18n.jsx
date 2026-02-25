@@ -27,7 +27,7 @@ const translations = {
     customers_title: 'Kunden',
     customers_search: 'Kunden durchsuchen',
     customers_empty: 'Keine Kunden',
-    products_title: 'Produkte',
+    products_title: 'Artikel',
     vl_title: 'VL',
     products_search: 'Produkte durchsuchen',
     products_empty: 'Es gibt keine Produkte',
