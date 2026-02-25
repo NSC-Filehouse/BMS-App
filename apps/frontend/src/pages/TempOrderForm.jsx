@@ -746,7 +746,7 @@ export default function TempOrderForm() {
                             </TextField>
                           </Box>
 
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                             {x.deliveryAddressManual ? (
                               <TextField
                                 label={t('delivery_address_label')}
@@ -754,6 +754,7 @@ export default function TempOrderForm() {
                                 onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
                                 size="small"
                                 fullWidth
+                                sx={{ flex: 1, minWidth: 0 }}
                               />
                             ) : (
                               <TextField
@@ -764,6 +765,8 @@ export default function TempOrderForm() {
                                 size="small"
                                 fullWidth
                                 sx={{
+                                  flex: 1,
+                                  minWidth: 0,
                                   '& .MuiSelect-select': {
                                     minWidth: 0,
                                     overflow: 'hidden',
@@ -1006,13 +1009,14 @@ export default function TempOrderForm() {
             InputLabelProps={{ shrink: true }}
             fullWidth
           />
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             {addPosDeliveryAddressManual ? (
               <TextField
                 label={t('delivery_address_label')}
                 value={addPosDeliveryAddress}
                 onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
                 fullWidth
+                sx={{ flex: 1, minWidth: 0 }}
               />
             ) : (
               <TextField
@@ -1022,6 +1026,8 @@ export default function TempOrderForm() {
                 onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
                 fullWidth
                 sx={{
+                  flex: 1,
+                  minWidth: 0,
                   '& .MuiSelect-select': {
                     minWidth: 0,
                     overflow: 'hidden',
