@@ -68,6 +68,7 @@ export default function OrderDetail() {
   const [editDate, setEditDate] = React.useState('');
   const [editComment, setEditComment] = React.useState('');
   const [editLoading, setEditLoading] = React.useState(false);
+  const [editError, setEditError] = React.useState('');
 
   React.useEffect(() => {
     let alive = true;
@@ -134,6 +135,7 @@ export default function OrderDetail() {
                       setEditAmount(String(item.reserveAmount || ''));
                       setEditDate(item.reservationDate ? String(item.reservationDate).slice(0, 10) : '');
                       setEditComment(item.comment || '');
+                      setEditError('');
                       setEditOpen(true);
                     }}
                   >
@@ -180,6 +182,7 @@ export default function OrderDetail() {
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('reservation_edit')}</DialogTitle>
         <DialogContent>
+          {editError && <Alert severity="error" sx={{ mb: 1 }}>{editError}</Alert>}
           <TextField
             margin="dense"
             fullWidth
@@ -216,7 +219,7 @@ export default function OrderDetail() {
             onClick={async () => {
               try {
                 setEditLoading(true);
-                setError('');
+                setEditError('');
                 setSuccess('');
                 await apiRequest(`/orders/${encodeURIComponent(id)}`, {
                   method: 'PUT',
@@ -231,7 +234,7 @@ export default function OrderDetail() {
                 const res = await apiRequest(`/orders/${encodeURIComponent(id)}`);
                 setItem(res?.data || null);
               } catch (e) {
-                setError(e?.message || t('loading_error'));
+                setEditError(e?.message || t('loading_error'));
               } finally {
                 setEditLoading(false);
               }

@@ -91,6 +91,7 @@ export default function ProductDetail() {
   const [reserveLoading, setReserveLoading] = React.useState(false);
   const [reserveSuccess, setReserveSuccess] = React.useState('');
   const [reserveInfo, setReserveInfo] = React.useState('');
+  const [reserveError, setReserveError] = React.useState('');
   const [cartOpen, setCartOpen] = React.useState(false);
   const [cartError, setCartError] = React.useState('');
   const [cartQty, setCartQty] = React.useState('');
@@ -271,6 +272,7 @@ export default function ProductDetail() {
                 setReserveAmount('');
                 setReserveComment('');
                 setReserveInfo('');
+                setReserveError('');
                 setReserveOpen(true);
               }}
             >
@@ -360,6 +362,7 @@ export default function ProductDetail() {
       <Dialog open={reserveOpen} onClose={() => setReserveOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('product_reserve_submit')}</DialogTitle>
         <DialogContent>
+          {reserveError && <Alert severity="error" sx={{ mb: 1 }}>{reserveError}</Alert>}
           <TextField
             margin="dense"
             fullWidth
@@ -404,7 +407,7 @@ export default function ProductDetail() {
             onClick={async () => {
               try {
                 setReserveLoading(true);
-                setError('');
+                setReserveError('');
                 setReserveSuccess('');
                 setReserveInfo('');
                 await apiRequest('/products/reserve', {
@@ -427,7 +430,7 @@ export default function ProductDetail() {
                   setReserveOpen(false);
                   setReserveInfo(by ? t('product_already_reserved_by', { by }) : t('product_already_reserved'));
                 } else {
-                  setError(e?.message || t('loading_error'));
+                  setReserveError(e?.message || t('loading_error'));
                 }
               } finally {
                 setReserveLoading(false);

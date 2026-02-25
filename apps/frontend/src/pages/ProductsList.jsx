@@ -161,6 +161,7 @@ export default function ProductsList() {
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [addItem, setAddItem] = React.useState(null);
   const [addQty, setAddQty] = React.useState('');
+  const [addError, setAddError] = React.useState('');
   const [addSuccess, setAddSuccess] = React.useState('');
 
   const qRef = React.useRef(q);
@@ -318,6 +319,7 @@ export default function ProductsList() {
                 onAddToCart={(product) => {
                   setAddItem(product);
                   setAddQty('');
+                  setAddError('');
                   setAddDialogOpen(true);
                 }}
                 onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
@@ -394,6 +396,7 @@ export default function ProductsList() {
                                       onAddToCart={(product) => {
                                         setAddItem(product);
                                         setAddQty('');
+                                        setAddError('');
                                         setAddDialogOpen(true);
                                       }}
                                       onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
@@ -419,6 +422,7 @@ export default function ProductsList() {
       <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('cart_add')}</DialogTitle>
         <DialogContent>
+          {addError && <Alert severity="error" sx={{ mb: 1 }}>{addError}</Alert>}
           <Typography variant="body2" sx={{ mb: 1 }}>{addItem?.article || '-'}</Typography>
           <TextField
             margin="dense"
@@ -432,20 +436,21 @@ export default function ProductsList() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddDialogOpen(false)}>{t('back_label')}</Button>
+          <Button onClick={() => { setAddError(''); setAddDialogOpen(false); }}>{t('back_label')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               const qty = Number(addQty);
               const available = Math.max(Number(addItem?.amount || 0) - Number(addItem?.reserved || 0), 0);
               if (!Number.isFinite(qty) || qty <= 0) {
-                setError(t('validation_cart_quantity_positive'));
+                setAddError(t('validation_cart_quantity_positive'));
                 return;
               }
               if (qty > available) {
-                setError(t('validation_cart_quantity_not_above_available'));
+                setAddError(t('validation_cart_quantity_not_above_available'));
                 return;
               }
+              setAddError('');
               addOrderCartItem(addItem, qty);
               setCartCount(getOrderCartCount());
               setAddDialogOpen(false);
