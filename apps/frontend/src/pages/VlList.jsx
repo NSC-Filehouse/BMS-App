@@ -48,7 +48,7 @@ function buildGroupTitle(item, lang) {
   return `${main}-${sub}`;
 }
 
-function buildLine(item) {
+function buildLineParts(item) {
   const amount = formatNumber(item?.amount, 0);
   const unit = asText(item?.unit);
   const article = asText(item?.article);
@@ -62,17 +62,16 @@ function buildLine(item) {
   const beNumber = asText(item?.beNumber);
   const remark = asText(item?.about);
 
-  let line = `${amount} ${unit} ${article}`.trim();
+  let main = `${amount} ${unit} ${article}`.trim();
   if (mfi) {
-    line += ` MFI ${mfi}`;
-    if (mfiMethod) line += ` (${mfiMethod})`;
+    main += ` MFI ${mfi}`;
+    if (mfiMethod) main += ` (${mfiMethod})`;
   }
-  if (price) line += ` zu ${price}`;
-  if (warehouse) line += ` ex ${warehouse}`;
-  if (beNumber) line += ` ${beNumber}`;
-  if (remark) line += ` - ${remark}`;
+  if (price) main += ` zu ${price}`;
+  if (warehouse) main += ` ex ${warehouse}`;
+  if (beNumber) main += ` ${beNumber}`;
 
-  return line;
+  return { main, remark };
 }
 
 export default function VlList() {
@@ -340,7 +339,19 @@ export default function VlList() {
                   }}
                 >
                   <Typography variant="body2">
-                    {buildLine(item)}
+                    {(() => {
+                      const parts = buildLineParts(item);
+                      return (
+                        <>
+                          {parts.main}
+                          {parts.remark ? (
+                            <Box component="span" sx={{ color: 'error.main' }}>
+                              {` - ${parts.remark}`}
+                            </Box>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </Typography>
 
                   {isFinePointer && (
