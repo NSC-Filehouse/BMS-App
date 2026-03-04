@@ -170,6 +170,8 @@ export default function TempOrderForm() {
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [customerPaymentDefaultId, setCustomerPaymentDefaultId] = React.useState('');
+  const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
   const [positions, setPositions] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
@@ -215,6 +217,13 @@ export default function TempOrderForm() {
     deliveryAddressManual: false,
   });
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
+
+  const resolvePaymentTextById = React.useCallback((id) => {
+    const idNum = Number(id);
+    if (!Number.isFinite(idNum) || idNum <= 0) return null;
+    const hit = paymentTextOptions.find((x) => Number(x.id) === idNum);
+    return hit ? { id: idNum, text: String(hit.text || '') } : null;
+  }, [paymentTextOptions]);
   const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
     const id = String(clientReferenceId || '').trim();
     if (!id) {
@@ -354,6 +363,28 @@ export default function TempOrderForm() {
   }, [id, isEdit, source, sourceItems, t, loadDeliveryAddresses, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
+    if (!form.specialPaymentCondition) return;
+    const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);
+    if (!Number.isFinite(targetId) || targetId <= 0) return;
+    if (!paymentTextOptions.length) return;
+    const resolved = resolvePaymentTextById(targetId);
+    if (!resolved) return;
+    if (Number(form.specialPaymentId) === resolved.id && String(form.specialPaymentText || '') === resolved.text) return;
+    setForm((prev) => ({
+      ...prev,
+      specialPaymentId: resolved.id,
+      specialPaymentText: resolved.text,
+    }));
+  }, [
+    form.specialPaymentCondition,
+    form.specialPaymentId,
+    form.specialPaymentText,
+    customerPaymentDefaultId,
+    paymentTextOptions,
+    resolvePaymentTextById,
+  ]);
+
+  React.useEffect(() => {
     let alive = true;
     const run = async () => {
       try {
@@ -424,6 +455,8 @@ export default function TempOrderForm() {
     setSelectedCustomer(customer);
     if (!customer) {
       setDeliveryAddressOptions([]);
+      setCustomerPaymentDefaultId('');
+      setCustomerPaymentDefaultText('');
       return;
     }
 
@@ -440,6 +473,32 @@ export default function TempOrderForm() {
       deliveryAddress: '',
       deliveryAddressManual: false,
     }));
+
+    const customerPaymentIdRaw = customer?.kd_Zahltext;
+    const customerPaymentIdParsed = Number(customerPaymentIdRaw);
+    const customerPaymentId = Number.isFinite(customerPaymentIdParsed) && customerPaymentIdParsed > 0
+      ? customerPaymentIdParsed
+      : '';
+    const resolvedDefault = customerPaymentId ? resolvePaymentTextById(customerPaymentId) : null;
+    setCustomerPaymentDefaultId(customerPaymentId);
+    setCustomerPaymentDefaultText(resolvedDefault ? resolvedDefault.text : '');
+
+    setForm((prev) => {
+      if (!prev.specialPaymentCondition) return prev;
+      if (!customerPaymentId) {
+        return {
+          ...prev,
+          specialPaymentId: '',
+          specialPaymentText: '',
+        };
+      }
+      return {
+        ...prev,
+        specialPaymentId: customerPaymentId,
+        specialPaymentText: resolvedDefault?.text || '',
+      };
+    });
+
     await loadDeliveryAddresses(clientReferenceId);
 
     try {
@@ -696,11 +755,29 @@ export default function TempOrderForm() {
               control={(
                 <Checkbox
                   checked={Boolean(form.specialPaymentCondition)}
-                  onChange={(e) => setForm((p) => ({
-                    ...p,
-                    specialPaymentCondition: e.target.checked,
-                    ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
-                  }))}
+                  onChange={(e) => setForm((p) => {
+                    if (!e.target.checked) {
+                      return {
+                        ...p,
+                        specialPaymentCondition: false,
+                        specialPaymentText: '',
+                        specialPaymentId: '',
+                      };
+                    }
+                    if (customerPaymentDefaultId) {
+                      const resolvedDefault = resolvePaymentTextById(customerPaymentDefaultId);
+                      return {
+                        ...p,
+                        specialPaymentCondition: true,
+                        specialPaymentId: customerPaymentDefaultId,
+                        specialPaymentText: resolvedDefault?.text || customerPaymentDefaultText || '',
+                      };
+                    }
+                    return {
+                      ...p,
+                      specialPaymentCondition: true,
+                    };
+                  })}
                 />
               )}
               label={t('special_payment_condition')}
