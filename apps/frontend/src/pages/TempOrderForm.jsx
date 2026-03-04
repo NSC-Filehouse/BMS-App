@@ -150,13 +150,8 @@ export default function TempOrderForm() {
   const copyPositions = Array.isArray(copyOrder?.positions) ? copyOrder.positions : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
   const isCopyCreate = !isEdit && Array.isArray(copyPositions) && copyPositions.length > 0;
-  const isPositionsMode = isEdit || isCartCreate || isCopyCreate;
-
-  React.useEffect(() => {
-    if (!isEdit && !isCartCreate && !isCopyCreate) {
-      navigate('/order-cart', { replace: true });
-    }
-  }, [isEdit, isCartCreate, isCopyCreate, navigate]);
+  const isManualCreate = !isEdit && !isCartCreate && !isCopyCreate;
+  const isPositionsMode = isEdit || isCartCreate || isCopyCreate || isManualCreate;
 
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -540,7 +535,7 @@ export default function TempOrderForm() {
   const submit = async () => {
     const messages = [];
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
-    if ((isEdit || isCartCreate) && (!Array.isArray(positions) || positions.length === 0)) {
+    if (isPositionsMode && (!Array.isArray(positions) || positions.length === 0)) {
       messages.push('Mindestens eine Position muss vorhanden sein.');
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
@@ -596,7 +591,7 @@ export default function TempOrderForm() {
         deliveryAddress: form.deliveryAddress || null,
         deliveryAddressChanged: Boolean(form.deliveryAddressManual),
       };
-      if ((isEdit || isCartCreate || isCopyCreate) && Array.isArray(positions) && positions.length > 0) {
+      if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
@@ -810,7 +805,7 @@ export default function TempOrderForm() {
                   <Typography variant="subtitle2">
                     {t('order_positions_count')}: {positions.length}
                   </Typography>
-                  {isEdit && (
+                  {isPositionsMode && (
                     <IconButton
                       size="small"
                       color="primary"
