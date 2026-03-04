@@ -14,7 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import AddIcon from '@mui/icons-material/Add';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
@@ -92,18 +92,11 @@ export default function TempOrdersList() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography variant="h5">{t('temp_orders_title')}</Typography>
-          <IconButton
-            aria-label="new-temp-order"
-            color="primary"
-            onClick={() => navigate('/temp-orders/new')}
-          >
-            <AddCircleOutlineIcon />
-          </IconButton>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        <Typography variant="h5" sx={{ mr: 1 }}>
+          {t('temp_orders_title')}
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
             onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
@@ -122,6 +115,9 @@ export default function TempOrdersList() {
               : false}
           >
             <ArrowForwardIcon />
+          </IconButton>
+          <IconButton aria-label="new-temp-order" color="primary" onClick={() => navigate('/temp-orders/new')}>
+            <AddIcon />
           </IconButton>
         </Box>
       </Box>
