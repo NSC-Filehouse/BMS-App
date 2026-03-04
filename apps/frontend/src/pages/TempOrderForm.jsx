@@ -53,15 +53,6 @@ function inSevenDays() {
 
 function createPositionDefaults(overrides = {}) {
   return {
-    specialPaymentCondition: false,
-    specialPaymentText: '',
-    specialPaymentId: '',
-    incotermText: '',
-    incotermId: '',
-    packagingType: '',
-    deliveryDate: tomorrow(),
-    deliveryAddress: '',
-    deliveryAddressManual: false,
     wpzId: null,
     wpzOriginal: true,
     wpzComment: '',
@@ -190,15 +181,6 @@ export default function TempOrderForm() {
   const [addPosQty, setAddPosQty] = React.useState('');
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
   const [addPosError, setAddPosError] = React.useState('');
-  const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
-  const [addPosDeliveryAddress, setAddPosDeliveryAddress] = React.useState('');
-  const [addPosDeliveryAddressManual, setAddPosDeliveryAddressManual] = React.useState(false);
-  const [addPosPackagingType, setAddPosPackagingType] = React.useState('');
-  const [addPosIncotermId, setAddPosIncotermId] = React.useState('');
-  const [addPosIncotermText, setAddPosIncotermText] = React.useState('');
-  const [addPosSpecialPaymentCondition, setAddPosSpecialPaymentCondition] = React.useState(false);
-  const [addPosSpecialPaymentId, setAddPosSpecialPaymentId] = React.useState('');
-  const [addPosSpecialPaymentText, setAddPosSpecialPaymentText] = React.useState('');
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
   const [addPosWpzComment, setAddPosWpzComment] = React.useState('');
@@ -222,6 +204,15 @@ export default function TempOrderForm() {
     clientRepresentative: '',
     comment: '',
     supplier: '',
+    specialPaymentCondition: false,
+    specialPaymentText: '',
+    specialPaymentId: '',
+    incotermText: '',
+    incotermId: '',
+    packagingType: '',
+    deliveryDate: tomorrow(),
+    deliveryAddress: '',
+    deliveryAddressManual: false,
   });
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
   const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
@@ -257,6 +248,15 @@ export default function TempOrderForm() {
             clientRepresentative: d.clientRepresentative || '',
             comment: d.comment || '',
             supplier: d.distributor || '',
+            specialPaymentCondition: Boolean(d.specialPaymentCondition),
+            specialPaymentText: d.specialPaymentText || '',
+            specialPaymentId: d.specialPaymentId ?? '',
+            incotermText: d.deliveryType || '',
+            incotermId: d.deliveryTypeId ?? '',
+            packagingType: d.packagingType || '',
+            deliveryDate: d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow(),
+            deliveryAddress: d.deliveryAddress || '',
+            deliveryAddressManual: Boolean(d.deliveryAddressChanged),
           });
           await loadDeliveryAddresses(d.clientReferenceId || '');
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
@@ -271,15 +271,6 @@ export default function TempOrderForm() {
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
             ...createPositionDefaults({
-              specialPaymentCondition: Boolean(p.specialPaymentCondition),
-              specialPaymentText: p.specialPaymentText || '',
-              specialPaymentId: p.specialPaymentId ?? '',
-              incotermText: p.deliveryType || p.incotermText || '',
-              incotermId: p.deliveryTypeId ?? p.incotermId ?? '',
-              packagingType: p.packagingType || '',
-              deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : tomorrow(),
-              deliveryAddress: p.deliveryAddress || '',
-              deliveryAddressManual: Boolean(p.deliveryAddressChanged),
               wpzId: p.wpzId ?? null,
               wpzOriginal: p.wpzOriginal ?? true,
               wpzComment: p.wpzComment || '',
@@ -301,6 +292,15 @@ export default function TempOrderForm() {
           clientAddress: copyOrder?.clientAddress || '',
           clientRepresentative: copyOrder?.clientRepresentative || '',
           comment: copyOrder?.comment || '',
+          specialPaymentCondition: Boolean(copyOrder?.specialPaymentCondition),
+          specialPaymentText: copyOrder?.specialPaymentText || '',
+          specialPaymentId: copyOrder?.specialPaymentId ?? '',
+          incotermText: copyOrder?.deliveryType || '',
+          incotermId: copyOrder?.deliveryTypeId ?? '',
+          packagingType: copyOrder?.packagingType || '',
+          deliveryDate: copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow(),
+          deliveryAddress: copyOrder?.deliveryAddress || '',
+          deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged),
         }));
         await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
         setPositions(copyPositions.map((x, idx) => ({
@@ -314,15 +314,6 @@ export default function TempOrderForm() {
           reservationInKg: x.reservationInKg ?? null,
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
-            specialPaymentCondition: Boolean(x.specialPaymentCondition),
-            specialPaymentText: x.specialPaymentText || '',
-            specialPaymentId: x.specialPaymentId ?? '',
-            incotermText: x.deliveryType || x.incotermText || '',
-            incotermId: x.deliveryTypeId ?? x.incotermId ?? '',
-            packagingType: x.packagingType || '',
-            deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
-            deliveryAddress: x.deliveryAddress || '',
-            deliveryAddressManual: Boolean(x.deliveryAddressChanged),
             wpzId: x.wpzId ?? null,
             wpzOriginal: x.wpzOriginal ?? true,
             wpzComment: x.wpzComment || '',
@@ -344,15 +335,6 @@ export default function TempOrderForm() {
             reservationInKg: null,
             reservationDate: null,
             ...createPositionDefaults({
-              specialPaymentCondition: Boolean(x.specialPaymentCondition),
-              specialPaymentText: x.specialPaymentText || '',
-              specialPaymentId: x.specialPaymentId ?? '',
-              incotermText: x.incotermText || '',
-              incotermId: x.incotermId ?? '',
-              packagingType: x.packagingType || '',
-              deliveryDate: x.deliveryDate || tomorrow(),
-              deliveryAddress: x.deliveryAddress || '',
-              deliveryAddressManual: Boolean(x.deliveryAddressChanged),
               wpzId: x.wpzId ?? null,
               wpzOriginal: x.wpzOriginal ?? true,
               wpzComment: x.wpzComment || '',
@@ -455,6 +437,8 @@ export default function TempOrderForm() {
       clientName,
       clientAddress,
       clientRepresentative: '',
+      deliveryAddress: '',
+      deliveryAddressManual: false,
     }));
     await loadDeliveryAddresses(clientReferenceId);
 
@@ -502,6 +486,11 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
+    if (!form.deliveryDate) messages.push(t('validation_delivery_date_required'));
+    if (!form.incotermId) messages.push(t('validation_incoterm_required'));
+    if (!form.packagingType) messages.push(t('validation_packaging_required'));
+    if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
+    if (form.specialPaymentCondition && !form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
       const amount = Number(pos.amountInKg);
@@ -515,21 +504,6 @@ export default function TempOrderForm() {
       }
       if (!Number.isFinite(costPrice) || costPrice <= 0) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_price_positive')}`);
-      }
-      if (!pos.deliveryDate) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
-      }
-      if (!String(pos.deliveryAddress || '').trim()) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_address_required')}`);
-      }
-      if (!pos.incotermId) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_incoterm_required')}`);
-      }
-      if (!pos.packagingType) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_packaging_required')}`);
-      }
-      if (pos.specialPaymentCondition && !pos.specialPaymentId) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_special_payment_text_required')}`);
       }
       if (pos.wpzId && !pos.wpzOriginal && !String(pos.wpzComment || '').trim()) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_wpz_comment_required')}`);
@@ -553,6 +527,15 @@ export default function TempOrderForm() {
         clientRepresentative: form.clientRepresentative || null,
         comment: form.comment || null,
         supplier: form.supplier || null,
+        specialPaymentCondition: Boolean(form.specialPaymentCondition),
+        specialPaymentText: form.specialPaymentText || null,
+        specialPaymentId: form.specialPaymentId === '' ? null : Number(form.specialPaymentId),
+        incotermText: form.incotermText || null,
+        incotermId: form.incotermId === '' ? null : Number(form.incotermId),
+        packagingType: form.packagingType || '',
+        deliveryDate: form.deliveryDate || null,
+        deliveryAddress: form.deliveryAddress || null,
+        deliveryAddressChanged: Boolean(form.deliveryAddressManual),
       };
       if ((isEdit || isCartCreate || isCopyCreate) && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
@@ -563,15 +546,6 @@ export default function TempOrderForm() {
           costPricePerKg: Number(x.costPrice ?? x.price),
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
-          specialPaymentCondition: Boolean(x.specialPaymentCondition),
-          specialPaymentText: x.specialPaymentText || null,
-          specialPaymentId: x.specialPaymentId === '' ? null : Number(x.specialPaymentId),
-          incotermText: x.incotermText || null,
-          incotermId: x.incotermId === '' ? null : Number(x.incotermId),
-          packagingType: x.packagingType || '',
-          deliveryDate: x.deliveryDate || null,
-          deliveryAddress: x.deliveryAddress || null,
-          deliveryAddressChanged: Boolean(x.deliveryAddressManual),
           wpzId: x.wpzId ?? null,
           wpzOriginal: x.wpzId ? Boolean(x.wpzOriginal) : null,
           wpzComment: x.wpzComment || null,
@@ -627,6 +601,132 @@ export default function TempOrderForm() {
 
             <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 
+            <TextField
+              type="date"
+              label={t('delivery_date')}
+              value={form.deliveryDate || ''}
+              onChange={(e) => setForm((p) => ({ ...p, deliveryDate: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              select
+              label={t('incoterm_label')}
+              value={form.incotermId ?? ''}
+              onChange={(e) => {
+                const selectedId = Number(e.target.value);
+                const selected = incotermOptions.find((z) => Number(z.id) === selectedId);
+                setForm((p) => ({
+                  ...p,
+                  incotermId: Number.isFinite(selectedId) ? selectedId : '',
+                  incotermText: selected?.text || '',
+                }));
+              }}
+              fullWidth
+            >
+              {incotermOptions.map((z) => (
+                <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label={t('packaging_type_label')}
+              value={form.packagingType || ''}
+              onChange={(e) => setForm((p) => ({ ...p, packagingType: e.target.value }))}
+              fullWidth
+            >
+              {packagingOptions.map((z) => (
+                <MenuItem key={z} value={z}>{z}</MenuItem>
+              ))}
+            </TextField>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+              {form.deliveryAddressManual ? (
+                <TextField
+                  label={t('delivery_address_label')}
+                  value={form.deliveryAddress || ''}
+                  onChange={(e) => setForm((p) => ({ ...p, deliveryAddress: e.target.value }))}
+                  fullWidth
+                  sx={{ flex: 1, minWidth: 0 }}
+                />
+              ) : (
+                <TextField
+                  select
+                  label={t('delivery_address_label')}
+                  value={form.deliveryAddress || ''}
+                  onChange={(e) => setForm((p) => ({ ...p, deliveryAddress: e.target.value }))}
+                  fullWidth
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    '& .MuiSelect-select': {
+                      minWidth: 0,
+                      overflow: 'hidden',
+                    },
+                  }}
+                  SelectProps={{
+                    renderValue: (selected) => {
+                      const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
+                      return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
+                    },
+                  }}
+                >
+                  <MenuItem value="">{'-'}</MenuItem>
+                  {String(form.deliveryAddress || '').trim()
+                    && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(form.deliveryAddress || ''))
+                    && <MenuItem value={form.deliveryAddress}>{form.deliveryAddress}</MenuItem>}
+                  {deliveryAddressOptions.map((addr) => (
+                    <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
+                      {renderDeliveryAddressOption(addr)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+              <IconButton
+                size="small"
+                onClick={() => setForm((p) => ({
+                  ...p,
+                  deliveryAddress: '',
+                  deliveryAddressManual: !p.deliveryAddressManual,
+                }))}
+              >
+                {form.deliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
+              </IconButton>
+            </Box>
+            <FormControlLabel
+              control={(
+                <Checkbox
+                  checked={Boolean(form.specialPaymentCondition)}
+                  onChange={(e) => setForm((p) => ({
+                    ...p,
+                    specialPaymentCondition: e.target.checked,
+                    ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
+                  }))}
+                />
+              )}
+              label={t('special_payment_condition')}
+            />
+            {Boolean(form.specialPaymentCondition) && (
+              <TextField
+                select
+                label={t('special_payment_text_label')}
+                value={form.specialPaymentId ?? ''}
+                onChange={(e) => {
+                  const selectedId = Number(e.target.value);
+                  const selected = paymentTextOptions.find((z) => Number(z.id) === selectedId);
+                  setForm((p) => ({
+                    ...p,
+                    specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
+                    specialPaymentText: selected?.text || '',
+                  }));
+                }}
+                fullWidth
+              >
+                {paymentTextOptions.map((z) => (
+                  <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
+                ))}
+              </TextField>
+            )}
+
             {isPositionsMode && (
               <Box sx={{ mt: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
@@ -646,15 +746,6 @@ export default function TempOrderForm() {
                         setAddPosProduct(null);
                         setAddPosQty('');
                         setAddPosSalePrice('');
-                        setAddPosDeliveryDate(tomorrow());
-                        setAddPosDeliveryAddress('');
-                        setAddPosDeliveryAddressManual(false);
-                        setAddPosPackagingType('');
-                        setAddPosIncotermId('');
-                        setAddPosIncotermText('');
-                        setAddPosSpecialPaymentCondition(false);
-                        setAddPosSpecialPaymentId('');
-                        setAddPosSpecialPaymentText('');
                         setAddPosWpzId(null);
                         setAddPosWpzOriginal(true);
                         setAddPosWpzComment('');
@@ -666,7 +757,6 @@ export default function TempOrderForm() {
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {positions.map((x, idx) => {
-                    const deliveryDateValue = x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : '';
                     return (
                       <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -705,143 +795,7 @@ export default function TempOrderForm() {
                               inputProps={{ min: 0.01, step: 'any' }}
                               size="small"
                             />
-                            <TextField
-                              type="date"
-                              label={t('delivery_date')}
-                              value={deliveryDateValue}
-                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryDate: e.target.value } : p)))}
-                              InputLabelProps={{ shrink: true }}
-                              size="small"
-                            />
-                            <TextField
-                              select
-                              label={t('incoterm_label')}
-                              value={x.incotermId ?? ''}
-                              onChange={(e) => {
-                                const selectedId = Number(e.target.value);
-                                const selected = incotermOptions.find((z) => Number(z.id) === selectedId);
-                                setPositions((prev) => prev.map((p, i) => (i === idx
-                                  ? {
-                                      ...p,
-                                      incotermId: Number.isFinite(selectedId) ? selectedId : '',
-                                      incotermText: selected?.text || '',
-                                    }
-                                  : p)));
-                              }}
-                              size="small"
-                            >
-                              {incotermOptions.map((z) => (
-                                <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
-                              ))}
-                            </TextField>
-                            <TextField
-                              select
-                              label={t('packaging_type_label')}
-                              value={x.packagingType || ''}
-                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, packagingType: e.target.value } : p)))}
-                              size="small"
-                            >
-                              {packagingOptions.map((z) => (
-                                <MenuItem key={z} value={z}>{z}</MenuItem>
-                              ))}
-                            </TextField>
                           </Box>
-
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                            {x.deliveryAddressManual ? (
-                              <TextField
-                                label={t('delivery_address_label')}
-                                value={x.deliveryAddress || ''}
-                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
-                                size="small"
-                                fullWidth
-                                sx={{ flex: 1, minWidth: 0 }}
-                              />
-                            ) : (
-                              <TextField
-                                select
-                                label={t('delivery_address_label')}
-                                value={x.deliveryAddress || ''}
-                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryAddress: e.target.value } : p)))}
-                                size="small"
-                                fullWidth
-                                sx={{
-                                  flex: 1,
-                                  minWidth: 0,
-                                  '& .MuiSelect-select': {
-                                    minWidth: 0,
-                                    overflow: 'hidden',
-                                  },
-                                }}
-                                SelectProps={{
-                                  renderValue: (selected) => {
-                                    const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
-                                    return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
-                                  },
-                                }}
-                              >
-                                <MenuItem value="">{'-'}</MenuItem>
-                                {String(x.deliveryAddress || '').trim()
-                                  && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(x.deliveryAddress || ''))
-                                  && <MenuItem value={x.deliveryAddress}>{x.deliveryAddress}</MenuItem>}
-                                {deliveryAddressOptions.map((addr) => (
-                                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
-                                    {renderDeliveryAddressOption(addr)}
-                                  </MenuItem>
-                                ))}
-                              </TextField>
-                            )}
-                            <IconButton
-                              size="small"
-                              onClick={() => setPositions((prev) => prev.map((p, i) => (i === idx
-                                ? {
-                                    ...p,
-                                    deliveryAddress: '',
-                                    deliveryAddressManual: !p.deliveryAddressManual,
-                                  }
-                                : p)))}
-                            >
-                              {x.deliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
-                            </IconButton>
-                          </Box>
-                          <FormControlLabel
-                            control={(
-                              <Checkbox
-                                checked={Boolean(x.specialPaymentCondition)}
-                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx
-                                  ? {
-                                      ...p,
-                                      specialPaymentCondition: e.target.checked,
-                                      ...(e.target.checked ? {} : { specialPaymentText: '', specialPaymentId: '' }),
-                                    }
-                                  : p)))}
-                              />
-                            )}
-                            label={t('special_payment_condition')}
-                          />
-                          {Boolean(x.specialPaymentCondition) && (
-                            <TextField
-                              select
-                              label={t('special_payment_text_label')}
-                              value={x.specialPaymentId ?? ''}
-                              onChange={(e) => {
-                                const selectedId = Number(e.target.value);
-                                const selected = paymentTextOptions.find((z) => Number(z.id) === selectedId);
-                                setPositions((prev) => prev.map((p, i) => (i === idx
-                                  ? {
-                                      ...p,
-                                      specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
-                                      specialPaymentText: selected?.text || '',
-                                    }
-                                  : p)));
-                              }}
-                              size="small"
-                            >
-                              {paymentTextOptions.map((z) => (
-                                <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
-                              ))}
-                            </TextField>
-                          )}
                           {x.wpzId ? (
                             <>
                               <FormControlLabel
@@ -1002,123 +956,6 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
-          <TextField
-            type="date"
-            label={t('delivery_date')}
-            value={addPosDeliveryDate}
-            onChange={(e) => setAddPosDeliveryDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
-          />
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-            {addPosDeliveryAddressManual ? (
-              <TextField
-                label={t('delivery_address_label')}
-                value={addPosDeliveryAddress}
-                onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
-                fullWidth
-                sx={{ flex: 1, minWidth: 0 }}
-              />
-            ) : (
-              <TextField
-                select
-                label={t('delivery_address_label')}
-                value={addPosDeliveryAddress}
-                onChange={(e) => setAddPosDeliveryAddress(e.target.value)}
-                fullWidth
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  '& .MuiSelect-select': {
-                    minWidth: 0,
-                    overflow: 'hidden',
-                  },
-                }}
-                SelectProps={{
-                  renderValue: (selected) => {
-                    const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
-                    return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
-                  },
-                }}
-              >
-                <MenuItem value="">{'-'}</MenuItem>
-                {deliveryAddressOptions.map((addr) => (
-                  <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
-                    {renderDeliveryAddressOption(addr)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-            <IconButton
-              size="small"
-              onClick={() => {
-                setAddPosDeliveryAddress('');
-                setAddPosDeliveryAddressManual((prev) => !prev);
-              }}
-            >
-              {addPosDeliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
-            </IconButton>
-          </Box>
-          <TextField
-            select
-            label={t('incoterm_label')}
-            value={addPosIncotermId}
-            onChange={(e) => {
-              const selectedId = Number(e.target.value);
-              const selected = incotermOptions.find((x) => Number(x.id) === selectedId);
-              setAddPosIncotermId(Number.isFinite(selectedId) ? selectedId : '');
-              setAddPosIncotermText(selected?.text || '');
-            }}
-            fullWidth
-          >
-            {incotermOptions.map((x) => (
-              <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            label={t('packaging_type_label')}
-            value={addPosPackagingType}
-            onChange={(e) => setAddPosPackagingType(e.target.value)}
-            fullWidth
-          >
-            {packagingOptions.map((x) => (
-              <MenuItem key={x} value={x}>{x}</MenuItem>
-            ))}
-          </TextField>
-          <FormControlLabel
-            control={(
-              <Checkbox
-                checked={addPosSpecialPaymentCondition}
-                onChange={(e) => {
-                  setAddPosSpecialPaymentCondition(e.target.checked);
-                  if (!e.target.checked) {
-                    setAddPosSpecialPaymentId('');
-                    setAddPosSpecialPaymentText('');
-                  }
-                }}
-              />
-            )}
-            label={t('special_payment_condition')}
-          />
-          {addPosSpecialPaymentCondition && (
-            <TextField
-              select
-              label={t('special_payment_text_label')}
-              value={addPosSpecialPaymentId}
-              onChange={(e) => {
-                const selectedId = Number(e.target.value);
-                const selected = paymentTextOptions.find((x) => Number(x.id) === selectedId);
-                setAddPosSpecialPaymentId(Number.isFinite(selectedId) ? selectedId : '');
-                setAddPosSpecialPaymentText(selected?.text || '');
-              }}
-              fullWidth
-            >
-              {paymentTextOptions.map((x) => (
-                <MenuItem key={x.id} value={x.id}>{x.text}</MenuItem>
-              ))}
-            </TextField>
-          )}
           {addPosProduct && (addPosWpzId ? (
             <>
               <FormControlLabel
@@ -1175,26 +1012,6 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_sale_price_positive'));
                 return;
               }
-              if (!addPosDeliveryDate) {
-                setAddPosError(t('validation_delivery_date_required'));
-                return;
-              }
-              if (!String(addPosDeliveryAddress || '').trim()) {
-                setAddPosError(t('validation_delivery_address_required'));
-                return;
-              }
-              if (!addPosIncotermId) {
-                setAddPosError(t('validation_incoterm_required'));
-                return;
-              }
-              if (!addPosPackagingType) {
-                setAddPosError(t('validation_packaging_required'));
-                return;
-              }
-              if (addPosSpecialPaymentCondition && !addPosSpecialPaymentId) {
-                setAddPosError(t('validation_special_payment_text_required'));
-                return;
-              }
               if (addPosWpzId && !addPosWpzOriginal && !String(addPosWpzComment || '').trim()) {
                 setAddPosError(t('validation_wpz_comment_required'));
                 return;
@@ -1213,15 +1030,6 @@ export default function TempOrderForm() {
                   reservationInKg: null,
                   reservationDate: null,
                   ...createPositionDefaults({
-                    specialPaymentCondition: addPosSpecialPaymentCondition,
-                    specialPaymentText: addPosSpecialPaymentText || '',
-                    specialPaymentId: addPosSpecialPaymentId || '',
-                    incotermText: addPosIncotermText || '',
-                    incotermId: addPosIncotermId || '',
-                    packagingType: addPosPackagingType || '',
-                    deliveryDate: addPosDeliveryDate,
-                    deliveryAddress: addPosDeliveryAddress,
-                    deliveryAddressManual: addPosDeliveryAddressManual,
                     wpzId: addPosWpzId,
                     wpzOriginal: addPosWpzOriginal,
                     wpzComment: addPosWpzComment || '',

@@ -113,6 +113,15 @@ export default function TempOrderDetail() {
                       clientAddress: item.clientAddress || '',
                       clientRepresentative: item.clientRepresentative || '',
                       comment: item.comment || '',
+                      specialPaymentCondition: Boolean(item.specialPaymentCondition),
+                      specialPaymentText: item.specialPaymentText || '',
+                      specialPaymentId: item.specialPaymentId ?? '',
+                      deliveryTypeId: item.deliveryTypeId ?? '',
+                      deliveryType: item.deliveryType || '',
+                      packagingType: item.packagingType || '',
+                      deliveryDate: item.deliveryDate || '',
+                      deliveryAddress: item.deliveryAddress || '',
+                      deliveryAddressChanged: Boolean(item.deliveryAddressChanged),
                       positions: Array.isArray(item.positions) ? item.positions : [],
                     },
                   },
@@ -132,6 +141,17 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
             <InfoRow label={t('order_comment')} value={item.comment} />
+            <InfoRow label={t('delivery_date')} value={formatDateOnly(item.deliveryDate)} />
+            <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
+            <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
+            <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
+            <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
+            {item.specialPaymentCondition && (
+              <InfoRow
+                label={t('special_payment_text_label')}
+                value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
+              />
+            )}
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" sx={{ mb: 1.25 }}>
@@ -161,18 +181,6 @@ export default function TempOrderDetail() {
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
                     {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                    {t('delivery_date')}: {formatDateOnly(pos.deliveryDate)} | {t('delivery_address_label')}: {pos.deliveryAddress || '-'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                    {t('incoterm_label')}: {pos.deliveryType || '-'} | {t('packaging_type_label')}: {pos.packagingType || '-'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                    {t('special_payment_condition')}: {pos.specialPaymentCondition ? t('yes_label') : t('no_label')}
-                    {pos.specialPaymentCondition
-                      ? ` | ${t('special_payment_text_label')}: ${pos.specialPaymentText ? `${pos.specialPaymentText}${pos.specialPaymentId ? ` (#${pos.specialPaymentId})` : ''}` : '-'}`
-                      : ''}
                   </Typography>
                   {(pos.wpzId || pos.wpzComment) && (
                     <Typography variant="caption" sx={{ opacity: 0.75 }}>
