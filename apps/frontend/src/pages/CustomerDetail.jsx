@@ -99,7 +99,17 @@ function InfoRow({ icon, label, value, link }) {
   );
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: { xs: 'flex-start', sm: 'center' },
+        justifyContent: 'space-between',
+        flexDirection: { xs: 'column', sm: 'row' },
+        gap: { xs: 0.5, sm: 2 },
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
         {icon}
         <Typography variant="body2" color="text.secondary">
@@ -108,11 +118,12 @@ function InfoRow({ icon, label, value, link }) {
       </Box>
       <Box
         sx={{
-          width: '45%',
-          textAlign: 'right',
+          width: { xs: '100%', sm: '45%' },
+          textAlign: { xs: 'left', sm: 'right' },
           whiteSpace: 'pre-line',
           overflowWrap: 'anywhere',
           wordBreak: 'break-word',
+          minWidth: 0,
         }}
       >
         {content}
@@ -210,12 +221,12 @@ export default function CustomerDetail() {
   }, [location.state, navigate]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {name || String(id)}
         </Typography>
       </Box>
@@ -229,8 +240,8 @@ export default function CustomerDetail() {
       {error && <Alert severity="error">{error}</Alert>}
 
       {!loading && !error && item && (
-        <Card>
-          <CardContent sx={{ pt: 2 }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ pt: 2, minWidth: 0 }}>
             <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', `/customers/${encodeURIComponent(id)}/offers`)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle1">{t('customer_docs_offers')}</Typography>
@@ -315,7 +326,7 @@ export default function CustomerDetail() {
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
               {t('desc_label')}
             </Typography>
-            <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+            <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {description || '-'}
             </Typography>
 
