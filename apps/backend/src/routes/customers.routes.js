@@ -127,28 +127,9 @@ async function loadReminderStageTextMap(database, ids, lang) {
     : [];
   if (!list.length) return new Map();
 
-  const placeholders = list.map(() => '?').join(', ');
-  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
-  const stageRows = await runSQLQueryAccess(database, `
-    SELECT [ma_ID] AS id, [ma_AlternativeNR] AS alternativeNo
-    FROM [dbo].[tblMahnung_Texte]
-    WHERE [ma_ID] IN (${placeholders})
-  `, list);
-
-  const idToAlternative = new Map();
-  const alternatives = new Set();
-  for (const row of (Array.isArray(stageRows) ? stageRows : [])) {
-    const id = Number(row.id);
-    const alternativeNo = Number(row.alternativeNo);
-    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(alternativeNo) || alternativeNo <= 0) continue;
-    idToAlternative.set(id, alternativeNo);
-    alternatives.add(alternativeNo);
-  }
-
-  if (!alternatives.size) return new Map();
-
-  const altList = [...alternatives];
+  const altList = [...new Set(list)];
   const altPlaceholders = altList.map(() => '?').join(', ');
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
   const textRows = await runSQLQueryAccess(database, `
     SELECT [ma_AlternativeNR] AS alternativeNo, [ma_TextMahnung_Ueberschrift] AS text
     FROM [dbo].[tblMahnung_Texte]
@@ -165,10 +146,8 @@ async function loadReminderStageTextMap(database, ids, lang) {
   }
 
   const map = new Map();
-  for (const id of list) {
-    const alternativeNo = idToAlternative.get(id);
-    if (!Number.isFinite(alternativeNo) || alternativeNo <= 0) continue;
-    map.set(id, {
+  for (const alternativeNo of altList) {
+    map.set(alternativeNo, {
       alternativeNo,
       text: alternativeToText.get(alternativeNo) || '',
     });

@@ -313,8 +313,15 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
-                      <Typography variant="caption">{t('reminder_stage_label')}: {invoice.reminderStageText || '-'}</Typography>
                       <Typography variant="caption">{t('amount_label')}: {formatMoney(invoice.amount)}</Typography>
+                      {invoice.reminderStageText && (
+                        <Typography
+                          variant="caption"
+                          sx={{ color: 'error.main', fontWeight: 600 }}
+                        >
+                          {t('reminder_stage_label')}: {invoice.reminderStageText}
+                        </Typography>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
