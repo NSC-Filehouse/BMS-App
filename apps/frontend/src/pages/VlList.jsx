@@ -19,6 +19,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -87,7 +88,7 @@ export default function VlList() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [initialLoaded, setInitialLoaded] = React.useState(false);
-  const [revealedRowId, setRevealedRowId] = React.useState('');
+  const [revealedRow, setRevealedRow] = React.useState({ id: '', side: '' });
   const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [addItem, setAddItem] = React.useState(null);
@@ -132,7 +133,7 @@ export default function VlList() {
       setPage(nextPage);
       setTotal(nextTotal);
       setInitialLoaded(true);
-      setRevealedRowId('');
+      setRevealedRow({ id: '', side: '' });
     } catch (e) {
       setError(e?.message || 'Fehler beim Laden.');
     } finally {
@@ -171,12 +172,12 @@ export default function VlList() {
   }, [loadNextPage]);
 
   const handleRowTap = React.useCallback((itemId) => {
-    if (revealedRowId && String(revealedRowId) === String(itemId)) {
-      setRevealedRowId('');
+    if (revealedRow.id && String(revealedRow.id) === String(itemId)) {
+      setRevealedRow({ id: '', side: '' });
       return;
     }
     navigate(`/products/${encodeURIComponent(itemId)}`, { state: { fromVl: true } });
-  }, [navigate, revealedRowId]);
+  }, [navigate, revealedRow]);
 
   let lastGroup = '';
 
@@ -250,7 +251,8 @@ export default function VlList() {
           const showHeader = group !== lastGroup;
           if (showHeader) lastGroup = group;
           const rowId = String(item.id || '');
-          const isRevealed = !isFinePointer && rowId === String(revealedRowId || '');
+          const isCartRevealed = !isFinePointer && rowId === String(revealedRow.id || '') && revealedRow.side === 'cart';
+          const isReserveRevealed = !isFinePointer && rowId === String(revealedRow.id || '') && revealedRow.side === 'reserve';
 
           return (
             <Box key={item.id} sx={{ mb: 0.4 }}>
@@ -265,6 +267,35 @@ export default function VlList() {
                   <Box
                     sx={{
                       position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${SWIPE_ACTION_WIDTH}px`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: 'warning.main',
+                      transform: isReserveRevealed ? 'translateX(0)' : 'translateX(-100%)',
+                      transition: 'transform 160ms ease',
+                    }}
+                  >
+                    <Button
+                      size="small"
+                      sx={{ color: '#fff', minWidth: 0, px: 0.75 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/orders/new', { state: { source: item, fromVl: true } });
+                      }}
+                    >
+                      {t('product_reserve_submit')}
+                    </Button>
+                  </Box>
+                )}
+
+                {!isFinePointer && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
                       right: 0,
                       top: 0,
                       bottom: 0,
@@ -273,7 +304,7 @@ export default function VlList() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       bgcolor: 'primary.main',
-                      transform: isRevealed ? 'translateX(0)' : 'translateX(100%)',
+                      transform: isCartRevealed ? 'translateX(0)' : 'translateX(100%)',
                       transition: 'transform 160ms ease',
                     }}
                   >
@@ -308,15 +339,17 @@ export default function VlList() {
                     const dy = y - touchRef.current.y;
                     if (Math.abs(dx) < Math.abs(dy)) return;
                     if (dx <= -35) {
-                      setRevealedRowId(rowId);
+                      setRevealedRow({ id: rowId, side: 'cart' });
                     } else if (dx >= 35) {
-                      setRevealedRowId('');
+                      setRevealedRow({ id: rowId, side: 'reserve' });
                     }
                   }}
                   onClick={() => handleRowTap(rowId)}
                   sx={{
                     position: 'relative',
-                    transform: isRevealed ? `translateX(-${SWIPE_ACTION_WIDTH}px)` : 'translateX(0)',
+                    transform: isCartRevealed
+                      ? `translateX(-${SWIPE_ACTION_WIDTH}px)`
+                      : (isReserveRevealed ? `translateX(${SWIPE_ACTION_WIDTH}px)` : 'translateX(0)'),
                     transition: 'transform 160ms ease',
                     px: 0.75,
                     py: 0.45,
@@ -332,6 +365,14 @@ export default function VlList() {
                       opacity: 0,
                       pointerEvents: 'none',
                     },
+                    '& .vl-row-reserve': {
+                      opacity: 0,
+                      pointerEvents: 'none',
+                    },
+                    '&:hover .vl-row-reserve': isFinePointer ? {
+                      opacity: 1,
+                      pointerEvents: 'auto',
+                    } : undefined,
                     '&:hover .vl-row-add': isFinePointer ? {
                       opacity: 1,
                       pointerEvents: 'auto',
@@ -353,6 +394,30 @@ export default function VlList() {
                       );
                     })()}
                   </Typography>
+
+                  {isFinePointer && (
+                    <IconButton
+                      className="vl-row-reserve"
+                      size="small"
+                      color="warning"
+                      aria-label={t('product_reserve_submit')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/orders/new', { state: { source: item, fromVl: true } });
+                      }}
+                      sx={{
+                        position: 'absolute',
+                        right: 40,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        '&:hover': { bgcolor: '#fff' },
+                      }}
+                    >
+                      <EventAvailableIcon fontSize="small" />
+                    </IconButton>
+                  )}
 
                   {isFinePointer && (
                     <IconButton
@@ -428,7 +493,7 @@ export default function VlList() {
               addOrderCartItem(addItem, qty);
               setCartCount(getOrderCartCount());
               setAddDialogOpen(false);
-              setRevealedRowId('');
+              setRevealedRow({ id: '', side: '' });
             }}
           >
             {t('cart_add')}

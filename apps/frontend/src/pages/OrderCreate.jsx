@@ -16,7 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -28,6 +28,7 @@ function tomorrow() {
 
 export default function OrderCreate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [loading, setLoading] = React.useState(false);
@@ -49,6 +50,18 @@ export default function OrderCreate() {
     reservationEndDate: tomorrow(),
     comment: '',
   });
+
+  React.useEffect(() => {
+    const source = location.state?.source;
+    if (!source) return;
+    setSelectedProduct(source);
+    setProductQuery(String(source.article || ''));
+    setForm((prev) => ({
+      ...prev,
+      beNumber: String(source.beNumber || '').trim(),
+      warehouseId: String(source.storageId || source.warehouse || '').trim(),
+    }));
+  }, [location.state]);
 
   const availableAmount = React.useMemo(() => {
     const total = Number(selectedProduct?.amount ?? 0);
@@ -217,4 +230,3 @@ export default function OrderCreate() {
     </Box>
   );
 }
-
