@@ -121,7 +121,7 @@ async function loadPaymentTextMap(ids, lang) {
   return map;
 }
 
-async function loadReminderStageTextMap(ids, lang) {
+async function loadReminderStageTextMap(database, ids, lang) {
   const list = Array.isArray(ids)
     ? ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
     : [];
@@ -129,7 +129,7 @@ async function loadReminderStageTextMap(ids, lang) {
 
   const placeholders = list.map(() => '?').join(', ');
   const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
-  const stageRows = await runSQLQuerySqlServer(config.sql.database, `
+  const stageRows = await runSQLQueryAccess(database, `
     SELECT [ma_ID] AS id, [ma_AlternativeNR] AS alternativeNo
     FROM [dbo].[tblMahnung_Texte]
     WHERE [ma_ID] IN (${placeholders})
@@ -149,7 +149,7 @@ async function loadReminderStageTextMap(ids, lang) {
 
   const altList = [...alternatives];
   const altPlaceholders = altList.map(() => '?').join(', ');
-  const textRows = await runSQLQuerySqlServer(config.sql.database, `
+  const textRows = await runSQLQueryAccess(database, `
     SELECT [ma_AlternativeNR] AS alternativeNo, [ma_TextMahnung_Ueberschrift] AS text
     FROM [dbo].[tblMahnung_Texte]
     WHERE LOWER(COALESCE([ma_SprachID], '')) = ?
@@ -487,6 +487,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   const invoices = Array.isArray(rows) ? rows : [];
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
   const reminderMap = await loadReminderStageTextMap(
+    req.database,
     invoices.flatMap((x) => [x.reminderTextId, x.reminderTextIdNew]),
     lang,
   );
