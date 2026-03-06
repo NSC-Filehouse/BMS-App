@@ -287,7 +287,7 @@ export default function VlList() {
                         navigate('/orders/new', { state: { source: item, fromVl: true } });
                       }}
                     >
-                      {t('product_reserve_submit')}
+                      {t('product_reserve_swipe')}
                     </Button>
                   </Box>
                 )}

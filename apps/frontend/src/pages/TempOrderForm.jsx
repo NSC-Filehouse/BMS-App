@@ -167,6 +167,7 @@ export default function TempOrderForm() {
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
   const [customerPaymentDefaultId, setCustomerPaymentDefaultId] = React.useState('');
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
+  const [customerReminderInvoicesCount, setCustomerReminderInvoicesCount] = React.useState(0);
   const [positions, setPositions] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
@@ -452,6 +453,7 @@ export default function TempOrderForm() {
       setDeliveryAddressOptions([]);
       setCustomerPaymentDefaultId('');
       setCustomerPaymentDefaultText('');
+      setCustomerReminderInvoicesCount(0);
       return;
     }
 
@@ -499,10 +501,13 @@ export default function TempOrderForm() {
     try {
       const detail = await apiRequest(`/customers/${encodeURIComponent(clientReferenceId)}`);
       const reps = Array.isArray(detail?.data?.representatives) ? detail.data.representatives : [];
+      setCustomerReminderInvoicesCount(Number(detail?.data?.reminderInvoicesCount) || 0);
       if (reps.length > 0) {
         setForm((prev) => ({ ...prev, clientRepresentative: reps[0].name || '' }));
       }
-    } catch {}
+    } catch {
+      setCustomerReminderInvoicesCount(0);
+    }
   };
 
   const deleteOrder = React.useCallback(async () => {
@@ -650,6 +655,11 @@ export default function TempOrderForm() {
             />
 
             <TextField label={t('order_customer')} value={form.clientName} onChange={(e) => setForm((p) => ({ ...p, clientName: e.target.value }))} fullWidth />
+            {customerReminderInvoicesCount > 0 && (
+              <Typography sx={{ color: 'error.main', fontWeight: 700, whiteSpace: 'pre-line' }}>
+                {t('customer_reminder_warning', { count: customerReminderInvoicesCount })}
+              </Typography>
+            )}
             <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
             <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
 
