@@ -41,6 +41,10 @@ function resolveSearchField(searchField) {
   return 'name';
 }
 
+function resolveInvoiceScope(scope) {
+  return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
+}
+
 function buildWhereClause(q, searchField) {
   const text = String(q || '').trim();
   if (!text) return { whereSql: '', params: [] };
@@ -444,14 +448,18 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
 router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   const lang = resolveLang(req);
+  const scope = resolveInvoiceScope(req.query.scope);
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+
+  const scopeFilterSql = scope === 'all' ? '' : 'AND [re_Bezahlt] = 0';
 
   const sql = `
     SELECT
       [re_rgDatum] AS invoiceDate,
       [re_RGfaellig] AS dueDate,
+      [re_Bezahlt] AS paidFlag,
       [re_Zahltext] AS paymentTextId,
       [re_MahnTextID] AS reminderTextId,
       [re_MahnTextIDneu] AS reminderTextIdNew,
@@ -459,7 +467,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       [re_Bruttosumme_DM] AS grossDm
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
-      AND [re_Bezahlt] <> 0
+      ${scopeFilterSql}
     ORDER BY [re_rgDatum] DESC
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
@@ -472,6 +480,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   );
 
   const data = invoices.map((row, idx) => {
+    const paidFlag = Number(row.paidFlag);
     const paymentId = Number(row.paymentTextId);
     const reminderId = Number(row.reminderTextId);
     const reminderIdNew = Number(row.reminderTextIdNew);
@@ -489,6 +498,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       id: `${invoiceDate || 'inv'}-${idx + 1}`,
       invoiceDate,
       dueDate: row.dueDate || null,
+      isPaid: paidFlag !== 0,
       amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
       paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
       paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
@@ -500,7 +510,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId },
+    meta: { mandant: req.mandant, count: data.length, id: customerId, scope },
     error: null,
   });
 }));

@@ -5,11 +5,14 @@ import {
   AccordionSummary,
   Alert,
   Box,
-  IconButton,
   Card,
   CardContent,
   CircularProgress,
   Divider,
+  FormControlLabel,
+  IconButton,
+  Radio,
+  RadioGroup,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -141,6 +144,7 @@ export default function CustomerDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -181,6 +185,7 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
+  const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
       ...prev,
@@ -219,6 +224,19 @@ export default function CustomerDetail() {
     }
     navigate(-1);
   }, [location.state, navigate]);
+
+  const handleInvoiceScopeChange = React.useCallback((event) => {
+    const nextScope = event.target.value === 'all' ? 'all' : 'open';
+    setInvoiceScope(nextScope);
+    if (docs.invoices.expanded) {
+      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(nextScope)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        invoices: { ...prev.invoices, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.invoices.expanded, id, loadDocSection]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -297,11 +315,20 @@ export default function CustomerDetail() {
               </AccordionDetails>
             </Accordion>
 
-            <Accordion expanded={docs.invoices.expanded} onChange={onToggleSection('invoices', `/customers/${encodeURIComponent(id)}/invoices`)}>
+            <Accordion expanded={docs.invoices.expanded} onChange={onToggleSection('invoices', invoiceEndpoint)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle1">{t('customer_docs_invoices')}</Typography>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
+                <RadioGroup
+                  row
+                  value={invoiceScope}
+                  onChange={handleInvoiceScopeChange}
+                  sx={{ gap: 1.5 }}
+                >
+                  <FormControlLabel value="open" control={<Radio size="small" />} label={t('invoice_scope_open')} />
+                  <FormControlLabel value="all" control={<Radio size="small" />} label={t('invoice_scope_all')} />
+                </RadioGroup>
                 {docs.invoices.loading && <CircularProgress size={20} />}
                 {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
@@ -313,7 +340,9 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
-                      <Typography variant="caption">{t('amount_label')}: {formatMoney(invoice.amount)}</Typography>
+                      <Typography variant="caption">
+                        {t('amount_label')}: {formatMoney(invoice.amount)} ({invoice.isPaid ? t('invoice_status_paid') : t('invoice_status_open')})
+                      </Typography>
                       {invoice.reminderStageText && (
                         <Typography
                           variant="caption"
