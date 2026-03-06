@@ -145,6 +145,7 @@ export default function CustomerDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [offerScope, setOfferScope] = React.useState('90d');
+  const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -187,6 +188,7 @@ export default function CustomerDetail() {
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
+  const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
@@ -252,6 +254,19 @@ export default function CustomerDetail() {
       }));
     }
   }, [docs.offers.expanded, id, loadDocSection]);
+
+  const handleOrderScopeChange = React.useCallback((event) => {
+    const nextScope = event.target.value === 'all' ? 'all' : 'open';
+    setOrderScope(nextScope);
+    if (docs.orders.expanded) {
+      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(nextScope)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        orders: { ...prev.orders, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.orders.expanded, id, loadDocSection]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -341,9 +356,48 @@ export default function CustomerDetail() {
               </AccordionDetails>
             </Accordion>
 
-            <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', `/customers/${encodeURIComponent(id)}/orders`)}>
+            <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', orderEndpoint)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1">{t('customer_docs_orders')}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
+                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
+                    {t('customer_docs_orders')}
+                  </Typography>
+                  {docs.orders.expanded && (
+                    <Box
+                      sx={{ ml: 'auto', minWidth: 0 }}
+                      onClick={(event) => event.stopPropagation()}
+                      onFocus={(event) => event.stopPropagation()}
+                    >
+                      <RadioGroup
+                        row
+                        value={orderScope}
+                        onChange={handleOrderScopeChange}
+                        sx={{
+                          flexWrap: 'nowrap',
+                          gap: 0.25,
+                          '& .MuiFormControlLabel-root': {
+                            margin: 0,
+                            minWidth: 0,
+                          },
+                          '& .MuiFormControlLabel-label': {
+                            fontSize: '0.72rem',
+                          },
+                        }}
+                      >
+                        <FormControlLabel
+                          value="open"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('order_scope_open')}
+                        />
+                        <FormControlLabel
+                          value="all"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('order_scope_all')}
+                        />
+                      </RadioGroup>
+                    </Box>
+                  )}
+                </Box>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.orders.loading && <CircularProgress size={20} />}

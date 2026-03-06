@@ -49,6 +49,10 @@ function resolveOfferScope(scope) {
   return String(scope || '').trim().toLowerCase() === 'year' ? 'year' : '90d';
 }
 
+function resolveOrderScope(scope) {
+  return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
+}
+
 function buildWhereClause(q, searchField) {
   const text = String(q || '').trim();
   if (!text) return { whereSql: '', params: [] };
@@ -301,9 +305,12 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
 router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   const lang = resolveLang(req);
+  const scope = resolveOrderScope(req.query.scope);
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+
+  const scopeFilterSql = scope === 'all' ? '' : 'AND COALESCE([au_Abgeschlossen], 0) <> 1';
 
   const sql = `
     SELECT
@@ -314,7 +321,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
       [au_Auftragsdatum] AS orderDate
     FROM [dbo].[tblAuftrag]
     WHERE COALESCE([au_KdNr], '') = ?
-      AND COALESCE([au_Abgeschlossen], 0) <> 1
+      ${scopeFilterSql}
     ORDER BY [au_Auftragsdatum] DESC
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
@@ -366,7 +373,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId },
+    meta: { mandant: req.mandant, count: data.length, id: customerId, scope },
     error: null,
   });
 }));
