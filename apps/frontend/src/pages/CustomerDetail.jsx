@@ -186,6 +186,7 @@ export default function CustomerDetail() {
     ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
+  const latestNote = item?.latestNote ? String(item.latestNote) : '';
   const representatives = normalizeRepresentatives(item);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
@@ -559,6 +560,15 @@ export default function CustomerDetail() {
                 ))}
               </>
             )}
+
+            <Divider sx={{ my: 3 }} />
+
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+              {t('latest_note_label')}
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {latestNote || '-'}
+            </Typography>
           </CardContent>
         </Card>
       )}

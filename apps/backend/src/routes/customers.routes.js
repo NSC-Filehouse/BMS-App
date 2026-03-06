@@ -234,9 +234,19 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
   const representatives = mapRepresentatives(repsRows);
 
+  const latestNoteRows = await runSQLQueryAccess(req.database, `
+    SELECT TOP 1 [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
+    FROM [dbo].[tblKun_Historie]
+    WHERE [kdH_KdNR] = ?
+    ORDER BY [kdH_Datum] DESC
+  `, [id]);
+  const latestNoteRow = Array.isArray(latestNoteRows) && latestNoteRows.length ? latestNoteRows[0] : null;
+
   const detail = {
     ...item,
     representatives,
+    latestNote: toText(latestNoteRow?.text),
+    latestNoteDate: latestNoteRow?.noteDate || null,
   };
 
   sendEnvelope(res, {
