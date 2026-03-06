@@ -501,7 +501,7 @@ export default function CustomerDetail() {
 
             {reminderInvoicesCount > 0 && (
               <>
-                <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3 }}>
+                <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
                   {t('customer_reminder_warning', { count: reminderInvoicesCount })}
                 </Typography>
                 <Divider sx={{ my: 3 }} />

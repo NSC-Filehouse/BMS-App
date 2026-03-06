@@ -78,7 +78,7 @@ const translations = {
     amount_label: 'Betrag',
     invoice_status_paid: 'bezahlt',
     invoice_status_open: 'offen',
-    customer_reminder_warning: 'Achtung: Kunde bei {count} Rechnungen in der Mahnung.',
+    customer_reminder_warning: 'Achtung:\nKunde bei {count} Rechnungen in der Mahnung.',
     latest_note_label: 'Letzte Notiz',
     contact_label: 'Ansprechpartner',
     phone_label: 'Telefon',
