@@ -14,6 +14,7 @@ const customersRouter = require('./routes/customers.routes');
 const productsRouter = require('./routes/products.routes');
 const ordersRouter = require('./routes/orders.routes');
 const tempOrdersRouter = require('./routes/temp-orders.routes');
+const timelineRouter = require('./routes/timeline.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 
@@ -97,6 +98,7 @@ app.use(config.apiBasePath, customersRouter);
 app.use(config.apiBasePath, productsRouter);
 app.use(config.apiBasePath, ordersRouter);
 app.use(config.apiBasePath, tempOrdersRouter);
+app.use(config.apiBasePath, timelineRouter);
 
 // 404 + error
 app.use(notFound);

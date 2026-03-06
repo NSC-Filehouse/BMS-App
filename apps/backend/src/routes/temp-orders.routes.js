@@ -4,6 +4,7 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
+const { appendTimelineEntries } = require('../db/timeline');
 
 const router = express.Router();
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
@@ -727,6 +728,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
   }
 
+  const timelineEntries = [];
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
@@ -768,7 +770,29 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       }
       throw err;
     }
+    timelineEntries.push({
+      createdAt: nowIso,
+      mandant: req.mandant,
+      mandantShortName: req.database?.shortName || null,
+      companyId: req.database?.firmaId || null,
+      userEmail: req.userEmail || null,
+      userShortCode,
+      type: 'order',
+      product: posCtx.article || pos.beNumber,
+      productId: pos.beNumber,
+      beNumber: pos.beNumber,
+      amountKg: pos.amountInKg,
+      unit: 'kg',
+      referenceId: String(created.ta_id),
+      payloadJson: {
+        clientReferenceId,
+        clientName,
+        warehouseId: pos.warehouseId,
+      },
+    });
   }
+
+  await appendTimelineEntries(timelineEntries);
 
   sendEnvelope(res, {
     status: 201,

@@ -3,6 +3,7 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
+const { appendTimelineEntries } = require('../db/timeline');
 
 const router = express.Router();
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
@@ -320,7 +321,7 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   }
 
   const productSql = `
-    SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved
+    SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved, [Artikel] AS article
     FROM ${VIEW_SQL}
     WHERE COALESCE([Bestell-Pos], '') = ?
       AND COALESCE([bePL_LagerID], '') = ?
@@ -403,6 +404,26 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   const createdData = created
     ? { ...created, id: `${created.beNumber}${ID_SEPARATOR}${created.warehouseId}` }
     : { id: `${beNumber}${ID_SEPARATOR}${warehouseId}`, beNumber, warehouseId, amount, reservationEndDate };
+
+  await appendTimelineEntries([{
+    createdAt: nowIso,
+    mandant: req.mandant,
+    mandantShortName: req.database?.shortName || null,
+    companyId: req.database?.firmaId || null,
+    userEmail: req.userEmail || null,
+    userShortCode,
+    type: 'reservation',
+    product: asText(getField(productRow, 'article')) || beNumber,
+    productId: createdData.id,
+    beNumber,
+    amountKg: amount,
+    unit: 'kg',
+    referenceId: createdData.id,
+    payloadJson: {
+      warehouseId,
+      reservationEndDate: reservationEndDate.toISOString(),
+    },
+  }]);
 
   sendEnvelope(res, {
     status: 201,

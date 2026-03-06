@@ -272,6 +272,7 @@ async function getDatabaseConnectionForUser(email, mandantName) {
 }
 
 module.exports = {
+  getMandantsForUser,
   listMandantsForUser,
   getDatabaseConnectionForUser,
 };
