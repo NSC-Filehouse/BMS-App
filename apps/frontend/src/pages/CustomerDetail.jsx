@@ -317,18 +317,46 @@ export default function CustomerDetail() {
 
             <Accordion expanded={docs.invoices.expanded} onChange={onToggleSection('invoices', invoiceEndpoint)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1">{t('customer_docs_invoices')}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
+                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
+                    {t('customer_docs_invoices')}
+                  </Typography>
+                  <Box
+                    sx={{ ml: 'auto', minWidth: 0 }}
+                    onClick={(event) => event.stopPropagation()}
+                    onFocus={(event) => event.stopPropagation()}
+                  >
+                    <RadioGroup
+                      row
+                      value={invoiceScope}
+                      onChange={handleInvoiceScopeChange}
+                      sx={{
+                        flexWrap: 'nowrap',
+                        gap: 0.25,
+                        '& .MuiFormControlLabel-root': {
+                          margin: 0,
+                          minWidth: 0,
+                        },
+                        '& .MuiFormControlLabel-label': {
+                          fontSize: '0.72rem',
+                        },
+                      }}
+                    >
+                      <FormControlLabel
+                        value="open"
+                        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                        label={t('invoice_scope_open')}
+                      />
+                      <FormControlLabel
+                        value="all"
+                        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                        label={t('invoice_scope_all')}
+                      />
+                    </RadioGroup>
+                  </Box>
+                </Box>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
-                <RadioGroup
-                  row
-                  value={invoiceScope}
-                  onChange={handleInvoiceScopeChange}
-                  sx={{ gap: 1.5 }}
-                >
-                  <FormControlLabel value="open" control={<Radio size="small" />} label={t('invoice_scope_open')} />
-                  <FormControlLabel value="all" control={<Radio size="small" />} label={t('invoice_scope_all')} />
-                </RadioGroup>
                 {docs.invoices.loading && <CircularProgress size={20} />}
                 {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
