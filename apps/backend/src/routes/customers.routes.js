@@ -53,6 +53,14 @@ function resolveOrderScope(scope) {
   return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
 }
 
+function pickReminderStageValue(reminderTextId, reminderTextIdNew) {
+  const current = Number(reminderTextId);
+  const next = Number(reminderTextIdNew);
+  const currentStage = Number.isFinite(current) && current > 0 ? current : 0;
+  const nextStage = Number.isFinite(next) && next > 0 ? next : 0;
+  return nextStage > currentStage ? nextStage : currentStage;
+}
+
 function buildWhereClause(q, searchField) {
   const text = String(q || '').trim();
   if (!text) return { whereSql: '', params: [] };
@@ -234,6 +242,16 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
   const representatives = mapRepresentatives(repsRows);
 
+  const reminderRows = await runSQLQueryAccess(req.database, `
+    SELECT [re_MahnTextID] AS reminderTextId, [re_MahnTextIDneu] AS reminderTextIdNew
+    FROM [dbo].[tblRechnung]
+    WHERE COALESCE([re_KdNr], '') = ?
+      AND [re_Bezahlt] = 0
+  `, [id]);
+  const reminderInvoicesCount = (Array.isArray(reminderRows) ? reminderRows : [])
+    .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
+    .length;
+
   const latestNoteRows = await runSQLQueryAccess(req.database, `
     SELECT TOP 1 [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
     FROM [dbo].[tblKun_Historie]
@@ -245,6 +263,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const detail = {
     ...item,
     representatives,
+    reminderInvoicesCount,
     latestNote: toText(latestNoteRow?.text),
     latestNoteDate: latestNoteRow?.noteDate || null,
   };
@@ -514,11 +533,8 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     const reminderIdNew = Number(row.reminderTextIdNew);
     const reminderCurrent = Number.isFinite(reminderId) ? (reminderMap.get(reminderId) || null) : null;
     const reminderNew = Number.isFinite(reminderIdNew) ? (reminderMap.get(reminderIdNew) || null) : null;
-    const reminderStage = (
-      reminderNew?.alternativeNo > reminderCurrent?.alternativeNo
-        ? reminderNew
-        : reminderCurrent
-    ) || reminderNew || null;
+    const reminderStageValue = pickReminderStageValue(reminderId, reminderIdNew);
+    const reminderStage = reminderStageValue > 0 ? (reminderMap.get(reminderStageValue) || null) : null;
     const eu = Number(row.grossEu);
     const dm = Number(row.grossDm);
     const invoiceDate = row.invoiceDate || null;
