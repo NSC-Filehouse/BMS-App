@@ -50,6 +50,10 @@ export default function OrdersList() {
     scopeRef.current = scope;
   }, [scope]);
 
+  const totalPages = meta.total !== null && meta.total !== undefined
+    ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
+    : null;
+
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
@@ -119,7 +123,7 @@ export default function OrdersList() {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="body2" sx={{ minWidth: 64, textAlign: 'center' }}>
-            {t('page_label')} {meta.page || 1}
+            {t('page_label')} {meta.page || 1}/{totalPages || '?'}
           </Typography>
           <IconButton
             aria-label="weiter"

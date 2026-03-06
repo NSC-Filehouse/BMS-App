@@ -40,6 +40,10 @@ export default function TempOrdersList() {
   React.useEffect(() => { metaRef.current = meta; }, [meta]);
   React.useEffect(() => { qRef.current = q; }, [q]);
 
+  const totalPages = meta.total !== null && meta.total !== undefined
+    ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
+    : null;
+
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
@@ -105,7 +109,7 @@ export default function TempOrdersList() {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-            {t('page_label')} {meta.page || 1}
+            {t('page_label')} {meta.page || 1}/{totalPages || '?'}
           </Typography>
           <IconButton
             aria-label="weiter"
