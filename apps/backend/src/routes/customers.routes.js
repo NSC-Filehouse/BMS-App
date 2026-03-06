@@ -337,7 +337,8 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
         [auP_Auftragsindex] AS orderIndex,
         [auP_Artikel] AS article,
         [auP_Anzahl] AS amount,
-        [auP_Einheit] AS unit
+        [auP_Einheit] AS unit,
+        [auP_Lieferdatum] AS deliveryDate
       FROM [dbo].[tblAuf_Position]
       WHERE [auP_Auftragsindex] IN (${placeholders})
       ORDER BY [auP_Auftragsindex] ASC
@@ -352,6 +353,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
         article: toText(row.article),
         amount: row.amount,
         unit: toText(row.unit),
+        deliveryDate: row.deliveryDate || null,
       });
     }
   }
