@@ -144,6 +144,7 @@ export default function CustomerDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [offerScope, setOfferScope] = React.useState('90d');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -185,6 +186,7 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const representatives = normalizeRepresentatives(item);
+  const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
@@ -238,6 +240,19 @@ export default function CustomerDetail() {
     }
   }, [docs.invoices.expanded, id, loadDocSection]);
 
+  const handleOfferScopeChange = React.useCallback((event) => {
+    const nextScope = event.target.value === 'year' ? 'year' : '90d';
+    setOfferScope(nextScope);
+    if (docs.offers.expanded) {
+      loadDocSection('offers', `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(nextScope)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        offers: { ...prev.offers, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.offers.expanded, id, loadDocSection]);
+
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
@@ -260,9 +275,48 @@ export default function CustomerDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
-            <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', `/customers/${encodeURIComponent(id)}/offers`)}>
+            <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1">{t('customer_docs_offers')}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
+                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
+                    {t('customer_docs_offers')}
+                  </Typography>
+                  {docs.offers.expanded && (
+                    <Box
+                      sx={{ ml: 'auto', minWidth: 0 }}
+                      onClick={(event) => event.stopPropagation()}
+                      onFocus={(event) => event.stopPropagation()}
+                    >
+                      <RadioGroup
+                        row
+                        value={offerScope}
+                        onChange={handleOfferScopeChange}
+                        sx={{
+                          flexWrap: 'nowrap',
+                          gap: 0.25,
+                          '& .MuiFormControlLabel-root': {
+                            margin: 0,
+                            minWidth: 0,
+                          },
+                          '& .MuiFormControlLabel-label': {
+                            fontSize: '0.72rem',
+                          },
+                        }}
+                      >
+                        <FormControlLabel
+                          value="90d"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('offer_scope_90d')}
+                        />
+                        <FormControlLabel
+                          value="year"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('offer_scope_year')}
+                        />
+                      </RadioGroup>
+                    </Box>
+                  )}
+                </Box>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.offers.loading && <CircularProgress size={20} />}
@@ -321,39 +375,41 @@ export default function CustomerDetail() {
                   <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
                     {t('customer_docs_invoices')}
                   </Typography>
-                  <Box
-                    sx={{ ml: 'auto', minWidth: 0 }}
-                    onClick={(event) => event.stopPropagation()}
-                    onFocus={(event) => event.stopPropagation()}
-                  >
-                    <RadioGroup
-                      row
-                      value={invoiceScope}
-                      onChange={handleInvoiceScopeChange}
-                      sx={{
-                        flexWrap: 'nowrap',
-                        gap: 0.25,
-                        '& .MuiFormControlLabel-root': {
-                          margin: 0,
-                          minWidth: 0,
-                        },
-                        '& .MuiFormControlLabel-label': {
-                          fontSize: '0.72rem',
-                        },
-                      }}
+                  {docs.invoices.expanded && (
+                    <Box
+                      sx={{ ml: 'auto', minWidth: 0 }}
+                      onClick={(event) => event.stopPropagation()}
+                      onFocus={(event) => event.stopPropagation()}
                     >
-                      <FormControlLabel
-                        value="open"
-                        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                        label={t('invoice_scope_open')}
-                      />
-                      <FormControlLabel
-                        value="all"
-                        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                        label={t('invoice_scope_all')}
-                      />
-                    </RadioGroup>
-                  </Box>
+                      <RadioGroup
+                        row
+                        value={invoiceScope}
+                        onChange={handleInvoiceScopeChange}
+                        sx={{
+                          flexWrap: 'nowrap',
+                          gap: 0.25,
+                          '& .MuiFormControlLabel-root': {
+                            margin: 0,
+                            minWidth: 0,
+                          },
+                          '& .MuiFormControlLabel-label': {
+                            fontSize: '0.72rem',
+                          },
+                        }}
+                      >
+                        <FormControlLabel
+                          value="open"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('invoice_scope_open')}
+                        />
+                        <FormControlLabel
+                          value="all"
+                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+                          label={t('invoice_scope_all')}
+                        />
+                      </RadioGroup>
+                    </Box>
+                  )}
                 </Box>
               </AccordionSummary>
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>

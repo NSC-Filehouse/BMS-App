@@ -45,6 +45,10 @@ function resolveInvoiceScope(scope) {
   return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
 }
 
+function resolveOfferScope(scope) {
+  return String(scope || '').trim().toLowerCase() === 'year' ? 'year' : '90d';
+}
+
 function buildWhereClause(q, searchField) {
   const text = String(q || '').trim();
   if (!text) return { whereSql: '', params: [] };
@@ -370,11 +374,16 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
 router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   const lang = resolveLang(req);
+  const scope = resolveOfferScope(req.query.scope);
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 90);
+  if (scope === 'year') {
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+  } else {
+    cutoff.setDate(cutoff.getDate() - 90);
+  }
 
   const sql = `
     SELECT
@@ -440,7 +449,7 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId, days: 90 },
+    meta: { mandant: req.mandant, count: data.length, id: customerId, days: scope === 'year' ? 365 : 90, scope },
     error: null,
   });
 }));
