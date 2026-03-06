@@ -246,7 +246,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     SELECT [re_MahnTextID] AS reminderTextId, [re_MahnTextIDneu] AS reminderTextIdNew
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
-      AND [re_Bezahlt] = 0
+      AND [re_Bezahlt] > 0
   `, [id]);
   const reminderInvoicesCount = (Array.isArray(reminderRows) ? reminderRows : [])
     .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
@@ -500,7 +500,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
 
-  const scopeFilterSql = scope === 'all' ? '' : 'AND [re_Bezahlt] = 0';
+  const scopeFilterSql = scope === 'all' ? '' : 'AND [re_Bezahlt] > 0';
 
   const sql = `
     SELECT
