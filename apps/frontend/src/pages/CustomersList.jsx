@@ -7,6 +7,9 @@ import {
   CircularProgress,
   IconButton,
   InputAdornment,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
   TextField,
   Typography,
 } from '@mui/material';
@@ -40,8 +43,10 @@ export default function CustomersList() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
+  const [searchField, setSearchField] = React.useState('name');
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
+  const searchFieldRef = React.useRef(searchField);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
 
@@ -53,15 +58,20 @@ export default function CustomersList() {
     qRef.current = q;
   }, [q]);
 
+  React.useEffect(() => {
+    searchFieldRef.current = searchField;
+  }, [searchField]);
+
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
     const page = opts.page ?? currentMeta.page ?? 1;
     const pageSize = PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
+    const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=kd_Name1&dir=ASC`);
+      const res = await apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&sort=kd_Name1&dir=ASC`);
       const rows = res?.data || [];
       const filtered = rows.filter((row) => isValidCustomerName(getCustomerName(row)));
       setItems(filtered);
@@ -78,17 +88,19 @@ export default function CustomersList() {
     hydratedFromStateRef.current = true;
 
     const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
+      const restoredSearchField = String(listState.searchField || 'name');
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
-      load({ page: restoredPage, q: restoredQ });
+      setSearchField(restoredSearchField);
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
 
-    load({ page: 1, q: '' });
+    load({ page: 1, q: '', searchField: 'name' });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -99,11 +111,11 @@ export default function CustomersList() {
         return;
       }
       if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal });
+        load({ page: 1, q: qVal, searchField });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, load]);
+  }, [q, searchField, load]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -114,7 +126,7 @@ export default function CustomersList() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
             aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField })}
             disabled={(meta.page || 1) <= 1}
           >
             <ArrowBackIcon />
@@ -124,7 +136,7 @@ export default function CustomersList() {
           </Typography>
           <IconButton
             aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q })}
+            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField })}
             disabled={meta.total !== null && meta.total !== undefined
               ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
               : false}
@@ -150,7 +162,17 @@ export default function CustomersList() {
               ),
             }}
           />
-          <Box sx={{ flexGrow: 1 }} />
+          <RadioGroup
+            row
+            value={searchField}
+            onChange={(e) => setSearchField(e.target.value)}
+            sx={{ width: '100%', gap: 1 }}
+          >
+            <FormControlLabel value="name" control={<Radio size="small" />} label={t('customers_search_mode_name')} />
+            <FormControlLabel value="plz" control={<Radio size="small" />} label={t('customers_search_mode_plz')} />
+            <FormControlLabel value="region" control={<Radio size="small" />} label={t('customers_search_mode_region')} />
+            <FormControlLabel value="sales" control={<Radio size="small" />} label={t('customers_search_mode_sales')} />
+          </RadioGroup>
         </CardContent>
       </Card>
 
@@ -182,7 +204,7 @@ export default function CustomersList() {
                   cursor: 'pointer',
                 }}
                 onClick={() => navigate(`/customers/${encodeURIComponent(id)}`, {
-                  state: { fromCustomers: { page: meta.page || 1, q } },
+                  state: { fromCustomers: { page: meta.page || 1, q, searchField } },
                 })}
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>

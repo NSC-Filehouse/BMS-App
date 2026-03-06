@@ -33,22 +33,27 @@ function resolveSortField(sort) {
   return map[String(sort || '').trim()] || '[kd_Name1]';
 }
 
-function buildWhereClause(q) {
+function resolveSearchField(searchField) {
+  const key = String(searchField || '').trim().toLowerCase();
+  if (key === 'plz') return 'plz';
+  if (key === 'region') return 'region';
+  if (key === 'sales') return 'sales';
+  return 'name';
+}
+
+function buildWhereClause(q, searchField) {
   const text = String(q || '').trim();
   if (!text) return { whereSql: '', params: [] };
 
   const like = `%${text}%`;
-  const fields = [
-    '[kd_KdNR]',
-    '[kd_Name1]',
-    '[kd_Name2]',
-    '[kd_PLZ]',
-    '[kd_Aussendienst]',
-    '[kd_Region]',
-    '[kd_Ort]',
-    '[kd_eMail]',
-    '[kd_Telefon]',
-  ];
+  const mode = resolveSearchField(searchField);
+  const fields = mode === 'plz'
+    ? ['[kd_PLZ]']
+    : mode === 'region'
+      ? ['[kd_Region]']
+      : mode === 'sales'
+        ? ['[kd_Aussendienst]']
+        : ['[kd_Name1]', '[kd_Name2]'];
   const clauses = fields.map((f) => `${f} LIKE ?`);
   return {
     whereSql: `WHERE (${clauses.join(' OR ')})`,
@@ -116,6 +121,61 @@ async function loadPaymentTextMap(ids, lang) {
   return map;
 }
 
+async function loadReminderStageTextMap(ids, lang) {
+  const list = Array.isArray(ids)
+    ? ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : [];
+  if (!list.length) return new Map();
+
+  const placeholders = list.map(() => '?').join(', ');
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const stageRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT [ma_ID] AS id, [ma_AlternativeNR] AS alternativeNo
+    FROM [dbo].[tblMahnung_Texte]
+    WHERE [ma_ID] IN (${placeholders})
+  `, list);
+
+  const idToAlternative = new Map();
+  const alternatives = new Set();
+  for (const row of (Array.isArray(stageRows) ? stageRows : [])) {
+    const id = Number(row.id);
+    const alternativeNo = Number(row.alternativeNo);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(alternativeNo) || alternativeNo <= 0) continue;
+    idToAlternative.set(id, alternativeNo);
+    alternatives.add(alternativeNo);
+  }
+
+  if (!alternatives.size) return new Map();
+
+  const altList = [...alternatives];
+  const altPlaceholders = altList.map(() => '?').join(', ');
+  const textRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT [ma_AlternativeNR] AS alternativeNo, [ma_TextMahnung_Ueberschrift] AS text
+    FROM [dbo].[tblMahnung_Texte]
+    WHERE LOWER(COALESCE([ma_SprachID], '')) = ?
+      AND [ma_AlternativeNR] IN (${altPlaceholders})
+  `, [safeLang, ...altList]);
+
+  const alternativeToText = new Map();
+  for (const row of (Array.isArray(textRows) ? textRows : [])) {
+    const alternativeNo = Number(row.alternativeNo);
+    if (Number.isFinite(alternativeNo) && alternativeNo > 0) {
+      alternativeToText.set(alternativeNo, toText(row.text));
+    }
+  }
+
+  const map = new Map();
+  for (const id of list) {
+    const alternativeNo = idToAlternative.get(id);
+    if (!Number.isFinite(alternativeNo) || alternativeNo <= 0) continue;
+    map.set(id, {
+      alternativeNo,
+      text: alternativeToText.get(alternativeNo) || '',
+    });
+  }
+  return map;
+}
+
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
@@ -127,7 +187,8 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
 
   const safeSort = resolveSortField(sort);
   const safeDir = normalizeDir(dir);
-  const { whereSql, params } = buildWhereClause(q);
+  const searchField = resolveSearchField(req.query.searchField);
+  const { whereSql, params } = buildWhereClause(q, searchField);
   const offset = (page - 1) * pageSize;
 
   const countSql = `SELECT COUNT(*) AS total FROM [dbo].[tblKunden] ${whereSql}`;
@@ -154,6 +215,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       count: Array.isArray(rows) ? rows.length : 0,
       total,
       q,
+      searchField,
       sort: String(sort || 'kd_Name1'),
       dir: safeDir,
     },
@@ -412,6 +474,8 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       [re_rgDatum] AS invoiceDate,
       [re_RGfaellig] AS dueDate,
       [re_Zahltext] AS paymentTextId,
+      [re_MahnTextID] AS reminderTextId,
+      [re_MahnTextIDneu] AS reminderTextIdNew,
       [re_Bruttosumme_EU] AS grossEu,
       [re_Bruttosumme_DM] AS grossDm
     FROM [dbo].[tblRechnung]
@@ -422,9 +486,22 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
   const invoices = Array.isArray(rows) ? rows : [];
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
+  const reminderMap = await loadReminderStageTextMap(
+    invoices.flatMap((x) => [x.reminderTextId, x.reminderTextIdNew]),
+    lang,
+  );
 
   const data = invoices.map((row, idx) => {
     const paymentId = Number(row.paymentTextId);
+    const reminderId = Number(row.reminderTextId);
+    const reminderIdNew = Number(row.reminderTextIdNew);
+    const reminderCurrent = Number.isFinite(reminderId) ? (reminderMap.get(reminderId) || null) : null;
+    const reminderNew = Number.isFinite(reminderIdNew) ? (reminderMap.get(reminderIdNew) || null) : null;
+    const reminderStage = (
+      reminderNew?.alternativeNo > reminderCurrent?.alternativeNo
+        ? reminderNew
+        : reminderCurrent
+    ) || reminderNew || null;
     const eu = Number(row.grossEu);
     const dm = Number(row.grossDm);
     const invoiceDate = row.invoiceDate || null;
@@ -435,6 +512,8 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
       paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
       paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
+      reminderStage: reminderStage?.alternativeNo || null,
+      reminderStageText: reminderStage?.text || '',
     };
   });
 
