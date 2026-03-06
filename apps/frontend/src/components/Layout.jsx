@@ -147,12 +147,12 @@ export default function Layout() {
       </Toolbar>
       <Divider />
       <List>
-        <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
-        <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
-        <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
-        <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
         <NavItem to="/vl" label={t('vl_title')} icon={<FormatListBulletedIcon />} onClick={closeDrawer} />
         <NavItem to="/timeline" label={t('timeline_title')} icon={<HistoryIcon />} onClick={closeDrawer} />
+        <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
+        <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
+        <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
+        <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
       </List>
       <Divider />
       <Box sx={{ p: 2 }}>
