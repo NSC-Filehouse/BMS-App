@@ -166,12 +166,42 @@ export default function CustomersList() {
             row
             value={searchField}
             onChange={(e) => setSearchField(e.target.value)}
-            sx={{ width: '100%', gap: 1 }}
+            sx={{
+              width: '100%',
+              flexWrap: 'nowrap',
+              gap: 0,
+              justifyContent: 'space-between',
+              '& .MuiFormControlLabel-root': {
+                flex: '1 1 25%',
+                margin: 0,
+                minWidth: 0,
+              },
+              '& .MuiFormControlLabel-label': {
+                fontSize: '0.72rem',
+                letterSpacing: '-0.01em',
+              },
+            }}
           >
-            <FormControlLabel value="name" control={<Radio size="small" />} label={t('customers_search_mode_name')} />
-            <FormControlLabel value="plz" control={<Radio size="small" />} label={t('customers_search_mode_plz')} />
-            <FormControlLabel value="region" control={<Radio size="small" />} label={t('customers_search_mode_region')} />
-            <FormControlLabel value="sales" control={<Radio size="small" />} label={t('customers_search_mode_sales')} />
+            <FormControlLabel
+              value="name"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_name')}
+            />
+            <FormControlLabel
+              value="plz"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_plz')}
+            />
+            <FormControlLabel
+              value="region"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_region')}
+            />
+            <FormControlLabel
+              value="sales"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_sales')}
+            />
           </RadioGroup>
         </CardContent>
       </Card>
