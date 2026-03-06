@@ -22,7 +22,6 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
-import HomeIcon from '@mui/icons-material/Home';
 import HistoryIcon from '@mui/icons-material/History';
 
 import { apiRequest } from '../api/client.js';
@@ -148,7 +147,6 @@ export default function Layout() {
       </Toolbar>
       <Divider />
       <List>
-        <NavItem to="/" label={t('start_title')} icon={<HomeIcon />} onClick={closeDrawer} />
         <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
         <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
