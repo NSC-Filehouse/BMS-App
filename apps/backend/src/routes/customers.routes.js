@@ -480,7 +480,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       [re_Bruttosumme_DM] AS grossDm
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
-      AND [re_Bezahlt] = 0
+      AND [re_Bezahlt] <> 0
     ORDER BY [re_rgDatum] DESC
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
