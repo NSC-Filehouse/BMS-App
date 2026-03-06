@@ -246,7 +246,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     SELECT [re_MahnTextID] AS reminderTextId, [re_MahnTextIDneu] AS reminderTextIdNew
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
-      AND [re_Bezahlt] > 0
+      AND [re_Bezahlt] = 0
   `, [id]);
   const reminderInvoicesCount = (Array.isArray(reminderRows) ? reminderRows : [])
     .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
@@ -367,7 +367,9 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
         [auP_Artikel] AS article,
         [auP_Anzahl] AS amount,
         [auP_Einheit] AS unit,
-        [auP_Lieferdatum] AS deliveryDate
+        [auP_Lieferdatum] AS deliveryDate,
+        [auP_VK_Gesamt_EU] AS salePriceEu,
+        [auP_VK_Gesamt_DM] AS salePriceDm
       FROM [dbo].[tblAuf_Position]
       WHERE [auP_Auftragsindex] IN (${placeholders})
       ORDER BY [auP_Auftragsindex] ASC
@@ -378,11 +380,14 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
       const key = toText(row.orderIndex);
       if (!key) continue;
       if (!posMap.has(key)) posMap.set(key, []);
+      const salePriceEu = Number(row.salePriceEu);
+      const salePriceDm = Number(row.salePriceDm);
       posMap.get(key).push({
         article: toText(row.article),
         amount: row.amount,
         unit: toText(row.unit),
         deliveryDate: row.deliveryDate || null,
+        salePrice: Number.isFinite(salePriceEu) ? salePriceEu : (Number.isFinite(salePriceDm) ? salePriceDm : null),
       });
     }
   }
