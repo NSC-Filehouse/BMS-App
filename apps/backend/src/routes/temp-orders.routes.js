@@ -600,7 +600,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
   const countSql = `
     SELECT COUNT(*) AS total
-    FROM [dbo].[tbl_Temp_Auftraege] o
+    FROM [dbo].[tbl_Temp_Auftrag] o
     WHERE [o].[ta_company_id] = ? AND LOWER(COALESCE([o].[ta_CreatedBy], '')) = ?
     ${whereText}
   `;
@@ -618,7 +618,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [o].[ta_CreateDate] AS createdAt,
       [o].[ta_completed] AS completed,
       [o].[ta_IsConfirmed] AS isConfirmed
-    FROM [dbo].[tbl_Temp_Auftraege] o
+    FROM [dbo].[tbl_Temp_Auftrag] o
     OUTER APPLY (
       SELECT TOP 1
         [tap_be_number] AS beNumber,
@@ -679,7 +679,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
   const sql = `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -715,7 +715,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
       [ta_Attachment] AS attachment,
       [ta_AttachmentFileName] AS fileName,
       [ta_AttachmentMimeType] AS mimeType
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -803,7 +803,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   const nowIso = new Date().toISOString();
   const sql = `
-    INSERT INTO [dbo].[tbl_Temp_Auftraege] (
+    INSERT INTO [dbo].[tbl_Temp_Auftrag] (
       [ta_company_id], [ta_ClientReferenceId], [ta_client_name], [ta_client_address], [ta_client_representative],
       [ta_comment], [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_delivery_type_id], [ta_delivery_type], [ta_delivery_date], [ta_packaging_type], [ta_delivery_address], [ta_delivery_address_changed], [ta_completed],
       [ta_Attachment], [ta_AttachmentFileName], [ta_AttachmentMimeType],
@@ -845,7 +845,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   const createdRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_company_id] = ? AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
     ORDER BY [ta_id] DESC
   `, [companyId, userShortCode.toLowerCase()]);
@@ -1002,7 +1002,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ta_id] AS id
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);
@@ -1011,7 +1011,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
   const updateSql = `
-    UPDATE [dbo].[tbl_Temp_Auftraege]
+    UPDATE [dbo].[tbl_Temp_Auftrag]
     SET [ta_ClientReferenceId] = ?,
         [ta_client_name] = ?,
         [ta_client_address] = ?,
@@ -1104,7 +1104,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);
@@ -1136,7 +1136,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
 
   const existsSql = `
     SELECT TOP 1 1 AS ok
-    FROM [dbo].[tbl_Temp_Auftraege]
+    FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -1150,7 +1150,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     WHERE [tap_ta_id] = ?
   `, [id]);
   await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM [dbo].[tbl_Temp_Auftraege]
+    DELETE FROM [dbo].[tbl_Temp_Auftrag]
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);
