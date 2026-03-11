@@ -48,6 +48,27 @@ const config = {
     },
   },
 
+  fxSql: {
+    server: (process.env.FX_SQL_SERVER || '').trim(),
+    host: (process.env.FX_SQL_HOST || '').trim(),
+    port: toInt(process.env.FX_SQL_PORT, 1433),
+    instanceName: (process.env.FX_SQL_INSTANCE_NAME || '').trim(),
+    instance: (process.env.FX_SQL_INSTANCE || '').trim(),
+    user: (process.env.FX_SQL_USER_NAME || '').trim(),
+    password: String(process.env.FX_SQL_USER_PASSWORD || '').trim(),
+    encrypt: toBool(process.env.FX_SQL_ENCRYPT, false),
+    trustServerCertificate: toBool(process.env.FX_SQL_TRUST_SERVER_CERTIFICATE, true),
+    connectionTimeoutSec: toInt(process.env.FX_SQL_CONNECTION_TIMEOUT_SEC, 15),
+    databases: {
+      mandantManager: (process.env.FX_SQL_DATABASE_MANDANT_MANAGER || 'BMSFX_MandantManager_Entwicklung').trim(),
+      mlPlastics: (process.env.FX_SQL_DATABASE_ML_PLASTICS || 'BMSFX_MLPlastics_Entwicklung').trim(),
+    },
+    views: {
+      mitarbeiter: (process.env.FX_SQL_VIEW_MITARBEITER || 'vwtblMitarbeiterMandant').trim(),
+      mitarbeiterMandant: (process.env.FX_SQL_VIEW_MITARBEITER_MANDANT || 'vwtblMitarbeiterMandant').trim(),
+    },
+  },
+
   cache: {
     mandantsTtlMs: toInt(process.env.MANDANTS_CACHE_TTL_MS, 10 * 60 * 1000),
     dbAvailabilityTtlMs: toInt(process.env.DB_AVAILABILITY_CACHE_TTL_MS, 10 * 60 * 1000),

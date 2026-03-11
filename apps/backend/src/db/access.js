@@ -13,19 +13,24 @@ function sanitizeDatabaseName(databaseName) {
   return value;
 }
 
-function resolveServerConfig() {
-  if (config.sql.server) {
-    return { server: config.sql.server };
+function getSqlTargetConfig(target = 'bms') {
+  return target === 'fx' ? config.fxSql : config.sql;
+}
+
+function resolveServerConfig(target = 'bms') {
+  const targetConfig = getSqlTargetConfig(target);
+  if (targetConfig.server) {
+    return { server: targetConfig.server };
   }
 
-  if (config.sql.host) {
+  if (targetConfig.host) {
     return {
-      server: config.sql.host,
-      ...(config.sql.instanceName ? {} : { port: config.sql.port || 1433 }),
+      server: targetConfig.host,
+      ...(targetConfig.instanceName ? {} : { port: targetConfig.port || 1433 }),
     };
   }
 
-  const fallback = String(config.sql.instance || '').trim();
+  const fallback = String(targetConfig.instance || '').trim();
   if (!fallback) {
     throw new Error('Missing SQL Server host configuration.');
   }
@@ -39,23 +44,24 @@ function resolveServerConfig() {
     };
   }
 
-  return { server: fallback, port: config.sql.port || 1433 };
+  return { server: fallback, port: targetConfig.port || 1433 };
 }
 
-function buildPoolConfig(databaseName) {
+function buildPoolConfig(databaseName, target = 'bms') {
   const db = sanitizeDatabaseName(databaseName);
-  const user = String(config.sql.user || '').trim();
-  const password = String(config.sql.password || '').trim();
-  const timeoutMs = Math.max((config.sql.connectionTimeoutSec || 15) * 1000, 5000);
+  const targetConfig = getSqlTargetConfig(target);
+  const user = String(targetConfig.user || '').trim();
+  const password = String(targetConfig.password || '').trim();
+  const timeoutMs = Math.max((targetConfig.connectionTimeoutSec || 15) * 1000, 5000);
 
   if (!db || !user || !password) {
     throw new Error('Missing SQL Server connection settings in environment.');
   }
 
-  const serverCfg = resolveServerConfig();
+  const serverCfg = resolveServerConfig(target);
   const options = {
-    encrypt: Boolean(config.sql.encrypt),
-    trustServerCertificate: Boolean(config.sql.trustServerCertificate),
+    encrypt: Boolean(targetConfig.encrypt),
+    trustServerCertificate: Boolean(targetConfig.trustServerCertificate),
     enableArithAbort: true,
     ...(serverCfg.options || {}),
   };
@@ -86,19 +92,20 @@ function bindQuestionParams(query, params) {
   return { sqlText, count: idx };
 }
 
-async function getPool(databaseName) {
+async function getPool(databaseName, target = 'bms') {
   const dbName = sanitizeDatabaseName(databaseName);
-  let poolPromise = pools.get(dbName);
+  const poolKey = `${target}:${dbName}`;
+  let poolPromise = pools.get(poolKey);
   if (!poolPromise) {
-    const pool = new sql.ConnectionPool(buildPoolConfig(dbName));
+    const pool = new sql.ConnectionPool(buildPoolConfig(dbName, target));
     poolPromise = pool.connect();
-    pools.set(dbName, poolPromise);
+    pools.set(poolKey, poolPromise);
   }
 
   try {
     return await poolPromise;
   } catch (error) {
-    pools.delete(dbName);
+    pools.delete(poolKey);
     throw error;
   }
 }
@@ -119,9 +126,9 @@ function logSqlError(error, query, params) {
   }
 }
 
-async function runSQLQuerySqlServer(databaseName, query, params = []) {
+async function runSQLQuerySqlServer(databaseName, query, params = [], target = 'bms') {
   try {
-    const pool = await getPool(databaseName);
+    const pool = await getPool(databaseName, target);
     const request = pool.request();
     const bind = Array.isArray(params) ? params : [];
     bind.forEach((value, i) => {
@@ -134,6 +141,10 @@ async function runSQLQuerySqlServer(databaseName, query, params = []) {
     logSqlError(error, query, params);
     throw error;
   }
+}
+
+async function runSQLQueryFx(databaseName, query, params = []) {
+  return runSQLQuerySqlServer(databaseName, query, params, 'fx');
 }
 
 async function runSQLQueryAccess(database, query, params = []) {
@@ -155,5 +166,6 @@ async function canConnectToDatabase(databaseName) {
 module.exports = {
   runSQLQueryAccess,
   runSQLQuerySqlServer,
+  runSQLQueryFx,
   canConnectToDatabase,
 };

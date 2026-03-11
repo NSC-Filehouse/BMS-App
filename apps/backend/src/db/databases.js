@@ -1,7 +1,8 @@
 const config = require('../config');
 const logger = require('../logger');
 const { createHttpError } = require('../utils');
-const { canConnectToDatabase, runSQLQuerySqlServer } = require('./access');
+const { canConnectToDatabase, runSQLQueryFx, runSQLQuerySqlServer } = require('./access');
+const { getUserIdentityByEmail } = require('./users');
 
 const mandantsCache = new Map();
 const dbAvailabilityCache = new Map();
@@ -101,25 +102,36 @@ async function queryMandantsForFilehouse() {
 }
 
 async function queryMandantsForUser(normalizedEmail) {
-  const tMitarbeiter = escIdentifier(config.sql.tables.mitarbeiter);
-  const tMap = escIdentifier(config.sql.tables.mitarbeiterMandant);
   const tMandant = escIdentifier(config.sql.tables.mandant);
+  const fxViewMitarbeiterMandant = escIdentifier(config.fxSql.views.mitarbeiterMandant);
 
-  const colPersNr = escIdentifier(config.sql.columns.persNr);
-  const colEmail = escIdentifier(config.sql.columns.email);
   const colMapPersNr = escIdentifier(config.sql.columns.mapPersNr);
   const colMapFirmaId = escIdentifier(config.sql.columns.mapFirmaId);
   const colFirmaId = escIdentifier(config.sql.columns.firmaId);
   const colFirma = escIdentifier(config.sql.columns.firma);
   const colFirmaKurz = escIdentifier(config.sql.columns.firmaKurz);
 
-  const sql = `SELECT DISTINCT m.${colFirmaId} AS firmaId, m.${colFirma} AS firma, m.${colFirmaKurz} AS firmaKurz
-    FROM [dbo].${tMitarbeiter} AS ma
-    INNER JOIN [dbo].${tMap} AS mm ON mm.${colMapPersNr} = ma.${colPersNr}
-    INNER JOIN [dbo].${tMandant} AS m ON m.${colFirmaId} = mm.${colMapFirmaId}
-    WHERE LOWER(LTRIM(RTRIM(COALESCE(ma.${colEmail}, '')))) = ?`;
+  const identity = await getUserIdentityByEmail(normalizedEmail);
+  const personNumber = Number(identity.personNumber);
+  if (!Number.isFinite(personNumber)) return [];
 
-  return runSQLQuerySqlServer(config.sql.database, sql, [normalizedEmail]);
+  const mappingSql = `
+    SELECT DISTINCT ${colMapFirmaId} AS firmaId
+    FROM [dbo].${fxViewMitarbeiterMandant}
+    WHERE ${colMapPersNr} = ?
+  `;
+  const mappingRows = await runSQLQueryFx(config.fxSql.databases.mandantManager, mappingSql, [personNumber]);
+  const firmaIds = (Array.isArray(mappingRows) ? mappingRows : [])
+    .map((row) => Number(row.firmaId ?? null))
+    .filter((value) => Number.isFinite(value));
+  if (!firmaIds.length) return [];
+
+  const placeholders = firmaIds.map(() => '?').join(', ');
+  const sql = `SELECT DISTINCT ${colFirmaId} AS firmaId, ${colFirma} AS firma, ${colFirmaKurz} AS firmaKurz
+    FROM [dbo].${tMandant}
+    WHERE ${colFirmaId} IN (${placeholders})`;
+
+  return runSQLQuerySqlServer(config.sql.database, sql, firmaIds);
 }
 
 function getCachedMandants(email) {

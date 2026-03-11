@@ -1,5 +1,5 @@
 const config = require('../config');
-const { runSQLQuerySqlServer } = require('./access');
+const { runSQLQueryFx } = require('./access');
 const { createHttpError } = require('../utils');
 
 const identityByEmailCache = new Map();
@@ -88,10 +88,10 @@ async function getUserIdentityByEmail(email) {
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
       [ma_Kürzel] AS shortCode
-    FROM [dbo].[tblMitarbeiter]
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ma_eMail], '')))) = ?
   `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [normalized]);
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, sql, [normalized]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   const identity = mapIdentityRow(row);
   if (!identity) {
@@ -126,10 +126,10 @@ async function getUserDisplayNameByPersonNumber(personNumber) {
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
       [ma_Kürzel] AS shortCode
-    FROM [dbo].[tblMitarbeiter]
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     WHERE [ma_PersNR] = ?
   `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [personNumber]);
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, sql, [personNumber]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   const identity = mapIdentityRow(row);
   if (!identity) return null;
@@ -154,10 +154,10 @@ async function getUserShortCodeByPersonNumber(personNumber) {
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
       [ma_Kürzel] AS shortCode
-    FROM [dbo].[tblMitarbeiter]
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     WHERE [ma_PersNR] = ?
   `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [personNumber]);
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, sql, [personNumber]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   const identity = mapIdentityRow(row);
   if (!identity) return null;
