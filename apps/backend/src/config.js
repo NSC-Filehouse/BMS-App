@@ -64,7 +64,7 @@ const config = {
       mlPlastics: (process.env.FX_SQL_DATABASE_ML_PLASTICS || 'BMSFX_MLPlastics_Entwicklung').trim(),
     },
     views: {
-      mitarbeiter: (process.env.FX_SQL_VIEW_MITARBEITER || 'vwtblMitarbeiterMandant').trim(),
+      mitarbeiter: (process.env.FX_SQL_VIEW_MITARBEITER || 'vwtblMitarbeiter').trim(),
       mitarbeiterMandant: (process.env.FX_SQL_VIEW_MITARBEITER_MANDANT || 'vwtblMitarbeiterMandant').trim(),
     },
   },
