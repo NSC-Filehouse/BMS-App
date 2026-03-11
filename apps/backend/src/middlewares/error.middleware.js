@@ -95,6 +95,14 @@ const errorTexts = {
     de: 'Ungueltige Auftragsdaten.',
     en: 'Invalid temp order payload.',
   },
+  ATTACHMENT_INVALID_TYPE: {
+    de: 'Ungueltiger Dateityp. Erlaubt sind PDF und Bilddateien.',
+    en: 'Invalid file type. Only PDF and image files are allowed.',
+  },
+  ATTACHMENT_TOO_LARGE: {
+    de: 'Die Datei ist zu gross. Maximal 10 MB sind erlaubt.',
+    en: 'The file is too large. Maximum allowed size is 10 MB.',
+  },
 };
 
 function localizeMessage({ code, details, fallbackMessage, lang }) {

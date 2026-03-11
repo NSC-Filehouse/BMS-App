@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
@@ -7,6 +8,50 @@ const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
 
 const router = express.Router();
+const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+]);
+const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif'];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: MAX_ATTACHMENT_SIZE_BYTES,
+  },
+  fileFilter: (req, file, cb) => {
+    const originalName = String(file?.originalname || '').trim().toLowerCase();
+    const hasAllowedMimeType = ALLOWED_ATTACHMENT_MIME_TYPES.has(String(file?.mimetype || '').trim().toLowerCase());
+    const hasAllowedExtension = ALLOWED_ATTACHMENT_EXTENSIONS.some((ext) => originalName.endsWith(ext));
+    if (hasAllowedMimeType || hasAllowedExtension) {
+      cb(null, true);
+      return;
+    }
+    cb(createHttpError(400, 'Invalid attachment type.', { code: 'ATTACHMENT_INVALID_TYPE' }));
+  },
+});
+
+function attachmentUploadMiddleware(req, res, next) {
+  upload.single('attachment')(req, res, (err) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      next(createHttpError(400, 'Attachment file is too large.', { code: 'ATTACHMENT_TOO_LARGE' }));
+      return;
+    }
+    next(err);
+  });
+}
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
 
 function normalizeDir(dir) {
@@ -28,6 +73,44 @@ function asInt(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.round(n);
+}
+
+function parseJsonField(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function getRequestBody(req) {
+  const body = req && req.body && typeof req.body === 'object' ? req.body : {};
+  const positions = Array.isArray(body.positions) ? body.positions : parseJsonField(body.positions, undefined);
+  return positions === undefined ? body : { ...body, positions };
+}
+
+function normalizeAttachmentInput(req) {
+  const body = getRequestBody(req);
+  const removeAttachment = asBit(body?.removeAttachment, 0) === 1;
+  const file = req.file || null;
+  if (!file) {
+    return {
+      shouldReplace: false,
+      shouldRemove: removeAttachment,
+      buffer: null,
+      fileName: null,
+      mimeType: null,
+    };
+  }
+  return {
+    shouldReplace: true,
+    shouldRemove: false,
+    buffer: file.buffer,
+    fileName: asText(file.originalname) || 'attachment',
+    mimeType: asText(file.mimetype) || 'application/octet-stream',
+  };
 }
 
 function resolveLang(req) {
@@ -72,6 +155,9 @@ function mapTempOrderRow(row) {
     passedToUserId: row.ta_PassedToUserId,
     receivedFromUserId: row.ta_ReceivedFromUserId,
     isConfirmed: Boolean(row.ta_IsConfirmed),
+    hasAttachment: row.ta_Attachment !== null && row.ta_Attachment !== undefined,
+    attachmentFileName: asText(row.ta_AttachmentFileName),
+    attachmentMimeType: asText(row.ta_AttachmentMimeType),
   };
 }
 
@@ -90,7 +176,8 @@ function mapTempOrderWithPositions(row, positions) {
 }
 
 function normalizePositionsInput(body) {
-  const positions = Array.isArray(body?.positions) ? body.positions : [];
+  const positionsValue = Array.isArray(body?.positions) ? body.positions : parseJsonField(body?.positions, []);
+  const positions = Array.isArray(positionsValue) ? positionsValue : [];
   if (positions.length > 0) return positions;
   return [{
     beNumber: body?.beNumber,
@@ -289,9 +376,9 @@ async function loadPaymentTextById(paymentId, lang) {
   };
 }
 
-async function normalizeOrderLevelInput(req, clientAddress, lang) {
-  const specialPaymentCondition = asBit(req.body?.specialPaymentCondition, 0);
-  const specialPaymentIdInput = req.body?.specialPaymentId;
+async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
+  const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
+  const specialPaymentIdInput = body?.specialPaymentId;
   let specialPayment = null;
   if (specialPaymentCondition) {
     specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
@@ -300,7 +387,7 @@ async function normalizeOrderLevelInput(req, clientAddress, lang) {
     }
   }
 
-  const incotermIdInput = req.body?.incotermId ?? req.body?.deliveryTypeId;
+  const incotermIdInput = body?.incotermId ?? body?.deliveryTypeId;
   let incoterm = null;
   if (incotermIdInput !== undefined && incotermIdInput !== null && incotermIdInput !== '') {
     incoterm = await loadIncotermById(req.database, incotermIdInput, lang);
@@ -312,18 +399,18 @@ async function normalizeOrderLevelInput(req, clientAddress, lang) {
     throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const deliveryDate = req.body?.deliveryDate ? new Date(req.body.deliveryDate) : null;
+  const deliveryDate = body?.deliveryDate ? new Date(body.deliveryDate) : null;
   if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
     throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const packagingType = asText(req.body?.packagingType);
+  const packagingType = asText(body?.packagingType);
   if (!packagingType) {
     throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const deliveryAddressChanged = asBit(req.body?.deliveryAddressChanged ?? req.body?.deliveryAddressManual, 0);
-  const deliveryAddress = asText(req.body?.deliveryAddress || clientAddress);
+  const deliveryAddressChanged = asBit(body?.deliveryAddressChanged ?? body?.deliveryAddressManual, 0);
+  const deliveryAddress = asText(body?.deliveryAddress || clientAddress);
   if (!deliveryAddress) {
     throw createHttpError(400, 'Invalid delivery address.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
@@ -610,7 +697,40 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   });
 }));
 
-router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
+router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userShortCode = asText(userIdentity.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const sql = `
+    SELECT TOP 1
+      [ta_Attachment] AS attachment,
+      [ta_AttachmentFileName] AS fileName,
+      [ta_AttachmentMimeType] AS mimeType
+    FROM [dbo].[tbl_Temp_Auftraege]
+    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, userShortCode.toLowerCase()]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row || row.attachment === null || row.attachment === undefined) {
+    throw createHttpError(404, `temp order attachment not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+  }
+
+  res.setHeader('Content-Type', asText(row.mimeType) || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${String(asText(row.fileName) || `temp-order-${id}-attachment`).replace(/"/g, '')}"`);
+  res.send(row.attachment);
+}));
+
+router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
@@ -622,21 +742,23 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, 'Invalid company id for selected mandant.', { code: 'INVALID_COMPANY_ID' });
   }
 
-  const positionsInput = normalizePositionsInput(req.body);
+  const body = getRequestBody(req);
+  const attachment = normalizeAttachmentInput(req);
+  const positionsInput = normalizePositionsInput(body);
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
 
-  const clientReferenceId = asText(req.body?.clientReferenceId);
-  const clientName = asText(req.body?.clientName);
-  const clientAddress = asText(req.body?.clientAddress);
-  const clientRepresentative = asText(req.body?.clientRepresentative);
-  const supplier = asText(req.body?.supplier);
+  const clientReferenceId = asText(body?.clientReferenceId);
+  const clientName = asText(body?.clientName);
+  const clientAddress = asText(body?.clientAddress);
+  const clientRepresentative = asText(body?.clientRepresentative);
+  const supplier = asText(body?.supplier);
   const lang = resolveLang(req);
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
-  const orderLevel = await normalizeOrderLevelInput(req, clientAddress, lang);
+  const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -684,10 +806,11 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     INSERT INTO [dbo].[tbl_Temp_Auftraege] (
       [ta_company_id], [ta_ClientReferenceId], [ta_client_name], [ta_client_address], [ta_client_representative],
       [ta_comment], [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_delivery_type_id], [ta_delivery_type], [ta_delivery_date], [ta_packaging_type], [ta_delivery_address], [ta_delivery_address_changed], [ta_completed],
+      [ta_Attachment], [ta_AttachmentFileName], [ta_AttachmentMimeType],
       [ta_CreatedBy], [ta_CreateDate], [ta_LastModifiedBy], [ta_LastModifiedDate],
       [ta_PassedTo], [ta_ReceivedFrom], [ta_PassedToUserId], [ta_ReceivedFromUserId], [ta_IsConfirmed]
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   await runSQLQuerySqlServer(config.sql.database, sql, [
     companyId,
@@ -695,7 +818,7 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     clientName,
     clientAddress,
     clientRepresentative || null,
-    asText(req.body?.comment) || null,
+    asText(body?.comment) || null,
     orderLevel.specialPaymentCondition,
     orderLevel.specialPaymentText,
     orderLevel.specialPaymentId,
@@ -706,6 +829,9 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressChanged,
     0,
+    attachment.buffer,
+    attachment.fileName,
+    attachment.mimeType,
     userShortCode,
     nowIso,
     userShortCode,
@@ -802,32 +928,34 @@ router.post('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   });
 }));
 
-router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
+router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
+  const body = getRequestBody(req);
+  const attachment = normalizeAttachmentInput(req);
   const companyId = Number(req.database?.firmaId || 0);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
-  const clientReferenceId = asText(req.body?.clientReferenceId);
-  const clientName = asText(req.body?.clientName);
-  const clientAddress = asText(req.body?.clientAddress);
-  const clientRepresentative = asText(req.body?.clientRepresentative);
-  const supplier = asText(req.body?.supplier);
+  const clientReferenceId = asText(body?.clientReferenceId);
+  const clientName = asText(body?.clientName);
+  const clientAddress = asText(body?.clientAddress);
+  const clientRepresentative = asText(body?.clientRepresentative);
+  const supplier = asText(body?.supplier);
   const lang = resolveLang(req);
 
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
-  const orderLevel = await normalizeOrderLevelInput(req, clientAddress, lang);
+  const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
 
-  const positionsInput = normalizePositionsInput(req.body);
+  const positionsInput = normalizePositionsInput(body);
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
@@ -899,16 +1027,22 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         [ta_delivery_address] = ?,
         [ta_delivery_address_changed] = ?,
         [ta_LastModifiedBy] = ?,
-        [ta_LastModifiedDate] = ?
+        [ta_LastModifiedDate] = ?${attachment.shouldReplace ? `,
+        [ta_Attachment] = ?,
+        [ta_AttachmentFileName] = ?,
+        [ta_AttachmentMimeType] = ?` : ''}${attachment.shouldRemove ? `,
+        [ta_Attachment] = NULL,
+        [ta_AttachmentFileName] = NULL,
+        [ta_AttachmentMimeType] = NULL` : ''}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
-  await runSQLQuerySqlServer(config.sql.database, updateSql, [
+  const updateParams = [
     clientReferenceId,
     clientName,
     clientAddress,
     clientRepresentative || null,
-    asText(req.body?.comment) || null,
+    asText(body?.comment) || null,
     orderLevel.specialPaymentCondition,
     orderLevel.specialPaymentText,
     orderLevel.specialPaymentId,
@@ -920,10 +1054,12 @@ router.put('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     orderLevel.deliveryAddressChanged,
     userShortCode,
     new Date().toISOString(),
-    id,
-    companyId,
-    userShortCode.toLowerCase(),
-  ]);
+  ];
+  if (attachment.shouldReplace) {
+    updateParams.push(attachment.buffer, attachment.fileName, attachment.mimeType);
+  }
+  updateParams.push(id, companyId, userShortCode.toLowerCase());
+  await runSQLQuerySqlServer(config.sql.database, updateSql, updateParams);
 
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM [dbo].[tbl_Temp_Auf_Position]

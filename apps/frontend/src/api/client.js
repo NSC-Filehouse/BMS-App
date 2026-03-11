@@ -21,6 +21,7 @@ function isAuthInterruptionResponse(res) {
 
 export async function apiRequest(path, options = {}) {
   const mandant = getMandant();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   const headers = new Headers(options.headers || {});
   // Mandant wird vom Backend nur für Resource-Endpunkte erwartet; beim Startscreen ist er leer -> okay
@@ -29,7 +30,7 @@ export async function apiRequest(path, options = {}) {
   if (lang) headers.set('x-lang', lang);
 
   // Content-Type nur setzen, wenn Body existiert (für GET nicht nötig, aber okay)
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !isFormData && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 

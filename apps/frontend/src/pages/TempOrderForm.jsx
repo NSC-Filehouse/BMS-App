@@ -22,6 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -161,6 +162,10 @@ export default function TempOrderForm() {
   const [validationMessages, setValidationMessages] = React.useState([]);
   const [deleteLastConfirmOpen, setDeleteLastConfirmOpen] = React.useState(false);
   const [deletingOrder, setDeletingOrder] = React.useState(false);
+  const [attachmentFile, setAttachmentFile] = React.useState(null);
+  const [attachmentMeta, setAttachmentMeta] = React.useState({ hasAttachment: false, fileName: '', mimeType: '' });
+  const [removeAttachment, setRemoveAttachment] = React.useState(false);
+  const attachmentInputRef = React.useRef(null);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
@@ -246,6 +251,13 @@ export default function TempOrderForm() {
           const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}`);
           if (!alive) return;
           const d = res?.data || {};
+          setAttachmentFile(null);
+          setRemoveAttachment(false);
+          setAttachmentMeta({
+            hasAttachment: Boolean(d.hasAttachment),
+            fileName: d.attachmentFileName || '',
+            mimeType: d.attachmentMimeType || '',
+          });
           setForm({
             clientReferenceId: d.clientReferenceId || '',
             clientName: d.clientName || '',
@@ -324,6 +336,9 @@ export default function TempOrderForm() {
             wpzComment: x.wpzComment || '',
           }),
         })));
+        setAttachmentFile(null);
+        setRemoveAttachment(false);
+        setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
         return;
       }
 
@@ -346,9 +361,15 @@ export default function TempOrderForm() {
             }),
           })));
         }
+        setAttachmentFile(null);
+        setRemoveAttachment(false);
+        setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
         return;
       }
 
+      setAttachmentFile(null);
+      setRemoveAttachment(false);
+      setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
       setForm((prev) => ({
         ...prev,
         comment: source.comment || '',
@@ -537,6 +558,21 @@ export default function TempOrderForm() {
     setPositions((prev) => prev.filter((_, i) => i !== idx));
   }, [isEdit, positions]);
 
+  const visibleAttachmentName = attachmentFile
+    ? attachmentFile.name
+    : (!removeAttachment && attachmentMeta.hasAttachment ? attachmentMeta.fileName : '');
+
+  const handleAttachmentPick = React.useCallback((event) => {
+    const file = event?.target?.files?.[0] || null;
+    setAttachmentFile(file);
+    if (file) {
+      setRemoveAttachment(false);
+    }
+    if (event?.target) {
+      event.target.value = '';
+    }
+  }, []);
+
   const submit = async () => {
     const messages = [];
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
@@ -611,9 +647,26 @@ export default function TempOrderForm() {
         }));
       }
 
+      const requestBody = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (key === 'positions') {
+          requestBody.append(key, JSON.stringify(value));
+          return;
+        }
+        if (value === null || value === undefined) {
+          requestBody.append(key, '');
+          return;
+        }
+        requestBody.append(key, typeof value === 'boolean' ? String(value) : String(value));
+      });
+      requestBody.append('removeAttachment', removeAttachment ? 'true' : 'false');
+      if (attachmentFile) {
+        requestBody.append('attachment', attachmentFile);
+      }
+
       const res = isEdit
-        ? await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })
-        : await apiRequest('/temp-orders', { method: 'POST', body: JSON.stringify(payload) });
+        ? await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: requestBody })
+        : await apiRequest('/temp-orders', { method: 'POST', body: requestBody });
 
       setSuccess(t('temp_order_saved'));
       const newId = res?.data?.id;
@@ -632,9 +685,26 @@ export default function TempOrderForm() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+      <input
+        ref={attachmentInputRef}
+        type="file"
+        accept=".pdf,image/*,.heic,.heif"
+        hidden
+        onChange={handleAttachmentPick}
+      />
+
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <IconButton aria-label="back" onClick={() => navigate(-1)}><ArrowBackIcon /></IconButton>
-        <Typography variant="h5">{isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}</Typography>
+        <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
+          {isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}
+        </Typography>
+        <IconButton
+          aria-label={t('temp_order_attachment_add')}
+          title={t('temp_order_attachment_add')}
+          onClick={() => attachmentInputRef.current?.click()}
+        >
+          <AttachFileIcon />
+        </IconButton>
       </Box>
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
@@ -644,6 +714,57 @@ export default function TempOrderForm() {
       {!loading && (
         <Card>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, mt: -0.5 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                {t('temp_order_attachment_label')}
+              </Typography>
+              {visibleAttachmentName ? (
+                <>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      minWidth: 0,
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {visibleAttachmentName}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      if (attachmentFile) {
+                        setAttachmentFile(null);
+                        return;
+                      }
+                      if (attachmentMeta.hasAttachment && !removeAttachment) {
+                        setRemoveAttachment(true);
+                      }
+                    }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </>
+              ) : (
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  {t('temp_order_attachment_none')}
+                </Typography>
+              )}
+            </Box>
+            {removeAttachment && attachmentMeta.hasAttachment && !attachmentFile && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: -1 }}>
+                <Typography variant="caption" sx={{ color: 'error.main' }}>
+                  {t('temp_order_attachment_removed')}
+                </Typography>
+                <Button size="small" onClick={() => setRemoveAttachment(false)}>
+                  {t('undo_label')}
+                </Button>
+              </Box>
+            )}
+
             <Autocomplete
               options={customerOptions}
               value={selectedCustomer}
