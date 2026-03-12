@@ -147,7 +147,7 @@ function getReminderCountsCte() {
         COALESCE([re_KdNr], '') AS customerId,
         COUNT(*) AS reminderInvoicesCount
       FROM [dbo].[tblRechnung]
-      WHERE [re_Bezahlt] <> 0
+      WHERE [re_Bezahlt] = 0
         AND (
           COALESCE([re_MahnTextID], 0) > 0
           OR COALESCE([re_MahnTextIDneu], 0) > 0
@@ -376,7 +376,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     SELECT [re_MahnTextID] AS reminderTextId, [re_MahnTextIDneu] AS reminderTextIdNew
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
-      AND [re_Bezahlt] <> 0
+      AND [re_Bezahlt] = 0
   `, [id]);
   const reminderInvoicesCount = (Array.isArray(reminderRows) ? reminderRows : [])
     .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
