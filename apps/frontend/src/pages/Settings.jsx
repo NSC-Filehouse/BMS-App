@@ -132,12 +132,6 @@ export default function Settings() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <IconButton aria-label="back-to-timeline" onClick={() => navigate('/timeline')} sx={{ mr: 1 }}>
-          <ArrowBackIcon />
-        </IconButton>
-      </Box>
-
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -150,9 +144,14 @@ export default function Settings() {
       {!loading && (
         <Card>
           <CardContent sx={{ display: 'grid', gap: 2 }}>
-            <Typography variant="subtitle1">
-              {t('push_settings_title')}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+              <Typography variant="subtitle1">
+                {t('push_settings_title')}
+              </Typography>
+              <IconButton aria-label="back-to-timeline" onClick={() => navigate('/timeline')} size="small">
+                <ArrowBackIcon />
+              </IconButton>
+            </Box>
 
             {!supported && (
               <Alert severity="warning">
