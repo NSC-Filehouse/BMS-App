@@ -127,10 +127,12 @@ export default function OrderDetail() {
         <Card>
           <CardContent sx={{ pt: 2 }}>
             {item?.isReserved && (
-              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'nowrap' }}>
                 {canEdit && (
                   <Button
                     variant="outlined"
+                    size="small"
+                    sx={{ whiteSpace: 'nowrap', minWidth: 0, px: 1.5 }}
                     onClick={() => {
                       setEditAmount(String(item.reserveAmount || ''));
                       setEditDate(item.reservationDate ? String(item.reservationDate).slice(0, 10) : '');
@@ -139,13 +141,15 @@ export default function OrderDetail() {
                       setEditOpen(true);
                     }}
                   >
-                    {t('reservation_edit')}
+                    {t('edit_label')}
                   </Button>
                 )}
                 {canEdit && (
                   <Button
                     variant="outlined"
                     color="error"
+                    size="small"
+                    sx={{ whiteSpace: 'nowrap', minWidth: 0, px: 1.5 }}
                     onClick={async () => {
                       try {
                         setError('');
@@ -158,7 +162,7 @@ export default function OrderDetail() {
                       }
                     }}
                   >
-                    {t('reservation_delete')}
+                    {t('delete_label')}
                   </Button>
                 )}
               </Box>
