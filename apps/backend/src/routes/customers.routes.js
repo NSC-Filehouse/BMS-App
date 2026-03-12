@@ -8,6 +8,7 @@ const { getUserIdentityByEmail } = require('../db/users');
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = `[dbo].[qryMengen_Verf\u00FCgbarkeitsliste_f\u00FCrAPP]`;
 const PRODUCT_ID_SEPARATOR = '||';
+const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 
 function normalizeTotal(countResult) {
   if (!countResult) return null;
@@ -18,6 +19,15 @@ function normalizeTotal(countResult) {
 
 function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isFilehouseEmail(email) {
+  const value = normalizeEmail(email);
+  return value.endsWith('filehouse') || value.endsWith('@filehouse') || value.includes('@filehouse.');
 }
 
 function resolveSortField(sort) {
@@ -217,7 +227,10 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
   const activeCompanyId = Number(req.database?.firmaId);
-  const mainCompanyId = Number(userIdentity?.mainCompanyId);
+  const resolvedMainCompanyId = isFilehouseEmail(req.userEmail)
+    ? FILEHOUSE_TEST_MAIN_COMPANY_ID
+    : userIdentity?.mainCompanyId;
+  const mainCompanyId = Number(resolvedMainCompanyId);
   const salesCodeFilter = Number.isFinite(activeCompanyId)
     && Number.isFinite(mainCompanyId)
     && activeCompanyId !== mainCompanyId
