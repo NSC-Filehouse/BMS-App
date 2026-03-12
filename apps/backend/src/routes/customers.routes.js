@@ -3,6 +3,7 @@ const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { getUserIdentityByEmail } = require('../db/users');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = `[dbo].[qryMengen_Verf\u00FCgbarkeitsliste_f\u00FCrAPP]`;
@@ -63,9 +64,23 @@ function pickReminderStageValue(reminderTextId, reminderTextIdNew) {
   return nextStage > currentStage ? nextStage : currentStage;
 }
 
-function buildWhereClause(q, searchField) {
+function buildWhereClause(q, searchField, options = {}) {
   const text = String(q || '').trim();
-  if (!text) return { whereSql: '', params: [] };
+  const clauses = [];
+  const params = [];
+
+  const salesCodeFilter = toText(options.salesCodeFilter);
+  if (salesCodeFilter) {
+    clauses.push(`COALESCE([kd_Aussendienst], '') = ?`);
+    params.push(salesCodeFilter);
+  }
+
+  if (!text) {
+    return {
+      whereSql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+      params,
+    };
+  }
 
   const like = `%${text}%`;
   const mode = resolveSearchField(searchField);
@@ -76,10 +91,11 @@ function buildWhereClause(q, searchField) {
       : mode === 'sales'
         ? ['[kd_Aussendienst]']
         : ['[kd_Name1]', '[kd_Name2]'];
-  const clauses = fields.map((f) => `${f} LIKE ?`);
+  const searchClauses = fields.map((f) => `${f} LIKE ?`);
+  clauses.push(`(${searchClauses.join(' OR ')})`);
   return {
-    whereSql: `WHERE (${clauses.join(' OR ')})`,
-    params: fields.map(() => like),
+    whereSql: `WHERE ${clauses.join(' AND ')}`,
+    params: [...params, ...fields.map(() => like)],
   };
 }
 
@@ -189,6 +205,7 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -199,7 +216,14 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeSort = resolveSortField(sort);
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
-  const { whereSql, params } = buildWhereClause(q, searchField);
+  const activeCompanyId = Number(req.database?.firmaId);
+  const mainCompanyId = Number(userIdentity?.mainCompanyId);
+  const salesCodeFilter = Number.isFinite(activeCompanyId)
+    && Number.isFinite(mainCompanyId)
+    && activeCompanyId !== mainCompanyId
+    ? toText(userIdentity?.shortCode)
+    : '';
+  const { whereSql, params } = buildWhereClause(q, searchField, { salesCodeFilter });
   const offset = (page - 1) * pageSize;
 
   const countSql = `SELECT COUNT(*) AS total FROM [dbo].[tblKunden] ${whereSql}`;

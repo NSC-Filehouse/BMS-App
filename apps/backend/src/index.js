@@ -17,6 +17,7 @@ const tempOrdersRouter = require('./routes/temp-orders.routes');
 const timelineRouter = require('./routes/timeline.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
+const { getUserIdentityByEmail } = require('./db/users');
 
 const { notFound } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
@@ -49,8 +50,24 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => res.json({ ok: true, service: 'bms-backend' }));
 
 // Current user info (from reverse proxy headers)
-app.get(`${config.apiBasePath}/me`, (req, res) => {
-  res.json(getUserContextFromRequest(req));
+app.get(`${config.apiBasePath}/me`, async (req, res) => {
+  const base = getUserContextFromRequest(req);
+  if (!base?.email) {
+    res.json(base);
+    return;
+  }
+
+  try {
+    const identity = await getUserIdentityByEmail(base.email);
+    res.json({
+      ...base,
+      shortCode: identity?.shortCode || null,
+      personNumber: identity?.personNumber ?? null,
+      mainCompanyId: identity?.mainCompanyId ?? null,
+    });
+  } catch {
+    res.json(base);
+  }
 });
 
 // SQL diagnostics (temporary endpoint for rollout debugging)

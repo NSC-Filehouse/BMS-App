@@ -68,12 +68,15 @@ function mapIdentityRow(row) {
   const fullName = `${given} ${sur}`.trim() || null;
   const email = String(row.email || row.ma_eMail || '').trim() || null;
   const shortCode = String(row.shortCode || row['ma_K\u00FCrzel'] || '').trim() || null;
+  const mainCompanyIdRaw = row.mainCompanyId ?? row.ma_FirmaID ?? null;
+  const mainCompanyId = Number(mainCompanyIdRaw);
 
   return {
     personNumber: numeric,
     shortCode,
     fullName,
     email,
+    mainCompanyId: Number.isFinite(mainCompanyId) ? mainCompanyId : null,
   };
 }
 
@@ -84,6 +87,7 @@ function buildIdentitySelectSql(whereClause) {
       [ma_eMail] AS email,
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
+      [ma_FirmaID] AS mainCompanyId,
       [ma_K\u00FCrzel] AS shortCode
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     ${whereClause}

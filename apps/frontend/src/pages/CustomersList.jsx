@@ -44,6 +44,7 @@ export default function CustomersList() {
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
   const [searchField, setSearchField] = React.useState('name');
+  const [ownShortCode, setOwnShortCode] = React.useState('');
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
   const searchFieldRef = React.useRef(searchField);
@@ -108,6 +109,21 @@ export default function CustomersList() {
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiRequest('/me');
+        if (!alive) return;
+        setOwnShortCode(String(res?.shortCode || '').trim());
+      } catch {
+        if (!alive) return;
+        setOwnShortCode('');
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
     const handle = setTimeout(() => {
       const qVal = q.trim();
       if (skipSearchReloadRef.current) {
@@ -169,7 +185,13 @@ export default function CustomersList() {
           <RadioGroup
             row
             value={searchField}
-            onChange={(e) => setSearchField(e.target.value)}
+            onChange={(e) => {
+              const nextField = e.target.value;
+              setSearchField(nextField);
+              if (nextField === 'sales' && ownShortCode) {
+                setQ(ownShortCode);
+              }
+            }}
             sx={{
               width: '100%',
               flexWrap: 'nowrap',
