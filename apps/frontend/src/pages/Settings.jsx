@@ -7,15 +7,19 @@ import {
   CardContent,
   CircularProgress,
   FormControlLabel,
+  IconButton,
   Switch,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { getCurrentPushSubscription, isPushSupported, subscribeToPush } from '../utils/push.js';
 
 export default function Settings() {
   const { lang, t } = useI18n();
+  const navigate = useNavigate();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -128,9 +132,11 @@ export default function Settings() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        {t('settings_title')}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <IconButton aria-label="back-to-timeline" onClick={() => navigate('/timeline')} sx={{ mr: 1 }}>
+          <ArrowBackIcon />
+        </IconButton>
+      </Box>
 
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
