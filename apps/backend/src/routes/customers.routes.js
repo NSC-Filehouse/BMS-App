@@ -46,6 +46,10 @@ function resolveSortField(sort) {
   return map[String(sort || '').trim()] || '[kd_Name1]';
 }
 
+function qualifyCustomerSortField(sortField, alias = 'k') {
+  return String(sortField || '[kd_Name1]').replace(/\[([^\]]+)\]/g, `[${alias}].[$1]`);
+}
+
 function resolveSearchField(searchField) {
   const key = String(searchField || '').trim().toLowerCase();
   if (key === 'plz') return 'plz';
@@ -74,15 +78,42 @@ function pickReminderStageValue(reminderTextId, reminderTextIdNew) {
   return nextStage > currentStage ? nextStage : currentStage;
 }
 
+async function getCustomerAccessScope(req) {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const activeCompanyId = Number(req.database?.firmaId);
+  const resolvedMainCompanyId = isFilehouseEmail(req.userEmail)
+    ? FILEHOUSE_TEST_MAIN_COMPANY_ID
+    : userIdentity?.mainCompanyId;
+  const mainCompanyId = Number(resolvedMainCompanyId);
+  const salesCodeFilter = Number.isFinite(activeCompanyId)
+    && Number.isFinite(mainCompanyId)
+    && activeCompanyId !== mainCompanyId
+    ? toText(userIdentity?.shortCode)
+    : '';
+
+  return {
+    userIdentity,
+    activeCompanyId,
+    mainCompanyId,
+    salesCodeFilter,
+  };
+}
+
 function buildWhereClause(q, searchField, options = {}) {
   const text = String(q || '').trim();
   const clauses = [];
   const params = [];
+  const customerAlias = toText(options.customerAlias);
+  const col = (name) => customerAlias ? `[${customerAlias}].${name}` : name;
 
   const salesCodeFilter = toText(options.salesCodeFilter);
   if (salesCodeFilter) {
-    clauses.push(`COALESCE([kd_Aussendienst], '') = ?`);
+    clauses.push(`COALESCE(${col('[kd_Aussendienst]')}, '') = ?`);
     params.push(salesCodeFilter);
+  }
+
+  if (options.reminderOnly) {
+    clauses.push(`COALESCE([rc].[reminderInvoicesCount], 0) > 0`);
   }
 
   if (!text) {
@@ -95,18 +126,35 @@ function buildWhereClause(q, searchField, options = {}) {
   const like = `%${text}%`;
   const mode = resolveSearchField(searchField);
   const fields = mode === 'plz'
-    ? ['[kd_PLZ]']
+    ? [col('[kd_PLZ]')]
     : mode === 'region'
-      ? ['[kd_Region]']
+      ? [col('[kd_Region]')]
       : mode === 'sales'
-        ? ['[kd_Aussendienst]']
-        : ['[kd_Name1]', '[kd_Name2]'];
+        ? [col('[kd_Aussendienst]')]
+        : [col('[kd_Name1]'), col('[kd_Name2]')];
   const searchClauses = fields.map((f) => `${f} LIKE ?`);
   clauses.push(`(${searchClauses.join(' OR ')})`);
   return {
     whereSql: `WHERE ${clauses.join(' AND ')}`,
     params: [...params, ...fields.map(() => like)],
   };
+}
+
+function getReminderCountsCte() {
+  return `
+    WITH [reminder_counts] AS (
+      SELECT
+        COALESCE([re_KdNr], '') AS customerId,
+        COUNT(*) AS reminderInvoicesCount
+      FROM [dbo].[tblRechnung]
+      WHERE [re_Bezahlt] = 0
+        AND (
+          COALESCE([re_MahnTextID], 0) > 0
+          OR COALESCE([re_MahnTextIDneu], 0) > 0
+        )
+      GROUP BY COALESCE([re_KdNr], '')
+    )
+  `;
 }
 
 function toText(value) {
@@ -215,7 +263,7 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const { salesCodeFilter } = await getCustomerAccessScope(req);
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -226,28 +274,34 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeSort = resolveSortField(sort);
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
-  const activeCompanyId = Number(req.database?.firmaId);
-  const resolvedMainCompanyId = isFilehouseEmail(req.userEmail)
-    ? FILEHOUSE_TEST_MAIN_COMPANY_ID
-    : userIdentity?.mainCompanyId;
-  const mainCompanyId = Number(resolvedMainCompanyId);
-  const salesCodeFilter = Number.isFinite(activeCompanyId)
-    && Number.isFinite(mainCompanyId)
-    && activeCompanyId !== mainCompanyId
-    ? toText(userIdentity?.shortCode)
-    : '';
-  const { whereSql, params } = buildWhereClause(q, searchField, { salesCodeFilter });
+  const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
+  const { whereSql, params } = buildWhereClause(q, searchField, {
+    salesCodeFilter,
+    customerAlias: 'k',
+    reminderOnly,
+  });
   const offset = (page - 1) * pageSize;
 
-  const countSql = `SELECT COUNT(*) AS total FROM [dbo].[tblKunden] ${whereSql}`;
+  const cteSql = getReminderCountsCte();
+  const countSql = `
+    ${cteSql}
+    SELECT COUNT(*) AS total
+    FROM [dbo].[tblKunden] [k]
+    LEFT JOIN [reminder_counts] [rc]
+      ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
+    ${whereSql}
+  `;
   const totalResult = await runSQLQueryAccess(req.database, countSql, params);
   const total = normalizeTotal(totalResult);
 
   const dataSql = `
-    SELECT *
-    FROM [dbo].[tblKunden]
+    ${cteSql}
+    SELECT [k].*, COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount
+    FROM [dbo].[tblKunden] [k]
+    LEFT JOIN [reminder_counts] [rc]
+      ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
     ${whereSql}
-    ORDER BY ${safeSort} ${safeDir}
+    ORDER BY ${qualifyCustomerSortField(safeSort)} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(req.database, dataSql, [...params, offset, pageSize]);
@@ -264,9 +318,36 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       total,
       q,
       searchField,
+      reminderOnly,
       sort: String(sort || 'kd_Name1'),
       dir: safeDir,
     },
+    error: null,
+  });
+}));
+
+router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (req, res) => {
+  const { salesCodeFilter } = await getCustomerAccessScope(req);
+  const { whereSql, params } = buildWhereClause('', 'name', {
+    salesCodeFilter,
+    customerAlias: 'k',
+    reminderOnly: true,
+  });
+  const sql = `
+    ${getReminderCountsCte()}
+    SELECT COUNT(*) AS total
+    FROM [dbo].[tblKunden] [k]
+    LEFT JOIN [reminder_counts] [rc]
+      ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
+    ${whereSql}
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, params);
+  const total = Number(normalizeTotal(rows) || 0);
+
+  sendEnvelope(res, {
+    status: 200,
+    data: { count: total },
+    meta: { mandant: req.mandant },
     error: null,
   });
 }));

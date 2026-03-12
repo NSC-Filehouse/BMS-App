@@ -44,10 +44,12 @@ export default function CustomersList() {
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
   const [searchField, setSearchField] = React.useState('name');
+  const [reminderOnly, setReminderOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
   const searchFieldRef = React.useRef(searchField);
+  const reminderOnlyRef = React.useRef(reminderOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
 
@@ -63,6 +65,10 @@ export default function CustomersList() {
     searchFieldRef.current = searchField;
   }, [searchField]);
 
+  React.useEffect(() => {
+    reminderOnlyRef.current = reminderOnly;
+  }, [reminderOnly]);
+
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
@@ -73,10 +79,11 @@ export default function CustomersList() {
     const pageSize = PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
     const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
+    const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&sort=kd_Name1&dir=ASC`);
+      const res = await apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&sort=kd_Name1&dir=ASC`);
       const rows = res?.data || [];
       const filtered = rows.filter((row) => isValidCustomerName(getCustomerName(row)));
       setItems(filtered);
@@ -93,19 +100,21 @@ export default function CustomersList() {
     hydratedFromStateRef.current = true;
 
     const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
+      const restoredReminderOnly = Boolean(listState.reminderOnly);
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setSearchField(restoredSearchField);
-      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField });
+      setReminderOnly(restoredReminderOnly);
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
 
-    load({ page: 1, q: '', searchField: 'name' });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -131,22 +140,22 @@ export default function CustomersList() {
         return;
       }
       if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal, searchField });
+        load({ page: 1, q: qVal, searchField, reminderOnly });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, load]);
+  }, [q, searchField, reminderOnly, load]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">
-          {t('customers_title')}
+          {reminderOnly ? t('customers_reminders_title') : t('customers_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
             aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField })}
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly })}
             disabled={(meta.page || 1) <= 1}
           >
             <ArrowBackIcon />
@@ -156,7 +165,7 @@ export default function CustomersList() {
           </Typography>
           <IconButton
             aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField })}
+            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly })}
             disabled={meta.total !== null && meta.total !== undefined
               ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
               : false}
@@ -260,13 +269,20 @@ export default function CustomersList() {
                   cursor: 'pointer',
                 }}
                 onClick={() => navigate(`/customers/${encodeURIComponent(id)}`, {
-                  state: { fromCustomers: { page: meta.page || 1, q, searchField } },
+                  state: { fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly } },
                 })}
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
-                  <Typography variant="body1" sx={{ pr: 2 }}>
-                    {name || String(id ?? '')}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, pr: 2 }}>
+                    <Typography variant="body1" sx={{ minWidth: 0 }}>
+                      {name || String(id ?? '')}
+                    </Typography>
+                    {Number(row?.reminderInvoicesCount) > 0 && (
+                      <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        ({Number(row.reminderInvoicesCount)})
+                      </Typography>
+                    )}
+                  </Box>
                   <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
                     <ChevronRightIcon />
                   </Box>

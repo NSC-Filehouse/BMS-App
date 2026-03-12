@@ -60,6 +60,7 @@ export default function Layout() {
   const [email, setEmail] = React.useState('');
   const [userName, setUserName] = React.useState('');
   const [canSwitchMandant, setCanSwitchMandant] = React.useState(false);
+  const [reminderCustomersCount, setReminderCustomersCount] = React.useState(0);
   const mandant = getMandant();
   const navigate = useNavigate();
   const { lang, setLang, t } = useI18n();
@@ -71,10 +72,12 @@ export default function Layout() {
     let alive = true;
     (async () => {
       try {
-        const [res, mandantsRes] = await Promise.all([
+        const requests = [
           apiRequest('/me'),
           apiRequest('/mandants'),
-        ]);
+          mandant ? apiRequest('/customers/reminders-summary') : Promise.resolve({ data: { count: 0 } }),
+        ];
+        const [res, mandantsRes, remindersRes] = await Promise.all(requests);
         if (!alive) return;
         const emailVal = res?.principalName || res?.mail || res?.email || '';
         setEmail(emailVal);
@@ -82,15 +85,17 @@ export default function Layout() {
         setUserName(nameVal);
         const available = Array.isArray(mandantsRes?.data) ? mandantsRes.data : [];
         setCanSwitchMandant(available.length > 1);
+        setReminderCustomersCount(Number(remindersRes?.data?.count) || 0);
       } catch {
         if (!alive) return;
         setEmail('');
         setUserName('');
         setCanSwitchMandant(false);
+        setReminderCustomersCount(0);
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [mandant]);
 
   React.useEffect(() => {
     let active = true;
@@ -150,6 +155,31 @@ export default function Layout() {
         <NavItem to="/vl" label={t('vl_title')} icon={<FormatListBulletedIcon />} onClick={closeDrawer} />
         <NavItem to="/timeline" label={t('timeline_title')} icon={<HistoryIcon />} onClick={closeDrawer} />
         <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
+        {reminderCustomersCount > 0 && (
+          <ListItemButton
+            onClick={() => {
+              navigate('/customers', {
+                state: {
+                  listState: {
+                    page: 1,
+                    q: '',
+                    searchField: 'name',
+                    reminderOnly: true,
+                  },
+                },
+              });
+              closeDrawer();
+            }}
+          >
+            <ListItemIcon>
+              <PeopleIcon color="error" />
+            </ListItemIcon>
+            <ListItemText
+              primary={`${t('customers_reminders_title')} (${reminderCustomersCount})`}
+              primaryTypographyProps={{ sx: { color: 'error.main', fontWeight: 700 } }}
+            />
+          </ListItemButton>
+        )}
         <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
         <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
