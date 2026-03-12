@@ -5,8 +5,13 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  IconButton,
+  InputAdornment,
+  TextField,
   Typography,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -97,12 +102,23 @@ export default function Timeline() {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchInput, setSearchInput] = React.useState('');
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
+  const effectiveQuery = String(searchInput || '').trim().toLowerCase();
+  const filteredItems = React.useMemo(() => {
+    if (!effectiveQuery) return items;
+    return items.filter((item) => {
+      const product = String(item?.product || item?.beNumber || '').toLowerCase();
+      const shortCode = String(item?.userShortCode || '').toLowerCase();
+      return product.includes(effectiveQuery) || shortCode.includes(effectiveQuery);
+    });
+  }, [effectiveQuery, items]);
   const groupedItems = React.useMemo(() => {
     const groups = [];
     let currentGroup = null;
 
-    for (const item of items) {
+    for (const item of filteredItems) {
       const key = getDateKey(item?.createdAt) || 'unknown';
       if (!currentGroup || currentGroup.key !== key) {
         currentGroup = {
@@ -116,7 +132,7 @@ export default function Timeline() {
     }
 
     return groups;
-  }, [items, locale, t]);
+  }, [filteredItems, locale, t]);
 
   React.useEffect(() => {
     let alive = true;
@@ -140,9 +156,56 @@ export default function Timeline() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        {t('timeline_title')}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+        <Typography variant="h5">
+          {t('timeline_title')}
+        </Typography>
+        <IconButton
+          aria-label="timeline-search-toggle"
+          onClick={() => {
+            if (searchOpen) {
+              setSearchInput('');
+              setSearchOpen(false);
+              return;
+            }
+            setSearchOpen(true);
+          }}
+        >
+          <SearchIcon />
+        </IconButton>
+      </Box>
+
+      {searchOpen && (
+        <TextField
+          fullWidth
+          size="small"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          autoFocus
+          placeholder={t('timeline_search')}
+          sx={{ mb: 1.25 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ opacity: 0.65 }} />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  aria-label="clear-search"
+                  onClick={() => {
+                    setSearchInput('');
+                  }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      )}
 
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -152,11 +215,11 @@ export default function Timeline() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && filteredItems.length === 0 && (
         <Typography sx={{ opacity: 0.7 }}>{t('timeline_empty')}</Typography>
       )}
 
-      {!loading && !error && items.length > 0 && (
+      {!loading && !error && filteredItems.length > 0 && (
         <Box sx={{ display: 'grid', gap: 1.5 }}>
           {groupedItems.map((group) => (
             <Box key={group.key} sx={{ display: 'grid', gap: 1 }}>
