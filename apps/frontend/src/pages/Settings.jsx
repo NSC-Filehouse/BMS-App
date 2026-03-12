@@ -23,6 +23,7 @@ export default function Settings() {
   const [data, setData] = React.useState({ vapidPublicKey: '', subscribed: false, mandants: [] });
   const [supported] = React.useState(() => isPushSupported());
   const [permission, setPermission] = React.useState(() => (typeof Notification !== 'undefined' ? Notification.permission : 'default'));
+  const hasVapidKey = Boolean(String(data?.vapidPublicKey || '').trim());
 
   const loadSettings = React.useCallback(async () => {
     try {
@@ -52,6 +53,9 @@ export default function Settings() {
       setSaving(true);
       setError('');
       setSuccess('');
+      if (!hasVapidKey) {
+        throw new Error(t('push_missing_config'));
+      }
       const subscription = await subscribeToPush(data.vapidPublicKey);
       await apiRequest('/push/subscribe', {
         method: 'POST',
@@ -67,7 +71,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [data.vapidPublicKey, lang, loadSettings, t]);
+  }, [data.vapidPublicKey, hasVapidKey, lang, loadSettings, t]);
 
   const handleDisablePush = React.useCallback(async () => {
     try {
@@ -162,7 +166,7 @@ export default function Settings() {
 
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {!data.subscribed ? (
-                    <Button variant="contained" onClick={handleEnablePush} disabled={saving || !data.vapidPublicKey}>
+                    <Button variant="contained" onClick={handleEnablePush} disabled={saving}>
                       {t('push_enable_button')}
                     </Button>
                   ) : (
@@ -194,7 +198,7 @@ export default function Settings() {
 
                 {!data.subscribed && (
                   <Typography variant="caption" color="text.secondary">
-                    {t('push_enable_hint')}
+                    {hasVapidKey ? t('push_enable_hint') : t('push_missing_config')}
                   </Typography>
                 )}
               </>
