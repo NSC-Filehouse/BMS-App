@@ -93,7 +93,7 @@ function truncateActivityText(value, maxLength = 30) {
   return `${text.slice(0, maxLength)}...`;
 }
 
-function InfoRow({ icon, label, value, link }) {
+function InfoRow({ icon, label, value, link, forceRight = false }) {
   const content = link ? (
     <Box
       component="a"
@@ -132,7 +132,7 @@ function InfoRow({ icon, label, value, link }) {
       <Box
         sx={{
           width: { xs: '100%', sm: '45%' },
-          textAlign: { xs: 'left', sm: 'right' },
+          textAlign: forceRight ? 'right' : { xs: 'left', sm: 'right' },
           whiteSpace: 'pre-line',
           overflowWrap: 'anywhere',
           wordBreak: 'break-word',
@@ -141,6 +141,39 @@ function InfoRow({ icon, label, value, link }) {
       >
         {content}
       </Box>
+    </Box>
+  );
+}
+
+function CompactInfoRow({ icon, label, value }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 2,
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', minWidth: 0 }}>
+        {icon}
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
+      </Box>
+      <Typography
+        variant="body2"
+        sx={{
+          textAlign: 'right',
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
+        {value}
+      </Typography>
     </Box>
   );
 }
@@ -548,6 +581,7 @@ export default function CustomerDetail() {
               label={t('address_label')}
               value={address || '-'}
               link={addressLink || undefined}
+              forceRight
             />
             <InfoRow
               icon={<MapIcon fontSize="small" />}
@@ -557,7 +591,7 @@ export default function CustomerDetail() {
             />
 
             <Divider sx={{ my: 3 }} />
-            <InfoRow
+            <CompactInfoRow
               icon={<PersonIcon fontSize="small" />}
               label={t('sales_rep_label')}
               value={salesRep || '-'}
@@ -586,7 +620,7 @@ export default function CustomerDetail() {
                             fontSize="small"
                             sx={{
                               color: 'text.secondary',
-                              transform: expandedRepresentatives[rep.key] ? 'rotate(90deg)' : 'rotate(0deg)',
+                              transform: expandedRepresentatives[rep.key] ? 'rotate(270deg)' : 'rotate(90deg)',
                               transition: 'transform 160ms ease',
                             }}
                           />
