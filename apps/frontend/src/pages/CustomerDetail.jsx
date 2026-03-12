@@ -13,6 +13,7 @@ import {
   IconButton,
   Radio,
   RadioGroup,
+  TextField,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -190,12 +191,14 @@ export default function CustomerDetail() {
   const [offerScope, setOfferScope] = React.useState('90d');
   const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
+  const [purchasedArticlesQuery, setPurchasedArticlesQuery] = React.useState('');
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     invoices: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+    purchasedArticles: { expanded: false, loaded: false, loading: false, error: '', items: [] },
   });
 
   React.useEffect(() => {
@@ -237,6 +240,13 @@ export default function CustomerDetail() {
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
+  const purchasedArticlesEndpoint = `/customers/${encodeURIComponent(id)}/purchased-articles`;
+  const filteredPurchasedArticles = React.useMemo(() => {
+    const query = String(purchasedArticlesQuery || '').trim().toLowerCase();
+    const items = Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [];
+    if (!query) return items;
+    return items.filter((itemRow) => String(itemRow?.article || '').toLowerCase().includes(query));
+  }, [docs.purchasedArticles.items, purchasedArticlesQuery]);
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
       ...prev,
@@ -556,6 +566,39 @@ export default function CustomerDetail() {
               </AccordionDetails>
             </Accordion>
 
+            <Accordion expanded={docs.purchasedArticles.expanded} onChange={onToggleSection('purchasedArticles', purchasedArticlesEndpoint)}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
+                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
+                    {t('customer_docs_purchased_articles')}
+                  </Typography>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails sx={{ display: 'grid', gap: 0.75, px: 1.25, py: 0.75 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={purchasedArticlesQuery}
+                  onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
+                  placeholder={t('customer_docs_purchased_articles_search')}
+                />
+                {docs.purchasedArticles.loading && <CircularProgress size={20} />}
+                {docs.purchasedArticles.error && <Alert severity="error">{docs.purchasedArticles.error}</Alert>}
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticles.length === 0 && (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_purchased_articles')}</Typography>
+                )}
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticles.map((article, idx) => (
+                  <Card key={article.id || `${article.article}-${idx}`} variant="outlined">
+                    <CardContent sx={{ py: '8px !important', px: '10px !important' }}>
+                      <Typography variant="body2">
+                        {article.article || '-'}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </AccordionDetails>
+            </Accordion>
+
             <Divider sx={{ my: 3 }} />
 
             {reminderInvoicesCount > 0 && (
@@ -588,6 +631,7 @@ export default function CustomerDetail() {
               label={t('homepage_label')}
               value={homepageRaw || '-'}
               link={homepageLink || undefined}
+              forceRight
             />
 
             <Divider sx={{ my: 3 }} />

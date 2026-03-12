@@ -569,4 +569,35 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   });
 }));
 
+router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const sql = `
+    SELECT DISTINCT [p].[reP_Artikel] AS article
+    FROM [dbo].[tblRech_Position] p
+    INNER JOIN [dbo].[tblRechnung] r
+      ON COALESCE([r].[re_RgNummer], '') = COALESCE([p].[reP_Rgnummer], '')
+    WHERE COALESCE([r].[re_KdNr], '') = ?
+      AND COALESCE([p].[reP_Artikel], '') <> ''
+    ORDER BY [p].[reP_Artikel] ASC
+  `;
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
+  const data = (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: `${customerId}-purchased-article-${index + 1}`,
+      article: toText(row.article),
+    }))
+    .filter((row) => row.article);
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, id: customerId },
+    error: null,
+  });
+}));
+
 module.exports = router;
