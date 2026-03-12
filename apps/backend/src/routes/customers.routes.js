@@ -5,6 +5,8 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 
 const router = express.Router();
+const PRODUCTS_VIEW_SQL = '[dbo].[qryMengen_VerfÃ¼gbarkeitsliste_fÃ¼rAPP]';
+const PRODUCT_ID_SEPARATOR = '||';
 
 function normalizeTotal(countResult) {
   if (!countResult) return null;
@@ -84,6 +86,16 @@ function buildWhereClause(q, searchField) {
 function toText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function buildProductIdFromViewRow(row) {
+  return [
+    toText(row?.article),
+    toText(row?.warehouse),
+    toText(row?.beNumber),
+    toText(row?.plastic),
+    toText(row?.sub),
+  ].join(PRODUCT_ID_SEPARATOR);
 }
 
 function mapRepresentatives(rows) {
@@ -576,7 +588,11 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
   }
 
   const sql = `
-    SELECT DISTINCT [p].[reP_Artikel] AS article
+    SELECT DISTINCT
+      [p].[reP_Artikel] AS article,
+      [p].[reP_Artikelindex] AS articleIndex,
+      [p].[reP_BEposID] AS bePosId,
+      [p].[reP_LagerID] AS lagerId
     FROM [dbo].[tblRech_Position] p
     INNER JOIN [dbo].[tblRechnung] r
       ON COALESCE([r].[re_RgNummer], '') = COALESCE([p].[reP_Rgnummer], '')
@@ -585,11 +601,65 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     ORDER BY [p].[reP_Artikel] ASC
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
-  const data = (Array.isArray(rows) ? rows : [])
-    .map((row, index) => ({
-      id: `${customerId}-purchased-article-${index + 1}`,
-      article: toText(row.article),
-    }))
+  const purchasedRows = Array.isArray(rows) ? rows : [];
+
+  const byArticleIndex = new Map();
+  for (const row of purchasedRows) {
+    const articleIndex = toText(row.articleIndex);
+    if (!articleIndex || byArticleIndex.has(articleIndex)) continue;
+    byArticleIndex.set(articleIndex, row);
+  }
+
+  const articleIndices = Array.from(byArticleIndex.keys());
+  const viewMap = new Map();
+  if (articleIndices.length) {
+    const placeholders = articleIndices.map(() => '?').join(', ');
+    const viewRows = await runSQLQueryAccess(req.database, `
+      SELECT
+        [beP_Artikelindex] AS articleIndex,
+        [Artikel] AS article,
+        [Lagerort] AS warehouse,
+        [Bestell-Pos] AS beNumber,
+        [Kunststoff] AS plastic,
+        [Kunststoff_Untergruppe] AS sub,
+        [bePL_LagerID] AS lagerId
+      FROM ${PRODUCTS_VIEW_SQL}
+      WHERE COALESCE([beP_Artikelindex], '') IN (${placeholders})
+    `, articleIndices);
+
+    const groupedViewRows = new Map();
+    for (const viewRow of (Array.isArray(viewRows) ? viewRows : [])) {
+      const articleIndex = toText(viewRow.articleIndex);
+      if (!articleIndex) continue;
+      if (!groupedViewRows.has(articleIndex)) groupedViewRows.set(articleIndex, []);
+      groupedViewRows.get(articleIndex).push(viewRow);
+    }
+
+    for (const [articleIndex, row] of byArticleIndex.entries()) {
+      const candidates = groupedViewRows.get(articleIndex) || [];
+      const bePosId = toText(row.bePosId);
+      const lagerId = toText(row.lagerId);
+      const exact = candidates.find((candidate) =>
+        toText(candidate.beNumber) === bePosId && toText(candidate.lagerId) === lagerId
+      );
+      const chosen = exact || candidates[0] || null;
+      if (chosen) {
+        viewMap.set(articleIndex, buildProductIdFromViewRow(chosen));
+      }
+    }
+  }
+
+  const data = purchasedRows
+    .map((row, index) => {
+      const article = toText(row.article);
+      const articleIndex = toText(row.articleIndex);
+      return {
+        id: `${customerId}-purchased-article-${index + 1}`,
+        article,
+        articleIndex: articleIndex || null,
+        productId: articleIndex ? (viewMap.get(articleIndex) || null) : null,
+      };
+    })
     .filter((row) => row.article);
 
   sendEnvelope(res, {

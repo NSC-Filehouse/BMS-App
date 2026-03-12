@@ -588,9 +588,19 @@ export default function CustomerDetail() {
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_purchased_articles')}</Typography>
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticles.map((article, idx) => (
-                  <Card key={article.id || `${article.article}-${idx}`} variant="outlined">
+                  <Card
+                    key={article.id || `${article.article}-${idx}`}
+                    variant="outlined"
+                    sx={article.productId ? { cursor: 'pointer' } : undefined}
+                    onClick={article.productId
+                      ? () => navigate(`/products/${encodeURIComponent(article.productId)}`)
+                      : undefined}
+                  >
                     <CardContent sx={{ py: '8px !important', px: '10px !important' }}>
-                      <Typography variant="body2">
+                      <Typography
+                        variant="body2"
+                        sx={article.productId ? { color: 'primary.main', textDecoration: 'underline' } : undefined}
+                      >
                         {article.article || '-'}
                       </Typography>
                     </CardContent>
