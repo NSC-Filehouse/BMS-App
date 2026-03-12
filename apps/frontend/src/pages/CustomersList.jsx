@@ -96,15 +96,13 @@ export default function CustomersList() {
   }, []);
 
   React.useEffect(() => {
-    if (hydratedFromStateRef.current) return;
-    hydratedFromStateRef.current = true;
-
     const listState = location.state?.listState;
     if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
       const restoredReminderOnly = Boolean(listState.reminderOnly);
+      hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setSearchField(restoredSearchField);
@@ -114,6 +112,8 @@ export default function CustomersList() {
       return;
     }
 
+    if (hydratedFromStateRef.current) return;
+    hydratedFromStateRef.current = true;
     load({ page: 1, q: '', searchField: 'name', reminderOnly: false });
   }, [load, location.pathname, location.state, navigate]);
 
