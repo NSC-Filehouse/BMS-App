@@ -23,7 +23,6 @@ import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
 import HistoryIcon from '@mui/icons-material/History';
-import SettingsIcon from '@mui/icons-material/Settings';
 
 import { apiRequest } from '../api/client.js';
 import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
@@ -150,7 +149,6 @@ export default function Layout() {
       <List>
         <NavItem to="/vl" label={t('vl_title')} icon={<FormatListBulletedIcon />} onClick={closeDrawer} />
         <NavItem to="/timeline" label={t('timeline_title')} icon={<HistoryIcon />} onClick={closeDrawer} />
-        <NavItem to="/settings" label={t('settings_title')} icon={<SettingsIcon />} onClick={closeDrawer} />
         <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
         <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />

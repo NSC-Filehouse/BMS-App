@@ -12,6 +12,8 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -99,6 +101,7 @@ function getRelativeDayLabel(dateKey, locale, t) {
 
 export default function Timeline() {
   const { lang, t } = useI18n();
+  const navigate = useNavigate();
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -160,19 +163,27 @@ export default function Timeline() {
         <Typography variant="h5">
           {t('timeline_title')}
         </Typography>
-        <IconButton
-          aria-label="timeline-search-toggle"
-          onClick={() => {
-            if (searchOpen) {
-              setSearchInput('');
-              setSearchOpen(false);
-              return;
-            }
-            setSearchOpen(true);
-          }}
-        >
-          <SearchIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton
+            aria-label="timeline-search-toggle"
+            onClick={() => {
+              if (searchOpen) {
+                setSearchInput('');
+                setSearchOpen(false);
+                return;
+              }
+              setSearchOpen(true);
+            }}
+          >
+            <SearchIcon />
+          </IconButton>
+          <IconButton
+            aria-label="open-push-settings"
+            onClick={() => navigate('/settings')}
+          >
+            <SettingsIcon />
+          </IconButton>
+        </Box>
       </Box>
 
       {searchOpen && (
