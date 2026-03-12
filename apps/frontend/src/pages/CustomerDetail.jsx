@@ -83,7 +83,7 @@ function formatMoney(value) {
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 }
 
-function truncateActivityText(value, maxLength = 50) {
+function truncateActivityText(value, maxLength = 20) {
   const text = String(value || '').trim();
   if (!text) return '-';
   if (text.length <= maxLength) return text;
@@ -611,7 +611,10 @@ export default function CustomerDetail() {
                         <Typography variant="caption" color="text.secondary">
                           {formatDateOnly(activity.noteDate)}
                         </Typography>
-                        <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', fontSize: '0.85rem' }}
+                        >
                           {isExpanded ? text : truncateActivityText(text)}
                         </Typography>
                       </CardContent>
