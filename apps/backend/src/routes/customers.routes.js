@@ -5,7 +5,7 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 
 const router = express.Router();
-const PRODUCTS_VIEW_SQL = '[dbo].[qryMengen_VerfÃ¼gbarkeitsliste_fÃ¼rAPP]';
+const PRODUCTS_VIEW_SQL = `[dbo].[qryMengen_Verf\u00FCgbarkeitsliste_f\u00FCrAPP]`;
 const PRODUCT_ID_SEPARATOR = '||';
 
 function normalizeTotal(countResult) {
