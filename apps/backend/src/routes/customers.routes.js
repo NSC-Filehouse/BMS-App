@@ -252,20 +252,25 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
     .length;
 
-  const latestNoteRows = await runSQLQueryAccess(req.database, `
-    SELECT TOP 1 [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
+  const activityRows = await runSQLQueryAccess(req.database, `
+    SELECT [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
     FROM [dbo].[tblKun_Historie]
     WHERE [kdH_KdNR] = ?
     ORDER BY [kdH_Datum] DESC
   `, [id]);
-  const latestNoteRow = Array.isArray(latestNoteRows) && latestNoteRows.length ? latestNoteRows[0] : null;
+  const activities = (Array.isArray(activityRows) ? activityRows : [])
+    .map((row, index) => ({
+      id: `${id}-activity-${index + 1}`,
+      text: toText(row?.text),
+      noteDate: row?.noteDate || null,
+    }))
+    .filter((row) => row.text);
 
   const detail = {
     ...item,
     representatives,
     reminderInvoicesCount,
-    latestNote: toText(latestNoteRow?.text),
-    latestNoteDate: latestNoteRow?.noteDate || null,
+    activities,
   };
 
   sendEnvelope(res, {

@@ -83,6 +83,13 @@ function formatMoney(value) {
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 }
 
+function truncateActivityText(value, maxLength = 50) {
+  const text = String(value || '').trim();
+  if (!text) return '-';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
 function InfoRow({ icon, label, value, link }) {
   const content = link ? (
     <Box
@@ -147,6 +154,7 @@ export default function CustomerDetail() {
   const [offerScope, setOfferScope] = React.useState('90d');
   const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
+  const [expandedActivities, setExpandedActivities] = React.useState({});
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -187,7 +195,7 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
-  const latestNote = item?.latestNote ? String(item.latestNote) : '';
+  const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
@@ -269,6 +277,13 @@ export default function CustomerDetail() {
       }));
     }
   }, [docs.orders.expanded, id, loadDocSection]);
+
+  const toggleActivity = React.useCallback((activityId) => {
+    setExpandedActivities((prev) => ({
+      ...prev,
+      [activityId]: !prev[activityId],
+    }));
+  }, []);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -573,12 +588,38 @@ export default function CustomerDetail() {
 
             <Divider sx={{ my: 3 }} />
 
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-              {t('latest_note_label')}
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.75 }}>
+              {t('activities_label')}
             </Typography>
-            <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-              {latestNote || '-'}
-            </Typography>
+            {activities.length === 0 ? (
+              <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                -
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 0.75 }}>
+                {activities.map((activity) => {
+                  const isExpanded = Boolean(expandedActivities[activity.id]);
+                  const text = String(activity.text || '');
+                  return (
+                    <Card
+                      key={activity.id}
+                      variant="outlined"
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => toggleActivity(activity.id)}
+                    >
+                      <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDateOnly(activity.noteDate)}
+                        </Typography>
+                        <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {isExpanded ? text : truncateActivityText(text)}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
