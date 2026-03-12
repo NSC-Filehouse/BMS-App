@@ -1,5 +1,6 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
+const { requireMandant } = require('../middlewares/mandant.middleware');
 const {
   deactivatePushSubscription,
   getPushSettingsForUser,
@@ -8,6 +9,8 @@ const {
 } = require('../db/push');
 
 const router = express.Router();
+
+router.use(requireMandant);
 
 function asText(value) {
   if (value === null || value === undefined) return '';
