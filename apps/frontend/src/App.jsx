@@ -13,6 +13,7 @@ import CustomerDetail from './pages/CustomerDetail.jsx';
 import ProductsList from './pages/ProductsList.jsx';
 import VlList from './pages/VlList.jsx';
 import Timeline from './pages/Timeline.jsx';
+import Settings from './pages/Settings.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
 import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
@@ -71,6 +72,14 @@ export default function App() {
           element={
             <MandantGuard>
               <Timeline />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <MandantGuard>
+              <Settings />
             </MandantGuard>
           }
         />

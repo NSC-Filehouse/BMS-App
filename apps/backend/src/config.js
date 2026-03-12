@@ -20,6 +20,12 @@ const config = {
 
   apiBasePath: process.env.API_BASE_PATH || '/api',
 
+  push: {
+    vapidSubject: String(process.env.PUSH_VAPID_SUBJECT || 'mailto:bmsapp@mlholding.de').trim(),
+    vapidPublicKey: String(process.env.PUSH_VAPID_PUBLIC_KEY || '').trim(),
+    vapidPrivateKey: String(process.env.PUSH_VAPID_PRIVATE_KEY || '').trim(),
+  },
+
   sql: {
     server: (process.env.BMS_SQL_SERVER || '').trim(),
     host: (process.env.BMS_SQL_HOST || '').trim(),

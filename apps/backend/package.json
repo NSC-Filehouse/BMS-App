@@ -15,7 +15,8 @@
     "helmet": "^7.1.0",
     "mssql": "^11.0.1",
     "multer": "^2.1.1",
-    "odbc": "^2.4.9"
+    "odbc": "^2.4.9",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

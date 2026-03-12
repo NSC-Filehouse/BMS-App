@@ -1,6 +1,7 @@
 const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
+const { sendPushNotificationsForTimelineEntries } = require('./push');
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -24,6 +25,7 @@ function isMissingTimelineTableError(error) {
 async function appendTimelineEntries(entries) {
   const list = Array.isArray(entries) ? entries : [];
   if (!list.length) return;
+  const insertedEntries = [];
 
   const sql = `
     INSERT INTO [dbo].[tblBMSApp_Timeline] (
@@ -63,6 +65,7 @@ async function appendTimelineEntries(entries) {
         asText(entry.referenceId) || null,
         entry.payloadJson ? JSON.stringify(entry.payloadJson) : null,
       ]);
+      insertedEntries.push(entry);
     } catch (error) {
       if (isMissingTimelineTableError(error)) {
         logger.warn('Timeline table [dbo].[tblBMSApp_Timeline] is missing. Timeline entry skipped.');
@@ -70,6 +73,10 @@ async function appendTimelineEntries(entries) {
       }
       logger.warn(`Failed to append timeline entry: ${error?.message || error}`);
     }
+  }
+
+  if (insertedEntries.length) {
+    await sendPushNotificationsForTimelineEntries(insertedEntries);
   }
 }
 
