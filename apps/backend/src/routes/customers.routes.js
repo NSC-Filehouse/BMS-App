@@ -99,6 +99,19 @@ async function getCustomerAccessScope(req) {
   };
 }
 
+function getReminderSalesCodeFilter(req, accessScope) {
+  const shortCode = toText(accessScope?.userIdentity?.shortCode);
+  if (!shortCode) return '';
+
+  const activeCompanyId = Number(accessScope?.activeCompanyId);
+  const mainCompanyId = Number(accessScope?.mainCompanyId);
+  if (isFilehouseEmail(req.userEmail) && Number.isFinite(activeCompanyId) && Number.isFinite(mainCompanyId) && activeCompanyId === mainCompanyId) {
+    return '';
+  }
+
+  return shortCode;
+}
+
 function buildWhereClause(q, searchField, options = {}) {
   const text = String(q || '').trim();
   const clauses = [];
@@ -263,7 +276,11 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
-  const { salesCodeFilter } = await getCustomerAccessScope(req);
+  const accessScope = await getCustomerAccessScope(req);
+  const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
+  const salesCodeFilter = reminderOnly
+    ? getReminderSalesCodeFilter(req, accessScope)
+    : accessScope.salesCodeFilter;
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -274,7 +291,6 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeSort = resolveSortField(sort);
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
-  const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const { whereSql, params } = buildWhereClause(q, searchField, {
     salesCodeFilter,
     customerAlias: 'k',
@@ -327,7 +343,8 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (req, res) => {
-  const { salesCodeFilter } = await getCustomerAccessScope(req);
+  const accessScope = await getCustomerAccessScope(req);
+  const salesCodeFilter = getReminderSalesCodeFilter(req, accessScope);
   const { whereSql, params } = buildWhereClause('', 'name', {
     salesCodeFilter,
     customerAlias: 'k',
