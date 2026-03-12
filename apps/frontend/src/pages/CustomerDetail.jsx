@@ -565,9 +565,12 @@ export default function CustomerDetail() {
 
             {representatives.length > 0 && (
               <>
+                <Divider sx={{ my: 3 }} />
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.75 }}>
+                  {t('contact_label')}
+                </Typography>
                 {representatives.map((rep, index) => (
                   <React.Fragment key={rep.key}>
-                    <Divider sx={{ my: 3 }} />
                     <Card
                       variant="outlined"
                       sx={{ cursor: 'pointer' }}
@@ -610,7 +613,7 @@ export default function CustomerDetail() {
                         )}
                       </CardContent>
                     </Card>
-                    {index < representatives.length - 1 && <Divider sx={{ my: 1 }} />}
+                    {index < representatives.length - 1 && <Box sx={{ height: 8 }} />}
                   </React.Fragment>
                 ))}
               </>

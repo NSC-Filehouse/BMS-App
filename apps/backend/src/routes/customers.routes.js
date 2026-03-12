@@ -91,11 +91,11 @@ function mapRepresentatives(rows) {
     .map((row) => {
       const firstName = toText(row.kdA_Vorname);
       const lastName = toText(row.kdA_Name);
-      const name = toText(row.kdA_Name) || [firstName, lastName].filter(Boolean).join(' ').trim();
+      const salutation = toText(row.kdA_Anrede);
+      const name = [salutation, firstName, lastName].filter(Boolean).join(' ').trim();
       const phone = toText(row.kdA_Telefon) || toText(row.kdA_PrivatTel) || toText(row.kdA_Handy);
       const email = toText(row.kdA_eMail);
       const position = toText(row.kdA_Position);
-      const salutation = toText(row.kdA_Anrede);
       const id = null;
 
       return { id, name, phone, email, position, salutation };
