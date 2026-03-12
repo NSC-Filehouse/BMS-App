@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import MapIcon from '@mui/icons-material/Map';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -157,6 +158,7 @@ export default function CustomerDetail() {
   const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [expandedActivities, setExpandedActivities] = React.useState({});
+  const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -284,6 +286,13 @@ export default function CustomerDetail() {
     setExpandedActivities((prev) => ({
       ...prev,
       [activityId]: !prev[activityId],
+    }));
+  }, []);
+
+  const toggleRepresentative = React.useCallback((repKey) => {
+    setExpandedRepresentatives((prev) => ({
+      ...prev,
+      [repKey]: !prev[repKey],
     }));
   }, []);
 
@@ -559,29 +568,48 @@ export default function CustomerDetail() {
                 {representatives.map((rep, index) => (
                   <React.Fragment key={rep.key}>
                     <Divider sx={{ my: 3 }} />
-                    {rep.name && (
-                      <InfoRow
-                        icon={<PersonIcon fontSize="small" />}
-                        label={t('contact_label')}
-                        value={rep.name}
-                      />
-                    )}
-                    {rep.phone && (
-                      <InfoRow
-                        icon={<PhoneIcon fontSize="small" />}
-                        label={t('phone_label')}
-                        value={rep.phone}
-                        link={`tel:${rep.phone}`}
-                      />
-                    )}
-                    {rep.email && (
-                      <InfoRow
-                        icon={<EmailIcon fontSize="small" />}
-                        label={t('email_label')}
-                        value={rep.email}
-                        link={`mailto:${rep.email}`}
-                      />
-                    )}
+                    <Card
+                      variant="outlined"
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => toggleRepresentative(rep.key)}
+                    >
+                      <CardContent sx={{ py: '8px !important', px: '10px !important' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                          <PersonIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                          <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500 }}>
+                            {rep.name || '-'}
+                          </Typography>
+                          <ChevronRightIcon
+                            fontSize="small"
+                            sx={{
+                              color: 'text.secondary',
+                              transform: expandedRepresentatives[rep.key] ? 'rotate(90deg)' : 'rotate(0deg)',
+                              transition: 'transform 160ms ease',
+                            }}
+                          />
+                        </Box>
+                        {expandedRepresentatives[rep.key] && (
+                          <Box sx={{ mt: 1 }}>
+                            {rep.phone && (
+                              <InfoRow
+                                icon={<PhoneIcon fontSize="small" />}
+                                label={t('phone_label')}
+                                value={rep.phone}
+                                link={`tel:${rep.phone}`}
+                              />
+                            )}
+                            {rep.email && (
+                              <InfoRow
+                                icon={<EmailIcon fontSize="small" />}
+                                label={t('email_label')}
+                                value={rep.email}
+                                link={`mailto:${rep.email}`}
+                              />
+                            )}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
                     {index < representatives.length - 1 && <Divider sx={{ my: 1 }} />}
                   </React.Fragment>
                 ))}
