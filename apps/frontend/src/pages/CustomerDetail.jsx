@@ -83,8 +83,10 @@ function formatMoney(value) {
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 }
 
-function truncateActivityText(value, maxLength = 20) {
-  const text = String(value || '').trim();
+function truncateActivityText(value, maxLength = 30) {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!text) return '-';
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
