@@ -184,6 +184,7 @@ export default function TempOrderForm() {
   const [addPosProduct, setAddPosProduct] = React.useState(null);
   const [addPosQty, setAddPosQty] = React.useState('');
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
+  const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
   const [addPosError, setAddPosError] = React.useState('');
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
@@ -971,6 +972,7 @@ export default function TempOrderForm() {
                         setAddPosProduct(null);
                         setAddPosQty('');
                         setAddPosSalePrice('');
+                        setAddPosDeliveryDate(tomorrow());
                         setAddPosWpzId(null);
                         setAddPosWpzOriginal(true);
                         setAddPosWpzComment('');
@@ -1189,6 +1191,14 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
+          <TextField
+            type="date"
+            label={t('delivery_date')}
+            value={addPosDeliveryDate || ''}
+            onChange={(e) => setAddPosDeliveryDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            fullWidth
+          />
           {addPosProduct && (addPosWpzId ? (
             <>
               <FormControlLabel
@@ -1245,6 +1255,10 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_sale_price_positive'));
                 return;
               }
+              if (!String(addPosDeliveryDate || '').trim()) {
+                setAddPosError(t('validation_delivery_date_required'));
+                return;
+              }
               if (addPosWpzId && !addPosWpzOriginal && !String(addPosWpzComment || '').trim()) {
                 setAddPosError(t('validation_wpz_comment_required'));
                 return;
@@ -1263,6 +1277,7 @@ export default function TempOrderForm() {
                   reservationInKg: null,
                   reservationDate: null,
                   ...createPositionDefaults({
+                    deliveryDate: addPosDeliveryDate || tomorrow(),
                     wpzId: addPosWpzId,
                     wpzOriginal: addPosWpzOriginal,
                     wpzComment: addPosWpzComment || '',
