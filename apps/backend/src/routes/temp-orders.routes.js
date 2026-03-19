@@ -859,6 +859,15 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '[ta_CreatedBy]', '[ta_CreateDate]', '[ta_LastModifiedBy]', '[ta_LastModifiedDate]',
     '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
   ];
+  const orderInsertValues = [
+    '?', '?', '?', '?', '?',
+    '?', '?', '?', '?', '?', '?',
+    ...(hasOrderDeliveryDate ? ['?'] : []),
+    '?', '?', '?', '?',
+    'CAST(? AS VARBINARY(MAX))', '?', '?',
+    '?', '?', '?', '?',
+    '?', '?', '?', '?', '?',
+  ];
   const orderInsertParams = [
     companyId,
     clientReferenceId,
@@ -893,7 +902,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     INSERT INTO [dbo].[tbl_Temp_Auftrag] (
       ${orderInsertColumns.join(', ')}
     )
-    VALUES (${orderInsertColumns.map(() => '?').join(', ')})
+    VALUES (${orderInsertValues.join(', ')})
   `;
   await runSQLQuerySqlServer(config.sql.database, sql, orderInsertParams);
 
@@ -1106,7 +1115,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     '[ta_LastModifiedDate] = ?',
   ];
   if (attachment.shouldReplace) {
-    orderAssignments.push('[ta_Attachment] = ?', '[ta_AttachmentFileName] = ?', '[ta_AttachmentMimeType] = ?');
+    orderAssignments.push('[ta_Attachment] = CAST(? AS VARBINARY(MAX))', '[ta_AttachmentFileName] = ?', '[ta_AttachmentMimeType] = ?');
   }
   if (attachment.shouldRemove) {
     orderAssignments.push('[ta_Attachment] = NULL', '[ta_AttachmentFileName] = NULL', '[ta_AttachmentMimeType] = NULL');

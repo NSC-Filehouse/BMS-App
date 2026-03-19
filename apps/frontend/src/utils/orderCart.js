@@ -1,5 +1,11 @@
 import { getMandant } from './mandant.js';
 
+function tomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function cartKey() {
   const mandant = getMandant() || 'default';
   return `bms.orderCart.${mandant}`;
@@ -63,6 +69,16 @@ export function updateOrderCartSalePrice(productId, salePrice) {
   return next;
 }
 
+export function updateOrderCartDeliveryDate(productId, deliveryDate) {
+  const next = read().map((x) => (
+    String(x.id || '') === String(productId || '')
+      ? { ...x, deliveryDate: String(deliveryDate || '').trim() }
+      : x
+  ));
+  write(next);
+  return next;
+}
+
 export function updateOrderCartItem(productId, patch) {
   const next = read().map((x) => (
     String(x.id || '') === String(productId || '')
@@ -88,7 +104,8 @@ export function addOrderCartItem(item, quantityKg) {
     availableAmount: Number(item.amount || 0) - Number(item.reserved || 0),
     amountTotal: item.amount ?? null,
     acquisitionPrice: item.acquisitionPrice ?? null,
-    salePrice: item.acquisitionPrice ?? null,
+    salePrice: item.salePrice ?? item.acquisitionPrice ?? null,
+    deliveryDate: item.deliveryDate || tomorrow(),
     quantityKg: qty,
     wpzId: item.wpzId ?? null,
     wpzOriginal: item.wpzOriginal ?? true,

@@ -19,6 +19,7 @@ import {
   getOrderCartItems,
   removeOrderCartItem,
   updateOrderCartQuantity,
+  updateOrderCartDeliveryDate,
   updateOrderCartSalePrice,
   updateOrderCartItem,
 } from '../utils/orderCart.js';
@@ -59,6 +60,10 @@ export default function OrderCart() {
     }
   };
 
+  const onDeliveryDateChange = (id, value) => {
+    setItems(updateOrderCartDeliveryDate(id, value));
+  };
+
   const validate = () => {
     const messages = [];
     const nextFieldErrors = {};
@@ -83,6 +88,10 @@ export default function OrderCart() {
       if (!Number.isFinite(salePrice) || salePrice <= 0) {
         messages.push(t('validation_sale_price_positive'));
         pushFieldError(x.id, 'salePrice');
+      }
+      if (!String(x.deliveryDate || '').trim()) {
+        messages.push(t('validation_delivery_date_required'));
+        pushFieldError(x.id, 'deliveryDate');
       }
       if (x.wpzId && x.wpzOriginal === false && !String(x.wpzComment || '').trim()) {
         messages.push(t('validation_wpz_comment_required'));
@@ -163,6 +172,17 @@ export default function OrderCart() {
                   error={Boolean(rowErr.salePrice)}
                   helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
+                <TextField
+                  type="date"
+                  label={t('delivery_date')}
+                  value={row.deliveryDate || ''}
+                  onChange={(e) => onDeliveryDateChange(row.id, e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  required
+                  error={Boolean(rowErr.deliveryDate)}
+                  helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
+                />
                 {row.wpzId ? (
                   <>
                     <FormControlLabel
@@ -223,6 +243,7 @@ export default function OrderCart() {
                       amountInKg: Number(x.quantityKg),
                       salePrice: Number(x.salePrice),
                       costPrice: Number(x.acquisitionPrice),
+                      deliveryDate: x.deliveryDate || null,
                       wpzId: x.wpzId ?? null,
                       wpzOriginal: x.wpzOriginal ?? true,
                       wpzComment: x.wpzComment || '',
