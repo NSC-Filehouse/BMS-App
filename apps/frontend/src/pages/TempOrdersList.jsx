@@ -22,6 +22,13 @@ import { useI18n } from '../utils/i18n.jsx';
 
 const PAGE_SIZE = 12;
 
+function formatDateOnly(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('de-DE');
+}
+
 export default function TempOrdersList() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -181,7 +188,7 @@ export default function TempOrdersList() {
                       : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]
                     ).map((pos, idx) => (
                       <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ opacity: 0.7 }}>
-                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg`}
+                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg; ${formatDateOnly(pos?.deliveryDate) || '-'}`}
                       </Typography>
                     ))}
                   </Box>

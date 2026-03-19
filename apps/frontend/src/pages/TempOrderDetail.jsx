@@ -141,7 +141,6 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
             <InfoRow label={t('order_comment')} value={item.comment} />
-            <InfoRow label={t('delivery_date')} value={formatDateOnly(item.deliveryDate)} />
             <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
             <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
@@ -175,6 +174,9 @@ export default function TempOrderDetail() {
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
                     {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    {t('delivery_date')}: {formatDateOnly(pos.deliveryDate) || '-'}
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.75 }}>
                     {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('order_sale_price')}: {formatPrice(pos.price)} | {t('product_price')}: {formatPrice(pos.costPrice)}

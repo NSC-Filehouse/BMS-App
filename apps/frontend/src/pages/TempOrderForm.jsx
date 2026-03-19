@@ -54,6 +54,7 @@ function inSevenDays() {
 
 function createPositionDefaults(overrides = {}) {
   return {
+    deliveryDate: tomorrow(),
     wpzId: null,
     wpzOriginal: true,
     wpzComment: '',
@@ -213,7 +214,6 @@ export default function TempOrderForm() {
     incotermText: '',
     incotermId: '',
     packagingType: '',
-    deliveryDate: tomorrow(),
     deliveryAddress: '',
     deliveryAddressManual: false,
   });
@@ -271,7 +271,6 @@ export default function TempOrderForm() {
             incotermText: d.deliveryType || '',
             incotermId: d.deliveryTypeId ?? '',
             packagingType: d.packagingType || '',
-            deliveryDate: d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow(),
             deliveryAddress: d.deliveryAddress || '',
             deliveryAddressManual: Boolean(d.deliveryAddressChanged),
           });
@@ -288,6 +287,7 @@ export default function TempOrderForm() {
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
             ...createPositionDefaults({
+              deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : (d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow()),
               wpzId: p.wpzId ?? null,
               wpzOriginal: p.wpzOriginal ?? true,
               wpzComment: p.wpzComment || '',
@@ -315,7 +315,6 @@ export default function TempOrderForm() {
           incotermText: copyOrder?.deliveryType || '',
           incotermId: copyOrder?.deliveryTypeId ?? '',
           packagingType: copyOrder?.packagingType || '',
-          deliveryDate: copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow(),
           deliveryAddress: copyOrder?.deliveryAddress || '',
           deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged),
         }));
@@ -331,6 +330,7 @@ export default function TempOrderForm() {
           reservationInKg: x.reservationInKg ?? null,
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
+            deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow()),
             wpzId: x.wpzId ?? null,
             wpzOriginal: x.wpzOriginal ?? true,
             wpzComment: x.wpzComment || '',
@@ -581,7 +581,6 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
-    if (!form.deliveryDate) messages.push(t('validation_delivery_date_required'));
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
     if (!form.packagingType) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
@@ -591,6 +590,9 @@ export default function TempOrderForm() {
       const amount = Number(pos.amountInKg);
       const salePrice = Number(pos.price);
       const costPrice = Number(pos.costPrice);
+      if (!String(pos.deliveryDate || '').trim()) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
+      }
       if (!Number.isFinite(amount) || amount <= 0) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_amount_positive')}`);
       }
@@ -628,7 +630,6 @@ export default function TempOrderForm() {
         incotermText: form.incotermText || null,
         incotermId: form.incotermId === '' ? null : Number(form.incotermId),
         packagingType: form.packagingType || '',
-        deliveryDate: form.deliveryDate || null,
         deliveryAddress: form.deliveryAddress || null,
         deliveryAddressChanged: Boolean(form.deliveryAddressManual),
       };
@@ -639,6 +640,7 @@ export default function TempOrderForm() {
           amountInKg: Number(x.amountInKg),
           salePricePerKg: Number(x.price),
           costPricePerKg: Number(x.costPrice ?? x.price),
+          deliveryDate: x.deliveryDate || null,
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
           wpzId: x.wpzId ?? null,
@@ -786,14 +788,6 @@ export default function TempOrderForm() {
 
             <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 
-            <TextField
-              type="date"
-              label={t('delivery_date')}
-              value={form.deliveryDate || ''}
-              onChange={(e) => setForm((p) => ({ ...p, deliveryDate: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
             <TextField
               select
               label={t('incoterm_label')}
@@ -974,6 +968,14 @@ export default function TempOrderForm() {
                         </AccordionSummary>
                         <AccordionDetails sx={{ display: 'grid', gap: 1.1 }}>
                           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                            <TextField
+                              type="date"
+                              label={t('delivery_date')}
+                              value={x.deliveryDate || ''}
+                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryDate: e.target.value } : p)))}
+                              InputLabelProps={{ shrink: true }}
+                              size="small"
+                            />
                             <TextField
                               type="number"
                               label={t('product_amount')}

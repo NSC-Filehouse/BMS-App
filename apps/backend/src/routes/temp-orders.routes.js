@@ -182,6 +182,7 @@ function normalizePositionsInput(body) {
   return [{
     beNumber: body?.beNumber,
     warehouseId: body?.warehouseId,
+    deliveryDate: body?.deliveryDate,
     amountInKg: body?.amountInKg,
     pricePerKg: body?.pricePerKg,
     salePricePerKg: body?.salePricePerKg,
@@ -196,6 +197,11 @@ function normalizePositionsInput(body) {
 
 function toId(name) {
   return `[${String(name || '').replace(/]/g, ']]')}]`;
+}
+
+function hasColumn(columns, name) {
+  const target = String(name || '').trim().toLowerCase();
+  return Boolean(target) && (columns || []).some((col) => String(col || '').trim().toLowerCase() === target);
 }
 
 async function getTableColumns(database, tableName) {
@@ -399,11 +405,6 @@ async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
     throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const deliveryDate = body?.deliveryDate ? new Date(body.deliveryDate) : null;
-  if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
-    throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-  }
-
   const packagingType = asText(body?.packagingType);
   if (!packagingType) {
     throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -422,7 +423,6 @@ async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
     incotermText: incoterm?.text || null,
     incotermId: incoterm?.id || null,
     packagingType,
-    deliveryDate: deliveryDate.toISOString(),
     deliveryAddress,
     deliveryAddressChanged,
   };
@@ -444,6 +444,7 @@ async function loadOrderPositions(orderId) {
     const cWarehouse = resolveColumn(cols, ['tap_warehouse', 'taP_warehouse', 'warehouse']);
     const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
     const cEp = resolveColumn(cols, ['tap_ep', 'taP_ep', 'ep']);
+    const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
     const cReservationInKg = resolveColumn(cols, ['tap_reservation_in_kg', 'taP_reservation_in_kg', 'reservation_in_kg']);
     const cReservationDate = resolveColumn(cols, ['tap_reservation_date', 'taP_reservation_date', 'reservation_date']);
     const cAbout = resolveColumn(cols, ['tap_about', 'taP_about', 'about']);
@@ -464,6 +465,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cWarehouse, 'warehouse')},
         ${pick(cPrice, 'price')},
         ${pick(cEp, 'costPrice')},
+        ${pick(cDeliveryDate, 'deliveryDate')},
         ${pick(cReservationInKg, 'reservationInKg')},
         ${pick(cReservationDate, 'reservationDate')},
         ${pick(cAbout, 'about')},
@@ -489,16 +491,29 @@ async function loadPositionSummariesForOrders(orderIds) {
     : [];
   if (!ids.length) return new Map();
 
+  const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  if (!cols.length) return new Map();
+
+  const cOrderId = resolveColumn(cols, ['tap_ta_id', 'taP_ta_id', 'ta_id']);
+  if (!cOrderId) return new Map();
+
+  const cArticle = resolveColumn(cols, ['tap_article', 'taP_article', 'article']);
+  const cBeNumber = resolveColumn(cols, ['tap_be_number', 'taP_be_number', 'be_number']);
+  const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
+  const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
+  const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
+  const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
   const placeholders = ids.map(() => '?').join(', ');
   const sql = `
     SELECT
-      [tap_ta_id] AS orderId,
-      [tap_article] AS article,
-      [tap_be_number] AS beNumber,
-      [tap_amount_in_kg] AS amountInKg
+      ${pick(cOrderId, 'orderId')},
+      ${pick(cArticle, 'article')},
+      ${pick(cBeNumber, 'beNumber')},
+      ${pick(cAmount, 'amountInKg')},
+      ${pick(cDeliveryDate, 'deliveryDate')}
     FROM [dbo].[tbl_Temp_Auf_Position]
-    WHERE [tap_ta_id] IN (${placeholders})
-    ORDER BY [tap_ta_id] ASC, [tap_line_no] ASC
+    WHERE ${toId(cOrderId)} IN (${placeholders})
+    ORDER BY ${toId(cOrderId)} ASC${cLineNo ? `, ${toId(cLineNo)} ASC` : ''}
   `;
   const rows = await runSQLQuerySqlServer(config.sql.database, sql, ids);
   const map = new Map();
@@ -510,6 +525,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       article: asText(row.article),
       beNumber: asText(row.beNumber),
       amountInKg: row.amountInKg,
+      deliveryDate: row.deliveryDate || null,
     });
   }
   return map;
@@ -759,16 +775,24 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
+  const orderCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auftrag');
+  const positionCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
     const beNumber = asText(raw?.beNumber);
     const warehouseId = asText(raw?.warehouseId);
+    const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : (body?.deliveryDate ? new Date(body.deliveryDate) : null);
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
+    }
+    if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
+      throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -790,6 +814,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     normalizedPositions.push({
       beNumber,
       warehouseId,
+      deliveryDate: deliveryDate.toISOString(),
       amountInKg,
       salePricePerKg,
       costPricePerKg,
@@ -801,18 +826,26 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     });
   }
 
+  const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
+  if (!hasPositionDeliveryDate && deliveryDates.length > 1) {
+    throw createHttpError(500, 'Temp order position table is missing delivery date support. Apply the migration first.', { code: 'TEMP_ORDER_POSITION_DELIVERY_DATE_MISSING' });
+  }
+  if (!hasPositionDeliveryDate && !hasOrderDeliveryDate) {
+    throw createHttpError(500, 'Temp order tables are missing delivery date columns. Apply the migration first.', { code: 'TEMP_ORDER_DELIVERY_DATE_SCHEMA_MISSING' });
+  }
+
   const nowIso = new Date().toISOString();
-  const sql = `
-    INSERT INTO [dbo].[tbl_Temp_Auftrag] (
-      [ta_company_id], [ta_ClientReferenceId], [ta_client_name], [ta_client_address], [ta_client_representative],
-      [ta_comment], [ta_special_payment_condition], [ta_special_payment_text], [ta_special_payment_id], [ta_delivery_type_id], [ta_delivery_type], [ta_delivery_date], [ta_packaging_type], [ta_delivery_address], [ta_delivery_address_changed], [ta_completed],
-      [ta_Attachment], [ta_AttachmentFileName], [ta_AttachmentMimeType],
-      [ta_CreatedBy], [ta_CreateDate], [ta_LastModifiedBy], [ta_LastModifiedDate],
-      [ta_PassedTo], [ta_ReceivedFrom], [ta_PassedToUserId], [ta_ReceivedFromUserId], [ta_IsConfirmed]
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  await runSQLQuerySqlServer(config.sql.database, sql, [
+  const fallbackOrderDeliveryDate = deliveryDates[0] || null;
+  const orderInsertColumns = [
+    '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]',
+    '[ta_comment]', '[ta_special_payment_condition]', '[ta_special_payment_text]', '[ta_special_payment_id]', '[ta_delivery_type_id]', '[ta_delivery_type]',
+    ...(hasOrderDeliveryDate ? ['[ta_delivery_date]'] : []),
+    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_changed]', '[ta_completed]',
+    '[ta_Attachment]', '[ta_AttachmentFileName]', '[ta_AttachmentMimeType]',
+    '[ta_CreatedBy]', '[ta_CreateDate]', '[ta_LastModifiedBy]', '[ta_LastModifiedDate]',
+    '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
+  ];
+  const orderInsertParams = [
     companyId,
     clientReferenceId,
     clientName,
@@ -824,7 +857,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     orderLevel.specialPaymentId,
     orderLevel.incotermId,
     orderLevel.incotermText,
-    orderLevel.deliveryDate,
+    ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressChanged,
@@ -841,7 +874,14 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     null,
     null,
     0,
-  ]);
+  ];
+  const sql = `
+    INSERT INTO [dbo].[tbl_Temp_Auftrag] (
+      ${orderInsertColumns.join(', ')}
+    )
+    VALUES (${orderInsertColumns.map(() => '?').join(', ')})
+  `;
+  await runSQLQuerySqlServer(config.sql.database, sql, orderInsertParams);
 
   const createdRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
@@ -858,14 +898,19 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
+    const posInsertColumns = [
+      '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+      '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
+      ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+      '[tap_about]', '[tap_mfi]',
+      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]',
+      '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
+    ];
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
-        [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
-        [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
-        [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id],
-        [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
+        ${posInsertColumns.join(', ')}
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (${posInsertColumns.map(() => '?').join(', ')})
     `;
     try {
       await runSQLQuerySqlServer(config.sql.database, posSql, [
@@ -879,6 +924,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.costPricePerKg,
         pos.reservationInKg,
         pos.reservationDate,
+        ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
         posCtx.about || null,
         posCtx.mfi || '',
         pos.wpzOriginal,
@@ -954,6 +1000,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
+  const orderCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auftrag');
+  const positionCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
 
   const positionsInput = normalizePositionsInput(body);
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
@@ -963,11 +1013,15 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   for (const raw of positionsInput) {
     const beNumber = asText(raw?.beNumber);
     const warehouseId = asText(raw?.warehouseId);
+    const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : (body?.deliveryDate ? new Date(body.deliveryDate) : null);
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
+    }
+    if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
+      throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -989,6 +1043,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     normalizedPositions.push({
       beNumber,
       warehouseId,
+      deliveryDate: deliveryDate.toISOString(),
       amountInKg,
       salePricePerKg,
       costPricePerKg,
@@ -998,6 +1053,13 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzOriginal,
       wpzComment,
     });
+  }
+  const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
+  if (!hasPositionDeliveryDate && deliveryDates.length > 1) {
+    throw createHttpError(500, 'Temp order position table is missing delivery date support. Apply the migration first.', { code: 'TEMP_ORDER_POSITION_DELIVERY_DATE_MISSING' });
+  }
+  if (!hasPositionDeliveryDate && !hasOrderDeliveryDate) {
+    throw createHttpError(500, 'Temp order tables are missing delivery date columns. Apply the migration first.', { code: 'TEMP_ORDER_DELIVERY_DATE_SCHEMA_MISSING' });
   }
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
@@ -1010,30 +1072,34 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
+  const fallbackOrderDeliveryDate = deliveryDates[0] || null;
+  const orderAssignments = [
+    '[ta_ClientReferenceId] = ?',
+    '[ta_client_name] = ?',
+    '[ta_client_address] = ?',
+    '[ta_client_representative] = ?',
+    '[ta_comment] = ?',
+    '[ta_special_payment_condition] = ?',
+    '[ta_special_payment_text] = ?',
+    '[ta_special_payment_id] = ?',
+    '[ta_delivery_type_id] = ?',
+    '[ta_delivery_type] = ?',
+    ...(hasOrderDeliveryDate ? ['[ta_delivery_date] = ?'] : []),
+    '[ta_packaging_type] = ?',
+    '[ta_delivery_address] = ?',
+    '[ta_delivery_address_changed] = ?',
+    '[ta_LastModifiedBy] = ?',
+    '[ta_LastModifiedDate] = ?',
+  ];
+  if (attachment.shouldReplace) {
+    orderAssignments.push('[ta_Attachment] = ?', '[ta_AttachmentFileName] = ?', '[ta_AttachmentMimeType] = ?');
+  }
+  if (attachment.shouldRemove) {
+    orderAssignments.push('[ta_Attachment] = NULL', '[ta_AttachmentFileName] = NULL', '[ta_AttachmentMimeType] = NULL');
+  }
   const updateSql = `
     UPDATE [dbo].[tbl_Temp_Auftrag]
-    SET [ta_ClientReferenceId] = ?,
-        [ta_client_name] = ?,
-        [ta_client_address] = ?,
-        [ta_client_representative] = ?,
-        [ta_comment] = ?,
-        [ta_special_payment_condition] = ?,
-        [ta_special_payment_text] = ?,
-        [ta_special_payment_id] = ?,
-        [ta_delivery_type_id] = ?,
-        [ta_delivery_type] = ?,
-        [ta_delivery_date] = ?,
-        [ta_packaging_type] = ?,
-        [ta_delivery_address] = ?,
-        [ta_delivery_address_changed] = ?,
-        [ta_LastModifiedBy] = ?,
-        [ta_LastModifiedDate] = ?${attachment.shouldReplace ? `,
-        [ta_Attachment] = ?,
-        [ta_AttachmentFileName] = ?,
-        [ta_AttachmentMimeType] = ?` : ''}${attachment.shouldRemove ? `,
-        [ta_Attachment] = NULL,
-        [ta_AttachmentFileName] = NULL,
-        [ta_AttachmentMimeType] = NULL` : ''}
+    SET ${orderAssignments.join(',\n        ')}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -1048,7 +1114,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     orderLevel.specialPaymentId,
     orderLevel.incotermId,
     orderLevel.incotermText,
-    orderLevel.deliveryDate,
+    ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressChanged,
@@ -1070,14 +1136,19 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
+    const posInsertColumns = [
+      '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+      '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
+      ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+      '[tap_about]', '[tap_mfi]',
+      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]',
+      '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
+    ];
     const posSql = `
       INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
-        [tap_ta_id], [tap_line_no], [tap_be_number], [tap_article], [tap_amount_in_kg], [tap_warehouse], [tap_price],
-        [tap_ep], [tap_reservation_in_kg], [tap_reservation_date], [tap_about], [tap_mfi],
-        [tap_wpz_original], [tap_wpz_comment], [tap_wpz_id],
-        [tap_CreatedBy], [tap_CreateDate], [tap_LastModifiedBy], [tap_LastModifiedDate]
+        ${posInsertColumns.join(', ')}
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (${posInsertColumns.map(() => '?').join(', ')})
     `;
     await runSQLQuerySqlServer(config.sql.database, posSql, [
       id,
@@ -1090,6 +1161,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       pos.costPricePerKg,
       pos.reservationInKg,
       pos.reservationDate,
+      ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
       posCtx.about || null,
       posCtx.mfi || '',
       pos.wpzOriginal,
