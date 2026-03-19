@@ -382,15 +382,29 @@ async function loadPaymentTextById(paymentId, lang) {
   };
 }
 
+async function loadCustomerPaymentDefaultId(database, clientReferenceId) {
+  const id = asText(clientReferenceId);
+  if (!id) return null;
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1 [kd_Zahltext] AS paymentTextId
+    FROM [dbo].[tblKunden]
+    WHERE [kd_KdNR] = ?
+  `, [id]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const paymentTextId = Number(row?.paymentTextId);
+  return Number.isFinite(paymentTextId) && paymentTextId > 0 ? paymentTextId : null;
+}
+
 async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
   const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
-  const specialPaymentIdInput = body?.specialPaymentId;
-  let specialPayment = null;
-  if (specialPaymentCondition) {
-    specialPayment = await loadPaymentTextById(specialPaymentIdInput, lang);
-    if (!specialPayment) {
-      throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
-    }
+  const customerPaymentDefaultId = await loadCustomerPaymentDefaultId(req.database, body?.clientReferenceId);
+  const requestedPaymentId = asInt(body?.specialPaymentId, 0) || null;
+  const effectivePaymentId = specialPaymentCondition
+    ? (requestedPaymentId || customerPaymentDefaultId)
+    : (customerPaymentDefaultId || requestedPaymentId);
+  const specialPayment = await loadPaymentTextById(effectivePaymentId, lang);
+  if (!specialPayment) {
+    throw createHttpError(400, 'Invalid special payment text.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
   const incotermIdInput = body?.incotermId ?? body?.deliveryTypeId;

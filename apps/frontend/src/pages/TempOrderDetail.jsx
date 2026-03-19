@@ -145,12 +145,10 @@ export default function TempOrderDetail() {
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
             <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
-            {item.specialPaymentCondition && (
-              <InfoRow
-                label={t('special_payment_text_label')}
-                value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
-              />
-            )}
+            <InfoRow
+              label={t('special_payment_text_label')}
+              value={item.specialPaymentText ? `${item.specialPaymentText}${item.specialPaymentId ? ` (#${item.specialPaymentId})` : ''}` : '-'}
+            />
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" sx={{ mb: 1.25 }}>

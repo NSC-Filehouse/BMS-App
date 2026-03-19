@@ -225,6 +225,31 @@ export default function TempOrderForm() {
     const hit = paymentTextOptions.find((x) => Number(x.id) === idNum);
     return hit ? { id: idNum, text: String(hit.text || '') } : null;
   }, [paymentTextOptions]);
+  const loadCustomerPaymentDefault = React.useCallback(async (clientReferenceId) => {
+    const id = String(clientReferenceId || '').trim();
+    if (!id) {
+      setCustomerPaymentDefaultId('');
+      setCustomerPaymentDefaultText('');
+      return { id: '', text: '' };
+    }
+    try {
+      const detail = await apiRequest(`/customers/${encodeURIComponent(id)}`);
+      const paymentTextIdRaw = detail?.data?.kd_Zahltext;
+      const paymentTextIdParsed = Number(paymentTextIdRaw);
+      const paymentTextId = Number.isFinite(paymentTextIdParsed) && paymentTextIdParsed > 0
+        ? paymentTextIdParsed
+        : '';
+      const resolved = paymentTextId ? resolvePaymentTextById(paymentTextId) : null;
+      const next = { id: paymentTextId, text: resolved?.text || '' };
+      setCustomerPaymentDefaultId(next.id);
+      setCustomerPaymentDefaultText(next.text);
+      return next;
+    } catch {
+      setCustomerPaymentDefaultId('');
+      setCustomerPaymentDefaultText('');
+      return { id: '', text: '' };
+    }
+  }, [resolvePaymentTextById]);
   const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
     const id = String(clientReferenceId || '').trim();
     if (!id) {
@@ -274,6 +299,7 @@ export default function TempOrderForm() {
             deliveryAddress: d.deliveryAddress || '',
             deliveryAddressManual: Boolean(d.deliveryAddressChanged),
           });
+          await loadCustomerPaymentDefault(d.clientReferenceId || '');
           await loadDeliveryAddresses(d.clientReferenceId || '');
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
@@ -318,6 +344,7 @@ export default function TempOrderForm() {
           deliveryAddress: copyOrder?.deliveryAddress || '',
           deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged),
         }));
+        await loadCustomerPaymentDefault(copyOrder?.clientReferenceId || '');
         await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
         setPositions(copyPositions.map((x, idx) => ({
           id: x.id || `${x.beNumber || 'pos'}-${idx}`,
@@ -377,26 +404,31 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t, loadDeliveryAddresses, isCopyCreate, copyPositions, copyOrder]);
+  }, [id, isEdit, source, sourceItems, t, loadCustomerPaymentDefault, loadDeliveryAddresses, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
-    if (!form.specialPaymentCondition) return;
     const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);
     if (!Number.isFinite(targetId) || targetId <= 0) return;
     if (!paymentTextOptions.length) return;
     const resolved = resolvePaymentTextById(targetId);
     if (!resolved) return;
-    if (Number(form.specialPaymentId) === resolved.id && String(form.specialPaymentText || '') === resolved.text) return;
-    setForm((prev) => ({
-      ...prev,
-      specialPaymentId: resolved.id,
-      specialPaymentText: resolved.text,
-    }));
+    const paymentTextChanged = String(form.specialPaymentText || '') !== resolved.text;
+    const paymentIdChanged = Number(form.specialPaymentId) !== resolved.id;
+    const defaultTextChanged = Number(customerPaymentDefaultId) === resolved.id && String(customerPaymentDefaultText || '') !== resolved.text;
+    if (!paymentTextChanged && !paymentIdChanged && !defaultTextChanged) return;
+    if (defaultTextChanged) setCustomerPaymentDefaultText(resolved.text);
+    if (paymentIdChanged || paymentTextChanged) {
+      setForm((prev) => ({
+        ...prev,
+        specialPaymentId: resolved.id,
+        specialPaymentText: resolved.text,
+      }));
+    }
   }, [
-    form.specialPaymentCondition,
     form.specialPaymentId,
     form.specialPaymentText,
     customerPaymentDefaultId,
+    customerPaymentDefaultText,
     paymentTextOptions,
     resolvePaymentTextById,
   ]);
@@ -492,29 +524,23 @@ export default function TempOrderForm() {
       deliveryAddressManual: false,
     }));
 
-    const customerPaymentIdRaw = customer?.kd_Zahltext;
-    const customerPaymentIdParsed = Number(customerPaymentIdRaw);
-    const customerPaymentId = Number.isFinite(customerPaymentIdParsed) && customerPaymentIdParsed > 0
-      ? customerPaymentIdParsed
-      : '';
-    const resolvedDefault = customerPaymentId ? resolvePaymentTextById(customerPaymentId) : null;
-    setCustomerPaymentDefaultId(customerPaymentId);
-    setCustomerPaymentDefaultText(resolvedDefault ? resolvedDefault.text : '');
-
+    const customerPayment = await loadCustomerPaymentDefault(clientReferenceId);
     setForm((prev) => {
-      if (!prev.specialPaymentCondition) return prev;
-      if (!customerPaymentId) {
+      if (!prev.specialPaymentCondition) {
         return {
           ...prev,
-          specialPaymentId: '',
-          specialPaymentText: '',
+          specialPaymentId: customerPayment.id || '',
+          specialPaymentText: customerPayment.text || '',
         };
       }
-      return {
-        ...prev,
-        specialPaymentId: customerPaymentId,
-        specialPaymentText: resolvedDefault?.text || '',
-      };
+      if (!prev.specialPaymentId && customerPayment.id) {
+        return {
+          ...prev,
+          specialPaymentId: customerPayment.id,
+          specialPaymentText: customerPayment.text || '',
+        };
+      }
+      return prev;
     });
 
     await loadDeliveryAddresses(clientReferenceId);
@@ -584,7 +610,7 @@ export default function TempOrderForm() {
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
     if (!form.packagingType) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
-    if (form.specialPaymentCondition && !form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
+    if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
       const amount = Number(pos.amountInKg);
@@ -880,8 +906,10 @@ export default function TempOrderForm() {
                       return {
                         ...p,
                         specialPaymentCondition: false,
-                        specialPaymentText: '',
-                        specialPaymentId: '',
+                        specialPaymentId: customerPaymentDefaultId || p.specialPaymentId || '',
+                        specialPaymentText: customerPaymentDefaultId
+                          ? (resolvePaymentTextById(customerPaymentDefaultId)?.text || customerPaymentDefaultText || '')
+                          : (p.specialPaymentText || ''),
                       };
                     }
                     if (customerPaymentDefaultId) {
@@ -902,7 +930,7 @@ export default function TempOrderForm() {
               )}
               label={t('special_payment_condition')}
             />
-            {Boolean(form.specialPaymentCondition) && (
+            {(Boolean(form.specialPaymentCondition) || !customerPaymentDefaultId) && (
               <TextField
                 select
                 label={t('special_payment_text_label')}
