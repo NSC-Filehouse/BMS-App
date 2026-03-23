@@ -28,6 +28,12 @@ function isFilehouseEmail(email) {
   return value.endsWith('filehouse') || value.endsWith('@filehouse') || value.includes('@filehouse.');
 }
 
+function isFrupackMandant(mandant) {
+  const name = asText(mandant?.name).toLowerCase();
+  const shortName = asText(mandant?.shortName).toLowerCase();
+  return name.includes('frupack') || shortName.includes('frupack');
+}
+
 async function getPushEligibleMandantsForUser(email) {
   const normalizedEmail = normalizeEmail(email);
   const [mandants, identity] = await Promise.all([
@@ -36,12 +42,29 @@ async function getPushEligibleMandantsForUser(email) {
   ]);
 
   const mainCompanyId = asCompanyId(identity?.mainCompanyId);
+  const isFilehouseUser = isFilehouseEmail(normalizedEmail);
+
   if (!mainCompanyId) {
-    return mandants;
+    if (!isFilehouseUser) return mandants;
+    const frupackMandants = mandants.filter((item) => isFrupackMandant(item));
+    return frupackMandants.length ? frupackMandants : mandants;
   }
 
-  const primaryMandants = mandants.filter((item) => asCompanyId(item.firmaId) === mainCompanyId);
-  return primaryMandants.length ? primaryMandants : mandants;
+  if (!isFilehouseUser) {
+    const primaryMandants = mandants.filter((item) => asCompanyId(item.firmaId) === mainCompanyId);
+    return primaryMandants.length ? primaryMandants : mandants;
+  }
+
+  const allowedCompanyIds = new Set([mainCompanyId]);
+  mandants.forEach((item) => {
+    if (isFrupackMandant(item)) {
+      const companyId = asCompanyId(item.firmaId);
+      if (companyId) allowedCompanyIds.add(companyId);
+    }
+  });
+
+  const eligibleMandants = mandants.filter((item) => allowedCompanyIds.has(asCompanyId(item.firmaId)));
+  return eligibleMandants.length ? eligibleMandants : mandants;
 }
 
 async function canUserReceivePushForCompany(email, companyId) {
@@ -49,13 +72,8 @@ async function canUserReceivePushForCompany(email, companyId) {
   const targetCompanyId = asCompanyId(companyId);
   if (!normalizedEmail || !targetCompanyId) return false;
 
-  const identity = await getUserIdentityByEmail(normalizedEmail).catch(() => null);
-  const mainCompanyId = asCompanyId(identity?.mainCompanyId);
-  if (!mainCompanyId) {
-    return true;
-  }
-
-  return mainCompanyId === targetCompanyId;
+  const eligibleMandants = await getPushEligibleMandantsForUser(normalizedEmail);
+  return eligibleMandants.some((item) => asCompanyId(item.firmaId) === targetCompanyId);
 }
 
 function ensureVapidConfigured() {
