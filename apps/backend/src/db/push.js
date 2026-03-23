@@ -3,6 +3,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
 const { getMandantsForUser } = require('./databases');
+const { getUserIdentityByEmail } = require('./users');
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -17,9 +18,44 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function asCompanyId(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function isFilehouseEmail(email) {
   const value = normalizeEmail(email);
   return value.endsWith('filehouse') || value.endsWith('@filehouse') || value.includes('@filehouse.');
+}
+
+async function getPushEligibleMandantsForUser(email) {
+  const normalizedEmail = normalizeEmail(email);
+  const [mandants, identity] = await Promise.all([
+    getMandantsForUser(normalizedEmail),
+    getUserIdentityByEmail(normalizedEmail).catch(() => null),
+  ]);
+
+  const mainCompanyId = asCompanyId(identity?.mainCompanyId);
+  if (!mainCompanyId) {
+    return mandants;
+  }
+
+  const primaryMandants = mandants.filter((item) => asCompanyId(item.firmaId) === mainCompanyId);
+  return primaryMandants.length ? primaryMandants : mandants;
+}
+
+async function canUserReceivePushForCompany(email, companyId) {
+  const normalizedEmail = normalizeEmail(email);
+  const targetCompanyId = asCompanyId(companyId);
+  if (!normalizedEmail || !targetCompanyId) return false;
+
+  const identity = await getUserIdentityByEmail(normalizedEmail).catch(() => null);
+  const mainCompanyId = asCompanyId(identity?.mainCompanyId);
+  if (!mainCompanyId) {
+    return true;
+  }
+
+  return mainCompanyId === targetCompanyId;
 }
 
 function ensureVapidConfigured() {
@@ -140,10 +176,10 @@ async function deactivatePushSubscription(endpoint) {
 
 async function getPushSettingsForUser(email) {
   const normalizedEmail = normalizeEmail(email);
-  const mandants = await getMandantsForUser(normalizedEmail);
+  const mandants = await getPushEligibleMandantsForUser(normalizedEmail);
   const companyIds = mandants
-    .map((item) => Number(item.firmaId))
-    .filter((value) => Number.isFinite(value));
+    .map((item) => asCompanyId(item.firmaId))
+    .filter(Boolean);
 
   const rows = companyIds.length
     ? await runSQLQuerySqlServer(config.sql.database, `
@@ -182,14 +218,14 @@ async function getPushSettingsForUser(email) {
 
 async function savePushSettingsForUser(email, settings) {
   const normalizedEmail = normalizeEmail(email);
-  const mandants = await getMandantsForUser(normalizedEmail);
+  const mandants = await getPushEligibleMandantsForUser(normalizedEmail);
   const allowedByCompanyId = new Map(
     mandants
       .map((item) => ({
-        companyId: Number(item.firmaId),
+        companyId: asCompanyId(item.firmaId),
         name: asText(item.name),
       }))
-      .filter((item) => Number.isFinite(item.companyId))
+      .filter((item) => item.companyId)
       .map((item) => [item.companyId, item]),
   );
 
@@ -271,6 +307,9 @@ async function sendPushNotificationsForTimelineEntries(entries) {
       for (const row of (Array.isArray(targetRows) ? targetRows : [])) {
         const targetEmail = normalizeEmail(row.userEmail);
         const sourceEmail = normalizeEmail(entry.userEmail);
+        if (!(await canUserReceivePushForCompany(targetEmail, companyId))) {
+          continue;
+        }
         if (targetEmail && sourceEmail && targetEmail === sourceEmail && !isFilehouseEmail(sourceEmail)) {
           continue;
         }
