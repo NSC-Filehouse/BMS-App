@@ -546,6 +546,9 @@ export default function CustomerDetail() {
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.map((invoice, idx) => (
                   <Card key={`${invoice.id || idx}-invoice`} variant="outlined">
                     <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        {t('invoice_number_label')}: {invoice.invoiceNumber || '-'}
+                      </Typography>
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>

@@ -661,6 +661,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
 
   const sql = `
     SELECT
+      [re_RgNummer] AS invoiceNumber,
       [re_rgDatum] AS invoiceDate,
       [re_RGfaellig] AS dueDate,
       [re_Bezahlt] AS paidFlag,
@@ -697,6 +698,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     const invoiceDate = row.invoiceDate || null;
     return {
       id: `${invoiceDate || 'inv'}-${idx + 1}`,
+      invoiceNumber: toText(row.invoiceNumber),
       invoiceDate,
       dueDate: row.dueDate || null,
       isPaid: paidFlag !== 0,
