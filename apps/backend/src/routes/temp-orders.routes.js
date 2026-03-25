@@ -20,6 +20,7 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   'image/heif',
 ]);
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif'];
+const MULTIPART_MOJIBAKE_PATTERN = /(?:Ã.|Â.|â.|ð|Ð|Ñ)/;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,6 +62,37 @@ function normalizeDir(dir) {
 function asText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function normalizeAttachmentFileName(value) {
+  const text = asText(value);
+  if (!text) return '';
+  if (!MULTIPART_MOJIBAKE_PATTERN.test(text)) {
+    return text;
+  }
+
+  try {
+    const decoded = Buffer.from(text, 'latin1').toString('utf8').replace(/\0/g, '').trim();
+    if (!decoded || decoded.includes('\uFFFD')) {
+      return text;
+    }
+    return decoded;
+  } catch {
+    return text;
+  }
+}
+
+function buildContentDisposition(fileName, fallbackName) {
+  const resolved = normalizeAttachmentFileName(fileName) || fallbackName;
+  const asciiFallback = resolved
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\r\n]/g, '')
+    || fallbackName;
+  const encoded = encodeURIComponent(resolved)
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `inline; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function asBit(value, fallback = 0) {
@@ -108,7 +140,7 @@ function normalizeAttachmentInput(req) {
     shouldReplace: true,
     shouldRemove: false,
     buffer: file.buffer,
-    fileName: asText(file.originalname) || 'attachment',
+    fileName: normalizeAttachmentFileName(file.originalname) || 'attachment',
     mimeType: asText(file.mimetype) || 'application/octet-stream',
   };
 }
@@ -156,7 +188,7 @@ function mapTempOrderRow(row) {
     receivedFromUserId: row.ta_ReceivedFromUserId,
     isConfirmed: Boolean(row.ta_IsConfirmed),
     hasAttachment: row.ta_Attachment !== null && row.ta_Attachment !== undefined,
-    attachmentFileName: asText(row.ta_AttachmentFileName),
+    attachmentFileName: normalizeAttachmentFileName(row.ta_AttachmentFileName),
     attachmentMimeType: asText(row.ta_AttachmentMimeType),
   };
 }
@@ -756,7 +788,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
   }
 
   res.setHeader('Content-Type', asText(row.mimeType) || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `inline; filename="${String(asText(row.fileName) || `temp-order-${id}-attachment`).replace(/"/g, '')}"`);
+  res.setHeader('Content-Disposition', buildContentDisposition(row.fileName, `temp-order-${id}-attachment`));
   res.send(row.attachment);
 }));
 
