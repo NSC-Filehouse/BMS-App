@@ -5,6 +5,7 @@ import {
   AccordionSummary,
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
@@ -26,6 +27,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { setSelectedCustomer } from '../utils/customerSelection.js';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -237,6 +239,19 @@ export default function CustomerDetail() {
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
+  const handleSelectCustomer = React.useCallback(() => {
+    const selected = setSelectedCustomer({
+      id,
+      name,
+      address,
+      representative: salesRep,
+    });
+    if (!selected) return;
+    const afterSelect = location.state?.afterSelect;
+    if (afterSelect?.to) {
+      navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
+    }
+  }, [address, id, location.state, name, navigate, salesRep]);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
@@ -348,6 +363,15 @@ export default function CustomerDetail() {
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {name || String(id)}
         </Typography>
+        <Button
+          variant="contained"
+          size="small"
+          sx={{ ml: 'auto', flexShrink: 0 }}
+          disabled={!item}
+          onClick={handleSelectCustomer}
+        >
+          {t('select_label')}
+        </Button>
       </Box>
 
       {loading && (
@@ -553,7 +577,14 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
                       <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
                       <Typography variant="caption">
-                        {t('amount_label')}: {formatMoney(invoice.amount)} ({invoice.isPaid ? t('invoice_status_paid') : t('invoice_status_open')})
+                        {t('amount_label')}: {formatMoney(invoice.amount)} (
+                        <Box
+                          component="span"
+                          sx={invoice.isPaid ? { color: 'success.main', fontWeight: 700 } : undefined}
+                        >
+                          {invoice.isPaid ? t('invoice_status_paid') : t('invoice_status_open')}
+                        </Box>
+                        )
                       </Typography>
                       {invoice.reminderStageText && (
                         <Typography

@@ -23,6 +23,7 @@ import {
   updateOrderCartSalePrice,
   updateOrderCartItem,
 } from '../utils/orderCart.js';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
 
 function formatPrice(value) {
   const n = Number(value);
@@ -233,21 +234,33 @@ export default function OrderCart() {
                 }
                 setFieldErrors({});
                 setError('');
+                const sourceItems = items.map((x) => ({
+                  id: x.id,
+                  article: x.article,
+                  beNumber: x.beNumber,
+                  warehouseId: x.warehouseId,
+                  amountInKg: Number(x.quantityKg),
+                  salePrice: Number(x.salePrice),
+                  costPrice: Number(x.acquisitionPrice),
+                  deliveryDate: x.deliveryDate || null,
+                  wpzId: x.wpzId ?? null,
+                  wpzOriginal: x.wpzOriginal ?? true,
+                  wpzComment: x.wpzComment || '',
+                }));
+                if (!getSelectedCustomer()?.id) {
+                  navigate('/customers', {
+                    state: {
+                      afterSelect: {
+                        to: '/temp-orders/new',
+                        state: { sourceItems },
+                      },
+                    },
+                  });
+                  return;
+                }
                 navigate('/temp-orders/new', {
                   state: {
-                    sourceItems: items.map((x) => ({
-                      id: x.id,
-                      article: x.article,
-                      beNumber: x.beNumber,
-                      warehouseId: x.warehouseId,
-                      amountInKg: Number(x.quantityKg),
-                      salePrice: Number(x.salePrice),
-                      costPrice: Number(x.acquisitionPrice),
-                      deliveryDate: x.deliveryDate || null,
-                      wpzId: x.wpzId ?? null,
-                      wpzOriginal: x.wpzOriginal ?? true,
-                      wpzComment: x.wpzComment || '',
-                    })),
+                    sourceItems,
                   },
                 });
               }}

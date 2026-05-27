@@ -27,6 +27,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import { apiRequest } from '../api/client.js';
 import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
+import { CUSTOMER_SELECTION_CHANGED, clearSelectedCustomer, getSelectedCustomer } from '../utils/customerSelection.js';
 import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 
 const drawerWidth = 260;
@@ -61,12 +62,24 @@ export default function Layout() {
   const [userName, setUserName] = React.useState('');
   const [canSwitchMandant, setCanSwitchMandant] = React.useState(false);
   const [reminderCustomersCount, setReminderCustomersCount] = React.useState(0);
+  const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const mandant = getMandant();
   const navigate = useNavigate();
   const { lang, setLang, t } = useI18n();
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
+
+  React.useEffect(() => {
+    const syncCustomer = () => setSelectedCustomerState(getSelectedCustomer());
+    window.addEventListener(CUSTOMER_SELECTION_CHANGED, syncCustomer);
+    window.addEventListener('storage', syncCustomer);
+    syncCustomer();
+    return () => {
+      window.removeEventListener(CUSTOMER_SELECTION_CHANGED, syncCustomer);
+      window.removeEventListener('storage', syncCustomer);
+    };
+  }, [mandant]);
 
   React.useEffect(() => {
     let alive = true;
@@ -189,6 +202,9 @@ export default function Layout() {
         <Typography variant="body2" sx={{ mb: 1 }}>
           {t('mandant_label')}: <b>{mandant || '-'}</b>
         </Typography>
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          {t('order_customer')}: <b>{selectedCustomer?.name || selectedCustomer?.id || '-'}</b>
+        </Typography>
         <Typography variant="body2" sx={{ mb: 0.5 }}>
           {t('start_user')}: <b>{userName || '-'}</b>
         </Typography>
@@ -204,6 +220,7 @@ export default function Layout() {
             variant="outlined"
             fullWidth
             onClick={() => {
+              clearSelectedCustomer();
               clearMandant();
               navigate('/');
               closeDrawer();
@@ -238,9 +255,14 @@ export default function Layout() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
 
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
-          </Typography>
+          <Box sx={{ textAlign: 'right', minWidth: 0 }}>
+            <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: { xs: 150, sm: 340 } }}>
+              {`${t('order_customer')}: ${selectedCustomer?.name || selectedCustomer?.id || '-'}`}
+            </Typography>
+          </Box>
         </Toolbar>
       </AppBar>
 

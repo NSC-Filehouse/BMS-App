@@ -63,7 +63,7 @@ export default function Start() {
 
         if (allowed.length === 1) {
           setMandant(allowed[0]);
-          navigate('/vl');
+          navigate('/customers');
         }
       } catch (e) {
         if (!alive) return;
@@ -133,7 +133,7 @@ export default function Start() {
                   selected={m === selected}
                   onClick={() => {
                     setMandant(m);
-                    navigate('/vl');
+                    navigate('/customers');
                   }}
                 >
                   <ListItemText primary={m} />
@@ -145,7 +145,7 @@ export default function Start() {
               <Button
                 variant="contained"
                 disabled={!selected}
-                onClick={() => navigate('/vl')}
+                onClick={() => navigate('/customers')}
               >
                 {t('start_continue')}
               </Button>

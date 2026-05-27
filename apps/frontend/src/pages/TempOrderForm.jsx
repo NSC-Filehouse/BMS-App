@@ -31,6 +31,11 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { clearOrderCart } from '../utils/orderCart.js';
+import {
+  getSelectedCustomer as getStoredSelectedCustomer,
+  setSelectedCustomer as storeSelectedCustomer,
+  clearSelectedCustomer as clearStoredSelectedCustomer,
+} from '../utils/customerSelection.js';
 
 function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
@@ -501,9 +506,10 @@ export default function TempOrderForm() {
     return () => clearTimeout(h);
   }, [customerQuery]);
 
-  const onChooseCustomer = async (customer) => {
+  const onChooseCustomer = React.useCallback(async (customer, opts = {}) => {
     setSelectedCustomer(customer);
     if (!customer) {
+      clearStoredSelectedCustomer();
       setDeliveryAddressOptions([]);
       setCustomerPaymentDefaultId('');
       setCustomerPaymentDefaultText('');
@@ -514,6 +520,15 @@ export default function TempOrderForm() {
     const clientReferenceId = String(customer.kd_KdNR || '').trim();
     const clientName = String(customer.kd_Name1 || customer.kd_Name2 || '').trim();
     const clientAddress = buildAddress(customer);
+
+    if (!opts.skipStore) {
+      storeSelectedCustomer({
+        id: clientReferenceId,
+        name: clientName,
+        address: clientAddress,
+        representative: customer.kd_Aussendienst || '',
+      });
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -556,7 +571,37 @@ export default function TempOrderForm() {
     } catch {
       setCustomerReminderInvoicesCount(0);
     }
-  };
+  }, [loadCustomerPaymentDefault, loadDeliveryAddresses]);
+
+  React.useEffect(() => {
+    if (isEdit || isCopyCreate || form.clientReferenceId) return;
+    let alive = true;
+    (async () => {
+      const storedCustomer = getStoredSelectedCustomer();
+      if (!storedCustomer?.id) return;
+      try {
+        const detail = await apiRequest(`/customers/${encodeURIComponent(storedCustomer.id)}`);
+        if (!alive) return;
+        await onChooseCustomer(detail?.data || {
+          kd_KdNR: storedCustomer.id,
+          kd_Name1: storedCustomer.name,
+          kd_Strasse: storedCustomer.address,
+          kd_Aussendienst: storedCustomer.representative,
+        }, { skipStore: true });
+        setCustomerQuery(storedCustomer.name || storedCustomer.id);
+      } catch {
+        if (!alive) return;
+        await onChooseCustomer({
+          kd_KdNR: storedCustomer.id,
+          kd_Name1: storedCustomer.name,
+          kd_Strasse: storedCustomer.address,
+          kd_Aussendienst: storedCustomer.representative,
+        }, { skipStore: true });
+        setCustomerQuery(storedCustomer.name || storedCustomer.id);
+      }
+    })();
+    return () => { alive = false; };
+  }, [form.clientReferenceId, isCopyCreate, isEdit, onChooseCustomer]);
 
   const deleteOrder = React.useCallback(async () => {
     if (!isEdit || !id) return;

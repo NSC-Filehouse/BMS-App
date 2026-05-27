@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -21,6 +22,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -31,6 +33,14 @@ function getCustomerName(row) {
 function isValidCustomerName(name) {
   const trimmed = String(name || '').trim();
   return trimmed.length >= 3;
+}
+
+function buildAddress(row) {
+  const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
+  const plz = row?.kd_PLZ ? String(row.kd_PLZ).trim() : '';
+  const ort = row?.kd_Ort ? String(row.kd_Ort).trim() : '';
+  const lk = row?.kd_LK ? String(row.kd_LK).trim() : '';
+  return [street, [plz, ort].filter(Boolean).join(' '), lk].filter(Boolean).join(', ');
 }
 
 export default function CustomersList() {
@@ -46,12 +56,15 @@ export default function CustomersList() {
   const [searchField, setSearchField] = React.useState('name');
   const [reminderOnly, setReminderOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
+  const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
   const searchFieldRef = React.useRef(searchField);
   const reminderOnlyRef = React.useRef(reminderOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
+  const touchRef = React.useRef({ x: 0, y: 0 });
+  const swipedRef = React.useRef(false);
 
   React.useEffect(() => {
     metaRef.current = meta;
@@ -145,6 +158,20 @@ export default function CustomersList() {
     }, 300);
     return () => clearTimeout(handle);
   }, [q, searchField, reminderOnly, load]);
+
+  const selectCustomerRow = React.useCallback((row) => {
+    const next = setSelectedCustomer({
+      id: row?.kd_KdNR,
+      name: getCustomerName(row),
+      address: buildAddress(row),
+      representative: row?.kd_Aussendienst || '',
+    });
+    setSelectedCustomerState(next);
+    const afterSelect = location.state?.afterSelect;
+    if (afterSelect?.to) {
+      navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
+    }
+  }, [location.state, navigate]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -259,18 +286,48 @@ export default function CustomersList() {
           {items.map((row) => {
             const id = row?.kd_KdNR;
             const name = getCustomerName(row);
+            const isSelected = selectedCustomer?.id && String(selectedCustomer.id) === String(id);
             return (
               <Card
                 key={id ?? name}
                 sx={{
                   borderRadius: 2,
-                  border: '1px solid rgba(0,0,0,0.08)',
+                  border: isSelected ? '2px solid' : '1px solid rgba(0,0,0,0.08)',
+                  borderColor: isSelected ? 'primary.main' : 'rgba(0,0,0,0.08)',
                   boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
                   cursor: 'pointer',
                 }}
-                onClick={() => navigate(`/customers/${encodeURIComponent(id)}`, {
-                  state: { fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly } },
-                })}
+                onTouchStart={(e) => {
+                  const touch = e.changedTouches?.[0];
+                  touchRef.current = {
+                    x: Number(touch?.clientX || 0),
+                    y: Number(touch?.clientY || 0),
+                  };
+                  swipedRef.current = false;
+                }}
+                onTouchEnd={(e) => {
+                  const touch = e.changedTouches?.[0];
+                  const x = Number(touch?.clientX || 0);
+                  const y = Number(touch?.clientY || 0);
+                  const dx = x - touchRef.current.x;
+                  const dy = y - touchRef.current.y;
+                  if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy)) {
+                    swipedRef.current = true;
+                    selectCustomerRow(row);
+                  }
+                }}
+                onClick={() => {
+                  if (swipedRef.current) {
+                    swipedRef.current = false;
+                    return;
+                  }
+                  navigate(`/customers/${encodeURIComponent(id)}`, {
+                    state: {
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly },
+                      afterSelect: location.state?.afterSelect || null,
+                    },
+                  });
+                }}
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, pr: 2 }}>
@@ -284,7 +341,7 @@ export default function CustomersList() {
                     )}
                   </Box>
                   <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
-                    <ChevronRightIcon />
+                    {isSelected ? <CheckCircleIcon color="primary" /> : <ChevronRightIcon />}
                   </Box>
                 </CardContent>
               </Card>

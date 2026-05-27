@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import { LanguageProvider } from './utils/i18n.jsx';
 import MandantGuard from './components/MandantGuard.jsx';
+import CustomerGuard from './components/CustomerGuard.jsx';
 
 import Start from './pages/Start.jsx';
 
@@ -145,7 +146,9 @@ export default function App() {
           path="/temp-orders/new"
           element={
             <MandantGuard>
-              <TempOrderForm />
+              <CustomerGuard>
+                <TempOrderForm />
+              </CustomerGuard>
             </MandantGuard>
           }
         />
