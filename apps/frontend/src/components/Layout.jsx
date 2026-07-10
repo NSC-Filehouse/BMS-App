@@ -23,6 +23,7 @@ import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
 import HistoryIcon from '@mui/icons-material/History';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 import { apiRequest } from '../api/client.js';
 import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
@@ -65,7 +66,7 @@ export default function Layout() {
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const mandant = getMandant();
   const navigate = useNavigate();
-  const { lang, setLang, t } = useI18n();
+  const { t } = useI18n();
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
@@ -198,6 +199,10 @@ export default function Layout() {
         <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
       </List>
       <Divider />
+      <List>
+        <NavItem to="/settings" label={t('settings_title')} icon={<SettingsIcon />} onClick={closeDrawer} />
+      </List>
+      <Divider />
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
           {t('mandant_label')}: <b>{mandant || '-'}</b>
@@ -211,10 +216,6 @@ export default function Layout() {
         <Typography variant="body2" sx={{ mb: 2 }}>
           {t('start_email')}: <b>{email || '-'}</b>
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <IconButton size="small" aria-label="de" onClick={() => setLang('de')} sx={{ border: lang === 'de' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/de.png`} alt="DE" sx={{ width: 24, height: 24 }} /></IconButton>
-          <IconButton size="small" aria-label="en" onClick={() => setLang('en')} sx={{ border: lang === 'en' ? '1px solid rgba(0,0,0,0.3)' : '1px solid transparent' }}><Box component="img" src={`${import.meta.env.BASE_URL}flags/en.png`} alt="EN" sx={{ width: 24, height: 24 }} /></IconButton>
-        </Box>
         {canSwitchMandant && (
           <Button
             variant="outlined"

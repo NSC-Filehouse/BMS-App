@@ -23,7 +23,7 @@ function isFilehouseEmail(email) {
 
 function buildTenantDatabaseName(shortName) {
   const normalized = String(shortName || '').trim().toUpperCase();
-  return normalized ? `BMS_${normalized}` : '';
+  return normalized ? `BMS.${normalized}` : '';
 }
 
 function escIdentifier(value) {

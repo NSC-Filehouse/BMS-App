@@ -7,7 +7,7 @@ const pools = new Map();
 function sanitizeDatabaseName(databaseName) {
   const value = String(databaseName || '').trim();
   if (!value) return '';
-  if (!/^[A-Za-z0-9_]+$/.test(value)) {
+  if (!/^[A-Za-z0-9_.]+$/.test(value)) {
     throw new Error(`Invalid SQL database name: ${value}`);
   }
   return value;

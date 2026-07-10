@@ -10,6 +10,10 @@ import {
   CardContent,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   IconButton,
   Radio,
@@ -28,6 +32,13 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { setSelectedCustomer } from '../utils/customerSelection.js';
+import {
+  MAP_PROVIDER_APPLE,
+  MAP_PROVIDER_GOOGLE,
+  buildMapUrl,
+  getMapPreference,
+  setMapPreference,
+} from '../utils/mapPreference.js';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -96,7 +107,7 @@ function truncateActivityText(value, maxLength = 30) {
   return `${text.slice(0, maxLength)}...`;
 }
 
-function InfoRow({ icon, label, value, link, forceRight = false }) {
+function InfoRow({ icon, label, value, link, onClick, forceRight = false }) {
   const content = link ? (
     <Box
       component="a"
@@ -104,6 +115,27 @@ function InfoRow({ icon, label, value, link, forceRight = false }) {
       sx={{
         color: 'primary.main',
         textDecoration: 'underline',
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
+      }}
+    >
+      {value}
+    </Box>
+  ) : onClick ? (
+    <Box
+      component="button"
+      type="button"
+      onClick={onClick}
+      sx={{
+        p: 0,
+        border: 0,
+        bgcolor: 'transparent',
+        color: 'primary.main',
+        textDecoration: 'underline',
+        cursor: 'pointer',
+        font: 'inherit',
+        textAlign: 'inherit',
+        whiteSpace: 'pre-line',
         overflowWrap: 'anywhere',
         wordBreak: 'break-word',
       }}
@@ -194,6 +226,7 @@ export default function CustomerDetail() {
   const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [purchasedArticlesQuery, setPurchasedArticlesQuery] = React.useState('');
+  const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [docs, setDocs] = React.useState({
@@ -228,9 +261,6 @@ export default function CustomerDetail() {
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
   const addressForMap = address ? String(address).replace(/\n/g, ', ') : '';
-  const addressLink = addressForMap
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressForMap)}`
-    : '';
   const homepageRaw = item?.kd_HomePage ? String(item.kd_HomePage).trim() : '';
   const homepageLink = homepageRaw
     ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
@@ -239,6 +269,25 @@ export default function CustomerDetail() {
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
+  const openAddressWithProvider = React.useCallback((provider) => {
+    const url = buildMapUrl(provider, addressForMap);
+    if (!url) return;
+    window.location.assign(url);
+  }, [addressForMap]);
+  const handleAddressClick = React.useCallback(() => {
+    if (!addressForMap) return;
+    const preference = getMapPreference();
+    if (!preference) {
+      setMapChoiceOpen(true);
+      return;
+    }
+    openAddressWithProvider(preference);
+  }, [addressForMap, openAddressWithProvider]);
+  const chooseMapProvider = React.useCallback((provider) => {
+    const next = setMapPreference(provider);
+    setMapChoiceOpen(false);
+    openAddressWithProvider(next);
+  }, [openAddressWithProvider]);
   const handleSelectCustomer = React.useCallback(() => {
     const selected = setSelectedCustomer({
       id,
@@ -667,7 +716,7 @@ export default function CustomerDetail() {
               icon={<MapIcon fontSize="small" />}
               label={t('address_label')}
               value={address || '-'}
-              link={addressLink || undefined}
+              onClick={addressForMap ? handleAddressClick : undefined}
               forceRight
             />
             <InfoRow
@@ -781,6 +830,24 @@ export default function CustomerDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={mapChoiceOpen} onClose={() => setMapChoiceOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>{t('navigation_choose_title')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {t('navigation_choose_text')}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMapChoiceOpen(false)}>{t('back_label')}</Button>
+          <Button onClick={() => chooseMapProvider(MAP_PROVIDER_GOOGLE)}>
+            {t('navigation_google_maps')}
+          </Button>
+          <Button variant="contained" onClick={() => chooseMapProvider(MAP_PROVIDER_APPLE)}>
+            {t('navigation_apple_maps')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
