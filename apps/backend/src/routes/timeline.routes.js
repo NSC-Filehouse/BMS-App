@@ -3,10 +3,14 @@ const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { getMandantsForUser } = require('../db/databases');
 const { runSQLQuerySqlServer } = require('../db/access');
+const { appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const config = require('../config');
 const logger = require('../logger');
 
 const router = express.Router();
+const TIMELINE_TABLE = appTableSql('timeline');
+const TIMELINE_TABLE_NAME = appTableName('timeline').toLowerCase();
+const LEGACY_TIMELINE_TABLE_NAME = 'tblbmsapp_timeline';
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -15,7 +19,7 @@ function asText(value) {
 
 function isMissingTimelineTableError(error) {
   const msg = String(error?.message || '').toLowerCase();
-  return msg.includes('tblbmsapp_timeline') && (
+  return (msg.includes(TIMELINE_TABLE_NAME) || msg.includes(LEGACY_TIMELINE_TABLE_NAME)) && (
     msg.includes('invalid object name')
     || msg.includes('ungültiger objektname')
     || msg.includes('ungueltiger objektname')
@@ -70,7 +74,7 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
       [tl_AmountKg] AS amountKg,
       [tl_Unit] AS unit,
       [tl_ReferenceId] AS referenceId
-    FROM [dbo].[tblBMSApp_Timeline]
+    FROM ${TIMELINE_TABLE}
     WHERE [tl_CreatedAt] >= ?
       AND (${filters.join(' OR ')})
     ORDER BY [tl_CreatedAt] DESC, [tl_ID] DESC
@@ -80,7 +84,7 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
     rows = await runSQLQuerySqlServer(config.sql.database, sql, params);
   } catch (error) {
     if (isMissingTimelineTableError(error)) {
-      logger.warn('Timeline table [dbo].[tblBMSApp_Timeline] is missing. Returning empty timeline.');
+      logger.warn(`Timeline table ${appTableDisplayName('timeline')} is missing. Returning empty timeline.`);
       rows = [];
     } else {
       throw error;

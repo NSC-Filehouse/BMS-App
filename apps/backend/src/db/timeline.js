@@ -1,7 +1,12 @@
 const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
+const { appTableDisplayName, appTableName, appTableSql } = require('./app-tables');
 const { sendPushNotificationsForTimelineEntries } = require('./push');
+
+const TIMELINE_TABLE = appTableSql('timeline');
+const TIMELINE_TABLE_NAME = appTableName('timeline').toLowerCase();
+const LEGACY_TIMELINE_TABLE_NAME = 'tblbmsapp_timeline';
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -15,7 +20,7 @@ function asNumberOrNull(value) {
 
 function isMissingTimelineTableError(error) {
   const msg = String(error?.message || '').toLowerCase();
-  return msg.includes('tblbmsapp_timeline') && (
+  return (msg.includes(TIMELINE_TABLE_NAME) || msg.includes(LEGACY_TIMELINE_TABLE_NAME)) && (
     msg.includes('invalid object name')
     || msg.includes('ungültiger objektname')
     || msg.includes('ungueltiger objektname')
@@ -28,7 +33,7 @@ async function appendTimelineEntries(entries) {
   const insertedEntries = [];
 
   const sql = `
-    INSERT INTO [dbo].[tblBMSApp_Timeline] (
+    INSERT INTO ${TIMELINE_TABLE} (
       [tl_CreatedAt],
       [tl_Mandant],
       [tl_MandantKurz],
@@ -68,7 +73,7 @@ async function appendTimelineEntries(entries) {
       insertedEntries.push(entry);
     } catch (error) {
       if (isMissingTimelineTableError(error)) {
-        logger.warn('Timeline table [dbo].[tblBMSApp_Timeline] is missing. Timeline entry skipped.');
+        logger.warn(`Timeline table ${appTableDisplayName('timeline')} is missing. Timeline entry skipped.`);
         return;
       }
       logger.warn(`Failed to append timeline entry: ${error?.message || error}`);

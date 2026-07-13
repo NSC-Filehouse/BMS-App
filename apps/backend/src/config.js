@@ -43,6 +43,14 @@ const config = {
       mitarbeiterMandant: (process.env.BMS_SQL_TABLE_MITARBEITER_MANDANT || 'tblMitarbeiterMandant').trim(),
       mandant: (process.env.BMS_SQL_TABLE_MANDANT || 'tblMandant').trim(),
     },
+    appSchema: (process.env.BMS_SQL_APP_SCHEMA || 'BMSApp').trim(),
+    appTables: {
+      timeline: (process.env.BMS_SQL_APP_TABLE_TIMELINE || 'Timeline').trim(),
+      pushSubscription: (process.env.BMS_SQL_APP_TABLE_PUSH_SUBSCRIPTION || 'PushSubscription').trim(),
+      pushMandantSetting: (process.env.BMS_SQL_APP_TABLE_PUSH_MANDANT_SETTING || 'PushMandantSetting').trim(),
+      tempOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER || 'tbl_Temp_Auftrag').trim(),
+      tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
+    },
     columns: {
       persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),
       email: (process.env.BMS_SQL_COL_EMAIL || 'ma_eMail').trim(),

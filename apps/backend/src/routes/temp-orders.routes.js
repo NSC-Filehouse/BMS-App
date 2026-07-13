@@ -4,6 +4,7 @@ const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
 
@@ -54,6 +55,11 @@ function attachmentUploadMiddleware(req, res, next) {
   });
 }
 const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
+const TEMP_ORDER_TABLE = appTableSql('tempOrder');
+const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
+const TEMP_ORDER_TABLE_NAME = appTableName('tempOrder');
+const TEMP_ORDER_POSITION_TABLE_NAME = appTableName('tempOrderPosition');
+const APP_SCHEMA_NAME = appSchemaName();
 
 function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
@@ -236,13 +242,13 @@ function hasColumn(columns, name) {
   return Boolean(target) && (columns || []).some((col) => String(col || '').trim().toLowerCase() === target);
 }
 
-async function getTableColumns(database, tableName) {
+async function getTableColumns(database, tableName, schemaName = APP_SCHEMA_NAME) {
   const sql = `
     SELECT [COLUMN_NAME] AS col
     FROM [INFORMATION_SCHEMA].[COLUMNS]
-    WHERE [TABLE_SCHEMA] = 'dbo' AND [TABLE_NAME] = ?
+    WHERE [TABLE_SCHEMA] = ? AND [TABLE_NAME] = ?
   `;
-  const rows = await runSQLQuerySqlServer(database, sql, [tableName]);
+  const rows = await runSQLQuerySqlServer(database, sql, [schemaName, tableName]);
   return (Array.isArray(rows) ? rows : [])
     .map((r) => asText(r.col))
     .filter(Boolean);
@@ -476,7 +482,7 @@ async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
 
 async function loadOrderPositions(orderId) {
   try {
-    const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+    const cols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
     if (!cols.length) return [];
 
     const cOrderId = resolveColumn(cols, ['tap_ta_id', 'taP_ta_id', 'ta_id']);
@@ -520,7 +526,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')}
-      FROM [dbo].[tbl_Temp_Auf_Position]
+      FROM ${TEMP_ORDER_POSITION_TABLE}
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
     `;
@@ -537,7 +543,7 @@ async function loadPositionSummariesForOrders(orderIds) {
     : [];
   if (!ids.length) return new Map();
 
-  const cols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  const cols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   if (!cols.length) return new Map();
 
   const cOrderId = resolveColumn(cols, ['tap_ta_id', 'taP_ta_id', 'ta_id']);
@@ -557,7 +563,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       ${pick(cBeNumber, 'beNumber')},
       ${pick(cAmount, 'amountInKg')},
       ${pick(cDeliveryDate, 'deliveryDate')}
-    FROM [dbo].[tbl_Temp_Auf_Position]
+    FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE ${toId(cOrderId)} IN (${placeholders})
     ORDER BY ${toId(cOrderId)} ASC${cLineNo ? `, ${toId(cLineNo)} ASC` : ''}
   `;
@@ -652,7 +658,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         [o].[ta_client_name] LIKE ? OR [o].[ta_comment] LIKE ?
         OR EXISTS (
           SELECT 1
-          FROM [dbo].[tbl_Temp_Auf_Position] p
+          FROM ${TEMP_ORDER_POSITION_TABLE} p
           WHERE p.[tap_ta_id] = [o].[ta_id]
             AND (p.[tap_article] LIKE ? OR p.[tap_be_number] LIKE ?)
         )
@@ -662,7 +668,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
   const countSql = `
     SELECT COUNT(*) AS total
-    FROM [dbo].[tbl_Temp_Auftrag] o
+    FROM ${TEMP_ORDER_TABLE} o
     WHERE [o].[ta_company_id] = ? AND LOWER(COALESCE([o].[ta_CreatedBy], '')) = ?
     ${whereText}
   `;
@@ -680,14 +686,14 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [o].[ta_CreateDate] AS createdAt,
       [o].[ta_completed] AS completed,
       [o].[ta_IsConfirmed] AS isConfirmed
-    FROM [dbo].[tbl_Temp_Auftrag] o
+    FROM ${TEMP_ORDER_TABLE} o
     OUTER APPLY (
       SELECT TOP 1
         [tap_be_number] AS beNumber,
         [tap_article] AS article,
         [tap_price] AS price,
         [tap_amount_in_kg] AS amountInKg
-      FROM [dbo].[tbl_Temp_Auf_Position] p
+      FROM ${TEMP_ORDER_POSITION_TABLE} p
       WHERE p.[tap_ta_id] = o.[ta_id]
       ORDER BY p.[tap_line_no] ASC
     ) fp
@@ -741,7 +747,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
   const sql = `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -777,7 +783,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
       [ta_Attachment] AS attachment,
       [ta_AttachmentFileName] AS fileName,
       [ta_AttachmentMimeType] AS mimeType
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -821,8 +827,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
-  const orderCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auftrag');
-  const positionCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
+  const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
 
@@ -931,7 +937,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     0,
   ];
   const sql = `
-    INSERT INTO [dbo].[tbl_Temp_Auftrag] (
+    INSERT INTO ${TEMP_ORDER_TABLE} (
       ${orderInsertColumns.join(', ')}
     )
     VALUES (${orderInsertValues.join(', ')})
@@ -940,7 +946,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   const createdRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_company_id] = ? AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
     ORDER BY [ta_id] DESC
   `, [companyId, userShortCode.toLowerCase()]);
@@ -962,7 +968,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
     ];
     const posSql = `
-      INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
+      INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
         ${posInsertColumns.join(', ')}
       )
       VALUES (${posInsertColumns.map(() => '?').join(', ')})
@@ -993,7 +999,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     } catch (err) {
       const msg = String(err?.message || '').toLowerCase();
       if (msg.includes('invalid object name') && msg.includes('tbl_temp_auf_position')) {
-        throw createHttpError(500, 'Position table [dbo].[tbl_Temp_Auf_Position] is missing.', { code: 'TEMP_ORDER_POSITION_TABLE_MISSING' });
+        throw createHttpError(500, `Position table ${appTableDisplayName('tempOrderPosition')} is missing.`, { code: 'TEMP_ORDER_POSITION_TABLE_MISSING' });
       }
       throw err;
     }
@@ -1055,8 +1061,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
-  const orderCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auftrag');
-  const positionCols = await getTableColumns(config.sql.database, 'tbl_Temp_Auf_Position');
+  const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
+  const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
 
@@ -1119,7 +1125,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ta_id] AS id
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);
@@ -1153,7 +1159,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     orderAssignments.push('[ta_Attachment] = NULL', '[ta_AttachmentFileName] = NULL', '[ta_AttachmentMimeType] = NULL');
   }
   const updateSql = `
-    UPDATE [dbo].[tbl_Temp_Auftrag]
+    UPDATE ${TEMP_ORDER_TABLE}
     SET ${orderAssignments.join(',\n        ')}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
@@ -1183,7 +1189,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   await runSQLQuerySqlServer(config.sql.database, updateSql, updateParams);
 
   await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM [dbo].[tbl_Temp_Auf_Position]
+    DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
   `, [id]);
 
@@ -1200,7 +1206,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
     ];
     const posSql = `
-      INSERT INTO [dbo].[tbl_Temp_Auf_Position] (
+      INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
         ${posInsertColumns.join(', ')}
       )
       VALUES (${posInsertColumns.map(() => '?').join(', ')})
@@ -1231,7 +1237,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);
@@ -1263,7 +1269,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
 
   const existsSql = `
     SELECT TOP 1 1 AS ok
-    FROM [dbo].[tbl_Temp_Auftrag]
+    FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `;
@@ -1273,11 +1279,11 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   }
 
   await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM [dbo].[tbl_Temp_Auf_Position]
+    DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
   `, [id]);
   await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM [dbo].[tbl_Temp_Auftrag]
+    DELETE FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
   `, [id, companyId, userShortCode.toLowerCase()]);

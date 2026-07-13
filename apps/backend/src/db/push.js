@@ -2,8 +2,18 @@ const webpush = require('web-push');
 const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
+const { appTableName, appTableSql } = require('./app-tables');
 const { getMandantsForUser } = require('./databases');
 const { getUserIdentityByEmail } = require('./users');
+
+const PUSH_SUBSCRIPTION_TABLE = appTableSql('pushSubscription');
+const PUSH_MANDANT_SETTING_TABLE = appTableSql('pushMandantSetting');
+const PUSH_TABLE_NAMES = [
+  appTableName('pushSubscription').toLowerCase(),
+  appTableName('pushMandantSetting').toLowerCase(),
+  'tblbmsapp_pushsubscription',
+  'tblbmsapp_pushmandantsetting',
+];
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -90,7 +100,7 @@ function ensureVapidConfigured() {
 
 function isMissingPushTableError(error) {
   const msg = String(error?.message || '').toLowerCase();
-  return (msg.includes('tblbmsapp_pushsubscription') || msg.includes('tblbmsapp_pushmandantsetting')) && (
+  return PUSH_TABLE_NAMES.some((tableName) => msg.includes(tableName)) && (
     msg.includes('invalid object name')
     || msg.includes('ungÃ¼ltiger objektname')
     || msg.includes('ungueltiger objektname')
@@ -130,7 +140,7 @@ async function upsertPushSubscription({ email, subscription, userAgent, language
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 [ps_ID] AS id
-    FROM [dbo].[tblBMSApp_PushSubscription]
+    FROM ${PUSH_SUBSCRIPTION_TABLE}
     WHERE [ps_Endpoint] = ?
   `, [endpoint]);
   const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
@@ -138,7 +148,7 @@ async function upsertPushSubscription({ email, subscription, userAgent, language
 
   if (existing?.id) {
     await runSQLQuerySqlServer(config.sql.database, `
-      UPDATE [dbo].[tblBMSApp_PushSubscription]
+      UPDATE ${PUSH_SUBSCRIPTION_TABLE}
       SET [ps_UserEmail] = ?,
           [ps_P256DH] = ?,
           [ps_Auth] = ?,
@@ -153,7 +163,7 @@ async function upsertPushSubscription({ email, subscription, userAgent, language
   }
 
   await runSQLQuerySqlServer(config.sql.database, `
-    INSERT INTO [dbo].[tblBMSApp_PushSubscription] (
+    INSERT INTO ${PUSH_SUBSCRIPTION_TABLE} (
       [ps_UserEmail],
       [ps_Endpoint],
       [ps_P256DH],
@@ -185,7 +195,7 @@ async function deactivatePushSubscription(endpoint) {
   if (!value) return;
 
   await runSQLQuerySqlServer(config.sql.database, `
-    UPDATE [dbo].[tblBMSApp_PushSubscription]
+    UPDATE ${PUSH_SUBSCRIPTION_TABLE}
     SET [ps_IsActive] = 0,
         [ps_UpdatedAt] = ?
     WHERE [ps_Endpoint] = ?
@@ -202,7 +212,7 @@ async function getPushSettingsForUser(email) {
   const rows = companyIds.length
     ? await runSQLQuerySqlServer(config.sql.database, `
       SELECT [pms_CompanyId] AS companyId, [pms_Enabled] AS enabled
-      FROM [dbo].[tblBMSApp_PushMandantSetting]
+      FROM ${PUSH_MANDANT_SETTING_TABLE}
       WHERE LOWER(COALESCE([pms_UserEmail], '')) = ?
         AND [pms_CompanyId] IN (${companyIds.map(() => '?').join(', ')})
     `, [normalizedEmail, ...companyIds])
@@ -216,7 +226,7 @@ async function getPushSettingsForUser(email) {
 
   const subscriptionRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT COUNT(*) AS total
-    FROM [dbo].[tblBMSApp_PushSubscription]
+    FROM ${PUSH_SUBSCRIPTION_TABLE}
     WHERE LOWER(COALESCE([ps_UserEmail], '')) = ?
       AND [ps_IsActive] = 1
   `, [normalizedEmail]);
@@ -258,7 +268,7 @@ async function savePushSettingsForUser(email, settings) {
 
     const existingRows = await runSQLQuerySqlServer(config.sql.database, `
       SELECT TOP 1 [pms_ID] AS id
-      FROM [dbo].[tblBMSApp_PushMandantSetting]
+      FROM ${PUSH_MANDANT_SETTING_TABLE}
       WHERE LOWER(COALESCE([pms_UserEmail], '')) = ?
         AND [pms_CompanyId] = ?
     `, [normalizedEmail, companyId]);
@@ -266,7 +276,7 @@ async function savePushSettingsForUser(email, settings) {
 
     if (existing?.id) {
       await runSQLQuerySqlServer(config.sql.database, `
-        UPDATE [dbo].[tblBMSApp_PushMandantSetting]
+        UPDATE ${PUSH_MANDANT_SETTING_TABLE}
         SET [pms_Mandant] = ?,
             [pms_Enabled] = ?,
             [pms_UpdatedAt] = ?
@@ -276,7 +286,7 @@ async function savePushSettingsForUser(email, settings) {
     }
 
     await runSQLQuerySqlServer(config.sql.database, `
-      INSERT INTO [dbo].[tblBMSApp_PushMandantSetting] (
+      INSERT INTO ${PUSH_MANDANT_SETTING_TABLE} (
         [pms_UserEmail],
         [pms_CompanyId],
         [pms_Mandant],
@@ -314,8 +324,8 @@ async function sendPushNotificationsForTimelineEntries(entries) {
           [s].[ps_Auth] AS auth,
           [s].[ps_Language] AS language,
           [s].[ps_UserEmail] AS userEmail
-        FROM [dbo].[tblBMSApp_PushSubscription] s
-        INNER JOIN [dbo].[tblBMSApp_PushMandantSetting] m
+        FROM ${PUSH_SUBSCRIPTION_TABLE} s
+        INNER JOIN ${PUSH_MANDANT_SETTING_TABLE} m
           ON LOWER(COALESCE([m].[pms_UserEmail], '')) = LOWER(COALESCE([s].[ps_UserEmail], ''))
         WHERE [s].[ps_IsActive] = 1
           AND [m].[pms_Enabled] = 1
