@@ -72,6 +72,12 @@ export default function Layout() {
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
+  const switchMandant = () => {
+    clearSelectedCustomer();
+    clearMandant();
+    navigate('/');
+    closeDrawer();
+  };
 
   React.useEffect(() => {
     const syncCustomer = () => setSelectedCustomerState(getSelectedCustomer());
@@ -222,12 +228,7 @@ export default function Layout() {
           <Button
             variant="outlined"
             fullWidth
-            onClick={() => {
-              clearSelectedCustomer();
-              clearMandant();
-              navigate('/');
-              closeDrawer();
-            }}
+            onClick={switchMandant}
           >
             {t('switch_mandant')}
           </Button>
@@ -259,9 +260,34 @@ export default function Layout() {
 
           </Typography>
           <Box sx={{ textAlign: 'right', minWidth: 0 }}>
-            <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
-            </Typography>
+            {canSwitchMandant ? (
+              <ButtonBase
+                onClick={switchMandant}
+                aria-label={t('switch_mandant')}
+                sx={{
+                  display: 'flex',
+                  ml: 'auto',
+                  maxWidth: { xs: 170, sm: 360 },
+                  minHeight: 24,
+                  px: 0.5,
+                  borderRadius: 1,
+                  color: 'inherit',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' },
+                  '&.Mui-focusVisible': {
+                    outline: '2px solid white',
+                    outlineOffset: 1,
+                  },
+                }}
+              >
+                <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {`${t('mandant_label')}: ${mandant}`}
+                </Typography>
+              </ButtonBase>
+            ) : (
+              <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
+              </Typography>
+            )}
             <ButtonBase
               disabled={!mandant}
               onClick={() => navigate('/customers')}

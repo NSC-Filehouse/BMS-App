@@ -10,6 +10,8 @@ const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
 const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
+const ACTIVE_CUSTOMERS_TTL_MS = 5 * 60 * 1000;
+const activeCustomersCache = new Map();
 
 function normalizeTotal(countResult) {
   if (!countResult) return null;
@@ -171,6 +173,50 @@ function getReminderCountsCte() {
   `;
 }
 
+async function loadActiveCustomerIds(database) {
+  const databaseName = toText(database?.databaseName || database?.name || database?.database);
+  const cached = activeCustomersCache.get(databaseName);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise;
+  }
+
+  const promise = runSQLQueryAccess(database, `
+    SELECT [activity].[kdH_KdNR] AS customerId
+    FROM [dbo].[tblKun_Historie] [activity]
+    WHERE [activity].[kdH_Datum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+      AND COALESCE([activity].[kdH_KdNR], '') <> ''
+    UNION
+    SELECT [invoice].[re_KdNr]
+    FROM [dbo].[tblRechnung] [invoice]
+    WHERE [invoice].[re_RgDatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+      AND COALESCE([invoice].[re_KdNr], '') <> ''
+    UNION
+    SELECT [customer_order].[au_KdNr]
+    FROM [dbo].[tblAuftrag] [customer_order]
+    WHERE [customer_order].[au_Auftragsdatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+      AND COALESCE([customer_order].[au_KdNr], '') <> ''
+    UNION
+    SELECT [offer].[an_KdNR]
+    FROM [dbo].[tblAngebot] [offer]
+    WHERE [offer].[an_Angebotsdatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+      AND COALESCE([offer].[an_KdNR], '') <> ''
+  `).then((rows) => (Array.isArray(rows) ? rows : [])
+    .map((row) => toText(row.customerId))
+    .filter(Boolean));
+
+  activeCustomersCache.set(databaseName, {
+    expiresAt: Date.now() + ACTIVE_CUSTOMERS_TTL_MS,
+    promise,
+  });
+
+  try {
+    return await promise;
+  } catch (error) {
+    activeCustomersCache.delete(databaseName);
+    throw error;
+  }
+}
+
 function toText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -279,6 +325,7 @@ async function loadReminderStageTextMap(database, ids, lang) {
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req);
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
+  const includeInactive = String(req.query.includeInactive || '').trim() === '1';
   const salesCodeFilter = reminderOnly
     ? getReminderSalesCodeFilter(req, accessScope)
     : accessScope.salesCodeFilter;
@@ -292,11 +339,18 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeSort = resolveSortField(sort);
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
+  const activeOnly = !reminderOnly && !includeInactive;
+  const activeCustomerIds = activeOnly ? await loadActiveCustomerIds(req.database) : [];
+  const activeCustomerIdsJson = activeOnly ? JSON.stringify(activeCustomerIds) : null;
+  const activeJoinSql = activeOnly
+    ? `INNER JOIN OPENJSON(?) [active_customer] ON [active_customer].[value] = [k].[kd_KdNR]`
+    : '';
   const { whereSql, params } = buildWhereClause(q, searchField, {
     salesCodeFilter,
     customerAlias: 'k',
     reminderOnly,
   });
+  const queryParams = activeOnly ? [activeCustomerIdsJson, ...params] : params;
   const offset = (page - 1) * pageSize;
 
   const cteSql = getReminderCountsCte();
@@ -304,24 +358,28 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     ${cteSql}
     SELECT COUNT(*) AS total
     FROM [dbo].[tblKunden] [k]
+    ${activeJoinSql}
     LEFT JOIN [reminder_counts] [rc]
       ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
     ${whereSql}
   `;
-  const totalResult = await runSQLQueryAccess(req.database, countSql, params);
+  const totalResult = await runSQLQueryAccess(req.database, countSql, queryParams);
   const total = normalizeTotal(totalResult);
 
   const dataSql = `
     ${cteSql}
-    SELECT [k].*, COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount
+    SELECT
+      [k].*,
+      COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount
     FROM [dbo].[tblKunden] [k]
+    ${activeJoinSql}
     LEFT JOIN [reminder_counts] [rc]
       ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
     ${whereSql}
     ORDER BY ${qualifyCustomerSortField(safeSort)} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
-  const rows = await runSQLQueryAccess(req.database, dataSql, [...params, offset, pageSize]);
+  const rows = await runSQLQueryAccess(req.database, dataSql, [...queryParams, offset, pageSize]);
 
   sendEnvelope(res, {
     status: 200,
@@ -336,6 +394,8 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       q,
       searchField,
       reminderOnly,
+      includeInactive,
+      activityWindowYears: 2,
       sort: String(sort || 'kd_Name1'),
       dir: safeDir,
     },
