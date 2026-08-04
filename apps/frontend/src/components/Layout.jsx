@@ -302,7 +302,7 @@ export default function Layout() {
                 minHeight: 30,
                 maxWidth: { xs: 170, sm: 360 },
                 px: 0,
-                color: hasSelectedCustomer ? 'inherit' : 'warning.light',
+                color: hasSelectedCustomer ? 'inherit' : '#FFF3C4',
                 bgcolor: 'transparent',
                 '&:hover': {
                   bgcolor: 'transparent',
