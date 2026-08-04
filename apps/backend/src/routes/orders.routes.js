@@ -3,9 +3,10 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
+const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
-const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
+const VIEW_SQL = productAvailabilitySource('v');
 const ID_SEPARATOR = '||';
 
 function buildReservationId(beNumber, warehouseId) {
@@ -80,7 +81,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
 
   const fromSql = `
     FROM [dbo].[tblBest_Pos_Reserviert] AS r
-    LEFT JOIN ${VIEW_SQL} AS v
+    LEFT JOIN ${VIEW_SQL}
       ON COALESCE(v.[Bestell-Pos], '') = COALESCE(r.[bePR_BEposID], '')
      AND COALESCE(v.[bePL_LagerID], '') = COALESCE(r.[bePR_LagerID], '')
     WHERE 1 = 1
@@ -164,7 +165,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       v.[EP] AS price,
       v.[Einheit] AS unit
     FROM [dbo].[tblBest_Pos_Reserviert] AS r
-    LEFT JOIN ${VIEW_SQL} AS v
+    LEFT JOIN ${VIEW_SQL}
       ON COALESCE(v.[Bestell-Pos], '') = COALESCE(r.[bePR_BEposID], '')
      AND COALESCE(v.[bePL_LagerID], '') = COALESCE(r.[bePR_LagerID], '')
     WHERE r.[bePR_BEposID] = ? AND r.[bePR_LagerID] = ?

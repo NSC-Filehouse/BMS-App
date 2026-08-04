@@ -7,6 +7,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
+const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -54,7 +55,7 @@ function attachmentUploadMiddleware(req, res, next) {
     next(err);
   });
 }
-const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
+const VIEW_SQL = productAvailabilitySource('availability');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
 const TEMP_ORDER_TABLE_NAME = appTableName('tempOrder');

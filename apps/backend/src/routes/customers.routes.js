@@ -4,9 +4,10 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
+const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
-const PRODUCTS_VIEW_SQL = `[dbo].[qryMengen_Verf\u00FCgbarkeitsliste_f\u00FCrAPP]`;
+const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
 const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 

@@ -4,9 +4,10 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
+const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
-const VIEW_SQL = '[dbo].[qryMengen_Verfügbarkeitsliste_fürAPP]';
+const VIEW_SQL = productAvailabilitySource('availability');
 const ID_SEPARATOR = '||';
 
 function normalizeDir(dir) {

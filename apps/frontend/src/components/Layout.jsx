@@ -13,6 +13,7 @@ import {
   Typography,
   Divider,
   Button,
+  ButtonBase,
 } from '@mui/material';
 
 import MenuIcon from '@mui/icons-material/Menu';
@@ -67,6 +68,7 @@ export default function Layout() {
   const mandant = getMandant();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const hasSelectedCustomer = Boolean(selectedCustomer?.id);
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
@@ -260,9 +262,48 @@ export default function Layout() {
             <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
             </Typography>
-            <Typography variant="caption" sx={{ display: 'block', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: { xs: 150, sm: 340 } }}>
-              {`${t('order_customer')}: ${selectedCustomer?.name || selectedCustomer?.id || '-'}`}
-            </Typography>
+            <ButtonBase
+              disabled={!mandant}
+              onClick={() => navigate('/customers')}
+              aria-label={hasSelectedCustomer
+                ? `${t('order_customer')}: ${selectedCustomer?.name || selectedCustomer?.id}`
+                : t('customer_not_selected')}
+              sx={{
+                display: 'flex',
+                ml: 'auto',
+                mt: 0.25,
+                minHeight: 30,
+                maxWidth: { xs: 170, sm: 360 },
+                px: 0.75,
+                borderRadius: 1,
+                color: hasSelectedCustomer ? 'inherit' : '#4a2a00',
+                bgcolor: hasSelectedCustomer ? 'transparent' : 'warning.light',
+                border: hasSelectedCustomer ? '1px solid transparent' : '1px solid rgba(255,255,255,0.8)',
+                '&:hover': {
+                  bgcolor: hasSelectedCustomer ? 'rgba(255,255,255,0.12)' : 'warning.main',
+                },
+                '&.Mui-focusVisible': {
+                  outline: '2px solid white',
+                  outlineOffset: 2,
+                },
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  fontWeight: hasSelectedCustomer ? 400 : 700,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {hasSelectedCustomer
+                  ? `${t('order_customer')}: ${selectedCustomer?.name || selectedCustomer?.id}`
+                  : t('customer_not_selected')}
+              </Typography>
+            </ButtonBase>
           </Box>
         </Toolbar>
       </AppBar>
