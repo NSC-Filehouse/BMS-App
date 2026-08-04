@@ -289,6 +289,7 @@ export default function Layout() {
               </Typography>
             )}
             <ButtonBase
+              disableRipple
               disabled={!mandant}
               onClick={() => navigate('/customers')}
               aria-label={hasSelectedCustomer
@@ -300,13 +301,12 @@ export default function Layout() {
                 mt: 0.25,
                 minHeight: 30,
                 maxWidth: { xs: 170, sm: 360 },
-                px: 0.75,
-                borderRadius: 1,
-                color: hasSelectedCustomer ? 'inherit' : '#4a2a00',
-                bgcolor: hasSelectedCustomer ? 'transparent' : 'warning.light',
-                border: hasSelectedCustomer ? '1px solid transparent' : '1px solid rgba(255,255,255,0.8)',
+                px: 0,
+                color: hasSelectedCustomer ? 'inherit' : 'warning.light',
+                bgcolor: 'transparent',
                 '&:hover': {
-                  bgcolor: hasSelectedCustomer ? 'rgba(255,255,255,0.12)' : 'warning.main',
+                  bgcolor: 'transparent',
+                  textDecoration: 'underline',
                 },
                 '&.Mui-focusVisible': {
                   outline: '2px solid white',
