@@ -1,0 +1,42 @@
+24.8.2026, 11:26:57 [ERROR] SQL Server query failed - Invalid object name 'dbo.tvfMengen_Verf@p1gbar_Alle'.
+24.8.2026, 11:26:57 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'dbo.tvfMengen_Verf@p1gbar_Alle'."}
+24.8.2026, 11:26:57 [DEBUG] Query: 
+    SELECT
+      COUNT_BIG(*) AS availabilityRows,
+      SUM(CASE WHEN [p].[beP_BEposID] IS NOT NULL THEN 1 ELSE 0 END) AS matchedBestPosition,
+      SUM(CASE WHEN [p].[beP_VK_EU] IS NOT NULL THEN 1 ELSE 0 END) AS bestPositionVkEuRows,
+      SUM(CASE WHEN [a].[agA_Artikelindex] IS NOT NULL THEN 1 ELSE 0 END) AS matchedArticle,
+      SUM(CASE WHEN [a].[agA_NettoVK_EU] IS NOT NULL THEN 1 ELSE 0 END) AS articleVkEuRows
+    FROM [dbo].[tvfMengen_Verf?gbar_Alle](NULL) [v]
+    LEFT JOIN [dbo].[tblBest_Position] [p]
+      ON COALESCE([p].[beP_BEposID], '') = COALESCE([v].[Bestell-Pos], '')
+     AND COALESCE([p].[beP_LagerID], '') = COALESCE([v].[bePL_LagerID], '')
+    LEFT JOIN [dbo].[tblArt_Artikel] [a]
+      ON COALESCE([a].[agA_Artikelindex], '') = COALESCE([p].[beP_Artikelindex], '')
+    WHERE COALESCE([v].[beP_VL], 0) = 1
+      AND COALESCE([v].[beP_Produktion], 0) = 0
+      AND COALESCE([v].[beP_Vorprodukt], 0) = 0
+      AND COALESCE([v].[Menge], 0) > 0
+  
+24.8.2026, 11:26:57 [DEBUG] Params: []
+24.8.2026, 11:27:47 [ERROR] SQL Server query failed - Invalid column name 'beP_LagerID'.
+24.8.2026, 11:27:47 [DEBUG] Query: 
+    SELECT
+      COUNT_BIG(*) AS availabilityRows,
+      SUM(CASE WHEN [p].[beP_BEposID] IS NOT NULL THEN 1 ELSE 0 END) AS matchedBestPosition,
+      SUM(CASE WHEN [p].[beP_VK_EU] IS NOT NULL THEN 1 ELSE 0 END) AS bestPositionVkEuRows,
+      SUM(CASE WHEN [a].[agA_Artikelindex] IS NOT NULL THEN 1 ELSE 0 END) AS matchedArticle,
+      SUM(CASE WHEN [a].[agA_NettoVK_EU] IS NOT NULL THEN 1 ELSE 0 END) AS articleVkEuRows
+    FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL) [v]
+    LEFT JOIN [dbo].[tblBest_Position] [p]
+      ON COALESCE([p].[beP_BEposID], '') = COALESCE([v].[Bestell-Pos], '')
+     AND COALESCE([p].[beP_LagerID], '') = COALESCE([v].[bePL_LagerID], '')
+    LEFT JOIN [dbo].[tblArt_Artikel] [a]
+      ON COALESCE([a].[agA_Artikelindex], '') = COALESCE([p].[beP_Artikelindex], '')
+    WHERE COALESCE([v].[beP_VL], 0) = 1
+      AND COALESCE([v].[beP_Produktion], 0) = 0
+      AND COALESCE([v].[beP_Vorprodukt], 0) = 0
+      AND COALESCE([v].[Menge], 0) > 0
+  
+24.8.2026, 11:27:47 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_LagerID'."}
+24.8.2026, 11:27:47 [DEBUG] Params: []

@@ -28,6 +28,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -96,6 +97,12 @@ function formatMoney(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+}
+
+function formatEuro(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 }
 
 function truncateActivityText(value, maxLength = 30) {
@@ -267,6 +274,12 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
+  const creditLimit = item?.creditLimit || null;
+  const creditLimitText = creditLimit?.status === 'expired'
+    ? t('credit_limit_expired')
+    : creditLimit?.status === 'active'
+      ? `${t('credit_limit_label')}: ${formatEuro(creditLimit.amount)}`
+      : t('credit_limit_missing');
   const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
   const openAddressWithProvider = React.useCallback((provider) => {
@@ -434,6 +447,22 @@ export default function CustomerDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                py: 0.75,
+                mb: 1,
+                color: creditLimit?.status === 'expired' ? 'error.main' : 'text.secondary',
+              }}
+            >
+              <AccountBalanceWalletIcon fontSize="small" />
+              <Typography variant="body2" sx={{ fontWeight: creditLimit?.status === 'expired' ? 600 : undefined }}>
+                {creditLimitText}
+              </Typography>
+            </Box>
+
             <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>

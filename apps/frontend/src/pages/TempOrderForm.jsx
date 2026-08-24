@@ -45,6 +45,21 @@ function buildAddress(row) {
   return [street, [plz, ort].filter(Boolean).join(' '), lk].filter(Boolean).join(', ');
 }
 
+function normalizeRepresentativeOptions(representatives, preferredName = '') {
+  const options = (Array.isArray(representatives) ? representatives : [])
+    .map((representative) => ({
+      name: String(representative?.name || '').trim(),
+      position: String(representative?.position || '').trim(),
+      email: String(representative?.email || '').trim(),
+    }))
+    .filter((representative) => representative.name);
+  const preferred = String(preferredName || '').trim();
+  if (preferred && !options.some((representative) => representative.name === preferred)) {
+    options.unshift({ name: preferred, position: '', email: '' });
+  }
+  return options;
+}
+
 function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -176,6 +191,7 @@ export default function TempOrderForm() {
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [representativeOptions, setRepresentativeOptions] = React.useState([]);
   const [customerPaymentDefaultId, setCustomerPaymentDefaultId] = React.useState('');
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
   const [customerReminderInvoicesCount, setCustomerReminderInvoicesCount] = React.useState(0);
@@ -272,6 +288,34 @@ export default function TempOrderForm() {
       return [];
     }
   }, []);
+  const loadCustomerRepresentatives = React.useCallback(async (clientReferenceId, preferredName = '') => {
+    const customerId = String(clientReferenceId || '').trim();
+    const preferred = String(preferredName || '').trim();
+    if (!customerId) {
+      setRepresentativeOptions([]);
+      setCustomerReminderInvoicesCount(0);
+      setForm((prev) => ({ ...prev, clientRepresentative: '' }));
+      return [];
+    }
+
+    try {
+      const detail = await apiRequest(`/customers/${encodeURIComponent(customerId)}`);
+      const options = normalizeRepresentativeOptions(detail?.data?.representatives, preferred);
+      setRepresentativeOptions(options);
+      setCustomerReminderInvoicesCount(Number(detail?.data?.reminderInvoicesCount) || 0);
+      setForm((prev) => ({
+        ...prev,
+        clientRepresentative: preferred || (options.length === 1 ? options[0].name : ''),
+      }));
+      return options;
+    } catch {
+      const fallbackOptions = normalizeRepresentativeOptions([], preferred);
+      setRepresentativeOptions(fallbackOptions);
+      setCustomerReminderInvoicesCount(0);
+      setForm((prev) => ({ ...prev, clientRepresentative: preferred }));
+      return fallbackOptions;
+    }
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -307,6 +351,7 @@ export default function TempOrderForm() {
           });
           await loadCustomerPaymentDefault(d.clientReferenceId || '');
           await loadDeliveryAddresses(d.clientReferenceId || '');
+          await loadCustomerRepresentatives(d.clientReferenceId || '', d.clientRepresentative || '');
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
             id: p.id,
@@ -352,6 +397,7 @@ export default function TempOrderForm() {
         }));
         await loadCustomerPaymentDefault(copyOrder?.clientReferenceId || '');
         await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
+        await loadCustomerRepresentatives(copyOrder?.clientReferenceId || '', copyOrder?.clientRepresentative || '');
         setPositions(copyPositions.map((x, idx) => ({
           id: x.id || `${x.beNumber || 'pos'}-${idx}`,
           beNumber: x.beNumber,
@@ -410,7 +456,7 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t, loadCustomerPaymentDefault, loadDeliveryAddresses, isCopyCreate, copyPositions, copyOrder]);
+  }, [id, isEdit, source, sourceItems, t, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
     const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);
@@ -511,9 +557,11 @@ export default function TempOrderForm() {
     if (!customer) {
       clearStoredSelectedCustomer();
       setDeliveryAddressOptions([]);
+      setRepresentativeOptions([]);
       setCustomerPaymentDefaultId('');
       setCustomerPaymentDefaultText('');
       setCustomerReminderInvoicesCount(0);
+      setForm((prev) => ({ ...prev, clientRepresentative: '' }));
       return;
     }
 
@@ -561,17 +609,8 @@ export default function TempOrderForm() {
 
     await loadDeliveryAddresses(clientReferenceId);
 
-    try {
-      const detail = await apiRequest(`/customers/${encodeURIComponent(clientReferenceId)}`);
-      const reps = Array.isArray(detail?.data?.representatives) ? detail.data.representatives : [];
-      setCustomerReminderInvoicesCount(Number(detail?.data?.reminderInvoicesCount) || 0);
-      if (reps.length > 0) {
-        setForm((prev) => ({ ...prev, clientRepresentative: reps[0].name || '' }));
-      }
-    } catch {
-      setCustomerReminderInvoicesCount(0);
-    }
-  }, [loadCustomerPaymentDefault, loadDeliveryAddresses]);
+    await loadCustomerRepresentatives(clientReferenceId);
+  }, [loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives]);
 
   React.useEffect(() => {
     if (isEdit || isCopyCreate || form.clientReferenceId) return;
@@ -653,6 +692,9 @@ export default function TempOrderForm() {
     }
     if (!String(form.clientName || '').trim()) messages.push(t('validation_customer_name_required'));
     if (!String(form.clientAddress || '').trim()) messages.push(t('validation_customer_address_required'));
+    if (representativeOptions.length > 1 && !String(form.clientRepresentative || '').trim()) {
+      messages.push(t('validation_contact_required'));
+    }
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
     if (!form.packagingType) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
@@ -856,7 +898,33 @@ export default function TempOrderForm() {
               </Typography>
             )}
             <TextField label={t('address_label')} value={form.clientAddress} fullWidth disabled />
-            <TextField label={t('contact_label')} value={form.clientRepresentative} fullWidth disabled />
+            <TextField
+              select
+              label={t('contact_label')}
+              value={form.clientRepresentative}
+              onChange={(e) => setForm((prev) => ({ ...prev, clientRepresentative: e.target.value }))}
+              disabled={!form.clientReferenceId || representativeOptions.length === 0}
+              fullWidth
+            >
+              {representativeOptions.length > 1 && (
+                <MenuItem value="">{t('contact_select')}</MenuItem>
+              )}
+              {representativeOptions.map((representative, index) => (
+                <MenuItem
+                  key={`${representative.name}-${representative.email}-${index}`}
+                  value={representative.name}
+                >
+                  <Box sx={{ display: 'grid' }}>
+                    <Typography variant="body2">{representative.name}</Typography>
+                    {(representative.position || representative.email) && (
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        {[representative.position, representative.email].filter(Boolean).join(' · ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
 
             <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 

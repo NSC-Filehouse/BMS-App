@@ -166,7 +166,7 @@ export default function Settings() {
               <Typography variant="h5">
                 {t('settings_title')}
               </Typography>
-              <IconButton aria-label="back-to-timeline" onClick={() => navigate('/timeline')} size="small">
+              <IconButton aria-label="back" onClick={() => navigate(-1)} size="small">
                 <ArrowBackIcon />
               </IconButton>
             </Box>

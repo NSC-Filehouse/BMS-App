@@ -222,6 +222,54 @@ function toText(value) {
   return String(value).trim();
 }
 
+function toDateOnly(value) {
+  if (!value) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const pad = (part) => String(part).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+
+  const text = toText(value);
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+function getTodayDateOnly() {
+  return toDateOnly(new Date());
+}
+
+async function loadCustomerCreditLimit(database, customerId) {
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1
+      [kdKL_Kredit_Limit] AS amount,
+      [kdKL_Kredit_Datum_bis] AS validUntil
+    FROM [dbo].[tblKun_KreditLimit]
+    WHERE [kdKL_KdNR] = ?
+    ORDER BY [kdKL_Kredit_Datum] DESC, [kdKL_LfdNr] DESC
+  `, [customerId]);
+
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row) {
+    return { amount: null, validUntil: null, status: 'missing' };
+  }
+
+  const amount = row.amount === null || row.amount === undefined || toText(row.amount) === ''
+    ? null
+    : Number(row.amount);
+  const validUntil = toDateOnly(row.validUntil);
+  if (!Number.isFinite(amount)) {
+    return { amount: null, validUntil, status: 'missing' };
+  }
+
+  const expired = Boolean(validUntil && validUntil < getTodayDateOnly());
+  return {
+    amount,
+    validUntil,
+    status: expired ? 'expired' : 'active',
+  };
+}
+
 function buildProductIdFromViewRow(row) {
   return [
     toText(row?.article),
@@ -441,6 +489,8 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
   }
 
+  const creditLimit = await loadCustomerCreditLimit(req.database, id);
+
   const repsSql = `
     SELECT [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail]
     FROM [dbo].[tblKun_Ansprech]
@@ -476,6 +526,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const detail = {
     ...item,
+    creditLimit,
     representatives,
     reminderInvoicesCount,
     activities,
