@@ -44,9 +44,31 @@ function formatPrice(value) {
 
 function InfoRow({ label, value }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" sx={{ maxWidth: '60%', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+    <Box
+      sx={{
+        display: { xs: 'grid', md: 'flex' },
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        alignItems: { xs: 'start', md: 'center' },
+        justifyContent: 'space-between',
+        gap: { xs: 0.25, md: 2 },
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          width: { xs: '100%', md: '60%' },
+          maxWidth: { xs: '100%', md: '60%' },
+          minWidth: 0,
+          textAlign: { xs: 'left', md: 'right' },
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
         {value || ''}
       </Typography>
     </Box>
@@ -116,29 +138,46 @@ export default function TempOrderDetail() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}><ArrowBackIcon /></IconButton>
-        <Typography variant="h5">{item?.clientName || id}</Typography>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+          {item?.clientName || id}
+        </Typography>
       </Box>
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {!loading && !error && item && (
-        <Card>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, max-content)' },
+                gap: 1,
+                mb: 2,
+                minWidth: 0,
+              }}
+            >
               {!item.completed && (
-                <Button variant="contained" onClick={() => setFinalizeOpen(true)}>
+                <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
                   {t('temp_order_send_bms')}
                 </Button>
               )}
               {!item.completed && (
-                <Button variant="outlined" onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}>{t('edit_label')}</Button>
+                <Button
+                  variant="outlined"
+                  sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
+                  onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}
+                >
+                  {t('edit_label')}
+                </Button>
               )}
               <Button
                 variant="outlined"
+                sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
                 onClick={() => navigate('/temp-orders/new', {
                   state: {
                     copyOrder: {
@@ -164,7 +203,9 @@ export default function TempOrderDetail() {
                 {t('copy_label')}
               </Button>
               {!item.completed && (
-                <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
+                <Button variant="outlined" color="error" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={deleteOrder}>
+                  {t('delete_label')}
+                </Button>
               )}
             </Box>
 
@@ -206,25 +247,26 @@ export default function TempOrderDetail() {
                     p: 1.25,
                     display: 'grid',
                     gap: 0.35,
+                    minWidth: 0,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {pos.article || '-'}
                   </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
                   </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('delivery_date')}: {formatDateOnly(pos.deliveryDate) || '-'}
                   </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('order_sale_price')}: {formatPrice(pos.price)} | {t('product_price')}: {formatPrice(pos.costPrice)}
                   </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}
                   </Typography>
                   {(pos.wpzId || pos.wpzComment) && (
-                    <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {t('wpz_label')}: {pos.wpzId ? `#${pos.wpzId}` : t('wpz_not_available')}
                       {pos.wpzId ? ` | ${t('wpz_original_use')}: ${pos.wpzOriginal ? t('yes_label') : t('no_label')}` : ''}
                       {` | ${t('wpz_comment_label')}: ${pos.wpzComment || '-'}`}
