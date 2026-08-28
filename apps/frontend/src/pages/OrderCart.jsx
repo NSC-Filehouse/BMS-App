@@ -120,7 +120,8 @@ export default function OrderCart() {
         messages.push(t('validation_delivery_date_required'));
         pushFieldError(x.id, 'deliveryDate');
       }
-      if (x.wpzId && !String(x.wpzComment || '').trim()) {
+      const wpz = normalizeWpzFields(x);
+      if (!String(wpz.wpzComment || '').trim()) {
         messages.push(t('validation_wpz_individual_required'));
         pushFieldError(x.id, 'wpzComment');
       }
@@ -246,7 +247,7 @@ export default function OrderCart() {
                 setFieldErrors({});
                 setError('');
                 const sourceItems = items.map((x) => {
-                  const wpz = x.wpzId ? normalizeWpzFields(x) : { wpzOriginal: null, wpzComment: '' };
+                  const wpz = normalizeWpzFields(x);
                   return {
                     id: x.id,
                     article: x.article,
@@ -257,7 +258,8 @@ export default function OrderCart() {
                     costPrice: Number(x.acquisitionPrice),
                     deliveryDate: x.deliveryDate || null,
                     wpzId: x.wpzId ?? null,
-                    ...wpz,
+                    wpzOriginal: x.wpzId ? wpz.wpzOriginal : null,
+                    wpzComment: wpz.wpzComment,
                   };
                 });
                 if (!getSelectedCustomer()?.id) {

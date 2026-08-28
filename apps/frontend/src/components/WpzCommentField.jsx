@@ -28,14 +28,6 @@ export default function WpzCommentField({
 }) {
   const { t } = useI18n();
 
-  if (!wpzId) {
-    return (
-      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        {t('wpz_label')}: {t('wpz_not_available')}
-      </Typography>
-    );
-  }
-
   const mode = getWpzMode({ wpzOriginal, wpzComment });
   const handleModeChange = (event) => {
     const nextMode = event.target.value;
@@ -47,6 +39,11 @@ export default function WpzCommentField({
 
   return (
     <FormControl component="fieldset" error={error} fullWidth sx={{ mt: 0.5 }}>
+      {!wpzId && (
+        <Typography variant="caption" component="div" sx={{ color: 'text.secondary', mb: 0.5 }}>
+          {t('wpz_label')}: {t('wpz_not_available')}
+        </Typography>
+      )}
       <FormLabel component="legend">{t('wpz_comment_label')}</FormLabel>
       <RadioGroup value={mode} onChange={handleModeChange}>
         <FormControlLabel

@@ -95,7 +95,7 @@ function createPositionDefaults(overrides = {}) {
 
 function getPositionWpzPayload(position) {
   if (!position?.wpzId) {
-    return { wpzId: null, wpzOriginal: null, wpzComment: null };
+    return { wpzId: null, wpzOriginal: null, wpzComment: normalizeWpzFields(position).wpzComment || null };
   }
   return { wpzId: position.wpzId, ...normalizeWpzFields(position) };
 }
