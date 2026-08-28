@@ -274,17 +274,26 @@ export default function Layout() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
 
           </Typography>
-          <Box sx={{ textAlign: 'right', minWidth: 0 }}>
+          <Box
+            sx={{
+              textAlign: 'right',
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              width: { xs: 'clamp(120px, 40vw, 170px)', sm: 'clamp(170px, 24vw, 360px)' },
+            }}
+          >
             {canSwitchMandant ? (
               <ButtonBase
                 onClick={switchMandant}
                 aria-label={t('switch_mandant')}
                 sx={{
                   display: 'flex',
-                  ml: 'auto',
-                  maxWidth: { xs: 170, sm: 360 },
+                  justifyContent: 'flex-end',
+                  width: '100%',
                   minHeight: 24,
-                  px: 0.5,
+                  px: 0,
                   borderRadius: 1,
                   color: 'inherit',
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' },
@@ -294,12 +303,12 @@ export default function Layout() {
                   },
                 }}
               >
-                <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Typography variant="body2" sx={{ width: '100%', textAlign: 'right', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {`${t('mandant_label')}: ${mandant}`}
                 </Typography>
               </ButtonBase>
             ) : (
-              <Typography variant="body2" sx={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Typography variant="body2" sx={{ width: '100%', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
               </Typography>
             )}
@@ -312,10 +321,10 @@ export default function Layout() {
                 : t('customer_not_selected')}
               sx={{
                 display: 'flex',
-                ml: 'auto',
+                justifyContent: 'flex-end',
                 mt: 0.25,
                 minHeight: 30,
-                maxWidth: { xs: 170, sm: 360 },
+                width: '100%',
                 px: 0,
                 color: hasSelectedCustomer ? 'inherit' : '#FFF3C4',
                 bgcolor: 'transparent',
@@ -351,7 +360,7 @@ export default function Layout() {
             disabled={!mandant}
             onClick={() => navigate('/order-cart')}
             aria-label={t('cart_open')}
-            sx={{ ml: 0.5 }}
+            sx={{ ml: 0.5, mr: -1 }}
           >
             <Badge badgeContent={cartCount} color="error">
               <ShoppingCartIcon />
