@@ -587,7 +587,7 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
                         <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
-                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatDateOnly(pos.deliveryDate)}; ${formatMoney(pos.salePrice)}`}
+                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatDateOnly(pos.deliveryDate)}; ${t('order_sale_price_per_tonne')}: ${formatMoney(pos.salePricePerTonne)}`}
                         </Typography>
                       ))}
                     </CardContent>

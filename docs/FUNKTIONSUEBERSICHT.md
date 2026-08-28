@@ -57,7 +57,7 @@ Stand: 20. Juli 2026
 - Artikelpositionen und Preise eines Angebots sehen
 - Offene Kundenaufträge anzeigen
 - Alle Kundenaufträge anzeigen
-- Positionen, Lieferdaten und Preise eines Kundenauftrags sehen
+- Positionen, Lieferdaten und Verkaufspreise je Tonne eines Kundenauftrags sehen
 - Offene Rechnungen anzeigen
 - Alle Rechnungen anzeigen
 - Rechnungsnummer, Datum, Fälligkeit und Betrag sehen

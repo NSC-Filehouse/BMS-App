@@ -213,7 +213,7 @@ Pro Auftrag werden angezeigt:
 - Bestelldatum;
 - Fälligkeitsdatum;
 - Zahlungsziel beziehungsweise Zahltext;
-- jede Position mit Artikel, Menge, Einheit, Lieferdatum und Verkaufspreis.
+- jede Position mit Artikel, Menge, Einheit, Lieferdatum und Verkaufspreis je Tonne.
 
 Dieser Bereich zeigt die vorhandenen Auftragsdaten des Kunden. Er ist nicht mit dem Menübereich „Aufträge“ zum Erfassen eigener neuer Aufträge zu verwechseln.
 

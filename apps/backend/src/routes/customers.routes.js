@@ -632,8 +632,8 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
         [auP_Anzahl] AS amount,
         [auP_Einheit] AS unit,
         [auP_Lieferdatum] AS deliveryDate,
-        [auP_VK_Gesamt_EU] AS salePriceEu,
-        [auP_VK_Gesamt_DM] AS salePriceDm
+        [auP_VK_EU] AS salePricePerTonneEu,
+        [auP_VK_DM] AS salePricePerTonneDm
       FROM [dbo].[tblAuf_Position]
       WHERE [auP_Auftragsindex] IN (${placeholders})
       ORDER BY [auP_Auftragsindex] ASC
@@ -644,14 +644,16 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
       const key = toText(row.orderIndex);
       if (!key) continue;
       if (!posMap.has(key)) posMap.set(key, []);
-      const salePriceEu = Number(row.salePriceEu);
-      const salePriceDm = Number(row.salePriceDm);
+      const salePricePerTonneEu = Number(row.salePricePerTonneEu);
+      const salePricePerTonneDm = Number(row.salePricePerTonneDm);
       posMap.get(key).push({
         article: toText(row.article),
         amount: row.amount,
         unit: toText(row.unit),
         deliveryDate: row.deliveryDate || null,
-        salePrice: Number.isFinite(salePriceEu) ? salePriceEu : (Number.isFinite(salePriceDm) ? salePriceDm : null),
+        salePricePerTonne: Number.isFinite(salePricePerTonneEu)
+          ? salePricePerTonneEu
+          : (Number.isFinite(salePricePerTonneDm) ? salePricePerTonneDm : null),
       });
     }
   }
