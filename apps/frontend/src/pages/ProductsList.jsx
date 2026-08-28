@@ -175,7 +175,8 @@ export default function ProductsList() {
 
   const openAddDialog = React.useCallback((product) => {
     setAddItem(product);
-    setAddQty('');
+    const available = Math.max(Number(product?.amount || 0) - Number(product?.reserved || 0), 0);
+    setAddQty(Number.isFinite(available) ? String(available) : '');
     setAddError('');
     setAddDialogOpen(true);
   }, []);

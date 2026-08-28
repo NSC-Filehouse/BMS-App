@@ -31,6 +31,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { clearOrderCart } from '../utils/orderCart.js';
+import WpzCommentField from '../components/WpzCommentField.jsx';
+import { normalizeWpzFields } from '../utils/wpz.js';
 import {
   getSelectedCustomer as getStoredSelectedCustomer,
   setSelectedCustomer as storeSelectedCustomer,
@@ -66,6 +68,15 @@ function tomorrow() {
   return d.toISOString().slice(0, 10);
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  const num = Number(value);
+  if (Number.isFinite(num)) {
+    return `${num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+  }
+  return `${value} EUR`;
+}
+
 function inSevenDays() {
   const d = new Date();
   d.setDate(d.getDate() + 7);
@@ -76,10 +87,17 @@ function createPositionDefaults(overrides = {}) {
   return {
     deliveryDate: tomorrow(),
     wpzId: null,
-    wpzOriginal: true,
-    wpzComment: '',
+    wpzOriginal: false,
+    wpzComment: 'Neutralisieren',
     ...overrides,
   };
+}
+
+function getPositionWpzPayload(position) {
+  if (!position?.wpzId) {
+    return { wpzId: null, wpzOriginal: null, wpzComment: null };
+  }
+  return { wpzId: position.wpzId, ...normalizeWpzFields(position) };
 }
 
 function formatDeliveryAddressParts(addr) {
@@ -720,8 +738,9 @@ export default function TempOrderForm() {
       if (!Number.isFinite(costPrice) || costPrice <= 0) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_price_positive')}`);
       }
-      if (pos.wpzId && !pos.wpzOriginal && !String(pos.wpzComment || '').trim()) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_wpz_comment_required')}`);
+      const wpz = getPositionWpzPayload(pos);
+      if (wpz.wpzId && !String(wpz.wpzComment || '').trim()) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_wpz_individual_required')}`);
       }
     }
 
@@ -761,9 +780,7 @@ export default function TempOrderForm() {
           deliveryDate: x.deliveryDate || null,
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
-          wpzId: x.wpzId ?? null,
-          wpzOriginal: x.wpzId ? Boolean(x.wpzOriginal) : null,
-          wpzComment: x.wpzComment || null,
+          ...getPositionWpzPayload(x),
         }));
       }
 
@@ -1092,8 +1109,8 @@ export default function TempOrderForm() {
                         setAddPosSalePrice('');
                         setAddPosDeliveryDate(tomorrow());
                         setAddPosWpzId(null);
-                        setAddPosWpzOriginal(true);
-                        setAddPosWpzComment('');
+                        setAddPosWpzOriginal(false);
+                        setAddPosWpzComment('Neutralisieren');
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -1135,14 +1152,21 @@ export default function TempOrderForm() {
                               inputProps={{ min: 1, step: 'any' }}
                               size="small"
                             />
-                            <TextField
-                              type="number"
-                              label={t('order_sale_price')}
-                              value={x.price ?? ''}
-                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, price: e.target.value } : p)))}
-                              inputProps={{ min: 0.01, step: 'any' }}
-                              size="small"
-                            />
+                            <Box sx={{ display: 'grid', gap: 0.25 }}>
+                              <TextField
+                                type="number"
+                                label={t('order_sale_price')}
+                                value={x.price ?? ''}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, price: e.target.value } : p)))}
+                                inputProps={{ min: 0.01, step: 'any' }}
+                                size="small"
+                              />
+                              {Number.isFinite(Number(x.costPrice)) && (
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  {t('sale_price_hint', { price: formatPrice(x.costPrice) })}
+                                </Typography>
+                              )}
+                            </Box>
                             <TextField
                               type="number"
                               label={t('product_price')}
@@ -1152,33 +1176,12 @@ export default function TempOrderForm() {
                               size="small"
                             />
                           </Box>
-                          {x.wpzId ? (
-                            <>
-                              <FormControlLabel
-                                control={(
-                                  <Checkbox
-                                    checked={Boolean(x.wpzOriginal)}
-                                    onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx
-                                      ? { ...p, wpzOriginal: e.target.checked, ...(e.target.checked ? { wpzComment: '' } : {}) }
-                                      : p)))}
-                                  />
-                                )}
-                                label={t('wpz_original_use')}
-                              />
-                            </>
-                          ) : (
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                              {t('wpz_label')}: {t('wpz_not_available')}
-                            </Typography>
-                          )}
-                          <TextField
-                            label={t('wpz_comment_label')}
-                            value={x.wpzComment || ''}
-                            onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, wpzComment: e.target.value } : p)))}
-                            size="small"
-                            multiline
-                            minRows={2}
-                            fullWidth
+                          <WpzCommentField
+                            wpzId={x.wpzId}
+                            wpzOriginal={x.wpzOriginal}
+                            wpzComment={x.wpzComment}
+                            onChange={(patch) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)))}
+                            helperText={t('validation_wpz_individual_required')}
                           />
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
@@ -1244,13 +1247,12 @@ export default function TempOrderForm() {
             getOptionLabel={(opt) => String(opt?.article || '')}
             onChange={(e, value) => {
               setAddPosProduct(value);
-              const acquisition = Number(value?.acquisitionPrice);
-              if (Number.isFinite(acquisition) && acquisition > 0) {
-                setAddPosSalePrice(String(acquisition));
-              }
+              const available = Math.max(Number(value?.amount || 0) - Number(value?.reserved || 0), 0);
+              setAddPosQty(value && Number.isFinite(available) ? String(available) : '');
+              setAddPosSalePrice('');
               setAddPosWpzId(null);
-              setAddPosWpzOriginal(true);
-              setAddPosWpzComment('');
+              setAddPosWpzOriginal(false);
+              setAddPosWpzComment('Neutralisieren');
               if (value?.id) {
                 (async () => {
                   try {
@@ -1312,6 +1314,11 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
+          {Number.isFinite(Number(addPosProduct?.acquisitionPrice)) && (
+            <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.75 }}>
+              {t('sale_price_hint', { price: formatPrice(addPosProduct.acquisitionPrice) })}
+            </Typography>
+          )}
           <TextField
             type="date"
             label={t('delivery_date')}
@@ -1320,34 +1327,16 @@ export default function TempOrderForm() {
             InputLabelProps={{ shrink: true }}
             fullWidth
           />
-          {addPosProduct && (addPosWpzId ? (
-            <>
-              <FormControlLabel
-                control={(
-                  <Checkbox
-                    checked={addPosWpzOriginal}
-                    onChange={(e) => {
-                      setAddPosWpzOriginal(e.target.checked);
-                      if (e.target.checked) setAddPosWpzComment('');
-                    }}
-                  />
-                )}
-                label={t('wpz_original_use')}
-              />
-            </>
-          ) : (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {t('wpz_label')}: {t('wpz_not_available')}
-            </Typography>
-          ))}
           {addPosProduct && (
-            <TextField
-              label={t('wpz_comment_label')}
-              value={addPosWpzComment}
-              onChange={(e) => setAddPosWpzComment(e.target.value)}
-              multiline
-              minRows={2}
-              fullWidth
+            <WpzCommentField
+              wpzId={addPosWpzId}
+              wpzOriginal={addPosWpzOriginal}
+              wpzComment={addPosWpzComment}
+              onChange={({ wpzOriginal, wpzComment }) => {
+                setAddPosWpzOriginal(wpzOriginal);
+                setAddPosWpzComment(wpzComment);
+              }}
+              helperText={t('validation_wpz_individual_required')}
             />
           )}
         </DialogContent>
@@ -1380,8 +1369,8 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_delivery_date_required'));
                 return;
               }
-              if (addPosWpzId && !addPosWpzOriginal && !String(addPosWpzComment || '').trim()) {
-                setAddPosError(t('validation_wpz_comment_required'));
+              if (addPosWpzId && !String(addPosWpzComment || '').trim()) {
+                setAddPosError(t('validation_wpz_individual_required'));
                 return;
               }
               setAddPosError('');

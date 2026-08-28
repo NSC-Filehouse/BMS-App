@@ -5,14 +5,12 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
   IconButton,
   TextField,
   Typography,
@@ -25,6 +23,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem } from '../utils/orderCart.js';
 import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
+import WpzCommentField from '../components/WpzCommentField.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -98,10 +97,11 @@ export default function ProductDetail() {
   const [reserveError, setReserveError] = React.useState('');
   const [cartOpen, setCartOpen] = React.useState(false);
   const [cartError, setCartError] = React.useState('');
+  const [cartWpzError, setCartWpzError] = React.useState(false);
   const [cartQty, setCartQty] = React.useState('');
   const [cartSalePrice, setCartSalePrice] = React.useState('');
-  const [cartWpzOriginal, setCartWpzOriginal] = React.useState(true);
-  const [cartWpzComment, setCartWpzComment] = React.useState('');
+  const [cartWpzOriginal, setCartWpzOriginal] = React.useState(false);
+  const [cartWpzComment, setCartWpzComment] = React.useState('Neutralisieren');
   const [cartSuccess, setCartSuccess] = React.useState('');
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
@@ -144,13 +144,14 @@ export default function ProductDetail() {
 
   const openCartDialog = React.useCallback(() => {
     setError('');
-    setCartQty('');
-    setCartSalePrice(item?.acquisitionPrice ?? '');
-    setCartWpzOriginal(true);
-    setCartWpzComment('');
+    setCartQty(availableAmount !== null ? String(availableAmount) : '');
+    setCartSalePrice('');
+    setCartWpzOriginal(false);
+    setCartWpzComment('Neutralisieren');
     setCartError('');
+    setCartWpzError(false);
     setCartOpen(true);
-  }, [item]);
+  }, [availableAmount]);
 
   const requestProductAction = React.useCallback((action) => {
     if (!getSelectedCustomer()?.id) {
@@ -499,34 +500,22 @@ export default function ProductDetail() {
             onChange={(e) => setCartSalePrice(e.target.value)}
             inputProps={{ min: 0.01, step: 'any' }}
           />
-          {wpzExists ? (
-            <>
-              <FormControlLabel
-                control={(
-                  <Checkbox
-                    checked={cartWpzOriginal}
-                    onChange={(e) => {
-                      setCartWpzOriginal(e.target.checked);
-                      if (e.target.checked) setCartWpzComment('');
-                    }}
-                  />
-                )}
-                label={t('wpz_original_use')}
-              />
-            </>
-          ) : (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {t('wpz_label')}: {t('wpz_not_available')}
+          {Number.isFinite(Number(item?.acquisitionPrice)) && (
+            <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
+              {t('sale_price_hint', { price: formatPrice(item.acquisitionPrice) })}
             </Typography>
           )}
-          <TextField
-            margin="dense"
-            fullWidth
-            multiline
-            minRows={2}
-            label={t('wpz_comment_label')}
-            value={cartWpzComment}
-            onChange={(e) => setCartWpzComment(e.target.value)}
+          <WpzCommentField
+            wpzId={wpzExists ? wpzId : null}
+            wpzOriginal={cartWpzOriginal}
+            wpzComment={cartWpzComment}
+            onChange={({ wpzOriginal, wpzComment }) => {
+              setCartWpzOriginal(wpzOriginal);
+              setCartWpzComment(wpzComment);
+              setCartWpzError(false);
+            }}
+            error={cartWpzError}
+            helperText={t('validation_wpz_individual_required')}
           />
         </DialogContent>
         <DialogActions>
@@ -536,6 +525,7 @@ export default function ProductDetail() {
             onClick={() => {
               const qty = Number(cartQty);
               const salePrice = Number(cartSalePrice);
+              setCartWpzError(false);
               if (!Number.isFinite(qty) || qty <= 0) {
                 setCartError(t('validation_cart_quantity_positive'));
                 return;
@@ -548,8 +538,9 @@ export default function ProductDetail() {
                 setCartError(t('validation_sale_price_positive'));
                 return;
               }
-              if (wpzExists && !cartWpzOriginal && !String(cartWpzComment || '').trim()) {
-                setCartError(t('validation_wpz_comment_required'));
+              if (wpzExists && !String(cartWpzComment || '').trim()) {
+                setCartWpzError(true);
+                setCartError(t('validation_wpz_individual_required'));
                 return;
               }
               setCartError('');

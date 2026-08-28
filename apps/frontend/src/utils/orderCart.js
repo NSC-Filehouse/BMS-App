@@ -109,11 +109,12 @@ export function addOrderCartItem(item, quantityKg) {
     availableAmount: Number(item.amount || 0) - Number(item.reserved || 0),
     amountTotal: item.amount ?? null,
     acquisitionPrice: item.acquisitionPrice ?? null,
-    salePrice: item.salePrice ?? item.acquisitionPrice ?? null,
+    // A sales price must be entered explicitly; never use the acquisition price as VK.
+    salePrice: item.salePrice ?? null,
     deliveryDate: item.deliveryDate || tomorrow(),
     quantityKg: qty,
     wpzId: item.wpzId ?? null,
-    wpzOriginal: item.wpzOriginal ?? true,
+    wpzOriginal: item.wpzOriginal ?? null,
     wpzComment: item.wpzComment || '',
   };
   if (idx >= 0) {

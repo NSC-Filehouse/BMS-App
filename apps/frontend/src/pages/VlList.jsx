@@ -107,7 +107,8 @@ export default function VlList() {
 
   const openAddDialog = React.useCallback((item) => {
     setAddItem(item);
-    setAddQty('');
+    const available = Math.max(Number(item?.amount || 0) - Number(item?.reserved || 0), 0);
+    setAddQty(Number.isFinite(available) ? String(available) : '');
     setAddError('');
     setAddDialogOpen(true);
   }, []);

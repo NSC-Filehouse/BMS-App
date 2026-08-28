@@ -5,8 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
-  FormControlLabel,
   IconButton,
   TextField,
   Typography,
@@ -25,6 +23,8 @@ import {
 } from '../utils/orderCart.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
+import WpzCommentField from '../components/WpzCommentField.jsx';
+import { normalizeWpzFields } from '../utils/wpz.js';
 
 function formatPrice(value) {
   const n = Number(value);
@@ -120,8 +120,8 @@ export default function OrderCart() {
         messages.push(t('validation_delivery_date_required'));
         pushFieldError(x.id, 'deliveryDate');
       }
-      if (x.wpzId && x.wpzOriginal === false && !String(x.wpzComment || '').trim()) {
-        messages.push(t('validation_wpz_comment_required'));
+      if (x.wpzId && !String(x.wpzComment || '').trim()) {
+        messages.push(t('validation_wpz_individual_required'));
         pushFieldError(x.id, 'wpzComment');
       }
     }
@@ -201,6 +201,11 @@ export default function OrderCart() {
                   error={Boolean(rowErr.salePrice)}
                   helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
+                {Number.isFinite(Number(row.acquisitionPrice)) && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.75 }}>
+                    {t('sale_price_hint', { price: formatPrice(row.acquisitionPrice) })}
+                  </Typography>
+                )}
                 <TextField
                   type="date"
                   label={t('delivery_date')}
@@ -212,35 +217,13 @@ export default function OrderCart() {
                   error={Boolean(rowErr.deliveryDate)}
                   helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
                 />
-                {row.wpzId ? (
-                  <>
-                    <FormControlLabel
-                      control={(
-                        <Checkbox
-                          checked={row.wpzOriginal !== false}
-                          onChange={(e) => setItems(updateOrderCartItem(row.id, {
-                            wpzOriginal: e.target.checked,
-                            ...(e.target.checked ? { wpzComment: '' } : {}),
-                          }))}
-                        />
-                      )}
-                      label={t('wpz_original_use')}
-                    />
-                  </>
-                ) : (
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {t('wpz_label')}: {t('wpz_not_available')}
-                  </Typography>
-                )}
-                <TextField
-                  label={t('wpz_comment_label')}
-                  value={row.wpzComment || ''}
-                  onChange={(e) => setItems(updateOrderCartItem(row.id, { wpzComment: e.target.value }))}
-                  multiline
-                  minRows={2}
-                  size="small"
+                <WpzCommentField
+                  wpzId={row.wpzId}
+                  wpzOriginal={row.wpzOriginal}
+                  wpzComment={row.wpzComment}
+                  onChange={(patch) => setItems(updateOrderCartItem(row.id, patch))}
                   error={Boolean(rowErr.wpzComment)}
-                  helperText={rowErr.wpzComment ? t('validation_wpz_comment_required') : ''}
+                  helperText={t('validation_wpz_individual_required')}
                 />
                 </>
               );
@@ -262,19 +245,21 @@ export default function OrderCart() {
                 }
                 setFieldErrors({});
                 setError('');
-                const sourceItems = items.map((x) => ({
-                  id: x.id,
-                  article: x.article,
-                  beNumber: x.beNumber,
-                  warehouseId: x.warehouseId,
-                  amountInKg: Number(x.quantityKg),
-                  salePrice: Number(x.salePrice),
-                  costPrice: Number(x.acquisitionPrice),
-                  deliveryDate: x.deliveryDate || null,
-                  wpzId: x.wpzId ?? null,
-                  wpzOriginal: x.wpzOriginal ?? true,
-                  wpzComment: x.wpzComment || '',
-                }));
+                const sourceItems = items.map((x) => {
+                  const wpz = x.wpzId ? normalizeWpzFields(x) : { wpzOriginal: null, wpzComment: '' };
+                  return {
+                    id: x.id,
+                    article: x.article,
+                    beNumber: x.beNumber,
+                    warehouseId: x.warehouseId,
+                    amountInKg: Number(x.quantityKg),
+                    salePrice: Number(x.salePrice),
+                    costPrice: Number(x.acquisitionPrice),
+                    deliveryDate: x.deliveryDate || null,
+                    wpzId: x.wpzId ?? null,
+                    ...wpz,
+                  };
+                });
                 if (!getSelectedCustomer()?.id) {
                   setPendingSourceItems(sourceItems);
                   setCustomerRequiredOpen(true);
