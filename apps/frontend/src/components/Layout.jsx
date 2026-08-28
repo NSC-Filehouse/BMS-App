@@ -315,7 +315,7 @@ export default function Layout() {
             <ButtonBase
               disableRipple
               disabled={!mandant}
-              onClick={() => navigate('/customers')}
+              onClick={() => navigate('/customers', { state: { focusSelected: true } })}
               aria-label={hasSelectedCustomer
                 ? `${t('order_customer')}: ${selectedCustomer?.name || selectedCustomer?.id}`
                 : t('customer_not_selected')}

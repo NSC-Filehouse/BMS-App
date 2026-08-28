@@ -101,13 +101,26 @@ export default function CustomersList() {
     const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const includeInactiveVal = opts.includeInactive ?? includeInactiveRef.current ?? false;
+    const focusCustomerId = String(opts.focusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=kd_Name1&dir=ASC`);
+      const [res, focusedCustomerRes] = await Promise.all([
+        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=kd_Name1&dir=ASC`),
+        focusCustomerId
+          ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       const rows = res?.data || [];
       const filtered = rows.filter((row) => isValidCustomerName(getCustomerName(row)));
-      setItems(filtered);
+      const focusedCustomer = focusedCustomerRes?.data;
+      const focusedCustomerIsValid = focusedCustomer
+        && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId
+        && isValidCustomerName(getCustomerName(focusedCustomer));
+      const displayRows = focusedCustomerIsValid
+        ? [focusedCustomer, ...filtered.filter((row) => String(row?.kd_KdNR || '').trim() !== focusCustomerId)]
+        : filtered;
+      setItems(displayRows);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
       setError(e?.message || t('loading_error'));
@@ -117,6 +130,7 @@ export default function CustomersList() {
   }, []);
 
   React.useEffect(() => {
+    const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
     if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.includeInactive !== undefined)) {
       const restoredQ = String(listState.q || '');
@@ -131,6 +145,26 @@ export default function CustomersList() {
       setReminderOnly(restoredReminderOnly);
       setIncludeInactive(restoredIncludeInactive);
       load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, includeInactive: restoredIncludeInactive });
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+
+    if (focusSelected) {
+      const currentSelectedCustomer = getSelectedCustomer();
+      hydratedFromStateRef.current = true;
+      skipSearchReloadRef.current = true;
+      setQ('');
+      setSearchField('name');
+      setReminderOnly(false);
+      setIncludeInactive(false);
+      load({
+        page: 1,
+        q: '',
+        searchField: 'name',
+        reminderOnly: false,
+        includeInactive: false,
+        focusCustomerId: currentSelectedCustomer?.id,
+      });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }

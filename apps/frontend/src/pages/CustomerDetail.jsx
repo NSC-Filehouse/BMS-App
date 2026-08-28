@@ -32,7 +32,11 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { setSelectedCustomer } from '../utils/customerSelection.js';
+import {
+  CUSTOMER_SELECTION_CHANGED,
+  getSelectedCustomer,
+  setSelectedCustomer,
+} from '../utils/customerSelection.js';
 import {
   MAP_PROVIDER_APPLE,
   MAP_PROVIDER_GOOGLE,
@@ -229,6 +233,7 @@ export default function CustomerDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const [offerScope, setOfferScope] = React.useState('90d');
   const [orderScope, setOrderScope] = React.useState('open');
   const [invoiceScope, setInvoiceScope] = React.useState('open');
@@ -242,6 +247,17 @@ export default function CustomerDetail() {
     invoices: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     purchasedArticles: { expanded: false, loaded: false, loading: false, error: '', items: [] },
   });
+
+  React.useEffect(() => {
+    const syncCustomer = () => setSelectedCustomerState(getSelectedCustomer());
+    window.addEventListener(CUSTOMER_SELECTION_CHANGED, syncCustomer);
+    window.addEventListener('storage', syncCustomer);
+    syncCustomer();
+    return () => {
+      window.removeEventListener(CUSTOMER_SELECTION_CHANGED, syncCustomer);
+      window.removeEventListener('storage', syncCustomer);
+    };
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -282,6 +298,9 @@ export default function CustomerDetail() {
       : t('credit_limit_missing');
   const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
+  const isSelectedCustomer = Boolean(
+    selectedCustomer?.id && String(selectedCustomer.id) === String(id),
+  );
   const openAddressWithProvider = React.useCallback((provider) => {
     const url = buildMapUrl(provider, addressForMap);
     if (!url) return;
@@ -426,13 +445,13 @@ export default function CustomerDetail() {
           {name || String(id)}
         </Typography>
         <Button
-          variant="contained"
+          variant={isSelectedCustomer ? 'outlined' : 'contained'}
           size="small"
           sx={{ ml: 'auto', flexShrink: 0 }}
-          disabled={!item}
+          disabled={!item || isSelectedCustomer}
           onClick={handleSelectCustomer}
         >
-          {t('select_label')}
+          {isSelectedCustomer ? t('selected_label') : t('select_label')}
         </Button>
       </Box>
 
