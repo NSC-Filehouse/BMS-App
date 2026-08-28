@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -23,7 +22,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
+import { addOrderCartItem } from '../utils/orderCart.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -43,11 +42,35 @@ function formatDateDe(value) {
 
 function InfoRow({ label, value }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
-      <Typography variant="body2" color="text.secondary">
+    <Box
+      sx={{
+        display: { xs: 'grid', md: 'flex' },
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        alignItems: { xs: 'start', md: 'center' },
+        justifyContent: 'space-between',
+        gap: { xs: 0.25, md: 2 },
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+      >
         {label}
       </Typography>
-      <Typography variant="body2" sx={{ width: '40%', textAlign: 'right' }}>
+      <Typography
+        variant="body2"
+        sx={{
+          width: { xs: '100%', md: '40%' },
+          maxWidth: { xs: '100%', md: '40%' },
+          minWidth: 0,
+          textAlign: { xs: 'left', md: 'right' },
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
         {value || ''}
       </Typography>
     </Box>
@@ -78,7 +101,6 @@ export default function ProductDetail() {
   const [cartWpzOriginal, setCartWpzOriginal] = React.useState(true);
   const [cartWpzComment, setCartWpzComment] = React.useState('');
   const [cartSuccess, setCartSuccess] = React.useState('');
-  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
   const [wpzLoading, setWpzLoading] = React.useState(false);
@@ -142,10 +164,6 @@ export default function ProductDetail() {
     return () => { alive = false; };
   }, [id, t]);
 
-  React.useEffect(() => {
-    setCartCount(getOrderCartCount());
-  }, [cartOpen, cartSuccess]);
-
   const handleBack = React.useCallback(() => {
     const fromVl = Boolean(location.state?.fromVl);
     if (fromVl) {
@@ -161,24 +179,16 @@ export default function ProductDetail() {
   }, [location.state, navigate]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <IconButton aria-label="back" onClick={handleBack}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h5">
+          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {item?.article || id}
           </Typography>
         </Box>
-        <IconButton
-          aria-label={t('cart_open')}
-          onClick={() => navigate('/order-cart', { state: { fromVl: Boolean(location.state?.fromVl) } })}
-        >
-          <Badge badgeContent={cartCount} color="error">
-            <ShoppingCartIcon />
-          </Badge>
-        </IconButton>
       </Box>
 
       {loading && (
@@ -193,13 +203,25 @@ export default function ProductDetail() {
       {cartSuccess && <Alert severity="success" sx={{ mb: 2 }}>{cartSuccess}</Alert>}
 
       {!loading && !error && item && (
-        <Card>
-          <CardContent sx={{ pt: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ pt: 2, minWidth: 0 }}>
+            <Box
+              sx={{
+                display: { xs: 'grid', md: 'flex' },
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                alignItems: { xs: 'start', md: 'center' },
+                justifyContent: 'space-between',
+                gap: { xs: 0.25, md: 2 },
+                mb: 2,
+                minWidth: 0,
+              }}
+            >
               <Typography variant="subtitle2" color="text.secondary">
                 {t('product_price')}
               </Typography>
-              <Typography variant="h6">{formatPrice(item.acquisitionPrice)}</Typography>
+              <Typography variant="h6" sx={{ minWidth: 0, textAlign: { xs: 'left', md: 'right' }, overflowWrap: 'anywhere' }}>
+                {formatPrice(item.acquisitionPrice)}
+              </Typography>
             </Box>
 
             <Button
@@ -290,7 +312,7 @@ export default function ProductDetail() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                 {t('product_extra')}
               </Typography>
-              <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+              <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {item.about || ''}
               </Typography>
             </Box>
@@ -467,7 +489,6 @@ export default function ProductDetail() {
               }, qty);
               setCartOpen(false);
               setCartSuccess(t('cart_added'));
-              setCartCount(getOrderCartCount());
             }}
           >
             {t('cart_add')}

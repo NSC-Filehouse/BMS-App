@@ -146,19 +146,19 @@ export default function OrderCreate() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={() => navigate('/orders')}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">{t('reservation_create_title')}</Typography>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('reservation_create_title')}</Typography>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-      <Card>
-        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Card sx={{ width: '100%', minWidth: 0 }}>
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <Autocomplete
             options={productOptions}
             value={selectedProduct}

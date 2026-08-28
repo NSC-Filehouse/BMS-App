@@ -39,13 +39,30 @@ function formatDateOnly(value) {
 
 function InfoRow({ label, value }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
-      <Typography variant="body2" color="text.secondary">
+    <Box
+      sx={{
+        display: { xs: 'grid', md: 'flex' },
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        alignItems: { xs: 'start', md: 'center' },
+        justifyContent: 'space-between',
+        gap: { xs: 0.25, md: 2 },
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
         {label}
       </Typography>
       <Typography
         variant="body2"
-        sx={{ maxWidth: '60%', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+        sx={{
+          width: { xs: '100%', md: '60%' },
+          maxWidth: { xs: '100%', md: '60%' },
+          minWidth: 0,
+          textAlign: { xs: 'left', md: 'right' },
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
       >
         {value || ''}
       </Typography>
@@ -104,12 +121,12 @@ export default function OrderDetail() {
   }, [location.state, navigate]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {item?.orderNumber || id}
         </Typography>
       </Box>
@@ -124,10 +141,10 @@ export default function OrderDetail() {
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       {!loading && !error && item && (
-        <Card>
-          <CardContent sx={{ pt: 2 }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ pt: 2, minWidth: 0 }}>
             {item?.isReserved && (
-              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'nowrap' }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                 {canEdit && (
                   <Button
                     variant="outlined"

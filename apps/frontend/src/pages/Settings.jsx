@@ -149,7 +149,7 @@ export default function Settings() {
   }, []);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -160,10 +160,10 @@ export default function Settings() {
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       {!loading && (
-        <Card>
-          <CardContent sx={{ display: 'grid', gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-              <Typography variant="h5">
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ display: 'grid', gap: 2, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
+              <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {t('settings_title')}
               </Typography>
               <IconButton aria-label="back" onClick={() => navigate(-1)} size="small">
@@ -180,6 +180,7 @@ export default function Settings() {
                 row
                 value={lang}
                 onChange={(event) => setLang(event.target.value)}
+                sx={{ flexWrap: 'wrap' }}
               >
                 <FormControlLabel
                   value="de"

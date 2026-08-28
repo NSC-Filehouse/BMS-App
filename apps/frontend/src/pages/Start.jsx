@@ -78,7 +78,7 @@ export default function Start() {
   }, []);
 
   return (
-    <Box sx={{ maxWidth: 720, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 720, width: '100%', minWidth: 0, mx: 'auto' }}>
       <Typography variant="h5" sx={{ mb: 2 }}>
         {t('start_title')}
       </Typography>
@@ -94,7 +94,7 @@ export default function Start() {
           <Typography variant="body1">
             {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.8 }}>
+          <Typography variant="body2" sx={{ opacity: 0.8, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {email || '-'}
           </Typography>
         </Box>
@@ -106,13 +106,13 @@ export default function Start() {
             <Typography variant="h6" sx={{ mb: 1 }}>
               {error === noPermissionText ? t('start_no_permission_title') : t('loading_mandants_error')}
             </Typography>
-            <Typography variant="body1" sx={{ mb: 2 }}>
+            <Typography variant="body1" sx={{ mb: 2, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {error}
             </Typography>
             <Typography variant="body2" sx={{ mb: 1 }}>
               {t('start_user')}: <b>{`${meName.given || ''} ${meName.surname || ''}`.trim() || '-'}</b>
             </Typography>
-            <Typography variant="body2">
+            <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('start_email')}: <b>{email || '-'}</b>
             </Typography>
           </CardContent>

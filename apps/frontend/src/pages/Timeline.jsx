@@ -158,9 +158,9 @@ export default function Timeline() {
   }, [t]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-        <Typography variant="h5">
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {t('timeline_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -233,7 +233,7 @@ export default function Timeline() {
       {!loading && !error && filteredItems.length > 0 && (
         <Box sx={{ display: 'grid', gap: 1.5 }}>
           {groupedItems.map((group) => (
-            <Box key={group.key} sx={{ display: 'grid', gap: 1 }}>
+            <Box key={group.key} sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
               <Typography
                 variant="subtitle2"
                 sx={{
@@ -246,15 +246,15 @@ export default function Timeline() {
               </Typography>
               {group.items.map((item) => {
                 return (
-                  <Card key={item.id} variant="outlined">
-                    <CardContent sx={{ display: 'grid', gap: 0.35, py: '10px !important' }}>
-                      <Typography variant="caption" color="text.secondary">
+                  <Card key={item.id} variant="outlined" sx={{ width: '100%', minWidth: 0 }}>
+                    <CardContent sx={{ display: 'grid', gap: 0.35, py: '10px !important', minWidth: 0 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {formatDateTime(item.createdAt, locale)}
                       </Typography>
-                      <Typography variant="body2">
+                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {renderTimelineMessage(item, locale, t)}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {t('mandant_label')}: {item.mandant || '-'}
                       </Typography>
                     </CardContent>

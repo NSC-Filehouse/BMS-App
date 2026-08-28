@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
+  Badge,
   Box,
   Drawer,
   IconButton,
@@ -25,12 +26,14 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
 import HistoryIcon from '@mui/icons-material/History';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 import { apiRequest } from '../api/client.js';
 import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
 import { getMandant, clearMandant } from '../utils/mandant.js';
 import { CUSTOMER_SELECTION_CHANGED, clearSelectedCustomer, getSelectedCustomer } from '../utils/customerSelection.js';
 import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
+import { getOrderCartCount, ORDER_CART_CHANGED } from '../utils/orderCart.js';
 
 const drawerWidth = 260;
 
@@ -64,6 +67,7 @@ export default function Layout() {
   const [userName, setUserName] = React.useState('');
   const [canSwitchMandant, setCanSwitchMandant] = React.useState(false);
   const [reminderCustomersCount, setReminderCustomersCount] = React.useState(0);
+  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const mandant = getMandant();
   const navigate = useNavigate();
@@ -87,6 +91,17 @@ export default function Layout() {
     return () => {
       window.removeEventListener(CUSTOMER_SELECTION_CHANGED, syncCustomer);
       window.removeEventListener('storage', syncCustomer);
+    };
+  }, [mandant]);
+
+  React.useEffect(() => {
+    const syncCart = () => setCartCount(getOrderCartCount());
+    window.addEventListener(ORDER_CART_CHANGED, syncCart);
+    window.addEventListener('storage', syncCart);
+    syncCart();
+    return () => {
+      window.removeEventListener(ORDER_CART_CHANGED, syncCart);
+      window.removeEventListener('storage', syncCart);
     };
   }, [mandant]);
 
@@ -331,6 +346,17 @@ export default function Layout() {
               </Typography>
             </ButtonBase>
           </Box>
+          <IconButton
+            color="inherit"
+            disabled={!mandant}
+            onClick={() => navigate('/order-cart')}
+            aria-label={t('cart_open')}
+            sx={{ ml: 0.5 }}
+          >
+            <Badge badgeContent={cartCount} color="error">
+              <ShoppingCartIcon />
+            </Badge>
+          </IconButton>
         </Toolbar>
       </AppBar>
 

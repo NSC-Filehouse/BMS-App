@@ -48,12 +48,12 @@ export default function ResourceDetail({ resourceKey }) {
   }, [resource.key, id]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {resource.label} Detail
         </Typography>
       </Box>
@@ -67,8 +67,8 @@ export default function ResourceDetail({ resourceKey }) {
       {error && <Alert severity="error">{error}</Alert>}
 
       {!loading && !error && item && (
-        <Card>
-          <CardContent sx={{ overflowX: 'auto' }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ overflowX: 'auto', minWidth: 0 }}>
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               {resource.pk}: <b>{String(item?.[resource.pk] ?? id)}</b>
             </Typography>

@@ -184,9 +184,9 @@ export default function CustomersList() {
   }, [location.state, navigate]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5">
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {reminderOnly ? t('customers_reminders_title') : t('customers_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -240,11 +240,11 @@ export default function CustomersList() {
             }}
             sx={{
               width: '100%',
-              flexWrap: 'nowrap',
+              flexWrap: { xs: 'wrap', md: 'nowrap' },
               gap: 0,
               justifyContent: 'space-between',
               '& .MuiFormControlLabel-root': {
-                flex: '1 1 25%',
+                flex: { xs: '1 1 50%', md: '1 1 25%' },
                 margin: 0,
                 minWidth: 0,
               },
@@ -296,7 +296,7 @@ export default function CustomersList() {
         </CardContent>
       </Card>
 
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -324,6 +324,8 @@ export default function CustomersList() {
                   borderColor: isSelected ? 'primary.main' : 'rgba(0,0,0,0.08)',
                   boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
                   cursor: 'pointer',
+                  width: '100%',
+                  minWidth: 0,
                 }}
                 onTouchStart={(e) => {
                   const touch = e.changedTouches?.[0];
@@ -359,7 +361,7 @@ export default function CustomersList() {
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, pr: 2 }}>
-                    <Typography variant="body1" sx={{ minWidth: 0 }}>
+                    <Typography variant="body1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {name || String(id ?? '')}
                     </Typography>
                     {Number(row?.reminderInvoicesCount) > 0 && (

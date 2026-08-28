@@ -6,13 +6,13 @@ export default function DatabaseUnavailable() {
   const navigate = useNavigate();
 
   return (
-    <Box sx={{ maxWidth: 720, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 720, width: '100%', minWidth: 0, mx: 'auto' }}>
       <Card>
         <CardContent>
           <Typography variant="h5" sx={{ mb: 1 }}>
             Datenbank nicht verfuegbar
           </Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>
+          <Typography variant="body1" sx={{ mb: 2, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             Diese DB ist noch nicht verfuegbar. Bitte waehle einen anderen Mandanten oder versuche es spaeter erneut.
           </Typography>
           <Button variant="contained" onClick={() => navigate('/')}>

@@ -1,5 +1,7 @@
 import { getMandant } from './mandant.js';
 
+export const ORDER_CART_CHANGED = 'bms-order-cart-changed';
+
 function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -24,6 +26,9 @@ function read() {
 function write(items) {
   try {
     localStorage.setItem(cartKey(), JSON.stringify(items));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(ORDER_CART_CHANGED));
+    }
   } catch {
     // ignore
   }

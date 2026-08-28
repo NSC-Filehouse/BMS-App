@@ -4,7 +4,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -27,7 +26,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
+import { addOrderCartItem } from '../utils/orderCart.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -46,68 +45,70 @@ function ProductCard({ item, onClick, onAddToCart, t }) {
         border: '1px solid rgba(0,0,0,0.08)',
         boxShadow: '0 4px 10px rgba(0,0,0,0.06)',
         cursor: 'pointer',
+        width: '100%',
+        minWidth: 0,
       }}
       onClick={onClick}
     >
-      <CardContent sx={{ display: 'flex', gap: 1.5, p: 1.25 }}>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="body2" sx={{ mb: 0.35, fontWeight: 700 }}>
+      <CardContent sx={{ display: 'flex', gap: 1.5, p: 1.25, minWidth: 0 }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="body2" sx={{ mb: 0.35, minWidth: 0, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {item.article || '-'}
           </Typography>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.category || '-'}
             </Typography>
-            <Typography variant="caption">
+            <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.amount || ''} {item.unit || ''}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('product_reserved')}
             </Typography>
-            <Typography variant="caption">
+            <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.reserved || ''}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ width: '70%' }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ width: { xs: '100%', md: '70%' }, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.about || ''}
             </Typography>
             <Typography
               variant="caption"
-              sx={{ fontWeight: 700, whiteSpace: 'nowrap', textAlign: 'right', minWidth: 92 }}
+              sx={{ fontWeight: 700, whiteSpace: 'nowrap', textAlign: { xs: 'left', md: 'right' }, minWidth: { xs: 0, md: 92 }, overflowWrap: 'anywhere' }}
             >
               {formatPrice(item.acquisitionPrice)}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('product_warehouse')}
             </Typography>
-            <Typography variant="caption">
+            <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.warehouse || ''}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('product_description')}
             </Typography>
-            <Typography variant="caption" sx={{ width: '60%', textAlign: 'right' }}>
+            <Typography variant="caption" sx={{ width: { xs: '100%', md: '60%' }, maxWidth: { xs: '100%', md: '60%' }, minWidth: 0, textAlign: { xs: 'left', md: 'right' }, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.description || ''}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('product_be_number')}
             </Typography>
-            <Typography variant="caption">
+            <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {item.beNumber || ''}
             </Typography>
           </Box>
@@ -115,6 +116,8 @@ function ProductCard({ item, onClick, onAddToCart, t }) {
         <Box
           sx={{
             width: 40,
+            minWidth: 40,
+            flex: '0 0 40px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'flex-end',
@@ -157,7 +160,6 @@ export default function ProductsList() {
   const [searchResults, setSearchResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
-  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [addItem, setAddItem] = React.useState(null);
   const [addQty, setAddQty] = React.useState('');
@@ -244,10 +246,6 @@ export default function ProductsList() {
   }, [loadCategories, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
-    setCartCount(getOrderCartCount());
-  }, [addDialogOpen]);
-
-  React.useEffect(() => {
     const h = setTimeout(() => {
       const query = q.trim();
       if (query.length === 0) {
@@ -262,18 +260,13 @@ export default function ProductsList() {
   }, [q, loadCategories, loadSearchResults]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5">{t('products_title')}</Typography>
-        <IconButton aria-label={t('cart_open')} color="primary" onClick={() => navigate('/order-cart')}>
-          <Badge badgeContent={cartCount} color="error">
-            <ShoppingCartIcon />
-          </Badge>
-        </IconButton>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('products_title')}</Typography>
       </Box>
 
       <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <TextField
             fullWidth
             size="small"
@@ -291,7 +284,7 @@ export default function ProductsList() {
         </CardContent>
       </Card>
 
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
         {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
             <CircularProgress />
@@ -342,8 +335,11 @@ export default function ProductsList() {
                   expanded={catExpanded}
                   onChange={(e, expanded) => setExpandedPlastics((prev) => ({ ...prev, [plastic]: expanded }))}
                 >
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 0.5 } }}>
-                    <Typography variant="subtitle1">
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    sx={{ minHeight: 44, minWidth: 0, '& .MuiAccordionSummary-content': { my: 0.5, minWidth: 0 } }}
+                  >
+                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {plastic || t('product_group_empty')}
                     </Typography>
                     <Typography variant="body2" sx={{ ml: 1, opacity: 0.7 }}>
@@ -368,8 +364,11 @@ export default function ProductsList() {
                               }
                             }}
                           >
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            <AccordionSummary
+                              expandIcon={<ExpandMoreIcon />}
+                              sx={{ minHeight: 40, minWidth: 0, '& .MuiAccordionSummary-content': { my: 0.5, minWidth: 0 } }}
+                            >
+                              <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                                 {sub || t('product_subgroup_empty')}
                               </Typography>
                               <Typography variant="caption" sx={{ ml: 1, opacity: 0.7 }}>
@@ -452,7 +451,6 @@ export default function ProductsList() {
               }
               setAddError('');
               addOrderCartItem(addItem, qty);
-              setCartCount(getOrderCartCount());
               setAddDialogOpen(false);
               setAddSuccess(t('cart_added'));
             }}

@@ -804,7 +804,7 @@ export default function TempOrderForm() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <input
         ref={attachmentInputRef}
         type="file"
@@ -813,7 +813,7 @@ export default function TempOrderForm() {
         onChange={handleAttachmentPick}
       />
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={() => navigate(-1)}><ArrowBackIcon /></IconButton>
         <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
           {isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}
@@ -832,8 +832,8 @@ export default function TempOrderForm() {
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       {!loading && (
-        <Card>
-          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, mt: -0.5 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
                 {t('temp_order_attachment_label')}
@@ -875,8 +875,8 @@ export default function TempOrderForm() {
               )}
             </Box>
             {removeAttachment && attachmentMeta.hasAttachment && !attachmentFile && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: -1 }}>
-                <Typography variant="caption" sx={{ color: 'error.main' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: -1, flexWrap: 'wrap', minWidth: 0 }}>
+                <Typography variant="caption" sx={{ color: 'error.main', minWidth: 0, overflowWrap: 'anywhere' }}>
                   {t('temp_order_attachment_removed')}
                 </Typography>
                 <Button size="small" onClick={() => setRemoveAttachment(false)}>
@@ -1016,6 +1016,7 @@ export default function TempOrderForm() {
               </IconButton>
             </Box>
             <FormControlLabel
+              sx={{ m: 0, minWidth: 0, '& .MuiFormControlLabel-label': { overflowWrap: 'anywhere' } }}
               control={(
                 <Checkbox
                   checked={Boolean(form.specialPaymentCondition)}
@@ -1072,8 +1073,8 @@ export default function TempOrderForm() {
 
             {isPositionsMode && (
               <Box sx={{ mt: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography variant="subtitle2">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25, minWidth: 0 }}>
+                  <Typography variant="subtitle2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     {t('order_positions_count')}: {positions.length}
                   </Typography>
                   {isPositionsMode && (
@@ -1103,17 +1104,20 @@ export default function TempOrderForm() {
                   {positions.map((x, idx) => {
                     return (
                       <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Box sx={{ display: 'grid', width: '100%', gap: 0.35 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon />}
+                        sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
+                      >
+                          <Box sx={{ display: 'grid', width: '100%', minWidth: 0, gap: 0.35 }}>
+                            <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {x.article || '-'}
                             </Typography>
-                            <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                             </Typography>
                           </Box>
                         </AccordionSummary>
-                        <AccordionDetails sx={{ display: 'grid', gap: 1.1 }}>
+                        <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
                           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
                             <TextField
                               type="date"

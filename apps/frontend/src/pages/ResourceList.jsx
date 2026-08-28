@@ -63,8 +63,8 @@ export default function ResourceList({ resourceKey }) {
   const columns = buildColumns(items, resource.pk);
 
   return (
-    <Box>
-      <Typography variant="h5" sx={{ mb: 2 }}>
+    <Box sx={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
+      <Typography variant="h5" sx={{ mb: 2, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
         {resource.label}
       </Typography>
 
@@ -116,8 +116,8 @@ export default function ResourceList({ resourceKey }) {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {!loading && !error && (
-        <Card>
-          <CardContent sx={{ overflowX: 'auto' }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ overflowX: 'auto', minWidth: 0 }}>
             <Typography variant="body2" sx={{ mb: 1, opacity: 0.8 }}>
               Count: {meta.count ?? items.length} • Total: {meta.total ?? '—'} • Page: {meta.page} • PageSize: {meta.pageSize}
             </Typography>

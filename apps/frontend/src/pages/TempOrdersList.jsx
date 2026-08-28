@@ -102,9 +102,9 @@ export default function TempOrdersList() {
   }, [q, load]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h5" sx={{ mr: 1 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ mr: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {t('temp_orders_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
@@ -134,7 +134,7 @@ export default function TempOrdersList() {
       </Box>
 
       <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <TextField
             fullWidth
             size="small"
@@ -152,7 +152,7 @@ export default function TempOrdersList() {
         </CardContent>
       </Card>
 
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
         {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
             <CircularProgress />
@@ -175,14 +175,18 @@ export default function TempOrdersList() {
                   border: '1px solid rgba(0,0,0,0.08)',
                   boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
                   cursor: 'pointer',
+                  width: '100%',
+                  minWidth: 0,
                 }}
                 onClick={() => navigate(`/temp-orders/${encodeURIComponent(row.id)}`, {
                   state: { fromTempOrders: { page: meta.page || 1, q } },
                 })}
               >
-                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
-                  <Box sx={{ pr: 2 }}>
-                    <Typography variant="subtitle1">{row.clientName || row.id}</Typography>
+                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
+                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                      {row.clientName || row.id}
+                    </Typography>
                     <Typography variant="caption" sx={{ color: row.completed ? 'success.main' : 'text.secondary', fontWeight: 600 }}>
                       {row.completed ? t('temp_order_status_final') : t('temp_order_status_draft')}
                     </Typography>
@@ -190,12 +194,12 @@ export default function TempOrdersList() {
                       ? row.positions
                       : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]
                     ).map((pos, idx) => (
-                      <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ opacity: 0.7 }}>
+                      <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg; ${formatDateOnly(pos?.deliveryDate) || '-'}; ${row.createdBy || '-'}`}
                       </Typography>
                     ))}
                   </Box>
-                  <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
+                  <Box sx={{ width: 38, minWidth: 38, flex: '0 0 38px', display: 'flex', justifyContent: 'center' }}>
                     <ChevronRightIcon />
                   </Box>
                 </CardContent>

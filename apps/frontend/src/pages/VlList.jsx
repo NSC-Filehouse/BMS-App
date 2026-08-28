@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Alert,
-  Badge,
   Box,
   Button,
   CircularProgress,
@@ -17,13 +16,12 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem, getOrderCartCount } from '../utils/orderCart.js';
+import { addOrderCartItem } from '../utils/orderCart.js';
 
 const PAGE_SIZE = 100;
 const SWIPE_ACTION_WIDTH = 98;
@@ -89,7 +87,6 @@ export default function VlList() {
   const [error, setError] = React.useState('');
   const [initialLoaded, setInitialLoaded] = React.useState(false);
   const [revealedRow, setRevealedRow] = React.useState({ id: '', side: '' });
-  const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [addItem, setAddItem] = React.useState(null);
   const [addQty, setAddQty] = React.useState('');
@@ -182,8 +179,8 @@ export default function VlList() {
   let lastGroup = '';
 
   return (
-    <Box sx={{ maxWidth: 980, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+    <Box sx={{ maxWidth: 980, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25, minWidth: 0 }}>
         <Typography variant="h5">VL</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
           <IconButton
@@ -198,14 +195,6 @@ export default function VlList() {
             }}
           >
             <SearchIcon />
-          </IconButton>
-          <IconButton
-            aria-label={t('cart_open')}
-            onClick={() => navigate('/order-cart', { state: { fromVl: true } })}
-          >
-            <Badge badgeContent={cartCount} color="error">
-              <ShoppingCartIcon />
-            </Badge>
           </IconButton>
         </Box>
       </Box>
@@ -244,8 +233,8 @@ export default function VlList() {
 
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
-      <Box ref={listRef} sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.25 }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+      <Box ref={listRef} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0 }}>
         {items.map((item, index) => {
           const group = buildGroupTitle(item, lang);
           const showHeader = group !== lastGroup;
@@ -491,7 +480,6 @@ export default function VlList() {
               }
               setAddError('');
               addOrderCartItem(addItem, qty);
-              setCartCount(getOrderCartCount());
               setAddDialogOpen(false);
               setRevealedRow({ id: '', side: '' });
             }}

@@ -109,9 +109,9 @@ export default function OrdersList() {
   }, [q, scope, load]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h5" sx={{ mr: 1 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ mr: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {t('orders_title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
@@ -141,10 +141,11 @@ export default function OrdersList() {
       </Box>
 
       <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <CardContent sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
           <TextField
             fullWidth
             size="small"
+            sx={{ minWidth: 0 }}
             placeholder={t('orders_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -166,7 +167,7 @@ export default function OrdersList() {
               setScope(value);
               load({ page: 1, q, scope: value });
             }}
-            sx={{ ml: 1 }}
+            sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%' }}
           >
             <ToggleButton value="mine">{t('orders_scope_mine')}</ToggleButton>
             <ToggleButton value="all">{t('orders_scope_all')}</ToggleButton>
@@ -174,7 +175,7 @@ export default function OrdersList() {
         </CardContent>
       </Card>
 
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -197,18 +198,20 @@ export default function OrdersList() {
                 border: '1px solid rgba(0,0,0,0.08)',
                 boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
                 cursor: 'pointer',
+                width: '100%',
+                minWidth: 0,
               }}
               onClick={() => navigate(`/orders/${encodeURIComponent(row.id)}`, {
                 state: { fromOrders: { page: meta.page || 1, q, scope } },
               })}
             >
-              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
+              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
                 <Box sx={{ pr: 2, flexGrow: 1, minWidth: 0 }}>
-                  <Typography variant="subtitle1">
+                  <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {row.orderNumber || row.id}
                   </Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: 1, alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ opacity: 0.7, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ opacity: 0.7, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {row.clientName || '-'}
                     </Typography>
                     {scope === 'all' ? (
@@ -220,7 +223,7 @@ export default function OrdersList() {
                     )}
                   </Box>
                 </Box>
-                <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
+                <Box sx={{ width: 38, minWidth: 38, flex: '0 0 38px', display: 'flex', justifyContent: 'center' }}>
                   <ChevronRightIcon />
                 </Box>
               </CardContent>

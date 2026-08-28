@@ -21,11 +21,35 @@ function formatValue(value) {
 
 function InfoRow({ label, value }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.75 }}>
-      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: '58%' }}>
+    <Box
+      sx={{
+        display: { xs: 'grid', md: 'flex' },
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        alignItems: { xs: 'start', md: 'center' },
+        justifyContent: 'space-between',
+        gap: { xs: 0.25, md: 2 },
+        py: 0.75,
+        minWidth: 0,
+      }}
+    >
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+      >
         {label}
       </Typography>
-      <Typography variant="body2" sx={{ width: '40%', textAlign: 'right' }}>
+      <Typography
+        variant="body2"
+        sx={{
+          width: { xs: '100%', md: '40%' },
+          maxWidth: { xs: '100%', md: '40%' },
+          minWidth: 0,
+          textAlign: { xs: 'left', md: 'right' },
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
         {value}
       </Typography>
     </Box>
@@ -72,12 +96,12 @@ export default function ProductWpzDetail() {
   }, [id, location.state, navigate]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {t('wpz_title')}
         </Typography>
       </Box>
@@ -94,8 +118,8 @@ export default function ProductWpzDetail() {
       )}
 
       {!loading && !error && data && data.exists && (
-        <Card>
-          <CardContent sx={{ pt: 2 }}>
+        <Card sx={{ width: '100%', minWidth: 0 }}>
+          <CardContent sx={{ pt: 2, minWidth: 0 }}>
             <InfoRow label={t('product_be_number')} value={formatValue(data.beNumber)} />
             <Divider sx={{ my: 2 }} />
             {(Array.isArray(data.fields) ? data.fields : []).map((field, idx) => (

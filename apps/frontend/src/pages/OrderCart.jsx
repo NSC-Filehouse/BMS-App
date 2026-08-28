@@ -103,8 +103,8 @@ export default function OrderCart() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton
           aria-label="back"
           onClick={() => {
@@ -121,18 +121,20 @@ export default function OrderCart() {
         >
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5">{t('cart_title')}</Typography>
+        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('cart_title')}</Typography>
       </Box>
 
       {items.length === 0 && <Typography sx={{ opacity: 0.7 }}>{t('cart_empty')}</Typography>}
 
       {items.length > 0 && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}>
           {items.map((row) => (
-            <Card key={row.id}>
-              <CardContent sx={{ display: 'grid', gap: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-                  <Typography variant="subtitle1">{row.article || row.beNumber}</Typography>
+            <Card key={row.id} sx={{ width: '100%', minWidth: 0 }}>
+              <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
+                  <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {row.article || row.beNumber}
+                  </Typography>
                   <IconButton
                     aria-label={t('cart_remove')}
                     color="error"
@@ -141,10 +143,10 @@ export default function OrderCart() {
                     <DeleteOutlineIcon />
                   </IconButton>
                 </Box>
-                <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_be_number')}: {row.beNumber || '-'} | {t('product_storage_id')}: {row.warehouseId || '-'}
                 </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_available_now')}: {row.availableAmount ?? '-'} {row.unit || 'kg'} | {t('product_price')}: {formatPrice(row.acquisitionPrice)}
                 </Typography>
             {(() => {
