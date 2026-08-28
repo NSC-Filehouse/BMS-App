@@ -18,10 +18,12 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem } from '../utils/orderCart.js';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 const PAGE_SIZE = 100;
 const SWIPE_ACTION_WIDTH = 98;
@@ -75,6 +77,7 @@ function buildLineParts(item) {
 
 export default function VlList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { lang, t } = useI18n();
   const isFinePointer = useMediaQuery('(pointer: fine)');
 
@@ -91,6 +94,8 @@ export default function VlList() {
   const [addItem, setAddItem] = React.useState(null);
   const [addQty, setAddQty] = React.useState('');
   const [addError, setAddError] = React.useState('');
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
+  const [pendingCustomerAction, setPendingCustomerAction] = React.useState(null);
 
   const hasMore = items.length < total;
   const sentinelRef = React.useRef(null);
@@ -106,6 +111,32 @@ export default function VlList() {
     setAddError('');
     setAddDialogOpen(true);
   }, []);
+
+  const requestProductAction = React.useCallback((action, item) => {
+    if (!getSelectedCustomer()?.id) {
+      setPendingCustomerAction({ type: action, product: item });
+      setCustomerRequiredOpen(true);
+      return;
+    }
+    if (action === 'reserve') {
+      navigate('/orders/new', { state: { source: item, fromVl: true } });
+    } else if (action === 'cart') {
+      openAddDialog(item);
+    }
+  }, [navigate, openAddDialog]);
+
+  const chooseCustomer = React.useCallback(() => {
+    if (!pendingCustomerAction) return;
+    setCustomerRequiredOpen(false);
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: '/vl',
+          state: { pendingCustomerAction },
+        },
+      },
+    });
+  }, [navigate, pendingCustomerAction]);
 
   const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (loadingRef.current) return;
@@ -167,6 +198,24 @@ export default function VlList() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [loadNextPage]);
+
+  React.useEffect(() => {
+    const pending = location.state?.pendingCustomerAction;
+    if (!pending?.product || !getSelectedCustomer()?.id) return;
+
+    const nextState = { ...(location.state || {}) };
+    delete nextState.pendingCustomerAction;
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    });
+
+    if (pending.type === 'reserve') {
+      navigate('/orders/new', { state: { source: pending.product, fromVl: true } });
+    } else if (pending.type === 'cart') {
+      openAddDialog(pending.product);
+    }
+  }, [location.pathname, location.state, navigate, openAddDialog]);
 
   const handleRowTap = React.useCallback((itemId) => {
     if (revealedRow.id && String(revealedRow.id) === String(itemId)) {
@@ -273,7 +322,7 @@ export default function VlList() {
                       sx={{ color: '#fff', minWidth: 0, px: 0.75 }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate('/orders/new', { state: { source: item, fromVl: true } });
+                        requestProductAction('reserve', item);
                       }}
                     >
                       {t('product_reserve_swipe')}
@@ -302,7 +351,7 @@ export default function VlList() {
                       sx={{ color: '#fff', minWidth: 0, px: 0.75 }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAddDialog(item);
+                        requestProductAction('cart', item);
                       }}
                     >
                       {t('cart_add')}
@@ -392,7 +441,7 @@ export default function VlList() {
                       aria-label={t('product_reserve_submit')}
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate('/orders/new', { state: { source: item, fromVl: true } });
+                        requestProductAction('reserve', item);
                       }}
                       sx={{
                         position: 'absolute',
@@ -416,7 +465,7 @@ export default function VlList() {
                       aria-label={t('cart_add')}
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAddDialog(item);
+                        requestProductAction('cart', item);
                       }}
                       sx={{
                         position: 'absolute',
@@ -488,6 +537,15 @@ export default function VlList() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => {
+          setCustomerRequiredOpen(false);
+          setPendingCustomerAction(null);
+        }}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }

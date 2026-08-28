@@ -24,6 +24,7 @@ import {
   updateOrderCartItem,
 } from '../utils/orderCart.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 function formatPrice(value) {
   const n = Number(value);
@@ -38,6 +39,31 @@ export default function OrderCart() {
   const [items, setItems] = React.useState(() => getOrderCartItems());
   const [error, setError] = React.useState('');
   const [fieldErrors, setFieldErrors] = React.useState({});
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
+  const [pendingSourceItems, setPendingSourceItems] = React.useState(null);
+
+  const chooseCustomer = React.useCallback(() => {
+    setCustomerRequiredOpen(false);
+    if (Array.isArray(pendingSourceItems) && pendingSourceItems.length > 0) {
+      navigate('/customers', {
+        state: {
+          afterSelect: {
+            to: '/temp-orders/new',
+            state: { sourceItems: pendingSourceItems },
+          },
+        },
+      });
+      return;
+    }
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: '/order-cart',
+          state: location.state || null,
+        },
+      },
+    });
+  }, [location.state, navigate, pendingSourceItems]);
 
   const onQtyChange = (id, value) => {
     const qty = Number(value);
@@ -250,14 +276,8 @@ export default function OrderCart() {
                   wpzComment: x.wpzComment || '',
                 }));
                 if (!getSelectedCustomer()?.id) {
-                  navigate('/customers', {
-                    state: {
-                      afterSelect: {
-                        to: '/temp-orders/new',
-                        state: { sourceItems },
-                      },
-                    },
-                  });
+                  setPendingSourceItems(sourceItems);
+                  setCustomerRequiredOpen(true);
                   return;
                 }
                 navigate('/temp-orders/new', {
@@ -272,6 +292,12 @@ export default function OrderCart() {
           </Box>
         </Box>
       )}
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => setCustomerRequiredOpen(false)}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }

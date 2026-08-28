@@ -23,6 +23,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem } from '../utils/orderCart.js';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -104,6 +106,8 @@ export default function ProductDetail() {
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
   const [wpzLoading, setWpzLoading] = React.useState(false);
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
+  const [pendingCustomerAction, setPendingCustomerAction] = React.useState('');
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
@@ -117,6 +121,63 @@ export default function ProductDetail() {
     return (Number.isFinite(reserved) && reserved > 0) || Boolean(String(item?.reservedBy || '').trim());
   }, [item]);
   const reservedBy = React.useMemo(() => String(item?.reservedBy || '').trim(), [item]);
+
+  const openReserveDialog = React.useCallback(() => {
+    if (isAlreadyReserved) {
+      const msg = reservedBy
+        ? t('product_already_reserved_by', { by: reservedBy })
+        : t('product_already_reserved');
+      setReserveInfo(msg);
+      return;
+    }
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setReserveDate(tomorrow.toISOString().slice(0, 10));
+    setReserveAmount('');
+    setReserveComment('');
+    setReserveInfo('');
+    setReserveError('');
+    setReserveOpen(true);
+  }, [isAlreadyReserved, reservedBy, t]);
+
+  const openCartDialog = React.useCallback(() => {
+    setError('');
+    setCartQty('');
+    setCartSalePrice(item?.acquisitionPrice ?? '');
+    setCartWpzOriginal(true);
+    setCartWpzComment('');
+    setCartError('');
+    setCartOpen(true);
+  }, [item]);
+
+  const requestProductAction = React.useCallback((action) => {
+    if (!getSelectedCustomer()?.id) {
+      setPendingCustomerAction(action);
+      setCustomerRequiredOpen(true);
+      return;
+    }
+    if (action === 'reserve') {
+      openReserveDialog();
+    } else if (action === 'cart') {
+      openCartDialog();
+    }
+  }, [openCartDialog, openReserveDialog]);
+
+  const chooseCustomer = React.useCallback(() => {
+    if (!pendingCustomerAction) return;
+    setCustomerRequiredOpen(false);
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: location.pathname,
+          state: {
+            ...(location.state || {}),
+            pendingCustomerAction,
+          },
+        },
+      },
+    });
+  }, [location.pathname, location.state, navigate, pendingCustomerAction]);
 
   React.useEffect(() => {
     let alive = true;
@@ -163,6 +224,24 @@ export default function ProductDetail() {
 
     return () => { alive = false; };
   }, [id, t]);
+
+  React.useEffect(() => {
+    const action = location.state?.pendingCustomerAction;
+    if (!action || !item || !getSelectedCustomer()?.id) return;
+
+    const nextState = { ...(location.state || {}) };
+    delete nextState.pendingCustomerAction;
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    });
+
+    if (action === 'reserve') {
+      openReserveDialog();
+    } else if (action === 'cart') {
+      openCartDialog();
+    }
+  }, [item, location.pathname, location.state, navigate, openCartDialog, openReserveDialog]);
 
   const handleBack = React.useCallback(() => {
     const fromVl = Boolean(location.state?.fromVl);
@@ -228,23 +307,7 @@ export default function ProductDetail() {
               variant="contained"
               fullWidth
               sx={{ mb: 1 }}
-              onClick={() => {
-                if (isAlreadyReserved) {
-                  const msg = reservedBy
-                    ? t('product_already_reserved_by', { by: reservedBy })
-                    : t('product_already_reserved');
-                  setReserveInfo(msg);
-                  return;
-                }
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                setReserveDate(tomorrow.toISOString().slice(0, 10));
-                setReserveAmount('');
-                setReserveComment('');
-                setReserveInfo('');
-                setReserveError('');
-                setReserveOpen(true);
-              }}
+              onClick={() => requestProductAction('reserve')}
             >
               {t('product_reserve_submit')}
             </Button>
@@ -253,15 +316,7 @@ export default function ProductDetail() {
               fullWidth
               startIcon={<ShoppingCartIcon />}
               sx={{ mb: 2 }}
-              onClick={() => {
-                setError('');
-                setCartQty('');
-                setCartSalePrice(item?.acquisitionPrice ?? '');
-                setCartWpzOriginal(true);
-                setCartWpzComment('');
-                setCartError('');
-                setCartOpen(true);
-              }}
+              onClick={() => requestProductAction('cart')}
             >
               {t('cart_add')}
             </Button>
@@ -495,6 +550,15 @@ export default function ProductDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => {
+          setCustomerRequiredOpen(false);
+          setPendingCustomerAction('');
+        }}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }

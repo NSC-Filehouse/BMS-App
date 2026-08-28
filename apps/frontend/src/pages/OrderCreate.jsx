@@ -19,6 +19,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 function tomorrow() {
   const d = new Date();
@@ -42,6 +44,7 @@ export default function OrderCreate() {
 
   const [validationOpen, setValidationOpen] = React.useState(false);
   const [validationMessages, setValidationMessages] = React.useState([]);
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
 
   const [form, setForm] = React.useState({
     beNumber: '',
@@ -101,6 +104,11 @@ export default function OrderCreate() {
   };
 
   const submit = async () => {
+    if (!getSelectedCustomer()?.id) {
+      setCustomerRequiredOpen(true);
+      return;
+    }
+
     const messages = [];
     const amount = Number(form.amount);
     if (!String(form.beNumber || '').trim() || !String(form.warehouseId || '').trim()) {
@@ -144,6 +152,18 @@ export default function OrderCreate() {
       setSaving(false);
     }
   };
+
+  const chooseCustomer = React.useCallback(() => {
+    setCustomerRequiredOpen(false);
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: '/orders/new',
+          state: location.state || null,
+        },
+      },
+    });
+  }, [location.state, navigate]);
 
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
@@ -227,6 +247,12 @@ export default function OrderCreate() {
           <Button onClick={() => setValidationOpen(false)}>{t('back_label')}</Button>
         </DialogActions>
       </Dialog>
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => setCustomerRequiredOpen(false)}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }

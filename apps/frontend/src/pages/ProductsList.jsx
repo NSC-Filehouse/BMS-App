@@ -27,6 +27,8 @@ import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem } from '../utils/orderCart.js';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -165,9 +167,53 @@ export default function ProductsList() {
   const [addQty, setAddQty] = React.useState('');
   const [addError, setAddError] = React.useState('');
   const [addSuccess, setAddSuccess] = React.useState('');
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
+  const [pendingCustomerAction, setPendingCustomerAction] = React.useState(null);
 
   const qRef = React.useRef(q);
   React.useEffect(() => { qRef.current = q; }, [q]);
+
+  const openAddDialog = React.useCallback((product) => {
+    setAddItem(product);
+    setAddQty('');
+    setAddError('');
+    setAddDialogOpen(true);
+  }, []);
+
+  const requestAddToCart = React.useCallback((product) => {
+    if (!getSelectedCustomer()?.id) {
+      setPendingCustomerAction({ type: 'cart', product });
+      setCustomerRequiredOpen(true);
+      return;
+    }
+    openAddDialog(product);
+  }, [openAddDialog]);
+
+  const chooseCustomer = React.useCallback(() => {
+    if (!pendingCustomerAction) return;
+    setCustomerRequiredOpen(false);
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: '/products',
+          state: { pendingCustomerAction },
+        },
+      },
+    });
+  }, [navigate, pendingCustomerAction]);
+
+  React.useEffect(() => {
+    const pending = location.state?.pendingCustomerAction;
+    if (!pending?.product || pending.type !== 'cart' || !getSelectedCustomer()?.id) return;
+
+    const nextState = { ...(location.state || {}) };
+    delete nextState.pendingCustomerAction;
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    });
+    openAddDialog(pending.product);
+  }, [location.pathname, location.state, navigate, openAddDialog]);
 
   const loadCategories = React.useCallback(async (query) => {
     try {
@@ -309,12 +355,7 @@ export default function ProductsList() {
                 key={item.id}
                 item={item}
                 t={t}
-                onAddToCart={(product) => {
-                  setAddItem(product);
-                  setAddQty('');
-                  setAddError('');
-                  setAddDialogOpen(true);
-                }}
+                onAddToCart={requestAddToCart}
                 onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
                   state: { fromProducts: { q } },
                 })}
@@ -392,12 +433,7 @@ export default function ProductsList() {
                                       key={item.id}
                                       item={item}
                                       t={t}
-                                      onAddToCart={(product) => {
-                                        setAddItem(product);
-                                        setAddQty('');
-                                        setAddError('');
-                                        setAddDialogOpen(true);
-                                      }}
+                                      onAddToCart={requestAddToCart}
                                       onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
                                         state: { fromProducts: { q } },
                                       })}
@@ -459,6 +495,15 @@ export default function ProductsList() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => {
+          setCustomerRequiredOpen(false);
+          setPendingCustomerAction(null);
+        }}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }
