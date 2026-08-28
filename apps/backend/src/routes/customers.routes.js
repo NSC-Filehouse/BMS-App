@@ -3,13 +3,15 @@ const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
-const { getUserIdentityByEmail } = require('../db/users');
+const {
+  getCustomerAccessScope,
+  loadVisibleCustomer,
+} = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
-const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 const ACTIVE_CUSTOMERS_TTL_MS = 5 * 60 * 1000;
 const activeCustomersCache = new Map();
 
@@ -22,15 +24,6 @@ function normalizeTotal(countResult) {
 
 function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-}
-
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
-function isFilehouseEmail(email) {
-  const value = normalizeEmail(email);
-  return value.endsWith('filehouse') || value.endsWith('@filehouse') || value.includes('@filehouse.');
 }
 
 function resolveSortField(sort) {
@@ -81,40 +74,6 @@ function pickReminderStageValue(reminderTextId, reminderTextIdNew) {
   return nextStage > currentStage ? nextStage : currentStage;
 }
 
-async function getCustomerAccessScope(req) {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const activeCompanyId = Number(req.database?.firmaId);
-  const resolvedMainCompanyId = isFilehouseEmail(req.userEmail)
-    ? FILEHOUSE_TEST_MAIN_COMPANY_ID
-    : userIdentity?.mainCompanyId;
-  const mainCompanyId = Number(resolvedMainCompanyId);
-  const salesCodeFilter = Number.isFinite(activeCompanyId)
-    && Number.isFinite(mainCompanyId)
-    && activeCompanyId !== mainCompanyId
-    ? toText(userIdentity?.shortCode)
-    : '';
-
-  return {
-    userIdentity,
-    activeCompanyId,
-    mainCompanyId,
-    salesCodeFilter,
-  };
-}
-
-function getReminderSalesCodeFilter(req, accessScope) {
-  const shortCode = toText(accessScope?.userIdentity?.shortCode);
-  if (!shortCode) return '';
-
-  const activeCompanyId = Number(accessScope?.activeCompanyId);
-  const mainCompanyId = Number(accessScope?.mainCompanyId);
-  if (isFilehouseEmail(req.userEmail) && Number.isFinite(activeCompanyId) && Number.isFinite(mainCompanyId) && activeCompanyId === mainCompanyId) {
-    return '';
-  }
-
-  return shortCode;
-}
-
 function buildWhereClause(q, searchField, options = {}) {
   const text = String(q || '').trim();
   const clauses = [];
@@ -122,10 +81,10 @@ function buildWhereClause(q, searchField, options = {}) {
   const customerAlias = toText(options.customerAlias);
   const col = (name) => customerAlias ? `[${customerAlias}].${name}` : name;
 
-  const salesCodeFilter = toText(options.salesCodeFilter);
-  if (salesCodeFilter) {
-    clauses.push(`COALESCE(${col('[kd_Aussendienst]')}, '') = ?`);
-    params.push(salesCodeFilter);
+  const customerAccess = options.customerAccess || null;
+  if (customerAccess?.whereSql) {
+    clauses.push(`(${customerAccess.whereSql})`);
+    params.push(...(Array.isArray(customerAccess.params) ? customerAccess.params : []));
   }
 
   if (options.reminderOnly) {
@@ -154,6 +113,20 @@ function buildWhereClause(q, searchField, options = {}) {
     whereSql: `WHERE ${clauses.join(' AND ')}`,
     params: [...params, ...fields.map(() => like)],
   };
+}
+
+async function requireVisibleCustomer(req, customerId, accessScope = null) {
+  const id = toText(customerId);
+  if (!id) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const scope = accessScope || await getCustomerAccessScope(req.userEmail, req.database);
+  const customer = await loadVisibleCustomer(req.database, id, scope);
+  if (!customer) {
+    throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
+  }
+  return customer;
 }
 
 function getReminderCountsCte() {
@@ -371,12 +344,9 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const includeInactive = String(req.query.includeInactive || '').trim() === '1';
-  const salesCodeFilter = reminderOnly
-    ? getReminderSalesCodeFilter(req, accessScope)
-    : accessScope.salesCodeFilter;
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -394,7 +364,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     ? `INNER JOIN OPENJSON(?) [active_customer] ON [active_customer].[value] = [k].[kd_KdNR]`
     : '';
   const { whereSql, params } = buildWhereClause(q, searchField, {
-    salesCodeFilter,
+    customerAccess: accessScope.customerAccess,
     customerAlias: 'k',
     reminderOnly,
   });
@@ -452,10 +422,9 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req);
-  const salesCodeFilter = getReminderSalesCodeFilter(req, accessScope);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const { whereSql, params } = buildWhereClause('', 'name', {
-    salesCodeFilter,
+    customerAccess: accessScope.customerAccess,
     customerAlias: 'k',
     reminderOnly: true,
   });
@@ -480,14 +449,9 @@ router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (r
 
 // DETAIL (all columns from dbo.tblKunden)
 router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
-  const id = req.params.id;
-  const sql = 'SELECT TOP 1 * FROM [dbo].[tblKunden] WHERE [kd_KdNR] = ?';
-  const rows = await runSQLQueryAccess(req.database, sql, [id]);
-
-  const item = Array.isArray(rows) && rows.length ? rows[0] : null;
-  if (!item) {
-    throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
-  }
+  const id = toText(req.params.id);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const item = await requireVisibleCustomer(req, id, accessScope);
 
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
 
@@ -550,6 +514,7 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
   if (!id) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+  await requireVisibleCustomer(req, id);
 
   const sql = `
     SELECT
@@ -602,6 +567,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+  await requireVisibleCustomer(req, customerId);
 
   const scopeFilterSql = scope === 'all' ? '' : 'AND COALESCE([au_Abgeschlossen], 0) <> 1';
 
@@ -687,6 +653,7 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+  await requireVisibleCustomer(req, customerId);
   const cutoff = new Date();
   if (scope === 'year') {
     cutoff.setFullYear(cutoff.getFullYear() - 1);
@@ -770,6 +737,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+  await requireVisibleCustomer(req, customerId);
 
   const scopeFilterSql = scope === 'all' ? '' : 'AND [re_Bezahlt] = 0';
 
@@ -837,6 +805,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
+  await requireVisibleCustomer(req, customerId);
 
   const sql = `
     SELECT DISTINCT

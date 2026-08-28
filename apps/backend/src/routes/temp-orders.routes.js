@@ -6,6 +6,7 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getUserIdentityByEmail } = require('../db/users');
+const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { sendPushNotificationsForTimelineEntries } = require('../db/push');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
 const {
@@ -79,6 +80,20 @@ function normalizeDir(dir) {
 function asText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+async function requireVisibleCustomer(req, customerId) {
+  const id = asText(customerId);
+  if (!id) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const customer = await loadVisibleCustomer(req.database, id, accessScope);
+  if (!customer) {
+    throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
+  }
+  return customer;
 }
 
 function normalizeAttachmentFileName(value) {
@@ -894,6 +909,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
+  await requireVisibleCustomer(req, clientReferenceId);
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
@@ -1335,6 +1351,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
+  await requireVisibleCustomer(req, clientReferenceId);
   const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
