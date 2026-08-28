@@ -191,7 +191,7 @@ export default function TempOrdersList() {
                       : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]
                     ).map((pos, idx) => (
                       <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ opacity: 0.7 }}>
-                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg; ${formatDateOnly(pos?.deliveryDate) || '-'}`}
+                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg; ${formatDateOnly(pos?.deliveryDate) || '-'}; ${row.createdBy || '-'}`}
                       </Typography>
                     ))}
                   </Box>

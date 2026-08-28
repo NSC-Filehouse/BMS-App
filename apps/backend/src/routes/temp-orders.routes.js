@@ -764,6 +764,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [fp].[amountInKg] AS amountInKg,
       [o].[ta_client_name] AS clientName,
       [o].[ta_CreateDate] AS createdAt,
+      [o].[ta_CreatedBy] AS createdBy,
       [o].[ta_completed] AS completed,
       [o].[ta_IsConfirmed] AS isConfirmed
     FROM ${TEMP_ORDER_TABLE} o
@@ -799,6 +800,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     price: row.price,
     amountInKg: row.amountInKg,
     createdAt: row.createdAt,
+    createdBy: row.createdBy,
     completed: Boolean(row.completed),
     isConfirmed: Boolean(row.isConfirmed),
     positions: summariesByOrderId.get(Number(row.id)) || [],
