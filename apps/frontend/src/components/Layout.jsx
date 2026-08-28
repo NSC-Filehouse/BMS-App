@@ -280,7 +280,7 @@ export default function Layout() {
               minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'flex-end',
+              alignItems: 'stretch',
               width: { xs: 'clamp(120px, 40vw, 170px)', sm: 'clamp(170px, 24vw, 360px)' },
             }}
           >
@@ -308,7 +308,7 @@ export default function Layout() {
                 </Typography>
               </ButtonBase>
             ) : (
-              <Typography variant="body2" sx={{ width: '100%', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Typography variant="body2" sx={{ width: '100%', textAlign: 'right', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {mandant ? `${t('mandant_label')}: ${mandant}` : t('mandant_none')}
               </Typography>
             )}
@@ -343,6 +343,7 @@ export default function Layout() {
                 sx={{
                   display: 'block',
                   width: '100%',
+                  textAlign: 'right',
                   fontWeight: hasSelectedCustomer ? 400 : 700,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
