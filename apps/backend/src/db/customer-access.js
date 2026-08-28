@@ -6,6 +6,18 @@ const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 const CUSTOMER_ACCESS_SCOPE_TTL_MS = 5 * 60 * 1000;
 const customerAccessScopeCache = new Map();
 
+// App-owned exception: these identities receive unrestricted access without
+// changing any BMS/dbo user or mandant tables. Mark is currently exposed by
+// the employee view as MAW; MWI remains supported only when it belongs to
+// Mark Winkler, so another employee with MWI cannot receive this exception.
+const APP_FULL_ACCESS_RULES = [
+  { shortCodes: ['NSC'], names: ['NICOLE SCHRODER'] },
+  { shortCodes: ['MWI', 'MAW'], names: ['MARK WINKLER'] },
+  { shortCodes: ['SGÖ'], names: ['STEFAN GODE'] },
+  { shortCodes: ['AKI'], names: ['ALEXANDER KIMAZ'] },
+  { shortCodes: ['DME'], names: ['DIETMAR MEYER'] },
+];
+
 function toText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -32,6 +44,21 @@ function normalizeUserGroup(value) {
   return toText(value).toUpperCase();
 }
 
+function normalizePersonName(value) {
+  return toText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function isAppFullAccessUser(identity) {
+  const shortCode = normalizeUserGroup(identity?.shortCode);
+  const fullName = normalizePersonName(identity?.fullName);
+  return APP_FULL_ACCESS_RULES.some((rule) => (
+    rule.shortCodes.includes(shortCode) && rule.names.includes(fullName)
+  ));
+}
+
 function getCustomerField(field, alias = 'k') {
   const column = `[${field}]`;
   return alias ? `[${alias}].${column}` : column;
@@ -43,6 +70,7 @@ function getTrimmedCustomerField(field, alias = 'k') {
 
 function resolveCustomerAccessMode(userGroup, hasShortCode = true) {
   const group = normalizeUserGroup(userGroup);
+  if (group === 'AD01') return 'full_access';
   if (group === 'GR01') return 'all_assigned_innendienst';
   if (group === 'GR02') return hasShortCode ? 'own_innendienst' : 'no_customer_access';
   if (group === 'GR03') return hasShortCode ? 'own_innendienst_or_aussendienst' : 'no_customer_access';
@@ -52,12 +80,19 @@ function resolveCustomerAccessMode(userGroup, hasShortCode = true) {
 }
 
 function buildCustomerScopeFilter(scope, alias = 'k') {
-  if (scope?.isMainTenant) {
-    return { whereSql: '', params: [], mode: 'main_tenant_all' };
+  if (scope?.isMainTenant || scope?.isFullAccess) {
+    return {
+      whereSql: '',
+      params: [],
+      mode: scope?.isMainTenant ? 'main_tenant_all' : 'full_access',
+    };
   }
 
   const shortCode = toText(scope?.shortCode);
   const mode = resolveCustomerAccessMode(scope?.userGroup, Boolean(shortCode));
+  if (mode === 'full_access') {
+    return { whereSql: '', params: [], mode };
+  }
   if (mode === 'no_customer_access') {
     return { whereSql: '1 = 0', params: [], mode };
   }
@@ -134,19 +169,21 @@ async function getCustomerAccessScope(email, database) {
   const isMainTenant = Number.isFinite(activeCompanyId)
     && Number.isFinite(mainCompanyId)
     && activeCompanyId === mainCompanyId;
+  const isAppFullAccess = isAppFullAccessUser(userIdentity);
 
-  if (isMainTenant) {
+  if (isMainTenant || isAppFullAccess) {
     return {
       userIdentity,
       activeCompanyId,
       mainCompanyId,
       personNumber,
       shortCode,
-      userGroup: null,
+      userGroup: isAppFullAccess ? 'BMS_APP_FULL_ACCESS' : null,
       groups: [],
       ambiguousGroup: false,
-      isMainTenant: true,
-      customerAccess: buildCustomerScopeFilter({ isMainTenant: true }),
+      isFullAccess: true,
+      isMainTenant,
+      customerAccess: buildCustomerScopeFilter({ isMainTenant, isFullAccess: true }),
     };
   }
 
@@ -157,15 +194,17 @@ async function getCustomerAccessScope(email, database) {
   const groupResult = Number.isFinite(personNumber) && Number.isFinite(activeCompanyId)
     ? await loadTargetUserGroup(personNumber, activeCompanyId)
     : { userGroup: null, groups: [], ambiguous: false };
+  const isFullAccess = groupResult.groups.includes('AD01');
   const scope = {
     userIdentity,
     activeCompanyId,
     mainCompanyId,
     personNumber,
     shortCode,
-    userGroup: groupResult.userGroup,
+    userGroup: isFullAccess ? 'AD01' : groupResult.userGroup,
     groups: groupResult.groups,
     ambiguousGroup: groupResult.ambiguous,
+    isFullAccess,
     isMainTenant: false,
   };
   scope.customerAccess = buildCustomerScopeFilter(scope);
@@ -190,6 +229,7 @@ async function loadVisibleCustomer(database, customerId, scope) {
 module.exports = {
   buildCustomerScopeFilter,
   getCustomerAccessScope,
+  isAppFullAccessUser,
   loadVisibleCustomer,
   normalizeUserGroup,
   resolveCustomerAccessMode,

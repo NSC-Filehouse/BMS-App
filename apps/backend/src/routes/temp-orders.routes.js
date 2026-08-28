@@ -96,6 +96,16 @@ async function requireVisibleCustomer(req, customerId) {
   return customer;
 }
 
+function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_CreatedBy]') {
+  if (isFullAccess) {
+    return { whereSql: '', params: [] };
+  }
+  return {
+    whereSql: ` AND LOWER(COALESCE(${column}, '')) = ?`,
+    params: [String(userShortCode || '').toLowerCase()],
+  };
+}
+
 function normalizeAttachmentFileName(value) {
   const text = asText(value);
   if (!text) return '';
@@ -707,6 +717,7 @@ router.get('/temp-orders/incoterms', requireMandant, asyncHandler(async (req, re
 
 router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -745,14 +756,16 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       )`
     : '';
   const whereParams = text ? [like, like, like, like] : [];
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, '[o].[ta_CreatedBy]');
 
   const countSql = `
     SELECT COUNT(*) AS total
     FROM ${TEMP_ORDER_TABLE} o
-    WHERE [o].[ta_company_id] = ? AND LOWER(COALESCE([o].[ta_CreatedBy], '')) = ?
+    WHERE [o].[ta_company_id] = ?
+    ${ownerFilter.whereSql}
     ${whereText}
   `;
-  const totalRows = await runSQLQuerySqlServer(config.sql.database, countSql, [companyId, userShortCode.toLowerCase(), ...whereParams]);
+  const totalRows = await runSQLQuerySqlServer(config.sql.database, countSql, [companyId, ...ownerFilter.params, ...whereParams]);
   const total = normalizeTotal(totalRows);
 
   const listSql = `
@@ -778,14 +791,15 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       WHERE p.[tap_ta_id] = o.[ta_id]
       ORDER BY p.[tap_line_no] ASC
     ) fp
-    WHERE [o].[ta_company_id] = ? AND LOWER(COALESCE([o].[ta_CreatedBy], '')) = ?
+    WHERE [o].[ta_company_id] = ?
+    ${ownerFilter.whereSql}
     ${whereText}
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQuerySqlServer(config.sql.database, listSql, [
     companyId,
-    userShortCode.toLowerCase(),
+    ...ownerFilter.params,
     ...whereParams,
     offset,
     pageSize,
@@ -816,6 +830,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
 router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -827,13 +842,15 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const sql = `
     SELECT TOP 1 *
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      ${ownerFilter.whereSql}
   `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, userShortCode.toLowerCase()]);
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, ...ownerFilter.params]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -852,6 +869,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
 router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -863,6 +881,8 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const sql = `
     SELECT TOP 1
       [ta_Attachment] AS attachment,
@@ -870,9 +890,9 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
       [ta_AttachmentMimeType] AS mimeType
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      ${ownerFilter.whereSql}
   `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, userShortCode.toLowerCase()]);
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, ...ownerFilter.params]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row || row.attachment === null || row.attachment === undefined) {
     throw createHttpError(404, `temp order attachment not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -1100,6 +1120,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
 router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1119,6 +1140,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const nowIso = new Date().toISOString();
   let finalized;
   try {
@@ -1127,8 +1150,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         SELECT TOP 1 *
         FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
         WHERE [ta_id] = ? AND [ta_company_id] = ?
-          AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-      `, [id, companyId, userShortCode.toLowerCase()]);
+          ${ownerFilter.whereSql}
+      `, [id, companyId, ...ownerFilter.params]);
       const orderRow = orderResult.rows[0] || null;
       if (!orderRow) {
         throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -1201,9 +1224,9 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
             [ta_LastModifiedBy] = ?,
             [ta_LastModifiedDate] = ?
         WHERE [ta_id] = ? AND [ta_company_id] = ?
-          AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+          ${ownerFilter.whereSql}
           AND [ta_completed] = 0
-      `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, userShortCode.toLowerCase()]);
+      `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, ...ownerFilter.params]);
 
       const outboxResult = await query(`
         INSERT INTO ${ORDER_MAIL_OUTBOX_TABLE} (
@@ -1308,8 +1331,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     SELECT TOP 1 *
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-  `, [id, companyId, userShortCode.toLowerCase()]);
+      ${ownerFilter.whereSql}
+  `, [id, companyId, ...ownerFilter.params]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
 
   sendEnvelope(res, {
@@ -1330,6 +1353,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 
 router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1342,6 +1366,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!Number.isFinite(id)) {
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
+
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
 
   const clientReferenceId = asText(body?.clientReferenceId);
   const clientName = asText(body?.clientName);
@@ -1421,8 +1447,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     SELECT TOP 1 [ta_id] AS id, [ta_completed] AS completed
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-  `, [id, companyId, userShortCode.toLowerCase()]);
+      ${ownerFilter.whereSql}
+  `, [id, companyId, ...ownerFilter.params]);
   const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -1459,7 +1485,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     UPDATE ${TEMP_ORDER_TABLE}
     SET ${orderAssignments.join(',\n        ')}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      ${ownerFilter.whereSql}
       AND [ta_completed] = 0
   `;
   const updateParams = [
@@ -1483,7 +1509,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (attachment.shouldReplace) {
     updateParams.push(attachment.buffer, attachment.fileName, attachment.mimeType);
   }
-  updateParams.push(id, companyId, userShortCode.toLowerCase());
+  updateParams.push(id, companyId, ...ownerFilter.params);
   await runSQLQuerySqlServer(config.sql.database, updateSql, updateParams);
 
   await runSQLQuerySqlServer(config.sql.database, `
@@ -1541,8 +1567,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     SELECT TOP 1 *
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-  `, [id, companyId, userShortCode.toLowerCase()]);
+      ${ownerFilter.whereSql}
+  `, [id, companyId, ...ownerFilter.params]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -1558,6 +1584,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
 router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1569,13 +1596,15 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const existsSql = `
     SELECT TOP 1 [ta_completed] AS completed
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      ${ownerFilter.whereSql}
   `;
-  const existsRows = await runSQLQuerySqlServer(config.sql.database, existsSql, [id, companyId, userShortCode.toLowerCase()]);
+  const existsRows = await runSQLQuerySqlServer(config.sql.database, existsSql, [id, companyId, ...ownerFilter.params]);
   if (!Array.isArray(existsRows) || !existsRows.length) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
@@ -1594,9 +1623,9 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
-      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      ${ownerFilter.whereSql}
       AND [ta_completed] = 0
-  `, [id, companyId, userShortCode.toLowerCase()]);
+  `, [id, companyId, ...ownerFilter.params]);
 
   sendEnvelope(res, {
     status: 200,

@@ -3,6 +3,7 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
+const { getCustomerAccessScope } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
@@ -54,6 +55,16 @@ function buildWhereClause(q) {
   return {
     whereSql: `AND (${clauses.join(' OR ')})`,
     params: fields.map(() => like),
+  };
+}
+
+function buildReservationOwnerFilter(userShortCode, isFullAccess) {
+  if (isFullAccess) {
+    return { whereSql: '', params: [] };
+  }
+  return {
+    whereSql: ' AND LOWER(COALESCE(r.[bePR_reserviertVon], \'\')) = ?',
+    params: [String(userShortCode || '').toLowerCase()],
   };
 }
 
@@ -141,6 +152,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
 
 router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -196,7 +208,8 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     comment: row.comment || null,
     unit: row.unit || null,
     warehouseId: row.warehouseId || null,
-    canEdit: String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase(),
+    canEdit: accessScope.isFullAccess
+      || String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase(),
   };
 
   sendEnvelope(res, {
@@ -209,6 +222,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
 
 router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -231,16 +245,18 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
   }
 
+  const ownerFilter = buildReservationOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const currentSql = `
     SELECT TOP 1 [bePR_Anzahl] AS currentAmount
     FROM [dbo].[tblBest_Pos_Reserviert]
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
-      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+      ${ownerFilter.whereSql.replace('r.', '')}
   `;
   const currentRows = await runSQLQueryAccess(req.database, currentSql, [
     parsedId.beNumber,
     parsedId.warehouseId,
-    userShortCode.toLowerCase(),
+    ...ownerFilter.params,
   ]);
   const current = Array.isArray(currentRows) && currentRows.length ? currentRows[0] : null;
   if (!current) {
@@ -276,7 +292,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
         [bePR_Notiz] = ?,
         [bePR_LastUpdate] = ?
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
-      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+      ${ownerFilter.whereSql.replace('r.', '')}
   `;
   await runSQLQueryAccess(req.database, updateSql, [
     amount,
@@ -285,7 +301,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     `${userShortCode} ${new Date().toISOString()}`.slice(0, 50),
     parsedId.beNumber,
     parsedId.warehouseId,
-    userShortCode.toLowerCase(),
+    ...ownerFilter.params,
   ]);
 
   sendEnvelope(res, {
@@ -303,6 +319,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
 
 router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -314,16 +331,18 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
 
+  const ownerFilter = buildReservationOwnerFilter(userShortCode, accessScope.isFullAccess);
+
   const existsSql = `
     SELECT TOP 1 1 AS ok
     FROM [dbo].[tblBest_Pos_Reserviert]
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
-      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+      ${ownerFilter.whereSql.replace('r.', '')}
   `;
   const existsRows = await runSQLQueryAccess(req.database, existsSql, [
     parsedId.beNumber,
     parsedId.warehouseId,
-    userShortCode.toLowerCase(),
+    ...ownerFilter.params,
   ]);
   if (!Array.isArray(existsRows) || !existsRows.length) {
     throw createHttpError(404, `reservations not found: ${id}`, { code: 'RESERVATION_NOT_FOUND', id });
@@ -332,12 +351,12 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const sql = `
     DELETE FROM [dbo].[tblBest_Pos_Reserviert]
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
-      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?
+      ${ownerFilter.whereSql.replace('r.', '')}
   `;
   await runSQLQueryAccess(req.database, sql, [
     parsedId.beNumber,
     parsedId.warehouseId,
-    userShortCode.toLowerCase(),
+    ...ownerFilter.params,
   ]);
 
   sendEnvelope(res, {

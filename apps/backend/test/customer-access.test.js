@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildCustomerScopeFilter,
+  isAppFullAccessUser,
   normalizeUserGroup,
   resolveCustomerAccessMode,
 } = require('../src/db/customer-access');
@@ -19,11 +20,29 @@ test('normalizes user groups for case and whitespace differences', () => {
   assert.equal(normalizeUserGroup(' gr03 '), 'GR03');
 });
 
+test('recognizes the app-owned full-access exception by identity', () => {
+  assert.equal(isAppFullAccessUser({ shortCode: 'NSC', fullName: 'Nicole Schröder' }), true);
+  assert.equal(isAppFullAccessUser({ shortCode: 'MWI', fullName: 'Mark Winkler' }), true);
+  assert.equal(isAppFullAccessUser({ shortCode: 'MAW', fullName: 'Mark Winkler' }), true);
+  assert.equal(isAppFullAccessUser({ shortCode: 'MWI', fullName: 'Marc Wittig' }), false);
+  assert.equal(isAppFullAccessUser({ shortCode: 'DME', fullName: 'Dietmar Meyer' }), true);
+  assert.equal(isAppFullAccessUser({ shortCode: 'GR01', fullName: 'Dietmar Meyer' }), false);
+});
+
 test('keeps the main tenant unrestricted', () => {
   assert.deepEqual(buildCustomerScopeFilter({ isMainTenant: true }), {
     whereSql: '',
     params: [],
     mode: 'main_tenant_all',
+  });
+});
+
+test('maps AD01 administrators to unrestricted customer access', () => {
+  const result = buildCustomerScopeFilter(scope('AD01'));
+  assert.deepEqual(result, {
+    whereSql: '',
+    params: [],
+    mode: 'full_access',
   });
 });
 
@@ -64,7 +83,7 @@ test('maps GR05 to the own outside-sales code', () => {
 });
 
 test('falls back to the previous outside-sales filter for excluded groups', () => {
-  for (const userGroup of ['AD01', 'GR06', 'GR09', 'UNKNOWN', null]) {
+  for (const userGroup of ['GR06', 'GR09', 'UNKNOWN', null]) {
     const result = buildCustomerScopeFilter(scope(userGroup, 'DBE'));
     assert.equal(result.mode, 'legacy_own_aussendienst');
     assert.deepEqual(result.params, ['DBE']);
@@ -82,6 +101,7 @@ test('does not expose foreign customers without a required own-code', () => {
 });
 
 test('resolves the configured group modes', () => {
+  assert.equal(resolveCustomerAccessMode('AD01'), 'full_access');
   assert.equal(resolveCustomerAccessMode('GR01'), 'all_assigned_innendienst');
   assert.equal(resolveCustomerAccessMode('GR02'), 'own_innendienst');
   assert.equal(resolveCustomerAccessMode('GR03'), 'own_innendienst_or_aussendienst');
