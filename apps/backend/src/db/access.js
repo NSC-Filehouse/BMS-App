@@ -143,6 +143,41 @@ async function runSQLQuerySqlServer(databaseName, query, params = [], target = '
   }
 }
 
+async function runTransactionQuery(transaction, query, params = []) {
+  const request = new sql.Request(transaction);
+  const bind = Array.isArray(params) ? params : [];
+  bind.forEach((value, i) => {
+    request.input(`p${i + 1}`, value);
+  });
+  const { sqlText } = bindQuestionParams(query, bind);
+  const result = await request.query(sqlText);
+  return {
+    rows: result && Array.isArray(result.recordset) ? result.recordset : [],
+    rowsAffected: result && Array.isArray(result.rowsAffected) ? result.rowsAffected : [],
+  };
+}
+
+async function withSqlTransaction(databaseName, work, target = 'bms') {
+  const pool = await getPool(databaseName, target);
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+  try {
+    const result = await work({
+      transaction,
+      query: (query, params = []) => runTransactionQuery(transaction, query, params),
+    });
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      logger.error('SQL Server transaction rollback failed', rollbackError);
+    }
+    throw error;
+  }
+}
+
 async function runSQLQueryFx(databaseName, query, params = []) {
   return runSQLQuerySqlServer(databaseName, query, params, 'fx');
 }
@@ -166,6 +201,8 @@ async function canConnectToDatabase(databaseName) {
 module.exports = {
   runSQLQueryAccess,
   runSQLQuerySqlServer,
+  runTransactionQuery,
+  withSqlTransaction,
   runSQLQueryFx,
   canConnectToDatabase,
 };

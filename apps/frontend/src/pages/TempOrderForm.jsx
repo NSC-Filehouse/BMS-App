@@ -326,6 +326,10 @@ export default function TempOrderForm() {
           const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}`);
           if (!alive) return;
           const d = res?.data || {};
+          if (d.completed) {
+            navigate(`/temp-orders/${encodeURIComponent(id)}`, { replace: true });
+            return;
+          }
           setAttachmentFile(null);
           setRemoveAttachment(false);
           setAttachmentMeta({
@@ -456,7 +460,7 @@ export default function TempOrderForm() {
     };
     run();
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
+  }, [id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
     const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);

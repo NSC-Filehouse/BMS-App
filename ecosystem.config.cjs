@@ -9,6 +9,7 @@ module.exports = {
       name: "bms-backend",
       cwd: "./apps/backend",
       script: "./src/index.js",
+      node_args: "--openssl-legacy-provider",
       env: {
         NODE_ENV: "production"
       }

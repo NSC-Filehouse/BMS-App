@@ -26,6 +26,21 @@ const config = {
     vapidPrivateKey: String(process.env.PUSH_VAPID_PRIVATE_KEY || '').trim(),
   },
 
+  orderMail: {
+    enabled: toBool(process.env.BMS_ORDER_MAIL_ENABLED, true),
+    testRecipient: String(process.env.BMS_ORDER_MAIL_TEST_RECIPIENT || '').trim().toLowerCase(),
+    customerServiceAddressMap: String(process.env.INVOICE_ROUTER_ADDRESS_MAP || '').trim(),
+    accountingMailboxMap: String(process.env.EWS_SHARED_MAILBOXES || '').trim(),
+    retryIntervalSeconds: toInt(process.env.BMS_ORDER_MAIL_RETRY_INTERVAL_SECONDS, 60),
+    maxAttempts: toInt(process.env.BMS_ORDER_MAIL_MAX_ATTEMPTS, 10),
+    ews: {
+      username: String(process.env.EWS_USERNAME || '').trim(),
+      password: String(process.env.EWS_PASSWORD || ''),
+      exchangeVersion: toInt(process.env.EWS_EXCHANGE_VERSION, 7),
+      url: String(process.env.EWS_URL_EXTERN || '').trim(),
+    },
+  },
+
   sql: {
     server: (process.env.BMS_SQL_SERVER || '').trim(),
     host: (process.env.BMS_SQL_HOST || '').trim(),
@@ -50,6 +65,7 @@ const config = {
       pushMandantSetting: (process.env.BMS_SQL_APP_TABLE_PUSH_MANDANT_SETTING || 'PushMandantSetting').trim(),
       tempOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER || 'tbl_Temp_Auftrag').trim(),
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
+      orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
     },
     columns: {
       persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),

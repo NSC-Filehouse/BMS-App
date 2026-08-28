@@ -86,3 +86,29 @@ Paging wird über das klassische **Access TOP-Nested-Query** Muster implementier
 - `apps/frontend` – React App + Prod Static Server (Port 3090)
 
 Viel Spaß beim Weiterbauen.
+
+## Aufträge finalisieren und per EWS senden
+
+Vor dem ersten Einsatz muss die idempotente Migration
+`apps/backend/sql/add_temp_order_finalization_and_mail_outbox.sql` mit einem
+DDL-berechtigten SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden.
+
+Das Backend benötigt folgende Werte in `apps/backend/.env`:
+
+```dotenv
+BMS_ORDER_MAIL_ENABLED=true
+BMS_ORDER_MAIL_TEST_RECIPIENT=n.schroeder@filehouse.net
+BMS_ORDER_MAIL_RETRY_INTERVAL_SECONDS=60
+BMS_ORDER_MAIL_MAX_ATTEMPTS=10
+EWS_USERNAME=
+EWS_PASSWORD=
+EWS_EXCHANGE_VERSION=7
+EWS_URL_EXTERN=
+INVOICE_ROUTER_ADDRESS_MAP=
+EWS_SHARED_MAILBOXES=
+```
+
+Wenn `BMS_ORDER_MAIL_TEST_RECIPIENT` gesetzt ist, werden ausnahmslos alle
+Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
+Wert geleert werden; danach gilt Customer Service aus
+`INVOICE_ROUTER_ADDRESS_MAP` mit `EWS_SHARED_MAILBOXES` als Buchhaltungs-Fallback.

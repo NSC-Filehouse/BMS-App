@@ -183,6 +183,9 @@ export default function TempOrdersList() {
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ pr: 2 }}>
                     <Typography variant="subtitle1">{row.clientName || row.id}</Typography>
+                    <Typography variant="caption" sx={{ color: row.completed ? 'success.main' : 'text.secondary', fontWeight: 600 }}>
+                      {row.completed ? t('temp_order_status_final') : t('temp_order_status_draft')}
+                    </Typography>
                     {(Array.isArray(row.positions) && row.positions.length > 0
                       ? row.positions
                       : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]

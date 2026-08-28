@@ -3,10 +3,18 @@ const multer = require('multer');
 const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
-const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getUserIdentityByEmail } = require('../db/users');
-const { appendTimelineEntries } = require('../db/timeline');
+const { sendPushNotificationsForTimelineEntries } = require('../db/push');
+const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
+const {
+  ORDER_MAIL_SUBJECT,
+  formatOrderMailBody,
+  resolveOrderMailRecipient,
+  validateEwsConfig,
+} = require('../mail/order-mail');
+const logger = require('../logger');
 const { productAvailabilitySource } = require('../db/product-availability');
 
 const router = express.Router();
@@ -60,6 +68,8 @@ const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
 const TEMP_ORDER_TABLE_NAME = appTableName('tempOrder');
 const TEMP_ORDER_POSITION_TABLE_NAME = appTableName('tempOrderPosition');
+const ORDER_MAIL_OUTBOX_TABLE = appTableSql('orderMailOutbox');
+const TIMELINE_TABLE = appTableSql('timeline');
 const APP_SCHEMA_NAME = appSchemaName();
 
 function normalizeDir(dir) {
@@ -185,6 +195,7 @@ function mapTempOrderRow(row) {
     deliveryAddressChanged: Boolean(row.ta_delivery_address_changed),
     completed: Boolean(row.ta_completed),
     closingDate: row.ta_closing_date,
+    completedBy: row.ta_CompletedBy,
     createdBy: row.ta_CreatedBy,
     createdAt: row.ta_CreateDate,
     lastModifiedBy: row.ta_LastModifiedBy,
@@ -198,6 +209,59 @@ function mapTempOrderRow(row) {
     attachmentFileName: normalizeAttachmentFileName(row.ta_AttachmentFileName),
     attachmentMimeType: asText(row.ta_AttachmentMimeType),
   };
+}
+
+async function loadOrderMailState(orderId) {
+  let rows;
+  try {
+    rows = await runSQLQuerySqlServer(config.sql.database, `
+      SELECT TOP 1
+        [om_Status] AS status,
+        [om_Recipient] AS recipient,
+        [om_RecipientSource] AS recipientSource,
+        [om_AttemptCount] AS attemptCount,
+        [om_SentAt] AS sentAt,
+        [om_LastError] AS lastError
+      FROM ${ORDER_MAIL_OUTBOX_TABLE}
+      WHERE [om_OrderID] = ?
+    `, [orderId]);
+  } catch (error) {
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('invalid object name') && message.includes('ordermailoutbox')) return null;
+    throw error;
+  }
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row) return null;
+  return {
+    status: asText(row.status),
+    recipient: asText(row.recipient),
+    recipientSource: asText(row.recipientSource),
+    attemptCount: Number(row.attemptCount || 0),
+    sentAt: row.sentAt || null,
+    lastError: asText(row.lastError) || null,
+  };
+}
+
+function validateFinalOrder(order, positions) {
+  if (!order?.clientReferenceId || !order?.clientName || !order?.clientAddress
+    || !order?.deliveryType || !order?.packagingType || !order?.deliveryAddress
+    || !order?.specialPaymentText) {
+    throw createHttpError(400, 'Final order is incomplete.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+  }
+  if (!Array.isArray(positions) || positions.length === 0) {
+    throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
+  }
+  const invalidPosition = positions.find((position) => (
+    !asText(position?.beNumber)
+    || !asText(position?.warehouse)
+    || !position?.deliveryDate
+    || Number(position?.amountInKg) <= 0
+    || Number(position?.price) <= 0
+    || Number(position?.costPrice) <= 0
+  ));
+  if (invalidPosition) {
+    throw createHttpError(400, 'Final order contains an incomplete position.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+  }
 }
 
 function mapTempOrderWithPositions(row, positions) {
@@ -760,7 +824,10 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
   sendEnvelope(res, {
     status: 200,
-    data: mapTempOrderWithPositions(row, await loadOrderPositions(row.ta_id)),
+    data: {
+      ...mapTempOrderWithPositions(row, await loadOrderPositions(row.ta_id)),
+      mail: await loadOrderMailState(row.ta_id),
+    },
     meta: { mandant: req.mandant, id },
     error: null,
   });
@@ -956,7 +1023,6 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
   }
 
-  const timelineEntries = [];
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
     const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
@@ -1004,34 +1070,242 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       }
       throw err;
     }
-    timelineEntries.push({
-      createdAt: nowIso,
-      mandant: req.mandant,
-      mandantShortName: req.database?.shortName || null,
-      companyId: req.database?.firmaId || null,
-      userEmail: req.userEmail || null,
-      userShortCode,
-      type: 'order',
-      product: posCtx.article || pos.beNumber,
-      productId: pos.beNumber,
-      beNumber: pos.beNumber,
-      amountKg: pos.amountInKg,
-      unit: 'kg',
-      referenceId: String(created.ta_id),
-      payloadJson: {
-        clientReferenceId,
-        clientName,
-        warehouseId: pos.warehouseId,
-      },
-    });
   }
-
-  await appendTimelineEntries(timelineEntries);
 
   sendEnvelope(res, {
     status: 201,
     data: mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)),
     meta: { mandant: req.mandant },
+    error: null,
+  });
+}));
+
+router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userShortCode = asText(userIdentity.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const mailConfigValidation = validateEwsConfig(config.orderMail);
+  if (!mailConfigValidation.ok) {
+    throw createHttpError(503, 'Order mail configuration is incomplete.', {
+      code: 'TEMP_ORDER_MAIL_CONFIG_MISSING',
+      missing: mailConfigValidation.missing || [],
+    });
+  }
+
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const nowIso = new Date().toISOString();
+  let finalized;
+  try {
+    finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
+      const orderResult = await query(`
+        SELECT TOP 1 *
+        FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
+        WHERE [ta_id] = ? AND [ta_company_id] = ?
+          AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      `, [id, companyId, userShortCode.toLowerCase()]);
+      const orderRow = orderResult.rows[0] || null;
+      if (!orderRow) {
+        throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+      }
+
+      const existingOutboxResult = await query(`
+        SELECT TOP 1 [om_ID] AS id, [om_Status] AS status
+        FROM ${ORDER_MAIL_OUTBOX_TABLE}
+        WHERE [om_OrderID] = ?
+      `, [id]);
+      const existingOutbox = existingOutboxResult.rows[0] || null;
+      if (Boolean(orderRow.ta_completed)) {
+        return {
+          alreadyFinalized: true,
+          outboxId: existingOutbox ? Number(existingOutbox.id) : null,
+          timelineEntries: [],
+        };
+      }
+
+      const positionsResult = await query(`
+        SELECT
+          [tap_id] AS id,
+          [tap_line_no] AS lineNo,
+          [tap_be_number] AS beNumber,
+          [tap_article] AS article,
+          [tap_amount_in_kg] AS amountInKg,
+          [tap_warehouse] AS warehouse,
+          [tap_price] AS price,
+          [tap_ep] AS costPrice,
+          [tap_delivery_date] AS deliveryDate,
+          [tap_reservation_in_kg] AS reservationInKg,
+          [tap_reservation_date] AS reservationDate,
+          [tap_about] AS about,
+          [tap_mfi] AS mfi,
+          [tap_wpz_id] AS wpzId,
+          [tap_wpz_original] AS wpzOriginal,
+          [tap_wpz_comment] AS wpzComment
+        FROM ${TEMP_ORDER_POSITION_TABLE} WITH (HOLDLOCK)
+        WHERE [tap_ta_id] = ?
+        ORDER BY [tap_line_no] ASC
+      `, [id]);
+      const positions = positionsResult.rows || [];
+      const mappedOrder = mapTempOrderRow(orderRow);
+      validateFinalOrder(mappedOrder, positions);
+
+      const recipient = resolveOrderMailRecipient(companyId, config.orderMail);
+      if (!recipient.ok) {
+        throw createHttpError(422, 'No order mail recipient configured for mandant.', {
+          code: 'TEMP_ORDER_MAIL_RECIPIENT_MISSING',
+          companyId,
+          reason: recipient.reason,
+        });
+      }
+
+      const finalizedBy = [userIdentity.fullName, userShortCode, req.userEmail].filter(Boolean).join(' / ');
+      const mailBody = formatOrderMailBody({
+        order: { ...mappedOrder, createdByEmail: req.userEmail },
+        positions,
+        mandantName: req.mandant,
+        mandantShortName: req.database?.shortName || null,
+        finalizedBy,
+        finalizedAt: nowIso,
+      });
+
+      await query(`
+        UPDATE ${TEMP_ORDER_TABLE}
+        SET [ta_completed] = 1,
+            [ta_closing_date] = ?,
+            [ta_CompletedBy] = ?,
+            [ta_LastModifiedBy] = ?,
+            [ta_LastModifiedDate] = ?
+        WHERE [ta_id] = ? AND [ta_company_id] = ?
+          AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+          AND [ta_completed] = 0
+      `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, userShortCode.toLowerCase()]);
+
+      const outboxResult = await query(`
+        INSERT INTO ${ORDER_MAIL_OUTBOX_TABLE} (
+          [om_OrderID], [om_CompanyID], [om_Recipient], [om_RecipientSource],
+          [om_Subject], [om_Body], [om_Status], [om_AttemptCount],
+          [om_NextAttemptAt], [om_CreateDate], [om_LastModifiedDate]
+        )
+        OUTPUT INSERTED.[om_ID] AS id
+        VALUES (?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
+      `, [
+        id,
+        companyId,
+        recipient.address,
+        recipient.source,
+        ORDER_MAIL_SUBJECT,
+        mailBody,
+        nowIso,
+        nowIso,
+        nowIso,
+      ]);
+      const outboxId = Number(outboxResult.rows[0]?.id);
+
+      const timelineExistsResult = await query(`
+        SELECT TOP 1 1 AS ok
+        FROM ${TIMELINE_TABLE}
+        WHERE [tl_Type] = N'order' AND [tl_CompanyId] = ? AND [tl_ReferenceId] = ?
+      `, [companyId, String(id)]);
+      const timelineEntries = [];
+      if (!timelineExistsResult.rows.length) {
+        for (const position of positions) {
+          const entry = {
+            createdAt: nowIso,
+            mandant: req.mandant,
+            mandantShortName: req.database?.shortName || null,
+            companyId,
+            userEmail: req.userEmail || null,
+            userShortCode,
+            type: 'order',
+            product: asText(position.article) || asText(position.beNumber),
+            productId: asText(position.beNumber),
+            beNumber: asText(position.beNumber),
+            amountKg: Number(position.amountInKg),
+            unit: 'kg',
+            referenceId: String(id),
+            payloadJson: {
+              clientReferenceId: mappedOrder.clientReferenceId,
+              clientName: mappedOrder.clientName,
+              warehouseId: asText(position.warehouse),
+            },
+          };
+          await query(`
+            INSERT INTO ${TIMELINE_TABLE} (
+              [tl_CreatedAt], [tl_Mandant], [tl_MandantKurz], [tl_CompanyId],
+              [tl_UserEmail], [tl_UserShortCode], [tl_Type], [tl_Product],
+              [tl_ProductId], [tl_BeNumber], [tl_AmountKg], [tl_Unit],
+              [tl_ReferenceId], [tl_PayloadJson]
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            entry.createdAt,
+            entry.mandant,
+            entry.mandantShortName,
+            entry.companyId,
+            entry.userEmail,
+            entry.userShortCode,
+            entry.type,
+            entry.product,
+            entry.productId,
+            entry.beNumber,
+            entry.amountKg,
+            entry.unit,
+            entry.referenceId,
+            JSON.stringify(entry.payloadJson),
+          ]);
+          timelineEntries.push(entry);
+        }
+      }
+
+      return { alreadyFinalized: false, outboxId, timelineEntries };
+    });
+  } catch (error) {
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby'))
+      || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
+      throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
+    }
+    throw error;
+  }
+
+  if (finalized.timelineEntries.length) {
+    try {
+      await sendPushNotificationsForTimelineEntries(finalized.timelineEntries);
+    } catch (error) {
+      logger.error(`Push fuer finalisierten Auftrag ${id} fehlgeschlagen`, error);
+    }
+  }
+
+  const mailResult = finalized.outboxId
+    ? await processOrderMailOutboxById(finalized.outboxId)
+    : { processed: false, status: 'not_available' };
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1 *
+    FROM ${TEMP_ORDER_TABLE}
+    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+  `, [id, companyId, userShortCode.toLowerCase()]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      ...mapTempOrderWithPositions(row, await loadOrderPositions(id)),
+      mail: await loadOrderMailState(id),
+    },
+    meta: {
+      mandant: req.mandant,
+      id,
+      alreadyFinalized: finalized.alreadyFinalized,
+      mailStatus: mailResult.status,
+    },
     error: null,
   });
 }));
@@ -1125,7 +1399,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   }
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 [ta_id] AS id
+    SELECT TOP 1 [ta_id] AS id, [ta_completed] AS completed
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
@@ -1133,6 +1407,9 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+  }
+  if (Boolean(existing.completed)) {
+    throw createHttpError(409, 'Finalized temp order cannot be edited.', { code: 'TEMP_ORDER_FINALIZED', id });
   }
   const fallbackOrderDeliveryDate = deliveryDates[0] || null;
   const orderAssignments = [
@@ -1164,6 +1441,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     SET ${orderAssignments.join(',\n        ')}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      AND [ta_completed] = 0
   `;
   const updateParams = [
     clientReferenceId,
@@ -1192,7 +1470,11 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
-  `, [id]);
+      AND EXISTS (
+        SELECT 1 FROM ${TEMP_ORDER_TABLE}
+        WHERE [ta_id] = ? AND [ta_completed] = 0
+      )
+  `, [id, id]);
 
   const nowIso = new Date().toISOString();
   for (let i = 0; i < normalizedPositions.length; i += 1) {
@@ -1269,7 +1551,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   }
 
   const existsSql = `
-    SELECT TOP 1 1 AS ok
+    SELECT TOP 1 [ta_completed] AS completed
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
@@ -1278,15 +1560,23 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   if (!Array.isArray(existsRows) || !existsRows.length) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
+  if (Boolean(existsRows[0].completed)) {
+    throw createHttpError(409, 'Finalized temp order cannot be deleted.', { code: 'TEMP_ORDER_FINALIZED', id });
+  }
 
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
-  `, [id]);
+      AND EXISTS (
+        SELECT 1 FROM ${TEMP_ORDER_TABLE}
+        WHERE [ta_id] = ? AND [ta_completed] = 0
+      )
+  `, [id, id]);
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
+      AND [ta_completed] = 0
   `, [id, companyId, userShortCode.toLowerCase()]);
 
   sendEnvelope(res, {

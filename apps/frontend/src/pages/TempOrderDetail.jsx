@@ -7,6 +7,10 @@ import {
   CardContent,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Typography,
 } from '@mui/material';
@@ -20,6 +24,13 @@ function formatDateOnly(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('de-DE');
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function formatPrice(value) {
@@ -51,6 +62,8 @@ export default function TempOrderDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [finalizeOpen, setFinalizeOpen] = React.useState(false);
+  const [finalizing, setFinalizing] = React.useState(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -88,6 +101,20 @@ export default function TempOrderDetail() {
     }
   };
 
+  const finalizeOrder = async () => {
+    try {
+      setFinalizing(true);
+      setError('');
+      const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/finalize`, { method: 'POST' });
+      setItem(res?.data || null);
+      setFinalizeOpen(false);
+    } catch (e) {
+      setError(e?.message || t('loading_error'));
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -102,7 +129,14 @@ export default function TempOrderDetail() {
         <Card>
           <CardContent sx={{ pt: 2 }}>
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <Button variant="outlined" onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}>{t('edit_label')}</Button>
+              {!item.completed && (
+                <Button variant="contained" onClick={() => setFinalizeOpen(true)}>
+                  {t('temp_order_send_bms')}
+                </Button>
+              )}
+              {!item.completed && (
+                <Button variant="outlined" onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}>{t('edit_label')}</Button>
+              )}
               <Button
                 variant="outlined"
                 onClick={() => navigate('/temp-orders/new', {
@@ -129,7 +163,9 @@ export default function TempOrderDetail() {
               >
                 {t('copy_label')}
               </Button>
-              <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
+              {!item.completed && (
+                <Button variant="outlined" color="error" onClick={deleteOrder}>{t('delete_label')}</Button>
+              )}
             </Box>
 
             <InfoRow label={t('order_customer')} value={item.clientName} />
@@ -138,6 +174,11 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
             <InfoRow label={t('order_received_from')} value={item.receivedFrom} />
             <InfoRow label={t('order_completed')} value={item.completed ? t('yes_label') : t('no_label')} />
+            <InfoRow label={t('temp_order_status')} value={item.completed ? t('temp_order_status_final') : t('temp_order_status_draft')} />
+            {item.completed && <InfoRow label={t('temp_order_sent_at')} value={formatDateTime(item.closingDate)} />}
+            {item.completed && <InfoRow label={t('temp_order_sent_by')} value={item.completedBy} />}
+            {item.mail && <InfoRow label={t('temp_order_mail_status')} value={t(`temp_order_mail_${item.mail.status || 'pending'}`)} />}
+            {item.mail?.recipient && <InfoRow label={t('temp_order_mail_recipient')} value={item.mail.recipient} />}
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
             <InfoRow label={t('order_comment')} value={item.comment} />
@@ -195,6 +236,19 @@ export default function TempOrderDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={finalizeOpen} onClose={() => (!finalizing ? setFinalizeOpen(false) : undefined)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('temp_order_send_bms')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{t('temp_order_send_bms_confirm')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFinalizeOpen(false)} disabled={finalizing}>{t('back_label')}</Button>
+          <Button variant="contained" onClick={finalizeOrder} disabled={finalizing}>
+            {finalizing ? t('temp_order_sending_bms') : t('temp_order_send_bms')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -19,6 +19,7 @@ const pushRouter = require('./routes/push.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityByEmail } = require('./db/users');
+const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 
 const { notFound } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
@@ -125,4 +126,5 @@ app.use(errorHandler);
 
 app.listen(config.port, config.host, () => {
   logger.info(`BMS backend listening on http://${config.host}:${config.port}${config.apiBasePath}`);
+  startOrderMailOutboxWorker();
 });
