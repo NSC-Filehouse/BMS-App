@@ -705,7 +705,16 @@ export default function CustomerDetail() {
                     variant="outlined"
                     sx={article.productId ? { cursor: 'pointer' } : undefined}
                     onClick={article.productId
-                      ? () => navigate(`/products/${encodeURIComponent(article.productId)}`)
+                      ? () => navigate(`/products/${encodeURIComponent(article.productId)}`, {
+                        state: {
+                          fromCustomer: {
+                            id,
+                            name,
+                            address,
+                            representative: salesRep,
+                          },
+                        },
+                      })
                       : undefined}
                   >
                     <CardContent sx={{ py: '8px !important', px: '10px !important' }}>

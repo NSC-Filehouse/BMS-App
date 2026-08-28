@@ -23,7 +23,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { addOrderCartItem } from '../utils/orderCart.js';
-import { getSelectedCustomer } from '../utils/customerSelection.js';
+import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
 function formatPrice(value) {
@@ -108,6 +108,8 @@ export default function ProductDetail() {
   const [wpzLoading, setWpzLoading] = React.useState(false);
   const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
   const [pendingCustomerAction, setPendingCustomerAction] = React.useState('');
+  const [customerPromptType, setCustomerPromptType] = React.useState('generic');
+  const sourceCustomer = location.state?.fromCustomer || null;
   const availableAmount = React.useMemo(() => {
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
@@ -153,6 +155,7 @@ export default function ProductDetail() {
   const requestProductAction = React.useCallback((action) => {
     if (!getSelectedCustomer()?.id) {
       setPendingCustomerAction(action);
+      setCustomerPromptType(sourceCustomer?.id ? 'context' : 'generic');
       setCustomerRequiredOpen(true);
       return;
     }
@@ -161,11 +164,26 @@ export default function ProductDetail() {
     } else if (action === 'cart') {
       openCartDialog();
     }
-  }, [openCartDialog, openReserveDialog]);
+  }, [openCartDialog, openReserveDialog, sourceCustomer]);
+
+  const chooseContextCustomer = React.useCallback(() => {
+    const selected = setSelectedCustomer(sourceCustomer);
+    const action = pendingCustomerAction;
+    setCustomerRequiredOpen(false);
+    setCustomerPromptType('generic');
+    setPendingCustomerAction('');
+    if (!selected) return;
+    if (action === 'reserve') {
+      openReserveDialog();
+    } else if (action === 'cart') {
+      openCartDialog();
+    }
+  }, [openCartDialog, openReserveDialog, pendingCustomerAction, sourceCustomer]);
 
   const chooseCustomer = React.useCallback(() => {
     if (!pendingCustomerAction) return;
     setCustomerRequiredOpen(false);
+    setCustomerPromptType('generic');
     navigate('/customers', {
       state: {
         afterSelect: {
@@ -555,9 +573,15 @@ export default function ProductDetail() {
         open={customerRequiredOpen}
         onClose={() => {
           setCustomerRequiredOpen(false);
+          setCustomerPromptType('generic');
           setPendingCustomerAction('');
         }}
-        onChoose={chooseCustomer}
+        onChoose={customerPromptType === 'context' ? chooseContextCustomer : chooseCustomer}
+        title={customerPromptType === 'context' ? t('customer_context_required_title') : undefined}
+        message={customerPromptType === 'context'
+          ? t('customer_context_required_message', { name: sourceCustomer?.name || sourceCustomer?.id || '' })
+          : undefined}
+        chooseLabel={customerPromptType === 'context' ? t('customer_context_required_choose') : undefined}
       />
     </Box>
   );
