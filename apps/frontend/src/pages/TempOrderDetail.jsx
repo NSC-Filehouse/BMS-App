@@ -131,6 +131,7 @@ export default function TempOrderDetail() {
       setItem(res?.data || null);
       setFinalizeOpen(false);
     } catch (e) {
+      setFinalizeOpen(false);
       setError(e?.message || t('loading_error'));
     } finally {
       setFinalizing(false);

@@ -1159,7 +1159,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 
       const existingOutboxResult = await query(`
         SELECT TOP 1 [om_ID] AS id, [om_Status] AS status
-        FROM ${ORDER_MAIL_OUTBOX_TABLE}
+        FROM ${ORDER_MAIL_OUTBOX_TABLE} WITH (UPDLOCK, HOLDLOCK)
         WHERE [om_OrderID] = ?
       `, [id]);
       const existingOutbox = existingOutboxResult.rows[0] || null;
@@ -1228,26 +1228,59 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           AND [ta_completed] = 0
       `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, ...ownerFilter.params]);
 
-      const outboxResult = await query(`
-        INSERT INTO ${ORDER_MAIL_OUTBOX_TABLE} (
-          [om_OrderID], [om_CompanyID], [om_Recipient], [om_RecipientSource],
-          [om_Subject], [om_Body], [om_Status], [om_AttemptCount],
-          [om_NextAttemptAt], [om_CreateDate], [om_LastModifiedDate]
-        )
-        OUTPUT INSERTED.[om_ID] AS id
-        VALUES (?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
-      `, [
-        id,
-        companyId,
-        recipient.address,
-        recipient.source,
-        ORDER_MAIL_SUBJECT,
-        mailBody,
-        nowIso,
-        nowIso,
-        nowIso,
-      ]);
-      const outboxId = Number(outboxResult.rows[0]?.id);
+      let outboxId;
+      if (existingOutbox && asText(existingOutbox.status).toLowerCase() !== 'sent') {
+        const requeuedOutboxResult = await query(`
+          UPDATE ${ORDER_MAIL_OUTBOX_TABLE}
+          SET [om_CompanyID] = ?,
+              [om_Recipient] = ?,
+              [om_RecipientSource] = ?,
+              [om_Subject] = ?,
+              [om_Body] = ?,
+              [om_Status] = N'pending',
+              [om_AttemptCount] = 0,
+              [om_NextAttemptAt] = NULL,
+              [om_LockedAt] = NULL,
+              [om_LastError] = NULL,
+              [om_SentAt] = NULL,
+              [om_LastModifiedDate] = ?
+          OUTPUT INSERTED.[om_ID] AS id
+          WHERE [om_ID] = ? AND [om_OrderID] = ?
+        `, [
+          companyId,
+          recipient.address,
+          recipient.source,
+          ORDER_MAIL_SUBJECT,
+          mailBody,
+          nowIso,
+          existingOutbox.id,
+          id,
+        ]);
+        outboxId = Number(requeuedOutboxResult.rows[0]?.id);
+      } else if (existingOutbox) {
+        outboxId = Number(existingOutbox.id);
+      } else {
+        const outboxResult = await query(`
+          INSERT INTO ${ORDER_MAIL_OUTBOX_TABLE} (
+            [om_OrderID], [om_CompanyID], [om_Recipient], [om_RecipientSource],
+            [om_Subject], [om_Body], [om_Status], [om_AttemptCount],
+            [om_NextAttemptAt], [om_CreateDate], [om_LastModifiedDate]
+          )
+          OUTPUT INSERTED.[om_ID] AS id
+          VALUES (?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
+        `, [
+          id,
+          companyId,
+          recipient.address,
+          recipient.source,
+          ORDER_MAIL_SUBJECT,
+          mailBody,
+          nowIso,
+          nowIso,
+          nowIso,
+        ]);
+        outboxId = Number(outboxResult.rows[0]?.id);
+      }
 
       const timelineExistsResult = await query(`
         SELECT TOP 1 1 AS ok
