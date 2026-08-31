@@ -313,6 +313,19 @@ export default function TempOrderForm() {
       return [];
     }
   }, []);
+
+  React.useEffect(() => {
+    if (form.deliveryAddressManual || String(form.deliveryAddress || '').trim() || deliveryAddressOptions.length !== 1) {
+      return;
+    }
+    const onlyAddress = String(deliveryAddressOptions[0]?.text || '').trim();
+    if (!onlyAddress) return;
+    setForm((prev) => {
+      if (prev.deliveryAddressManual || String(prev.deliveryAddress || '').trim()) return prev;
+      return { ...prev, deliveryAddress: onlyAddress };
+    });
+  }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressManual]);
+
   const loadCustomerRepresentatives = React.useCallback(async (clientReferenceId, preferredName = '') => {
     const customerId = String(clientReferenceId || '').trim();
     const preferred = String(preferredName || '').trim();
@@ -620,6 +633,7 @@ export default function TempOrderForm() {
       });
     }
 
+    setDeliveryAddressOptions([]);
     setForm((prev) => ({
       ...prev,
       clientReferenceId,
@@ -1025,12 +1039,17 @@ export default function TempOrderForm() {
                   }}
                   SelectProps={{
                     renderValue: (selected) => {
+                      if (!String(selected || '').trim()) {
+                        return deliveryAddressOptions.length > 1 ? t('delivery_address_select') : '-';
+                      }
                       const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
                       return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
                     },
                   }}
                 >
-                  <MenuItem value="">{'-'}</MenuItem>
+                  <MenuItem value="" disabled={deliveryAddressOptions.length > 1}>
+                    {deliveryAddressOptions.length > 1 ? t('delivery_address_select') : '-'}
+                  </MenuItem>
                   {String(form.deliveryAddress || '').trim()
                     && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(form.deliveryAddress || ''))
                     && <MenuItem value={form.deliveryAddress}>{form.deliveryAddress}</MenuItem>}
