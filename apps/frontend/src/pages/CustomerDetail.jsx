@@ -16,6 +16,7 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
+  MenuItem,
   Radio,
   RadioGroup,
   TextField,
@@ -116,6 +117,89 @@ function truncateActivityText(value, maxLength = 30) {
   if (!text) return '-';
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
+}
+
+const CURRENT_YEAR = new Date().getFullYear();
+const DOCUMENT_SCOPE_YEARS = Array.from(
+  { length: CURRENT_YEAR - 1999 },
+  (_value, index) => CURRENT_YEAR - index,
+);
+
+function DocumentScopeControls({
+  t,
+  scope,
+  year,
+  onScopeChange,
+  onYearChange,
+  includeOpen = false,
+}) {
+  return (
+    <RadioGroup
+      row
+      value={scope}
+      onChange={onScopeChange}
+      sx={{
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+        gap: 0.25,
+        '& .MuiFormControlLabel-root': {
+          margin: 0,
+          minWidth: 0,
+        },
+        '& .MuiFormControlLabel-label': {
+          fontSize: '0.72rem',
+        },
+      }}
+    >
+      {includeOpen && (
+        <FormControlLabel
+          value="open"
+          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+          label={t('document_scope_open')}
+        />
+      )}
+      <FormControlLabel
+        value="3m"
+        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+        label={t('document_scope_3m')}
+      />
+      <FormControlLabel
+        value="6m"
+        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+        label={t('document_scope_6m')}
+      />
+      <FormControlLabel
+        value="year"
+        control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
+        label={t('document_scope_year')}
+      />
+      <TextField
+        select
+        size="small"
+        value={String(year)}
+        onChange={onYearChange}
+        aria-label={t('document_scope_year_picker')}
+        sx={{
+          width: 76,
+          ml: 0.25,
+          '& .MuiInputBase-root': {
+            height: 28,
+            fontSize: '0.72rem',
+          },
+          '& .MuiSelect-select': {
+            px: 0.75,
+            py: 0.35,
+          },
+        }}
+      >
+        {DOCUMENT_SCOPE_YEARS.map((optionYear) => (
+          <MenuItem key={optionYear} value={String(optionYear)}>
+            {optionYear}
+          </MenuItem>
+        ))}
+      </TextField>
+    </RadioGroup>
+  );
 }
 
 function InfoRow({ icon, label, value, link, onClick, forceRight = false }) {
@@ -234,9 +318,12 @@ export default function CustomerDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
-  const [offerScope, setOfferScope] = React.useState('90d');
+  const [offerScope, setOfferScope] = React.useState('3m');
+  const [offerYear, setOfferYear] = React.useState(CURRENT_YEAR);
   const [orderScope, setOrderScope] = React.useState('open');
+  const [orderYear, setOrderYear] = React.useState(CURRENT_YEAR);
   const [invoiceScope, setInvoiceScope] = React.useState('open');
+  const [invoiceYear, setInvoiceYear] = React.useState(CURRENT_YEAR);
   const [purchasedArticlesQuery, setPurchasedArticlesQuery] = React.useState('');
   const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
@@ -333,15 +420,26 @@ export default function CustomerDetail() {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
     }
   }, [address, id, location.state, name, navigate, salesRep]);
-  const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}`;
-  const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}`;
-  const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}`;
+  const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}&year=${encodeURIComponent(offerYear)}`;
+  const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
+  const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
   const purchasedArticlesEndpoint = `/customers/${encodeURIComponent(id)}/purchased-articles`;
-  const filteredPurchasedArticles = React.useMemo(() => {
+  const filteredPurchasedArticleGroups = React.useMemo(() => {
     const query = String(purchasedArticlesQuery || '').trim().toLowerCase();
-    const items = Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [];
-    if (!query) return items;
-    return items.filter((itemRow) => String(itemRow?.article || '').toLowerCase().includes(query));
+    const groups = Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [];
+    if (!query) return groups;
+    return groups
+      .map((group) => {
+        const groupMatches = String(group?.name || '').toLowerCase().includes(query);
+        const articles = Array.isArray(group?.articles) ? group.articles : [];
+        return {
+          ...group,
+          articles: groupMatches
+            ? articles
+            : articles.filter((itemRow) => String(itemRow?.article || '').toLowerCase().includes(query)),
+        };
+      })
+      .filter((group) => group.articles.length > 0);
   }, [docs.purchasedArticles.items, purchasedArticlesQuery]);
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
@@ -383,10 +481,26 @@ export default function CustomerDetail() {
   }, [location.state, navigate]);
 
   const handleInvoiceScopeChange = React.useCallback((event) => {
-    const nextScope = event.target.value === 'all' ? 'all' : 'open';
+    const nextScope = ['open', '3m', '6m', 'year'].includes(event.target.value)
+      ? event.target.value
+      : 'open';
     setInvoiceScope(nextScope);
     if (docs.invoices.expanded) {
-      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(nextScope)}`);
+      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(invoiceYear)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        invoices: { ...prev.invoices, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.invoices.expanded, id, invoiceYear, loadDocSection]);
+
+  const handleInvoiceYearChange = React.useCallback((event) => {
+    const nextYear = Number(event.target.value) || CURRENT_YEAR;
+    setInvoiceYear(nextYear);
+    setInvoiceScope('year');
+    if (docs.invoices.expanded) {
+      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=year&year=${encodeURIComponent(nextYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
@@ -396,10 +510,26 @@ export default function CustomerDetail() {
   }, [docs.invoices.expanded, id, loadDocSection]);
 
   const handleOfferScopeChange = React.useCallback((event) => {
-    const nextScope = event.target.value === 'year' ? 'year' : '90d';
+    const nextScope = ['3m', '6m', 'year'].includes(event.target.value)
+      ? event.target.value
+      : '3m';
     setOfferScope(nextScope);
     if (docs.offers.expanded) {
-      loadDocSection('offers', `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(nextScope)}`);
+      loadDocSection('offers', `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(offerYear)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        offers: { ...prev.offers, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.offers.expanded, id, offerYear, loadDocSection]);
+
+  const handleOfferYearChange = React.useCallback((event) => {
+    const nextYear = Number(event.target.value) || CURRENT_YEAR;
+    setOfferYear(nextYear);
+    setOfferScope('year');
+    if (docs.offers.expanded) {
+      loadDocSection('offers', `/customers/${encodeURIComponent(id)}/offers?scope=year&year=${encodeURIComponent(nextYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
@@ -409,10 +539,26 @@ export default function CustomerDetail() {
   }, [docs.offers.expanded, id, loadDocSection]);
 
   const handleOrderScopeChange = React.useCallback((event) => {
-    const nextScope = event.target.value === 'all' ? 'all' : 'open';
+    const nextScope = ['open', '3m', '6m', 'year'].includes(event.target.value)
+      ? event.target.value
+      : 'open';
     setOrderScope(nextScope);
     if (docs.orders.expanded) {
-      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(nextScope)}`);
+      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(orderYear)}`);
+    } else {
+      setDocs((prev) => ({
+        ...prev,
+        orders: { ...prev.orders, loaded: false, items: [], error: '' },
+      }));
+    }
+  }, [docs.orders.expanded, id, loadDocSection, orderYear]);
+
+  const handleOrderYearChange = React.useCallback((event) => {
+    const nextYear = Number(event.target.value) || CURRENT_YEAR;
+    setOrderYear(nextYear);
+    setOrderScope('year');
+    if (docs.orders.expanded) {
+      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=year&year=${encodeURIComponent(nextYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
@@ -494,33 +640,13 @@ export default function CustomerDetail() {
                       onClick={(event) => event.stopPropagation()}
                       onFocus={(event) => event.stopPropagation()}
                     >
-                      <RadioGroup
-                        row
-                        value={offerScope}
-                        onChange={handleOfferScopeChange}
-                        sx={{
-                          flexWrap: 'nowrap',
-                          gap: 0.25,
-                          '& .MuiFormControlLabel-root': {
-                            margin: 0,
-                            minWidth: 0,
-                          },
-                          '& .MuiFormControlLabel-label': {
-                            fontSize: '0.72rem',
-                          },
-                        }}
-                      >
-                        <FormControlLabel
-                          value="90d"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('offer_scope_90d')}
-                        />
-                        <FormControlLabel
-                          value="year"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('offer_scope_year')}
-                        />
-                      </RadioGroup>
+                      <DocumentScopeControls
+                        t={t}
+                        scope={offerScope}
+                        year={offerYear}
+                        onScopeChange={handleOfferScopeChange}
+                        onYearChange={handleOfferYearChange}
+                      />
                     </Box>
                   )}
                 </Box>
@@ -560,33 +686,14 @@ export default function CustomerDetail() {
                       onClick={(event) => event.stopPropagation()}
                       onFocus={(event) => event.stopPropagation()}
                     >
-                      <RadioGroup
-                        row
-                        value={orderScope}
-                        onChange={handleOrderScopeChange}
-                        sx={{
-                          flexWrap: 'nowrap',
-                          gap: 0.25,
-                          '& .MuiFormControlLabel-root': {
-                            margin: 0,
-                            minWidth: 0,
-                          },
-                          '& .MuiFormControlLabel-label': {
-                            fontSize: '0.72rem',
-                          },
-                        }}
-                      >
-                        <FormControlLabel
-                          value="open"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('order_scope_open')}
-                        />
-                        <FormControlLabel
-                          value="all"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('order_scope_all')}
-                        />
-                      </RadioGroup>
+                      <DocumentScopeControls
+                        t={t}
+                        scope={orderScope}
+                        year={orderYear}
+                        includeOpen
+                        onScopeChange={handleOrderScopeChange}
+                        onYearChange={handleOrderYearChange}
+                      />
                     </Box>
                   )}
                 </Box>
@@ -627,33 +734,14 @@ export default function CustomerDetail() {
                       onClick={(event) => event.stopPropagation()}
                       onFocus={(event) => event.stopPropagation()}
                     >
-                      <RadioGroup
-                        row
-                        value={invoiceScope}
-                        onChange={handleInvoiceScopeChange}
-                        sx={{
-                          flexWrap: 'nowrap',
-                          gap: 0.25,
-                          '& .MuiFormControlLabel-root': {
-                            margin: 0,
-                            minWidth: 0,
-                          },
-                          '& .MuiFormControlLabel-label': {
-                            fontSize: '0.72rem',
-                          },
-                        }}
-                      >
-                        <FormControlLabel
-                          value="open"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('invoice_scope_open')}
-                        />
-                        <FormControlLabel
-                          value="all"
-                          control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />}
-                          label={t('invoice_scope_all')}
-                        />
-                      </RadioGroup>
+                      <DocumentScopeControls
+                        t={t}
+                        scope={invoiceScope}
+                        year={invoiceYear}
+                        includeOpen
+                        onScopeChange={handleInvoiceScopeChange}
+                        onYearChange={handleInvoiceYearChange}
+                      />
                     </Box>
                   )}
                 </Box>
@@ -715,36 +803,48 @@ export default function CustomerDetail() {
                 />
                 {docs.purchasedArticles.loading && <CircularProgress size={20} />}
                 {docs.purchasedArticles.error && <Alert severity="error">{docs.purchasedArticles.error}</Alert>}
-                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticles.length === 0 && (
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.length === 0 && (
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_purchased_articles')}</Typography>
                 )}
-                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticles.map((article, idx) => (
-                  <Card
-                    key={article.id || `${article.article}-${idx}`}
-                    variant="outlined"
-                    sx={article.productId ? { cursor: 'pointer' } : undefined}
-                    onClick={article.productId
-                      ? () => navigate(`/products/${encodeURIComponent(article.productId)}`, {
-                        state: {
-                          fromCustomer: {
-                            id,
-                            name,
-                            address,
-                            representative: salesRep,
-                          },
-                        },
-                      })
-                      : undefined}
-                  >
-                    <CardContent sx={{ py: '8px !important', px: '10px !important' }}>
-                      <Typography
-                        variant="body2"
-                        sx={article.productId ? { color: 'primary.main', textDecoration: 'underline' } : undefined}
-                      >
-                        {article.article || '-'}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.map((group, groupIdx) => (
+                  <Box key={group.id || group.key || `${group.name}-${groupIdx}`} sx={{ display: 'grid', gap: 0.45 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mt: groupIdx ? 0.45 : 0 }}>
+                      {group.name || '-'}
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
+                      {(Array.isArray(group.articles) ? group.articles : []).map((article, idx) => (
+                        <Card
+                          key={article.id || `${article.article}-${idx}`}
+                          variant="outlined"
+                          sx={article.productId ? { cursor: 'pointer' } : undefined}
+                          onClick={article.productId
+                            ? () => navigate(`/products/${encodeURIComponent(article.productId)}`, {
+                              state: {
+                                fromCustomer: {
+                                  id,
+                                  name,
+                                  address,
+                                  representative: salesRep,
+                                },
+                              },
+                            })
+                            : undefined}
+                        >
+                          <CardContent sx={{ py: '6px !important', px: '10px !important' }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontSize: '0.84rem',
+                                ...(article.productId ? { color: 'primary.main', textDecoration: 'underline' } : {}),
+                              }}
+                            >
+                              {article.article || '-'}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Box>
+                  </Box>
                 ))}
               </AccordionDetails>
             </Accordion>

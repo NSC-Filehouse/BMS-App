@@ -55,15 +55,55 @@ function resolveSearchField(searchField) {
 }
 
 function resolveInvoiceScope(scope) {
-  return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
+  const value = String(scope || '').trim().toLowerCase();
+  if (value === '3m' || value === '6m' || value === 'year' || value === 'all') return value;
+  return 'open';
 }
 
 function resolveOfferScope(scope) {
-  return String(scope || '').trim().toLowerCase() === 'year' ? 'year' : '90d';
+  const value = String(scope || '').trim().toLowerCase();
+  if (value === '90d' || value === '3m') return '3m';
+  if (value === '6m' || value === 'year') return value;
+  return '3m';
 }
 
 function resolveOrderScope(scope) {
-  return String(scope || '').trim().toLowerCase() === 'all' ? 'all' : 'open';
+  const value = String(scope || '').trim().toLowerCase();
+  if (value === '3m' || value === '6m' || value === 'year' || value === 'all') return value;
+  return 'open';
+}
+
+function resolveCalendarYear(value) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (Number.isInteger(parsed) && parsed >= 1900 && parsed <= 2100) return parsed;
+  return new Date().getFullYear();
+}
+
+function buildDocumentDateFilter(column, scope, year) {
+  if (scope === '3m') {
+    return {
+      sql: `AND ${column} >= DATEADD(MONTH, -3, CONVERT(date, GETDATE()))`,
+      params: [],
+      year: null,
+    };
+  }
+  if (scope === '6m') {
+    return {
+      sql: `AND ${column} >= DATEADD(MONTH, -6, CONVERT(date, GETDATE()))`,
+      params: [],
+      year: null,
+    };
+  }
+  if (scope === 'year') {
+    const selectedYear = resolveCalendarYear(year);
+    return {
+      sql: `AND ${column} >= DATEFROMPARTS(?, 1, 1)
+        AND ${column} < DATEFROMPARTS(?, 1, 1)`,
+      params: [selectedYear, selectedYear + 1],
+      year: selectedYear,
+    };
+  }
+  return { sql: '', params: [], year: null };
 }
 
 function pickReminderStageValue(reminderTextId, reminderTextIdNew) {
@@ -251,6 +291,39 @@ function buildProductIdFromViewRow(row) {
     toText(row?.plastic),
     toText(row?.sub),
   ].join(PRODUCT_ID_SEPARATOR);
+}
+
+function parseMfiFromText(value) {
+  const match = toText(value).match(/\bMFI\s*(?:ca\.?\s*)?([0-9]+(?:[.,][0-9]+)?)/i);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isPpCopo3600Article(value) {
+  const text = toText(value);
+  return /\bpp[\s-]*(?:copo|c)\b/i.test(text) && /\b3600\b/i.test(text);
+}
+
+function resolvePurchasedArticleGroup(row) {
+  if (isPpCopo3600Article(row.article)) {
+    return { key: 'pp-copo-3600-og', name: 'PP Copo 3600 OG' };
+  }
+
+  const groupId = toText(row.articleGroupId);
+  const groupName = toText(row.articleGroupName);
+  if (groupId || groupName) {
+    return {
+      key: `article-group:${groupId || groupName.toLowerCase()}`,
+      name: groupName || `Artikelgruppe ${groupId}`,
+    };
+  }
+
+  const category = [toText(row.plastic), toText(row.plasticSubCategory)]
+    .filter((value) => value && value.toLowerCase() !== 'unbekannt')
+    .join(' ');
+  if (category) return { key: `category:${category.toLowerCase()}`, name: category };
+  return { key: 'other', name: 'Sonstige' };
 }
 
 function mapRepresentatives(rows) {
@@ -569,7 +642,10 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   }
   await requireVisibleCustomer(req, customerId);
 
-  const scopeFilterSql = scope === 'all' ? '' : 'AND COALESCE([au_Abgeschlossen], 0) <> 1';
+  const scopeFilterSql = scope === 'open'
+    ? 'AND COALESCE([au_Abgeschlossen], 0) <> 1'
+    : '';
+  const dateFilter = buildDocumentDateFilter('[au_Auftragsdatum]', scope, req.query.year);
 
   const sql = `
     SELECT
@@ -581,9 +657,10 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
     FROM [dbo].[tblAuftrag]
     WHERE COALESCE([au_KdNr], '') = ?
       ${scopeFilterSql}
+      ${dateFilter.sql}
     ORDER BY [au_Auftragsdatum] DESC
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId, ...dateFilter.params]);
   const orders = Array.isArray(rows) ? rows : [];
   const indices = orders.map((x) => toText(x.orderIndex)).filter(Boolean);
   const paymentMap = await loadPaymentTextMap(orders.map((x) => x.paymentTextId), lang);
@@ -641,7 +718,13 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId, scope },
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      id: customerId,
+      scope,
+      year: dateFilter.year,
+    },
     error: null,
   });
 }));
@@ -654,12 +737,7 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
   await requireVisibleCustomer(req, customerId);
-  const cutoff = new Date();
-  if (scope === 'year') {
-    cutoff.setFullYear(cutoff.getFullYear() - 1);
-  } else {
-    cutoff.setDate(cutoff.getDate() - 90);
-  }
+  const dateFilter = buildDocumentDateFilter('[an_Angebotsdatum]', scope, req.query.year);
 
   const sql = `
     SELECT
@@ -669,10 +747,10 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
       [an_Angebotsdatum] AS offerDate
     FROM [dbo].[tblAngebot]
     WHERE COALESCE([an_KdNr], '') = ?
-      AND [an_Angebotsdatum] >= ?
+      ${dateFilter.sql}
     ORDER BY [an_Angebotsdatum] DESC
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [customerId, cutoff.toISOString()]);
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId, ...dateFilter.params]);
   const offers = Array.isArray(rows) ? rows : [];
   const offerNos = offers.map((x) => toText(x.offerNo)).filter(Boolean);
   const paymentMap = await loadPaymentTextMap(offers.map((x) => x.paymentTextId), lang);
@@ -725,7 +803,13 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId, days: scope === 'year' ? 365 : 90, scope },
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      id: customerId,
+      scope,
+      year: dateFilter.year,
+    },
     error: null,
   });
 }));
@@ -739,7 +823,8 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   }
   await requireVisibleCustomer(req, customerId);
 
-  const scopeFilterSql = scope === 'all' ? '' : 'AND [re_Bezahlt] = 0';
+  const scopeFilterSql = scope === 'open' ? 'AND [re_Bezahlt] = 0' : '';
+  const dateFilter = buildDocumentDateFilter('[re_rgDatum]', scope, req.query.year);
 
   const sql = `
     SELECT
@@ -755,9 +840,10 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     FROM [dbo].[tblRechnung]
     WHERE COALESCE([re_KdNr], '') = ?
       ${scopeFilterSql}
+      ${dateFilter.sql}
     ORDER BY [re_rgDatum] DESC
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
+  const rows = await runSQLQueryAccess(req.database, sql, [customerId, ...dateFilter.params]);
   const invoices = Array.isArray(rows) ? rows : [];
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
   const reminderMap = await loadReminderStageTextMap(
@@ -795,7 +881,13 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId, scope },
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      id: customerId,
+      scope,
+      year: dateFilter.year,
+    },
     error: null,
   });
 }));
@@ -809,6 +901,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
 
   const sql = `
     SELECT DISTINCT
+      [p].[reP_Artikelindex] AS articleIndex,
       [p].[reP_Artikel] AS article
     FROM [dbo].[tblRech_Position] p
     INNER JOIN [dbo].[tblRechnung] r
@@ -820,14 +913,39 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
   const rows = await runSQLQueryAccess(req.database, sql, [customerId]);
   const purchasedRows = Array.isArray(rows) ? rows : [];
 
-  const byArticle = new Map();
-  for (const row of purchasedRows) {
-    const article = toText(row.article);
-    if (!article || byArticle.has(article)) continue;
-    byArticle.set(article, row);
+  const articleIndexes = [...new Set(purchasedRows
+    .map((row) => toText(row.articleIndex))
+    .filter(Boolean))];
+  const articleMetaMap = new Map();
+  if (articleIndexes.length) {
+    const placeholders = articleIndexes.map(() => '?').join(', ');
+    const metaRows = await runSQLQueryAccess(req.database, `
+      SELECT
+        [a].[agA_Artikelindex] AS articleIndex,
+        [a].[agA_Artikelgruppe] AS articleGroupId,
+        [g].[ag_Gruppenname] AS articleGroupName,
+        [a].[agA_MFI] AS mfi,
+        [plastic].[art4_Bezeichnung] AS plastic,
+        [plasticSub].[art5_Bezeichnung] AS plasticSubCategory
+      FROM [dbo].[tblArt_Artikel] [a]
+      LEFT JOIN [dbo].[tblArtikelgruppe] [g]
+        ON [g].[ag_Gruppenindex] = [a].[agA_Artikelgruppe]
+      LEFT JOIN [dbo].[tblArt4_Kunststoff] [plastic]
+        ON [plastic].[art4_ID_Kunststoff] = [a].[agA_ID_Kunststoff]
+      LEFT JOIN [dbo].[tblArt5_KunststoffUnter] [plasticSub]
+        ON [plasticSub].[art5_ID_Kunststoff] = [a].[agA_ID_Kunststoff]
+       AND [plasticSub].[art5_ID_KunststoffUnter] = [a].[agA_ID_KunststoffUnter]
+      WHERE [a].[agA_Artikelindex] IN (${placeholders})
+    `, articleIndexes);
+    for (const row of (Array.isArray(metaRows) ? metaRows : [])) {
+      const articleIndex = toText(row.articleIndex);
+      if (articleIndex) articleMetaMap.set(articleIndex, row);
+    }
   }
 
-  const articles = Array.from(byArticle.keys());
+  const articles = [...new Set(purchasedRows
+    .map((row) => toText(row.article))
+    .filter(Boolean))];
   const viewMap = new Map();
   if (articles.length) {
     const placeholders = articles.map(() => '?').join(', ');
@@ -850,7 +968,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
       groupedViewRows.get(article).push(viewRow);
     }
 
-    for (const [article] of byArticle.entries()) {
+    for (const article of articles) {
       const candidates = groupedViewRows.get(article) || [];
       const chosen = candidates[0] || null;
       if (chosen) {
@@ -859,21 +977,61 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     }
   }
 
-  const data = purchasedRows
-    .map((row, index) => {
-      const article = toText(row.article);
-      return {
-        id: `${customerId}-purchased-article-${index + 1}`,
-        article,
-        productId: article ? (viewMap.get(article) || null) : null,
-      };
-    })
-    .filter((row) => row.article);
+  const groups = new Map();
+  const seenArticles = new Set();
+  for (const row of purchasedRows) {
+    const article = toText(row.article);
+    if (!article || seenArticles.has(article)) continue;
+    seenArticles.add(article);
+    const articleIndex = toText(row.articleIndex);
+    const meta = articleMetaMap.get(articleIndex) || {};
+    const group = resolvePurchasedArticleGroup({
+      article,
+      articleGroupId: meta.articleGroupId,
+      articleGroupName: meta.articleGroupName,
+      plastic: meta.plastic,
+      plasticSubCategory: meta.plasticSubCategory,
+    });
+    if (!groups.has(group.key)) groups.set(group.key, { ...group, articles: [] });
+
+    const textMfi = parseMfiFromText(article);
+    const masterMfi = Number(meta.mfi);
+    const mfi = textMfi !== null
+      ? textMfi
+      : (Number.isFinite(masterMfi) ? masterMfi : null);
+    const groupArticles = groups.get(group.key).articles;
+    groupArticles.push({
+      id: `${customerId}-purchased-article-${group.key}-${groupArticles.length + 1}`,
+      article,
+      articleIndex: articleIndex || null,
+      mfi,
+      productId: viewMap.get(article) || null,
+    });
+  }
+
+  const data = Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      articles: group.articles.sort((left, right) => {
+        if (left.mfi === null && right.mfi !== null) return 1;
+        if (left.mfi !== null && right.mfi === null) return -1;
+        if (left.mfi !== null && right.mfi !== null && left.mfi !== right.mfi) {
+          return left.mfi - right.mfi;
+        }
+        return left.article.localeCompare(right.article, 'de');
+      }),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'de'));
 
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, id: customerId },
+    meta: {
+      mandant: req.mandant,
+      count: data.reduce((total, group) => total + group.articles.length, 0),
+      groupCount: data.length,
+      id: customerId,
+    },
     error: null,
   });
 }));
