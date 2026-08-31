@@ -132,6 +132,7 @@ export default function CustomersList() {
   React.useEffect(() => {
     const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
+    const selectedCustomerId = getSelectedCustomer()?.id;
     if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.includeInactive !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
@@ -144,7 +145,7 @@ export default function CustomersList() {
       setSearchField(restoredSearchField);
       setReminderOnly(restoredReminderOnly);
       setIncludeInactive(restoredIncludeInactive);
-      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, includeInactive: restoredIncludeInactive });
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, includeInactive: restoredIncludeInactive, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
@@ -171,7 +172,7 @@ export default function CustomersList() {
 
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
-    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, includeInactive: false });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, includeInactive: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
