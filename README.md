@@ -113,6 +113,25 @@ Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
 Wert geleert werden; danach gilt Customer Service aus
 `INVOICE_ROUTER_ADDRESS_MAP` mit `EWS_SHARED_MAILBOXES` als Buchhaltungs-Fallback.
 
+## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
+
+Die Prüfung läuft serverseitig und benötigt die idempotente Migration
+`apps/backend/sql/add_unfinalized_order_reminder.sql` auf der zentralen
+`BMS`-Datenbank. Der Reminder ist standardmäßig deaktiviert. Zum Aktivieren
+werden im Backend folgende Werte gesetzt:
+
+```dotenv
+BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES=60
+BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL=n.schroeder@filehouse.net
+```
+
+Ein leeres, ungültiges oder nicht positives Intervall deaktiviert den gesamten
+Prozess. Der konfigurierte Benutzer wird über die bestehende
+Mitarbeiterquelle geprüft; gezählt werden seine eigenen Datensätze mit
+`ta_completed = 0` über alle Mandanten. Der Worker meldet zunächst über aktive
+Push-Abonnements dieses Benutzers. Wenn kein Push zugestellt werden kann, wird
+die E-Mail direkt an die ermittelte Benutzeradresse über EWS gesendet.
+
 ## Mandantenauswahl
 
 Die im Frontend angezeigten Mandanten koennen ueber `VITE_MANDANT_EXCLUDE_IDS` als

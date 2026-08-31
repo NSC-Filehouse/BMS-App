@@ -375,10 +375,93 @@ async function sendPushNotificationsForTimelineEntries(entries) {
   }
 }
 
+async function sendDirectPushNotificationToUser({
+  email,
+  title,
+  titleByLanguage,
+  body,
+  bodyByLanguage,
+  tag,
+  data = {},
+} = {}) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return { delivered: 0, subscriptions: 0, failed: 0, reason: 'missing_user_email' };
+  }
+
+  try {
+    ensureVapidConfigured();
+  } catch (error) {
+    logger.warn(`Direct push skipped: ${error.message}`);
+    return { delivered: 0, subscriptions: 0, failed: 0, reason: 'push_not_configured' };
+  }
+
+  let targetRows;
+  try {
+    targetRows = await runSQLQuerySqlServer(config.sql.database, `
+      SELECT
+        [ps_Endpoint] AS endpoint,
+        [ps_P256DH] AS p256dh,
+        [ps_Auth] AS auth,
+        [ps_Language] AS language
+      FROM ${PUSH_SUBSCRIPTION_TABLE}
+      WHERE [ps_IsActive] = 1
+        AND LOWER(COALESCE([ps_UserEmail], '')) = ?
+    `, [normalizedEmail]);
+  } catch (error) {
+    if (isMissingPushTableError(error)) {
+      logger.warn('Push tables are missing. Direct push notification skipped.');
+      return { delivered: 0, subscriptions: 0, failed: 0, reason: 'push_tables_missing' };
+    }
+    throw error;
+  }
+
+  const rows = Array.isArray(targetRows) ? targetRows : [];
+  let delivered = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    const language = String(row.language || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+    const payload = JSON.stringify({
+      title: typeof titleByLanguage === 'function' ? titleByLanguage(language) : asText(title) || 'BMS App',
+      body: typeof bodyByLanguage === 'function' ? bodyByLanguage(language) : asText(body),
+      tag: asText(tag) || `bms-direct-${Date.now()}`,
+      data,
+    });
+
+    try {
+      await webpush.sendNotification({
+        endpoint: asText(row.endpoint),
+        keys: {
+          p256dh: asText(row.p256dh),
+          auth: asText(row.auth),
+        },
+      }, payload);
+      delivered += 1;
+    } catch (error) {
+      failed += 1;
+      const statusCode = Number(error?.statusCode);
+      if (statusCode === 404 || statusCode === 410) {
+        await deactivatePushSubscription(row.endpoint);
+        continue;
+      }
+      logger.warn(`Direct push send failed: ${error?.message || error}`);
+    }
+  }
+
+  return {
+    delivered,
+    subscriptions: rows.length,
+    failed,
+    reason: delivered > 0 ? 'delivered' : (rows.length ? 'all_failed' : 'no_active_subscription'),
+  };
+}
+
 module.exports = {
   deactivatePushSubscription,
   getPushSettingsForUser,
   savePushSettingsForUser,
+  sendDirectPushNotificationToUser,
   sendPushNotificationsForTimelineEntries,
   upsertPushSubscription,
 };

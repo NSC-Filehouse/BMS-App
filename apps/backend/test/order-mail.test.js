@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   ORDER_MAIL_SUBJECT,
+  UNFINALIZED_ORDER_REMINDER_SUBJECT,
   formatOrderMailBody,
+  formatUnfinalizedOrderReminderBody,
   parseMandantAddressMap,
   resolveOrderMailRecipient,
   cleanEwsText,
@@ -113,4 +115,19 @@ test('mail body contains the complete structured order data', () => {
   ]) {
     assert.match(body, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+});
+
+test('unfinalized order reminder contains the current count', () => {
+  assert.equal(
+    UNFINALIZED_ORDER_REMINDER_SUBJECT,
+    'BMS-App: offene Aufträge noch nicht an BMS übertragen',
+  );
+  assert.match(
+    formatUnfinalizedOrderReminderBody({ count: 3 }),
+    /Du hast aktuell 3 eigene Aufträge, die noch nicht final an BMS übertragen wurden\./,
+  );
+  assert.match(
+    formatUnfinalizedOrderReminderBody({ count: 1 }),
+    /Du hast aktuell 1 eigenen Auftrag, der noch nicht final an BMS übertragen wurde\./,
+  );
 });

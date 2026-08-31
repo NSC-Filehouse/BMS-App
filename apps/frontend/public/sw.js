@@ -22,17 +22,23 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
+  const targetPath = String(event.notification?.data?.path || '').trim();
   event.notification.close();
   event.waitUntil((async () => {
     const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {
       if ('focus' in client) {
         await client.focus();
+        if (targetPath && 'navigate' in client) {
+          await client.navigate(new URL(targetPath, self.registration.scope).href);
+        }
         return;
       }
     }
     if (clients.openWindow) {
-      await clients.openWindow(`${self.registration.scope}timeline`);
+      await clients.openWindow(targetPath
+        ? new URL(targetPath, self.registration.scope).href
+        : `${self.registration.scope}timeline`);
     }
   })());
 });

@@ -2,6 +2,7 @@ const EWS = require('ews-javascript-api');
 const EWSAuth = require('ews-javascript-api-auth');
 
 const ORDER_MAIL_SUBJECT = 'BMS-App es liegt ein neuer Auftrag vor';
+const UNFINALIZED_ORDER_REMINDER_SUBJECT = 'BMS-App: offene Aufträge noch nicht an BMS übertragen';
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -89,6 +90,18 @@ function yesNo(value) {
 
 function line(label, value) {
   return `${label}: ${asText(value) || '-'}`;
+}
+
+function formatUnfinalizedOrderReminderBody({ count } = {}) {
+  const numericCount = Number(count);
+  const countText = Number.isFinite(numericCount) ? numericCount.toLocaleString('de-DE') : '-';
+  const orderText = numericCount === 1 ? `${countText} eigenen Auftrag` : `${countText} eigene Aufträge`;
+  const relativePronoun = numericCount === 1 ? 'der' : 'die';
+  return [
+    `Du hast aktuell ${orderText}, ${relativePronoun} noch nicht final an BMS übertragen wurde${numericCount === 1 ? '' : 'n'}.`,
+    '',
+    'Bitte öffne in der BMS-App den Bereich „Aufträge“ und prüfe die Entwürfe.',
+  ].join('\r\n');
 }
 
 function formatOrderMailBody({ order, positions, mandantName, mandantShortName, finalizedBy, finalizedAt }) {
@@ -206,7 +219,9 @@ async function sendOrderMail({ orderMailConfig, recipient, subject, body, attach
 
 module.exports = {
   ORDER_MAIL_SUBJECT,
+  UNFINALIZED_ORDER_REMINDER_SUBJECT,
   formatOrderMailBody,
+  formatUnfinalizedOrderReminderBody,
   parseMandantAddressMap,
   resolveOrderMailRecipient,
   sendOrderMail,

@@ -10,6 +10,12 @@ function toInt(value, defaultValue) {
   return Number.isFinite(n) ? n : defaultValue;
 }
 
+function toPositiveIntOrNull(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 const config = {
@@ -41,6 +47,11 @@ const config = {
     },
   },
 
+  unfinalizedOrderReminder: {
+    intervalMinutes: toPositiveIntOrNull(process.env.BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES),
+    userEmail: String(process.env.BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL || '').trim().toLowerCase(),
+  },
+
   sql: {
     server: (process.env.BMS_SQL_SERVER || '').trim(),
     host: (process.env.BMS_SQL_HOST || '').trim(),
@@ -66,6 +77,7 @@ const config = {
       tempOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER || 'tbl_Temp_Auftrag').trim(),
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
+      orderReminderState: (process.env.BMS_SQL_APP_TABLE_ORDER_REMINDER_STATE || 'OrderReminderState').trim(),
     },
     columns: {
       persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),
