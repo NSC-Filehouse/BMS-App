@@ -62,6 +62,13 @@ function normalizeRepresentativeOptions(representatives, preferredName = '') {
   return options;
 }
 
+function findDefaultIncoterm(options) {
+  return (Array.isArray(options) ? options : []).find((option) => {
+    const text = String(option?.text || '').trim().toUpperCase();
+    return text === 'CPT' || text.startsWith('CPT ') || text.startsWith('CPT-');
+  }) || null;
+}
+
 function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -538,6 +545,19 @@ export default function TempOrderForm() {
     run();
     return () => { alive = false; };
   }, []);
+
+  React.useEffect(() => {
+    const defaultIncoterm = findDefaultIncoterm(incotermOptions);
+    if (!defaultIncoterm || form.incotermId) return;
+    setForm((previous) => {
+      if (previous.incotermId) return previous;
+      return {
+        ...previous,
+        incotermId: Number(defaultIncoterm.id),
+        incotermText: defaultIncoterm.text,
+      };
+    });
+  }, [incotermOptions, form.incotermId]);
 
   React.useEffect(() => {
     if (!addPosOpen) return undefined;
