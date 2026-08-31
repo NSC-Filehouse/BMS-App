@@ -8,6 +8,7 @@ const {
   loadVisibleCustomer,
 } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { calculateAvailableCredit } = require('../credit-limit');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -260,30 +261,50 @@ function getTodayDateOnly() {
 
 async function loadCustomerCreditLimit(database, customerId) {
   const rows = await runSQLQueryAccess(database, `
-    SELECT TOP 1
-      [kdKL_Kredit_Limit] AS amount,
-      [kdKL_Kredit_Datum_bis] AS validUntil
-    FROM [dbo].[tblKun_KreditLimit]
-    WHERE [kdKL_KdNR] = ?
-    ORDER BY [kdKL_Kredit_Datum] DESC, [kdKL_LfdNr] DESC
-  `, [customerId]);
+    SELECT
+      (
+        SELECT TOP 1 [kdKL_Kredit_Limit]
+        FROM [dbo].[tblKun_KreditLimit]
+        WHERE [kdKL_KdNR] = ?
+        ORDER BY [kdKL_Kredit_Datum] DESC, [kdKL_LfdNr] DESC
+      ) AS amount,
+      (
+        SELECT TOP 1 [kdKL_Kredit_Datum_bis]
+        FROM [dbo].[tblKun_KreditLimit]
+        WHERE [kdKL_KdNR] = ?
+        ORDER BY [kdKL_Kredit_Datum] DESC, [kdKL_LfdNr] DESC
+      ) AS validUntil,
+      COALESCE((
+        SELECT SUM(COALESCE([re_Bruttosumme_EU], [re_Bruttosumme_DM], 0))
+        FROM [dbo].[tblRechnung]
+        WHERE COALESCE([re_KdNr], '') = ?
+          AND [re_Bezahlt] = 0
+      ), 0) AS unpaidInvoicesAmount,
+      COALESCE((
+        SELECT SUM(COALESCE([au_Bruttosumme_EU], [au_Bruttosumme_DM], 0))
+        FROM [dbo].[tblAuftrag]
+        WHERE COALESCE([au_KdNr], '') = ?
+          AND COALESCE([au_Abgeschlossen], 0) <> 1
+      ), 0) AS openOrdersAmount
+  `, [customerId, customerId, customerId, customerId]);
 
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
-  if (!row) {
-    return { amount: null, validUntil: null, status: 'missing' };
-  }
-
-  const amount = row.amount === null || row.amount === undefined || toText(row.amount) === ''
+  const amount = row?.amount === null || row?.amount === undefined || toText(row?.amount) === ''
     ? null
     : Number(row.amount);
-  const validUntil = toDateOnly(row.validUntil);
-  if (!Number.isFinite(amount)) {
-    return { amount: null, validUntil, status: 'missing' };
+  const validUntil = toDateOnly(row?.validUntil);
+  const credit = calculateAvailableCredit({
+    amount,
+    unpaidInvoicesAmount: row?.unpaidInvoicesAmount,
+    openOrdersAmount: row?.openOrdersAmount,
+  });
+  if (credit.amount === null) {
+    return { ...credit, validUntil, status: 'missing' };
   }
 
   const expired = Boolean(validUntil && validUntil < getTodayDateOnly());
   return {
-    amount,
+    ...credit,
     validUntil,
     status: expired ? 'expired' : 'active',
   };

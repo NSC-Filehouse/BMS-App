@@ -388,6 +388,13 @@ export default function CustomerDetail() {
     : creditLimit?.status === 'active'
       ? `${t('credit_limit_label')}: ${formatEuro(creditLimit.amount)}`
       : t('credit_limit_missing');
+  const availableCreditAmount = Number(creditLimit?.availableAmount);
+  const hasAvailableCredit = creditLimit?.status === 'active' && Number.isFinite(availableCreditAmount);
+  const availableCreditColor = availableCreditAmount > 0
+    ? 'success.main'
+    : availableCreditAmount < 0
+      ? 'error.main'
+      : 'text.secondary';
   const representatives = normalizeRepresentatives(item);
   const isSelectedCustomer = Boolean(
     selectedCustomer?.id && String(selectedCustomer.id) === String(id),
@@ -662,9 +669,24 @@ export default function CustomerDetail() {
               }}
             >
               <AccountBalanceWalletIcon fontSize="small" />
-              <Typography variant="body2" sx={{ fontWeight: creditLimit?.status === 'expired' ? 600 : undefined }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  minWidth: 0,
+                  flex: 1,
+                  fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
+                }}
+              >
                 {creditLimitText}
               </Typography>
+              {hasAvailableCredit && (
+                <Typography
+                  variant="body2"
+                  sx={{ color: availableCreditColor, fontWeight: 700, flexShrink: 0, textAlign: 'right' }}
+                >
+                  {t('credit_limit_available', { amount: formatEuro(availableCreditAmount) })}
+                </Typography>
+              )}
             </Box>
 
             <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
