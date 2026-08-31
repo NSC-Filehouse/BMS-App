@@ -96,14 +96,36 @@ async function requireVisibleCustomer(req, customerId) {
   return customer;
 }
 
-function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_CreatedBy]') {
-  if (isFullAccess) {
-    return { whereSql: '', params: [] };
+function normalizeTempOrderOwnerScope(scope) {
+  return asText(scope).toLowerCase() === 'mine' ? 'mine' : 'all';
+}
+
+function normalizeTempOrderStatus(status) {
+  const value = asText(status).toLowerCase();
+  return value === 'draft' || value === 'sent' ? value : 'all';
+}
+
+function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_CreatedBy]', requestedScope = 'all') {
+  const scope = isFullAccess ? normalizeTempOrderOwnerScope(requestedScope) : 'mine';
+  if (scope === 'all') {
+    return { whereSql: '', params: [], scope };
   }
   return {
     whereSql: ` AND LOWER(COALESCE(${column}, '')) = ?`,
     params: [String(userShortCode || '').toLowerCase()],
+    scope,
   };
+}
+
+function buildTempOrderStatusFilter(status, column = '[o].[ta_completed]') {
+  const normalizedStatus = normalizeTempOrderStatus(status);
+  if (normalizedStatus === 'sent') {
+    return { whereSql: ` AND COALESCE(${column}, 0) = 1`, status: normalizedStatus };
+  }
+  if (normalizedStatus === 'draft') {
+    return { whereSql: ` AND COALESCE(${column}, 0) = 0`, status: normalizedStatus };
+  }
+  return { whereSql: '', status: normalizedStatus };
 }
 
 function normalizeAttachmentFileName(value) {
@@ -756,13 +778,21 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       )`
     : '';
   const whereParams = text ? [like, like, like, like] : [];
-  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, '[o].[ta_CreatedBy]');
+  const statusFilter = buildTempOrderStatusFilter(req.query?.status);
+  const requestedOwnerScope = normalizeTempOrderOwnerScope(req.query?.ownerScope);
+  const ownerFilter = buildTempOrderOwnerFilter(
+    userShortCode,
+    accessScope.isFullAccess,
+    '[o].[ta_CreatedBy]',
+    requestedOwnerScope,
+  );
 
   const countSql = `
     SELECT COUNT(*) AS total
     FROM ${TEMP_ORDER_TABLE} o
     WHERE [o].[ta_company_id] = ?
     ${ownerFilter.whereSql}
+    ${statusFilter.whereSql}
     ${whereText}
   `;
   const totalRows = await runSQLQuerySqlServer(config.sql.database, countSql, [companyId, ...ownerFilter.params, ...whereParams]);
@@ -793,6 +823,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     ) fp
     WHERE [o].[ta_company_id] = ?
     ${ownerFilter.whereSql}
+    ${statusFilter.whereSql}
     ${whereText}
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -823,7 +854,19 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, page, pageSize, count: data.length, total, q, sort, dir: safeDir },
+    meta: {
+      mandant: req.mandant,
+      page,
+      pageSize,
+      count: data.length,
+      total,
+      q,
+      sort,
+      dir: safeDir,
+      status: statusFilter.status,
+      ownerScope: ownerFilter.scope,
+      canViewAll: Boolean(accessScope.isFullAccess),
+    },
     error: null,
   });
 }));
@@ -1669,3 +1712,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
 }));
 
 module.exports = router;
+module.exports.buildTempOrderOwnerFilter = buildTempOrderOwnerFilter;
+module.exports.buildTempOrderStatusFilter = buildTempOrderStatusFilter;
+module.exports.normalizeTempOrderOwnerScope = normalizeTempOrderOwnerScope;
+module.exports.normalizeTempOrderStatus = normalizeTempOrderStatus;

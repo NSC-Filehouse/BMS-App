@@ -8,6 +8,8 @@ import {
   IconButton,
   InputAdornment,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -38,14 +40,21 @@ export default function TempOrdersList() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
+  const [status, setStatus] = React.useState('all');
+  const [ownerScope, setOwnerScope] = React.useState('all');
+  const [canViewAll, setCanViewAll] = React.useState(false);
 
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
+  const statusRef = React.useRef(status);
+  const ownerScopeRef = React.useRef(ownerScope);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
 
   React.useEffect(() => { metaRef.current = meta; }, [meta]);
   React.useEffect(() => { qRef.current = q; }, [q]);
+  React.useEffect(() => { statusRef.current = status; }, [status]);
+  React.useEffect(() => { ownerScopeRef.current = ownerScope; }, [ownerScope]);
 
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
@@ -56,12 +65,18 @@ export default function TempOrdersList() {
     const page = opts.page ?? currentMeta.page ?? 1;
     const pageSize = PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
+    const statusVal = opts.status ?? statusRef.current ?? 'all';
+    const ownerScopeVal = opts.ownerScope ?? ownerScopeRef.current ?? 'all';
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/temp-orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&sort=createdAt&dir=DESC`);
+      const res = await apiRequest(`/temp-orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&status=${encodeURIComponent(statusVal)}&ownerScope=${encodeURIComponent(ownerScopeVal)}&sort=createdAt&dir=DESC`);
       setItems(res?.data || []);
-      setMeta(res?.meta || { page, pageSize, total: null });
+      const nextMeta = res?.meta || { page, pageSize, total: null };
+      setMeta(nextMeta);
+      if (nextMeta.status) setStatus(nextMeta.status);
+      if (nextMeta.ownerScope) setOwnerScope(nextMeta.ownerScope);
+      if (nextMeta.canViewAll !== undefined) setCanViewAll(Boolean(nextMeta.canViewAll));
     } catch (e) {
       setError(e?.message || t('loading_orders_error'));
     } finally {
@@ -74,17 +89,23 @@ export default function TempOrdersList() {
     hydratedFromStateRef.current = true;
 
     const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.status !== undefined || listState.ownerScope !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
+      const restoredStatus = ['all', 'draft', 'sent'].includes(String(listState.status || ''))
+        ? String(listState.status)
+        : 'all';
+      const restoredOwnerScope = String(listState.ownerScope || '') === 'mine' ? 'mine' : 'all';
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
-      load({ page: restoredPage, q: restoredQ });
+      setStatus(restoredStatus);
+      setOwnerScope(restoredOwnerScope);
+      load({ page: restoredPage, q: restoredQ, status: restoredStatus, ownerScope: restoredOwnerScope });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
 
-    load({ page: 1, q: '' });
+    load({ page: 1, q: '', status: 'all', ownerScope: 'all' });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -110,7 +131,7 @@ export default function TempOrdersList() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q })}
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope })}
             disabled={(meta.page || 1) <= 1}
           >
             <ArrowBackIcon />
@@ -120,7 +141,7 @@ export default function TempOrdersList() {
           </Typography>
           <IconButton
             aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q })}
+            onClick={() => load({ page: (meta.page || 1) + 1, q, status, ownerScope })}
             disabled={meta.total !== null && meta.total !== undefined
               ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
               : false}
@@ -134,10 +155,11 @@ export default function TempOrdersList() {
       </Box>
 
       <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+        <CardContent sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
           <TextField
             fullWidth
             size="small"
+            sx={{ minWidth: 0 }}
             placeholder={t('temp_orders_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -149,6 +171,41 @@ export default function TempOrdersList() {
               ),
             }}
           />
+
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={status}
+            aria-label={t('temp_order_status')}
+            onChange={(e, value) => {
+              if (!value) return;
+              setStatus(value);
+              load({ page: 1, q, status: value, ownerScope });
+            }}
+            sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
+          >
+            <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton>
+            <ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton>
+            <ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
+          </ToggleButtonGroup>
+
+          {canViewAll && (
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={ownerScope}
+              aria-label={t('temp_orders_owner_filter')}
+              onChange={(e, value) => {
+                if (!value) return;
+                setOwnerScope(value);
+                load({ page: 1, q, status, ownerScope: value });
+              }}
+              sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
+            >
+              <ToggleButton value="mine">{t('temp_orders_scope_mine')}</ToggleButton>
+              <ToggleButton value="all">{t('temp_orders_scope_all')}</ToggleButton>
+            </ToggleButtonGroup>
+          )}
         </CardContent>
       </Card>
 
@@ -179,7 +236,7 @@ export default function TempOrdersList() {
                   minWidth: 0,
                 }}
                 onClick={() => navigate(`/temp-orders/${encodeURIComponent(row.id)}`, {
-                  state: { fromTempOrders: { page: meta.page || 1, q } },
+                  state: { fromTempOrders: { page: meta.page || 1, q, status, ownerScope } },
                 })}
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
