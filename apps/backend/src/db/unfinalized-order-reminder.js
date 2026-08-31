@@ -2,7 +2,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { appTableSql } = require('./app-tables');
-const { getUserIdentityByEmail } = require('./users');
+const { getUserIdentitiesByShortCodes, getUserIdentityByEmail } = require('./users');
 const { sendDirectPushNotificationToUser } = require('./push');
 const {
   UNFINALIZED_ORDER_REMINDER_SUBJECT,
@@ -35,12 +35,14 @@ function isEmailAddress(value) {
 function normalizeReminderConfig(reminderConfig = config.unfinalizedOrderReminder) {
   const intervalMinutes = Number(reminderConfig?.intervalMinutes);
   const userEmail = normalizeEmail(reminderConfig?.userEmail);
+  const hasConfiguredUser = Boolean(userEmail);
   return {
     intervalMinutes: Number.isInteger(intervalMinutes) && intervalMinutes > 0 ? intervalMinutes : null,
     userEmail,
+    hasConfiguredUser,
     enabled: Number.isInteger(intervalMinutes)
       && intervalMinutes > 0
-      && isEmailAddress(userEmail),
+      && (!hasConfiguredUser || isEmailAddress(userEmail)),
   };
 }
 
@@ -50,6 +52,18 @@ function buildOpenOrderCountSql(tableName = TEMP_ORDER_TABLE) {
     FROM ${tableName}
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) = ?
       AND COALESCE([ta_completed], 0) = 0
+  `;
+}
+
+function buildOpenOrderCountsByOwnerSql(tableName = TEMP_ORDER_TABLE) {
+  return `
+    SELECT
+      LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) AS userShortCode,
+      COUNT_BIG(*) AS openOrderCount
+    FROM ${tableName}
+    WHERE COALESCE([ta_completed], 0) = 0
+      AND LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) <> ''
+    GROUP BY LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], ''))))
   `;
 }
 
@@ -83,6 +97,21 @@ async function loadOpenOrderCount(shortCode) {
   const value = rows?.[0]?.openCount;
   const count = Number(value);
   return Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+}
+
+async function loadOpenOrderCountsByOwner() {
+  const rows = await runSQLQuerySqlServer(
+    config.sql.database,
+    buildOpenOrderCountsByOwnerSql(),
+    [],
+  );
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      userShortCode: asText(row.userShortCode).toLowerCase(),
+      openOrderCount: Number(row.openOrderCount),
+    }))
+    .filter((row) => row.userShortCode && Number.isFinite(row.openOrderCount) && row.openOrderCount > 0)
+    .map((row) => ({ ...row, openOrderCount: Math.trunc(row.openOrderCount) }));
 }
 
 async function claimReminderState({ userEmail, userShortCode, openOrderCount, now = new Date() }) {
@@ -194,17 +223,24 @@ async function failReminderState(stateId, errorMessage, intervalMinutes) {
   ]);
 }
 
-async function resolveReminderUser(settings) {
-  const identity = await getUserIdentityByEmail(settings.userEmail);
-  const email = normalizeEmail(identity?.email) || settings.userEmail;
+function mapReminderUser(identity) {
+  const email = normalizeEmail(identity?.email);
   const shortCode = asText(identity?.shortCode);
   if (!shortCode) {
-    throw new Error(`Mitarbeiterkuerzel fuer Reminder-Benutzer fehlt: ${email}`);
+    throw new Error(`Mitarbeiterkuerzel fuer Reminder-Benutzer fehlt: ${email || '-'}`);
   }
   if (!isEmailAddress(email)) {
-    throw new Error(`Keine gueltige E-Mail-Adresse fuer Reminder-Benutzer: ${email}`);
+    throw new Error(`Keine gueltige E-Mail-Adresse fuer Reminder-Benutzer: ${email || '-'}`);
   }
   return { email, shortCode };
+}
+
+async function resolveConfiguredReminderUser(settings) {
+  const identity = await getUserIdentityByEmail(settings.userEmail);
+  return mapReminderUser({
+    ...identity,
+    email: normalizeEmail(identity?.email) || settings.userEmail,
+  });
 }
 
 async function deliverReminder({ email, openOrderCount }) {
@@ -243,6 +279,62 @@ async function deliverReminder({ email, openOrderCount }) {
   return { channel: 'email', pushResult };
 }
 
+async function processReminderForUser({ user, openOrderCount, intervalMinutes }) {
+  let stateId = null;
+  try {
+    stateId = await claimReminderState({
+      userEmail: user.email,
+      userShortCode: user.shortCode,
+      openOrderCount,
+    });
+    if (!stateId) {
+      return { status: 'not_due', email: user.email, openOrderCount };
+    }
+
+    if (openOrderCount === 0) {
+      await completeReminderState(stateId, {
+        openOrderCount,
+        channel: null,
+        intervalMinutes,
+      });
+      logger.info(`Auftrags-Reminder: keine offenen eigenen Auftraege fuer ${user.email}.`);
+      return { status: 'nothing_to_notify', email: user.email, openOrderCount };
+    }
+
+    const delivery = await deliverReminder({
+      email: user.email,
+      openOrderCount,
+    });
+    await completeReminderState(stateId, {
+      openOrderCount,
+      channel: delivery.channel,
+      intervalMinutes,
+    });
+    logger.info(`Auftrags-Reminder fuer ${user.email}: ${openOrderCount} offene Auftraege per ${delivery.channel} gemeldet.`);
+    return {
+      status: 'notified',
+      email: user.email,
+      openOrderCount,
+      channel: delivery.channel,
+    };
+  } catch (error) {
+    if (stateId) {
+      try {
+        await failReminderState(stateId, error?.message || error, intervalMinutes);
+      } catch (stateError) {
+        logger.error('Auftrags-Reminder-State konnte nicht freigegeben werden', stateError);
+      }
+    }
+    logger.error(`Auftrags-Reminder fuer ${user.email} konnte nicht verarbeitet werden`, error);
+    return {
+      status: 'failed',
+      email: user.email,
+      openOrderCount,
+      error: asText(error?.message || error),
+    };
+  }
+}
+
 async function runUnfinalizedOrderReminder() {
   const settings = normalizeReminderConfig();
   if (!settings.enabled) {
@@ -253,53 +345,64 @@ async function runUnfinalizedOrderReminder() {
   }
 
   workerRunning = true;
-  let stateId = null;
   try {
-    const user = await resolveReminderUser(settings);
-    const openOrderCount = await loadOpenOrderCount(user.shortCode);
-    stateId = await claimReminderState({
-      userEmail: user.email,
-      userShortCode: user.shortCode,
-      openOrderCount,
-    });
-    if (!stateId) {
-      return { enabled: true, status: 'not_due', openOrderCount };
-    }
-
-    if (openOrderCount === 0) {
-      await completeReminderState(stateId, {
+    if (settings.hasConfiguredUser) {
+      const user = await resolveConfiguredReminderUser(settings);
+      const openOrderCount = await loadOpenOrderCount(user.shortCode);
+      const result = await processReminderForUser({
+        user,
         openOrderCount,
-        channel: null,
         intervalMinutes: settings.intervalMinutes,
       });
-      logger.info(`Auftrags-Reminder: keine offenen eigenen Auftraege fuer ${user.email}.`);
-      return { enabled: true, status: 'nothing_to_notify', openOrderCount };
+      return { enabled: true, mode: 'test-user', ...result };
     }
 
-    const delivery = await deliverReminder({
-      email: user.email,
-      openOrderCount,
-    });
-    await completeReminderState(stateId, {
-      openOrderCount,
-      channel: delivery.channel,
-      intervalMinutes: settings.intervalMinutes,
-    });
-    logger.info(`Auftrags-Reminder fuer ${user.email}: ${openOrderCount} offene Auftraege per ${delivery.channel} gemeldet.`);
+    const ownerCounts = await loadOpenOrderCountsByOwner();
+    const identitiesByShortCode = await getUserIdentitiesByShortCodes(
+      ownerCounts.map((row) => row.userShortCode),
+    );
+    const results = [];
+
+    for (const owner of ownerCounts) {
+      const identity = identitiesByShortCode.get(owner.userShortCode);
+      if (!identity) {
+        logger.warning(`Auftrags-Reminder: kein BMS-FX-Benutzer fuer Mitarbeiterkuerzel ${owner.userShortCode} gefunden.`);
+        results.push({
+          status: 'user_not_found',
+          userShortCode: owner.userShortCode,
+          openOrderCount: owner.openOrderCount,
+        });
+        continue;
+      }
+
+      let user;
+      try {
+        user = mapReminderUser(identity);
+      } catch (error) {
+        logger.warning(`Auftrags-Reminder: Benutzer ${owner.userShortCode} wird uebersprungen: ${error.message}`);
+        results.push({
+          status: 'invalid_user',
+          userShortCode: owner.userShortCode,
+          openOrderCount: owner.openOrderCount,
+          error: error.message,
+        });
+        continue;
+      }
+
+      results.push(await processReminderForUser({
+        user,
+        openOrderCount: owner.openOrderCount,
+        intervalMinutes: settings.intervalMinutes,
+      }));
+    }
+
     return {
       enabled: true,
-      status: 'notified',
-      openOrderCount,
-      channel: delivery.channel,
+      mode: 'all-users',
+      status: 'processed',
+      users: results,
     };
   } catch (error) {
-    if (stateId) {
-      try {
-        await failReminderState(stateId, error?.message || error, settings.intervalMinutes);
-      } catch (stateError) {
-        logger.error('Auftrags-Reminder-State konnte nicht freigegeben werden', stateError);
-      }
-    }
     logger.error('Auftrags-Reminder konnte nicht verarbeitet werden', error);
     return { enabled: true, status: 'failed', error: asText(error?.message || error) };
   } finally {
@@ -315,7 +418,7 @@ function startUnfinalizedOrderReminderWorker() {
     logger.info('Auftrags-Reminder deaktiviert: BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES fehlt oder ist ungueltig.');
     return;
   }
-  if (!settings.userEmail || !isEmailAddress(settings.userEmail)) {
+  if (settings.hasConfiguredUser && !isEmailAddress(settings.userEmail)) {
     logger.warning('Auftrags-Reminder nicht gestartet: BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL fehlt oder ist ungueltig.');
     return;
   }
@@ -324,11 +427,14 @@ function startUnfinalizedOrderReminderWorker() {
   workerTimer = setInterval(() => void runUnfinalizedOrderReminder(), intervalMs);
   if (typeof workerTimer.unref === 'function') workerTimer.unref();
   void runUnfinalizedOrderReminder();
-  logger.info(`Auftrags-Reminder gestartet (Intervall ${settings.intervalMinutes}min, Ziel ${settings.userEmail}).`);
+  logger.info(`Auftrags-Reminder gestartet (Intervall ${settings.intervalMinutes}min, ${settings.hasConfiguredUser
+    ? `Test-Benutzer ${settings.userEmail}`
+    : 'automatische Benutzerauflösung ueber BMS FX'}).`);
 }
 
 module.exports = {
   buildOpenOrderCountSql,
+  buildOpenOrderCountsByOwnerSql,
   formatReminderPushBody,
   formatReminderPushTitle,
   normalizeReminderConfig,

@@ -118,12 +118,17 @@ Wert geleert werden; danach gilt Customer Service aus
 Die Prüfung läuft serverseitig und benötigt die idempotente Migration
 `apps/backend/sql/add_unfinalized_order_reminder.sql` auf der zentralen
 `BMS`-Datenbank. Der Reminder ist standardmäßig deaktiviert. Zum Aktivieren
-werden im Backend folgende Werte gesetzt:
+wird im Backend mindestens das Intervall gesetzt:
 
 ```dotenv
 BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES=60
-BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL=n.schroeder@filehouse.net
 ```
+
+`BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL` ist optional. Wenn die Variable
+gesetzt ist, läuft der Reminder als Test-Override ausschließlich für diesen
+Benutzer. Wenn sie leer oder nicht gesetzt ist, werden alle offenen eigenen
+Aufträge nach ihrem `ta_CreatedBy`-Mitarbeiterkürzel gruppiert und die
+zugehörigen E-Mail-Adressen aus der BMS-FX-Mitarbeiterquelle ermittelt.
 
 Ein leeres, ungültiges oder nicht positives Intervall deaktiviert den gesamten
 Prozess. Der konfigurierte Benutzer wird über die bestehende

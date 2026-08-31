@@ -132,6 +132,37 @@ async function getUserIdentityByEmail(email) {
   return identity;
 }
 
+async function getUserIdentitiesByShortCodes(shortCodes) {
+  const values = [...new Set(
+    (Array.isArray(shortCodes) ? shortCodes : [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  )];
+  if (!values.length) return new Map();
+
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, `
+    SELECT
+      [ma_PersNR] AS personNumber,
+      [ma_eMail] AS email,
+      [ma_Vorname] AS givenName,
+      [ma_Nachname] AS surname,
+      [ma_FirmaID] AS mainCompanyId,
+      [ma_K\u00FCrzel] AS shortCode
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
+    WHERE LOWER(LTRIM(RTRIM(COALESCE([ma_K\u00FCrzel], '')))) IN (${values.map(() => '?').join(', ')})
+  `, values);
+
+  const identities = new Map();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const identity = mapIdentityRow(row);
+    const key = String(identity?.shortCode || '').trim().toLowerCase();
+    if (!identity || !key || identities.has(key)) continue;
+    identities.set(key, identity);
+    setCached(identity);
+  }
+  return identities;
+}
+
 async function getUserPersonNumberByEmail(email) {
   const identity = await getUserIdentityByEmail(email);
   return identity.personNumber;
@@ -177,6 +208,7 @@ async function getUserShortCodeByPersonNumber(personNumber) {
 
 module.exports = {
   getUserIdentityByEmail,
+  getUserIdentitiesByShortCodes,
   getUserPersonNumberByEmail,
   getUserDisplayNameByPersonNumber,
   getUserShortCodeByPersonNumber,
