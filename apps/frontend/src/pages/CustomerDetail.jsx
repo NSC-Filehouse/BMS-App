@@ -324,6 +324,11 @@ export default function CustomerDetail() {
   const [orderYear, setOrderYear] = React.useState(CURRENT_YEAR);
   const [invoiceScope, setInvoiceScope] = React.useState('open');
   const [invoiceYear, setInvoiceYear] = React.useState(CURRENT_YEAR);
+  const [activityScope, setActivityScope] = React.useState('3m');
+  const [activityYear, setActivityYear] = React.useState(CURRENT_YEAR);
+  const [activities, setActivities] = React.useState([]);
+  const [activitiesLoading, setActivitiesLoading] = React.useState(false);
+  const [activitiesError, setActivitiesError] = React.useState('');
   const [purchasedArticlesQuery, setPurchasedArticlesQuery] = React.useState('');
   const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
@@ -353,7 +358,7 @@ export default function CustomerDetail() {
       try {
         setLoading(true);
         setError('');
-        const res = await apiRequest(`/customers/${encodeURIComponent(id)}`);
+        const res = await apiRequest(`/customers/${encodeURIComponent(id)}?includeActivities=0`);
         if (!alive) return;
         setItem(res?.data || null);
       } catch (e) {
@@ -383,7 +388,6 @@ export default function CustomerDetail() {
     : creditLimit?.status === 'active'
       ? `${t('credit_limit_label')}: ${formatEuro(creditLimit.amount)}`
       : t('credit_limit_missing');
-  const activities = Array.isArray(item?.activities) ? item.activities : [];
   const representatives = normalizeRepresentatives(item);
   const isSelectedCustomer = Boolean(
     selectedCustomer?.id && String(selectedCustomer.id) === String(id),
@@ -423,7 +427,29 @@ export default function CustomerDetail() {
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}&year=${encodeURIComponent(offerYear)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
+  const activitiesEndpoint = `/customers/${encodeURIComponent(id)}/activities?scope=${encodeURIComponent(activityScope)}&year=${encodeURIComponent(activityYear)}`;
   const purchasedArticlesEndpoint = `/customers/${encodeURIComponent(id)}/purchased-articles`;
+
+  React.useEffect(() => {
+    let alive = true;
+    setActivitiesLoading(true);
+    setActivitiesError('');
+
+    (async () => {
+      try {
+        const res = await apiRequest(activitiesEndpoint);
+        if (!alive) return;
+        setActivities(Array.isArray(res?.data) ? res.data : []);
+      } catch (e) {
+        if (!alive) return;
+        setActivitiesError(e?.message || t('loading_error'));
+      } finally {
+        if (alive) setActivitiesLoading(false);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [activitiesEndpoint, t]);
   const filteredPurchasedArticleGroups = React.useMemo(() => {
     const query = String(purchasedArticlesQuery || '').trim().toLowerCase();
     const groups = Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [];
@@ -566,6 +592,19 @@ export default function CustomerDetail() {
       }));
     }
   }, [docs.orders.expanded, id, loadDocSection]);
+
+  const handleActivityScopeChange = React.useCallback((event) => {
+    const nextScope = ['3m', '6m', 'year'].includes(event.target.value)
+      ? event.target.value
+      : '3m';
+    setActivityScope(nextScope);
+  }, []);
+
+  const handleActivityYearChange = React.useCallback((event) => {
+    const nextYear = Number(event.target.value) || CURRENT_YEAR;
+    setActivityYear(nextYear);
+    setActivityScope('year');
+  }, []);
 
   const toggleActivity = React.useCallback((activityId) => {
     setExpandedActivities((prev) => ({
@@ -949,14 +988,31 @@ export default function CustomerDetail() {
 
             <Divider sx={{ my: 3 }} />
 
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.75 }}>
-              {t('activities_label')}
-            </Typography>
-            {activities.length === 0 ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minWidth: 0 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ minWidth: 0 }}>
+                {t('activities_label')}
+              </Typography>
+              <Box
+                sx={{ ml: 'auto', minWidth: 0 }}
+                onClick={(event) => event.stopPropagation()}
+                onFocus={(event) => event.stopPropagation()}
+              >
+                <DocumentScopeControls
+                  t={t}
+                  scope={activityScope}
+                  year={activityYear}
+                  onScopeChange={handleActivityScopeChange}
+                  onYearChange={handleActivityYearChange}
+                />
+              </Box>
+            </Box>
+            {activitiesLoading && <CircularProgress size={20} />}
+            {activitiesError && <Alert severity="error">{activitiesError}</Alert>}
+            {!activitiesLoading && !activitiesError && activities.length === 0 ? (
               <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 -
               </Typography>
-            ) : (
+            ) : !activitiesLoading && !activitiesError ? (
               <Box sx={{ display: 'grid', gap: 0.75 }}>
                 {activities.map((activity) => {
                   const isExpanded = Boolean(expandedActivities[activity.id]);
@@ -983,7 +1039,7 @@ export default function CustomerDetail() {
                   );
                 })}
               </Box>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       )}

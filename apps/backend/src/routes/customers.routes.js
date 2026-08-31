@@ -67,6 +67,12 @@ function resolveOfferScope(scope) {
   return '3m';
 }
 
+function resolveActivityScope(scope) {
+  const value = String(scope || '').trim().toLowerCase();
+  if (value === '3m' || value === '6m' || value === 'year') return value;
+  return '3m';
+}
+
 function resolveOrderScope(scope) {
   const value = String(scope || '').trim().toLowerCase();
   if (value === '3m' || value === '6m' || value === 'year' || value === 'all') return value;
@@ -354,6 +360,36 @@ function buildAddressText(row) {
   return [name1, name2, street, plzCity, country].filter(Boolean).join(', ');
 }
 
+function mapCustomerActivities(rows, customerId) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: `${customerId}-activity-${index + 1}`,
+      text: toText(row?.text),
+      noteDate: row?.noteDate || null,
+    }))
+    .filter((row) => row.text);
+}
+
+async function loadCustomerActivities(database, customerId, scope, year) {
+  const resolvedScope = String(scope || '').trim().toLowerCase() === 'all'
+    ? 'all'
+    : resolveActivityScope(scope);
+  const dateFilter = buildDocumentDateFilter('[kdH_Datum]', resolvedScope, year);
+  const rows = await runSQLQueryAccess(database, `
+    SELECT [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
+    FROM [dbo].[tblKun_Historie]
+    WHERE [kdH_KdNR] = ?
+      ${dateFilter.sql}
+    ORDER BY [kdH_Datum] DESC
+  `, [customerId, ...dateFilter.params]);
+
+  return {
+    data: mapCustomerActivities(rows, customerId),
+    scope: resolvedScope,
+    year: dateFilter.year,
+  };
+}
+
 function resolveLang(req) {
   const raw = String(req?.header?.('x-lang') || '').trim().toLowerCase();
   return raw === 'en' ? 'en' : 'de';
@@ -547,19 +583,10 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     .filter((row) => pickReminderStageValue(row.reminderTextId, row.reminderTextIdNew) > 0)
     .length;
 
-  const activityRows = await runSQLQueryAccess(req.database, `
-    SELECT [kdH_Beschr] AS text, [kdH_Datum] AS noteDate
-    FROM [dbo].[tblKun_Historie]
-    WHERE [kdH_KdNR] = ?
-    ORDER BY [kdH_Datum] DESC
-  `, [id]);
-  const activities = (Array.isArray(activityRows) ? activityRows : [])
-    .map((row, index) => ({
-      id: `${id}-activity-${index + 1}`,
-      text: toText(row?.text),
-      noteDate: row?.noteDate || null,
-    }))
-    .filter((row) => row.text);
+  const includeActivities = String(req.query.includeActivities || '').trim() !== '0';
+  const activities = includeActivities
+    ? (await loadCustomerActivities(req.database, id, 'all', req.query.year)).data
+    : [];
 
   const detail = {
     ...item,
@@ -577,6 +604,34 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
       databaseName: req.database?.databaseName || null,
       idField: 'kd_KdNR',
       id,
+    },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/activities', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  await requireVisibleCustomer(req, customerId);
+
+  const result = await loadCustomerActivities(
+    req.database,
+    customerId,
+    req.query.scope,
+    req.query.year,
+  );
+
+  sendEnvelope(res, {
+    status: 200,
+    data: result.data,
+    meta: {
+      mandant: req.mandant,
+      count: result.data.length,
+      id: customerId,
+      scope: result.scope,
+      year: result.year,
     },
     error: null,
   });
