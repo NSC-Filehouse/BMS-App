@@ -247,7 +247,10 @@ async function getMandantsForUser(email) {
 
 async function listMandantsForUser(email) {
   const mandants = await getMandantsForUser(email);
-  return mandants.map((m) => m.name);
+  return mandants.map((m) => ({
+    id: m.firmaId,
+    name: m.name,
+  }));
 }
 
 async function getDatabaseConnectionForUser(email, mandantName) {

@@ -34,6 +34,7 @@ import { getMandant, clearMandant } from '../utils/mandant.js';
 import { CUSTOMER_SELECTION_CHANGED, clearSelectedCustomer, getSelectedCustomer } from '../utils/customerSelection.js';
 import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 import { getOrderCartCount, ORDER_CART_CHANGED } from '../utils/orderCart.js';
+import { getSelectableMandants } from '../utils/mandantOptions.js';
 
 const drawerWidth = 260;
 
@@ -120,7 +121,7 @@ export default function Layout() {
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);
-        const available = Array.isArray(mandantsRes?.data) ? mandantsRes.data : [];
+        const available = getSelectableMandants(mandantsRes?.data);
         setCanSwitchMandant(available.length > 1);
         setReminderCustomersCount(Number(remindersRes?.data?.count) || 0);
       } catch {

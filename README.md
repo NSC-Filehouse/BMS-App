@@ -112,3 +112,20 @@ Wenn `BMS_ORDER_MAIL_TEST_RECIPIENT` gesetzt ist, werden ausnahmslos alle
 Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
 Wert geleert werden; danach gilt Customer Service aus
 `INVOICE_ROUTER_ADDRESS_MAP` mit `EWS_SHARED_MAILBOXES` als Buchhaltungs-Fallback.
+
+## Mandantenauswahl
+
+Die im Frontend angezeigten Mandanten koennen ueber `VITE_MANDANT_EXCLUDE_IDS` als
+kommagetrennte BMS-Mandanten-IDs ausgeblendet werden. Die Einstellung wirkt auf
+die Auswahl im Frontend; die eigentliche Berechtigungspruefung des Backends bleibt
+unveraendert.
+
+Beispiel:
+
+```dotenv
+VITE_MANDANT_EXCLUDE_IDS=0,1,6,8,13,14,15,16,17,18
+```
+
+Nach einer Aenderung muss das Frontend neu gebaut werden. FrupackSweden (ID 19)
+verwendet fuer Auftragsmails dieselbe Customer-Service-Adresse wie FrupackNordic:
+`cs@frupack.dk`.

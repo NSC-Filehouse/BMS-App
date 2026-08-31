@@ -13,6 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { setMandant, getMandant, clearMandant } from '../utils/mandant.js';
+import { getSelectableMandants } from '../utils/mandantOptions.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 export default function Start() {
@@ -46,7 +47,7 @@ export default function Start() {
           given: meRes?.givenName || '',
           surname: meRes?.surname || '',
         });
-        const allowed = Array.isArray(res?.data) ? res.data : [];
+        const allowed = getSelectableMandants(res?.data);
         setMandants(allowed);
 
         if (!allowed.length) {
@@ -56,13 +57,13 @@ export default function Start() {
         }
 
         const selectedLower = String(selected || '').toLowerCase();
-        const selectedStillAllowed = allowed.find((m) => String(m).toLowerCase() === selectedLower);
+        const selectedStillAllowed = allowed.find((m) => m.name.toLowerCase() === selectedLower);
         if (selected && !selectedStillAllowed) {
           clearMandant();
         }
 
         if (allowed.length === 1) {
-          setMandant(allowed[0]);
+          setMandant(allowed[0].name);
           navigate('/customers');
         }
       } catch (e) {
@@ -129,14 +130,14 @@ export default function Start() {
             <List dense>
               {mandants.map((m) => (
                 <ListItemButton
-                  key={m}
-                  selected={m === selected}
+                  key={m.id ?? m.name}
+                  selected={m.name === selected}
                   onClick={() => {
-                    setMandant(m);
+                    setMandant(m.name);
                     navigate('/customers');
                   }}
                 >
-                  <ListItemText primary={m} />
+                  <ListItemText primary={m.name} />
                 </ListItemButton>
               ))}
             </List>
