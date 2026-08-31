@@ -161,7 +161,12 @@ function validateEwsConfig(orderMailConfig) {
 }
 
 function cleanEwsText(value) {
-  return String(value || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    // ews-javascript-api writes text values directly and does not XML-escape them.
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 async function sendOrderMail({ orderMailConfig, recipient, subject, body, attachment }) {
@@ -185,14 +190,14 @@ async function sendOrderMail({ orderMailConfig, recipient, subject, body, attach
   const message = new EWS.EmailMessage(service);
   message.Subject = cleanEwsText(subject);
   message.Body = new EWS.MessageBody(EWS.BodyType.Text, cleanEwsText(body));
-  message.ToRecipients.Add(new EWS.EmailAddress(recipient));
+  message.ToRecipients.Add(new EWS.EmailAddress(cleanEwsText(recipient)));
 
   if (attachment?.buffer && attachment?.fileName) {
     const fileAttachment = message.Attachments.AddFileAttachment(
       cleanEwsText(attachment.fileName),
       Buffer.from(attachment.buffer).toString('base64'),
     );
-    if (attachment.mimeType) fileAttachment.ContentType = attachment.mimeType;
+    if (attachment.mimeType) fileAttachment.ContentType = cleanEwsText(attachment.mimeType);
     fileAttachment.IsInline = false;
   }
 
@@ -206,4 +211,5 @@ module.exports = {
   resolveOrderMailRecipient,
   sendOrderMail,
   validateEwsConfig,
+  cleanEwsText,
 };

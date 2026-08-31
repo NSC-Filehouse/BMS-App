@@ -6,6 +6,7 @@ const {
   formatOrderMailBody,
   parseMandantAddressMap,
   resolveOrderMailRecipient,
+  cleanEwsText,
 } = require('../src/mail/order-mail');
 
 test('test recipient overrides customer service and accounting recipients', () => {
@@ -45,6 +46,13 @@ test('quoted InvoiceReader mailbox lists are parsed', () => {
   const parsed = parseMandantAddressMap('"verwaltung@mlholding.org|1,buchhaltung@frupack.de|3"');
   assert.equal(parsed.get(1), 'verwaltung@mlholding.org');
   assert.equal(parsed.get(3), 'buchhaltung@frupack.de');
+});
+
+test('EWS text values are XML escaped after removing invalid control characters', () => {
+  assert.equal(
+    cleanEwsText('ER&GE <GmbH>\u0001'),
+    'ER&amp;GE &lt;GmbH&gt;'
+  );
 });
 
 test('mail body contains the complete structured order data', () => {
