@@ -172,6 +172,7 @@ export default function CustomersList() {
 
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
+    skipSearchReloadRef.current = true;
     load({ page: 1, q: '', searchField: 'name', reminderOnly: false, includeInactive: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
