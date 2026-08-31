@@ -1174,7 +1174,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       const positionsResult = await query(`
         SELECT
           [tap_id] AS id,
-          [tap_line_no] AS lineNo,
+          [tap_line_no] AS [lineNo],
           [tap_be_number] AS beNumber,
           [tap_article] AS article,
           [tap_amount_in_kg] AS amountInKg,
