@@ -6,6 +6,7 @@ const {
   buildOpenOrderCountsByOwnerSql,
   formatReminderPushBody,
   formatReminderPushTitle,
+  buildReminderClientMessageId,
   normalizeReminderConfig,
 } = require('../src/db/unfinalized-order-reminder');
 
@@ -58,4 +59,19 @@ test('reminder push text is localized and includes the count', () => {
   assert.match(formatReminderPushBody(2, 'de'), /noch 2 eigene Aufträge/);
   assert.match(formatReminderPushBody(1, 'de'), /noch 1 eigenen Auftrag, der/);
   assert.match(formatReminderPushBody(1, 'en'), /still have 1 own order/);
+});
+
+test('reminder client message ids are stable within an interval and change between intervals', () => {
+  const first = new Date('2026-09-01T10:00:00.000Z');
+  const sameInterval = new Date('2026-09-01T10:59:59.000Z');
+  const nextInterval = new Date('2026-09-01T11:00:00.000Z');
+
+  assert.equal(
+    buildReminderClientMessageId('User@Example.com', 60, first),
+    buildReminderClientMessageId('user@example.com', 60, sameInterval),
+  );
+  assert.notEqual(
+    buildReminderClientMessageId('user@example.com', 60, first),
+    buildReminderClientMessageId('user@example.com', 60, nextInterval),
+  );
 });

@@ -32,8 +32,17 @@ const config = {
     vapidPrivateKey: String(process.env.PUSH_VAPID_PRIVATE_KEY || '').trim(),
   },
 
+  mailService: {
+    enabled: toBool(process.env.FILEHOUSE_MAIL_SERVICE_ENABLED, true),
+    baseAddress: String(process.env.FILEHOUSE_MAIL_SERVICE_BASE_ADDRESS || '').trim(),
+    apiKey: String(process.env.FILEHOUSE_MAIL_SERVICE_API_KEY || '').trim(),
+    apiKeyHeaderName: String(process.env.FILEHOUSE_MAIL_SERVICE_API_KEY_HEADER_NAME || 'X-Api-Key').trim(),
+    timeoutMs: toInt(process.env.FILEHOUSE_MAIL_SERVICE_TIMEOUT_MS, 100000),
+  },
+
   orderMail: {
     enabled: toBool(process.env.BMS_ORDER_MAIL_ENABLED, true),
+    ewsFallback: toBool(process.env.BMS_ORDER_MAIL_EWS_FALLBACK, true),
     testRecipient: String(process.env.BMS_ORDER_MAIL_TEST_RECIPIENT || '').trim().toLowerCase(),
     customerServiceAddressMap: String(process.env.INVOICE_ROUTER_ADDRESS_MAP || '').trim(),
     accountingMailboxMap: String(process.env.EWS_SHARED_MAILBOXES || '').trim(),

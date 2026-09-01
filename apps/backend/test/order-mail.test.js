@@ -8,8 +8,13 @@ const {
   formatUnfinalizedOrderReminderBody,
   parseMandantAddressMap,
   resolveOrderMailRecipient,
+  sendOrderMail,
   cleanEwsText,
+  shouldUseEwsFallback,
+  validateMailServiceConfig,
+  validateOrderMailConfig,
 } = require('../src/mail/order-mail');
+const { MailServiceClientError } = require('@filehouse/mailservice-client');
 
 test('test recipient overrides customer service and accounting recipients', () => {
   const result = resolveOrderMailRecipient(2, {
@@ -55,6 +60,69 @@ test('EWS text values are XML escaped after removing invalid control characters'
     cleanEwsText('ER&GE <GmbH>\u0001'),
     'ER&amp;GE &lt;GmbH&gt;'
   );
+});
+
+test('MailService configuration is sufficient without requiring EWS', () => {
+  const mailService = validateMailServiceConfig({
+    enabled: true,
+    baseAddress: 'https://db03.example.test:3300/',
+    apiKey: 'fhm-test-key',
+  });
+  assert.deepEqual(mailService, { ok: true });
+
+  const combined = validateOrderMailConfig(
+    { enabled: true, ewsFallback: true, ews: {} },
+    { enabled: true, baseAddress: 'https://db03.example.test:3300/', apiKey: 'fhm-test-key' },
+  );
+  assert.equal(combined.ok, true);
+  assert.equal(combined.mailService.ok, true);
+  assert.equal(combined.ews.ok, false);
+});
+
+test('BMS sends the mail-service request with the shared contract', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 202,
+      text: async () => JSON.stringify({ Id: 123, ClientMessageId: 'bms-app:test:1', Status: 'Pending' }),
+    };
+  };
+
+  try {
+    const result = await sendOrderMail({
+      orderMailConfig: { enabled: true, ewsFallback: true, ews: {} },
+      mailServiceConfig: {
+        enabled: true,
+        baseAddress: 'https://db03.example.test:3300/',
+        apiKey: 'fhm-test-key',
+        timeoutMs: 1000,
+      },
+      recipient: 'user@example.com',
+      subject: 'Test subject',
+      body: 'Test body',
+      clientMessageId: 'bms-app:test:1',
+    });
+
+    assert.equal(result.transport, 'mailservice');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'https://db03.example.test:3300/api/mails');
+    assert.equal(requests[0].options.headers['X-Api-Key'], 'fhm-test-key');
+    const requestBody = JSON.parse(requests[0].options.body);
+    assert.equal(requestBody.ClientMessageId, 'bms-app:test:1');
+    assert.equal(requestBody.To[0].Address, 'user@example.com');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('EWS fallback is restricted to transient MailService failures', () => {
+  assert.equal(shouldUseEwsFallback(new MailServiceClientError('server error', { statusCode: 503 })), true);
+  assert.equal(shouldUseEwsFallback(new MailServiceClientError('rate limited', { statusCode: 429 })), true);
+  assert.equal(shouldUseEwsFallback(new MailServiceClientError('bad request', { statusCode: 400 })), false);
+  assert.equal(shouldUseEwsFallback(new Error('network failure')), true);
 });
 
 test('mail body contains the complete structured order data', () => {

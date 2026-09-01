@@ -1,5 +1,10 @@
 const EWS = require('ews-javascript-api');
 const EWSAuth = require('ews-javascript-api-auth');
+const {
+  MailServiceClient,
+  MailServiceClientError,
+} = require('@filehouse/mailservice-client');
+const logger = require('../logger');
 
 const ORDER_MAIL_SUBJECT = 'BMS-App es liegt ein neuer Auftrag vor';
 const UNFINALIZED_ORDER_REMINDER_SUBJECT = 'BMS-App: offene Aufträge noch nicht an BMS übertragen';
@@ -173,6 +178,34 @@ function validateEwsConfig(orderMailConfig) {
   return missing.length ? { ok: false, reason: 'missing_ews_config', missing } : { ok: true };
 }
 
+function validateMailServiceConfig(mailServiceConfig) {
+  if (!mailServiceConfig?.enabled) {
+    return { ok: false, reason: 'disabled' };
+  }
+  const missing = [];
+  if (!asText(mailServiceConfig?.baseAddress)) missing.push('FILEHOUSE_MAIL_SERVICE_BASE_ADDRESS');
+  if (!asText(mailServiceConfig?.apiKey)) missing.push('FILEHOUSE_MAIL_SERVICE_API_KEY');
+  return missing.length ? { ok: false, reason: 'missing_mail_service_config', missing } : { ok: true };
+}
+
+function validateOrderMailConfig(orderMailConfig, mailServiceConfig) {
+  if (!orderMailConfig?.enabled) {
+    return { ok: false, reason: 'disabled' };
+  }
+
+  const mailService = validateMailServiceConfig(mailServiceConfig);
+  const ews = validateEwsConfig(orderMailConfig);
+  if (mailService.ok || ews.ok) {
+    return { ok: true, mailService, ews };
+  }
+
+  return {
+    ok: false,
+    reason: 'missing_mail_config',
+    missing: [...(mailService.missing || []), ...(ews.missing || [])],
+  };
+}
+
 function cleanEwsText(value) {
   return String(value === null || value === undefined ? '' : value)
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
@@ -182,7 +215,7 @@ function cleanEwsText(value) {
     .replace(/>/g, '&gt;');
 }
 
-async function sendOrderMail({ orderMailConfig, recipient, subject, body, attachment }) {
+async function sendOrderMailViaEws({ orderMailConfig, recipient, subject, body, attachment }) {
   const validation = validateEwsConfig(orderMailConfig);
   if (!validation.ok) {
     throw new Error(validation.missing?.length
@@ -217,6 +250,80 @@ async function sendOrderMail({ orderMailConfig, recipient, subject, body, attach
   await message.SendAndSaveCopy();
 }
 
+function shouldUseEwsFallback(error) {
+  if (!(error instanceof MailServiceClientError)) return true;
+  const statusCode = Number(error.statusCode);
+  if (!Number.isInteger(statusCode)) return true;
+  return statusCode >= 500 || statusCode === 408 || statusCode === 429;
+}
+
+async function sendOrderMail({
+  orderMailConfig,
+  mailServiceConfig,
+  recipient,
+  subject,
+  body,
+  attachment,
+  clientMessageId,
+}) {
+  if (!orderMailConfig?.enabled) {
+    throw new Error('Auftragsmail-Versand ist deaktiviert.');
+  }
+
+  const mailServiceValidation = validateMailServiceConfig(mailServiceConfig);
+  const ewsValidation = validateEwsConfig(orderMailConfig);
+  let mailServiceError = null;
+
+  if (mailServiceValidation.ok) {
+    try {
+      const client = new MailServiceClient({
+        baseAddress: mailServiceConfig.baseAddress,
+        apiKey: mailServiceConfig.apiKey,
+        apiKeyHeaderName: mailServiceConfig.apiKeyHeaderName,
+        timeoutMs: mailServiceConfig.timeoutMs,
+      });
+      const response = await client.submitMail({
+        clientMessageId,
+        subject,
+        body,
+        isBodyHtml: false,
+        to: [{ address: recipient }],
+        attachments: attachment?.buffer && attachment?.fileName
+          ? [{
+              fileName: attachment.fileName,
+              contentType: attachment.mimeType,
+              content: attachment.buffer,
+            }]
+          : [],
+      });
+      return { transport: 'mailservice', accepted: true, response };
+    } catch (error) {
+      mailServiceError = error;
+      if (!orderMailConfig.ewsFallback || !ewsValidation.ok || !shouldUseEwsFallback(error)) {
+        throw error;
+      }
+      logger.warn(`MailService-Aufruf fehlgeschlagen; EWS-Fallback wird verwendet${
+        error?.statusCode ? ` (HTTP ${error.statusCode})` : ''
+      }.`);
+    }
+  }
+
+  if (orderMailConfig.ewsFallback && ewsValidation.ok) {
+    await sendOrderMailViaEws({ orderMailConfig, recipient, subject, body, attachment });
+    return {
+      transport: 'ews',
+      accepted: true,
+      fallback: Boolean(mailServiceValidation.ok),
+      fallbackError: mailServiceError,
+    };
+  }
+
+  if (mailServiceError) throw mailServiceError;
+  throw new Error(mailServiceValidation.missing?.length
+    ? `MailService-Konfiguration fehlt: ${mailServiceValidation.missing.join(', ')}`
+    : 'Kein E-Mail-Versand ist konfiguriert.');
+}
+
 module.exports = {
   ORDER_MAIL_SUBJECT,
   UNFINALIZED_ORDER_REMINDER_SUBJECT,
@@ -225,6 +332,10 @@ module.exports = {
   parseMandantAddressMap,
   resolveOrderMailRecipient,
   sendOrderMail,
+  sendOrderMailViaEws,
+  shouldUseEwsFallback,
+  validateMailServiceConfig,
+  validateOrderMailConfig,
   validateEwsConfig,
   cleanEwsText,
 };

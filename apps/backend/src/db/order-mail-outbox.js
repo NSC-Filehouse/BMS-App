@@ -2,7 +2,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
-const { sendOrderMail, validateEwsConfig } = require('../mail/order-mail');
+const { sendOrderMail, validateOrderMailConfig } = require('../mail/order-mail');
 
 const OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
@@ -95,12 +95,14 @@ async function processOrderMailOutboxById(outboxId) {
   const effectiveRecipient = asText(config.orderMail.testRecipient).toLowerCase() || item.recipient;
 
   try {
-    await sendOrderMail({
+    const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
+      mailServiceConfig: config.mailService,
       recipient: effectiveRecipient,
       subject: item.subject,
       body: item.body,
       attachment: await loadAttachment(item.orderId),
+      clientMessageId: `bms-app:order:${item.orderId}`,
     });
     await runSQLQuerySqlServer(config.sql.database, `
       UPDATE ${OUTBOX_TABLE}
@@ -112,8 +114,8 @@ async function processOrderMailOutboxById(outboxId) {
           [om_LastModifiedDate] = SYSUTCDATETIME()
       WHERE [om_ID] = ?
     `, [item.id]);
-    logger.info(`Auftragsmail ${item.id} fuer Auftrag ${item.orderId} versendet an ${effectiveRecipient}.`);
-    return { processed: true, status: 'sent', recipient: effectiveRecipient };
+    logger.info(`Auftragsmail ${item.id} fuer Auftrag ${item.orderId} ueber ${delivery.transport} angenommen an ${effectiveRecipient}.`);
+    return { processed: true, status: 'sent', recipient: effectiveRecipient, transport: delivery.transport };
   } catch (error) {
     const message = asText(error?.message || error).slice(0, 2000) || 'Unbekannter EWS-Fehler';
     const exhausted = item.attemptCount >= config.orderMail.maxAttempts;
@@ -133,7 +135,7 @@ async function processOrderMailOutboxById(outboxId) {
 
 async function processPendingOrderMails(limit = 5) {
   if (workerRunning) return;
-  if (!validateEwsConfig(config.orderMail).ok) return;
+  if (!validateOrderMailConfig(config.orderMail, config.mailService).ok) return;
   workerRunning = true;
   try {
     for (let i = 0; i < limit; i += 1) {
@@ -150,7 +152,7 @@ async function processPendingOrderMails(limit = 5) {
 
 function startOrderMailOutboxWorker() {
   if (workerTimer || !config.orderMail.enabled) return;
-  const validation = validateEwsConfig(config.orderMail);
+  const validation = validateOrderMailConfig(config.orderMail, config.mailService);
   if (!validation.ok) {
     logger.warning(`Auftragsmail-Outbox nicht gestartet: ${validation.reason}.`);
     return;

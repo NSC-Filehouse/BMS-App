@@ -1,0 +1,19 @@
+{
+  "name": "@filehouse/mailservice-client",
+  "version": "0.1.0",
+  "description": "Reusable Node.js client for the Filehouse MailService ingest API.",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -87,7 +87,7 @@ Paging wird über das klassische **Access TOP-Nested-Query** Muster implementier
 
 Viel Spaß beim Weiterbauen.
 
-## Aufträge finalisieren und per EWS senden
+## Aufträge finalisieren und per MailService senden (EWS-Fallback)
 
 Vor dem ersten Einsatz muss die idempotente Migration
 `apps/backend/sql/add_temp_order_finalization_and_mail_outbox.sql` mit einem
@@ -107,6 +107,32 @@ EWS_URL_EXTERN=
 INVOICE_ROUTER_ADDRESS_MAP=
 EWS_SHARED_MAILBOXES=
 ```
+
+## Filehouse MailService für den Mailversand
+
+Der Backend-Mailversand verwendet den zentralen Filehouse MailService bevorzugt.
+Der wiederverwendbare Node.js-Client liegt unter
+`packages/filehouse-mailservice-client`; spätere Node.js-Anwendungen können dieses
+Workspace-Paket ebenfalls verwenden. Der Service nimmt die Mail zunächst dauerhaft
+an und versendet sie anschließend selbstständig weiter.
+
+Für die BMS-App werden zusätzlich zu den bestehenden EWS-Werten folgende Variablen
+benötigt:
+
+```dotenv
+FILEHOUSE_MAIL_SERVICE_ENABLED=true
+FILEHOUSE_MAIL_SERVICE_BASE_ADDRESS=https://db03.domkimaz.de.local:3300/
+FILEHOUSE_MAIL_SERVICE_API_KEY=
+FILEHOUSE_MAIL_SERVICE_API_KEY_HEADER_NAME=X-Api-Key
+FILEHOUSE_MAIL_SERVICE_TIMEOUT_MS=100000
+BMS_ORDER_MAIL_EWS_FALLBACK=true
+```
+
+Der API-Key darf nicht in die Versionsverwaltung. Eine erfolgreiche MailService-
+Antwort bedeutet, dass die Mail dauerhaft angenommen wurde. Bei Netzwerk- oder
+Timeout-Fehlern sowie HTTP 408, 429 und 5xx verwendet die BMS-App bei aktiviertem
+Fallback den bisherigen EWS-Versand; fachliche HTTP-4xx-Fehler werden nicht
+blind über EWS wiederholt.
 
 Wenn `BMS_ORDER_MAIL_TEST_RECIPIENT` gesetzt ist, werden ausnahmslos alle
 Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
@@ -130,12 +156,21 @@ Benutzer. Wenn sie leer oder nicht gesetzt ist, werden alle offenen eigenen
 Aufträge nach ihrem `ta_CreatedBy`-Mitarbeiterkürzel gruppiert und die
 zugehörigen E-Mail-Adressen aus der BMS-FX-Mitarbeiterquelle ermittelt.
 
+Die Aktivierungslogik bleibt unverändert: Beide Reminder-Variablen leer oder ein
+ungültiges Intervall deaktivieren den Prozess. Nur ein gültiges Intervall prüft
+alle Benutzer mit eigenen offenen Aufträgen. Ist zusätzlich
+`BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL` gesetzt, wird ausschließlich dieser
+Benutzer geprüft. Push wird weiterhin zuerst versucht; die E-Mail ist der bisherige
+Fallback. Auch für diese E-Mail wird MailService bevorzugt und EWS bleibt als
+Fallback erhalten.
+
 Ein leeres, ungültiges oder nicht positives Intervall deaktiviert den gesamten
 Prozess. Der konfigurierte Benutzer wird über die bestehende
 Mitarbeiterquelle geprüft; gezählt werden seine eigenen Datensätze mit
 `ta_completed = 0` über alle Mandanten. Der Worker meldet zunächst über aktive
 Push-Abonnements dieses Benutzers. Wenn kein Push zugestellt werden kann, wird
-die E-Mail direkt an die ermittelte Benutzeradresse über EWS gesendet.
+die E-Mail über den MailService an die ermittelte Benutzeradresse gesendet;
+bei einem Servicefehler bleibt EWS der Fallback.
 
 ## Mandantenauswahl
 

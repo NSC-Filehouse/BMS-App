@@ -13,7 +13,7 @@ const {
   ORDER_MAIL_SUBJECT,
   formatOrderMailBody,
   resolveOrderMailRecipient,
-  validateEwsConfig,
+  validateOrderMailConfig,
 } = require('../mail/order-mail');
 const logger = require('../logger');
 const { productAvailabilitySource } = require('../db/product-availability');
@@ -1169,7 +1169,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
-  const mailConfigValidation = validateEwsConfig(config.orderMail);
+  const mailConfigValidation = validateOrderMailConfig(config.orderMail, config.mailService);
   if (!mailConfigValidation.ok) {
     throw createHttpError(503, 'Order mail configuration is incomplete.', {
       code: 'TEMP_ORDER_MAIL_CONFIG_MISSING',

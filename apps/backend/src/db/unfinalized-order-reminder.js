@@ -8,7 +8,7 @@ const {
   UNFINALIZED_ORDER_REMINDER_SUBJECT,
   formatUnfinalizedOrderReminderBody,
   sendOrderMail,
-  validateEwsConfig,
+  validateOrderMailConfig,
 } = require('../mail/order-mail');
 
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
@@ -243,7 +243,13 @@ async function resolveConfiguredReminderUser(settings) {
   });
 }
 
-async function deliverReminder({ email, openOrderCount }) {
+function buildReminderClientMessageId(email, intervalMinutes, now = new Date()) {
+  const intervalMs = Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000;
+  const slot = Math.floor(now.getTime() / intervalMs);
+  return `bms-app:open-order-reminder:${normalizeEmail(email)}:${slot}`;
+}
+
+async function deliverReminder({ email, openOrderCount, intervalMinutes }) {
   let pushResult;
   try {
     pushResult = await sendDirectPushNotificationToUser({
@@ -262,21 +268,23 @@ async function deliverReminder({ email, openOrderCount }) {
     return { channel: 'push', pushResult };
   }
 
-  const mailValidation = validateEwsConfig(config.orderMail);
+  const mailValidation = validateOrderMailConfig(config.orderMail, config.mailService);
   if (!mailValidation.ok) {
     const reason = mailValidation.missing?.length
-      ? `EWS-Konfiguration fehlt: ${mailValidation.missing.join(', ')}`
+      ? `E-Mail-Konfiguration fehlt: ${mailValidation.missing.join(', ')}`
       : 'Auftragsmail-Versand ist deaktiviert.';
     throw new Error(`Kein Push verfuegbar und E-Mail-Fallback nicht moeglich: ${reason}`);
   }
 
-  await sendOrderMail({
+  const delivery = await sendOrderMail({
     orderMailConfig: config.orderMail,
+    mailServiceConfig: config.mailService,
     recipient: email,
     subject: UNFINALIZED_ORDER_REMINDER_SUBJECT,
     body: formatUnfinalizedOrderReminderBody({ count: openOrderCount }),
+    clientMessageId: buildReminderClientMessageId(email, intervalMinutes),
   });
-  return { channel: 'email', pushResult };
+  return { channel: 'email', transport: delivery.transport, pushResult };
 }
 
 async function processReminderForUser({ user, openOrderCount, intervalMinutes }) {
@@ -304,13 +312,14 @@ async function processReminderForUser({ user, openOrderCount, intervalMinutes })
     const delivery = await deliverReminder({
       email: user.email,
       openOrderCount,
+      intervalMinutes,
     });
     await completeReminderState(stateId, {
       openOrderCount,
       channel: delivery.channel,
       intervalMinutes,
     });
-    logger.info(`Auftrags-Reminder fuer ${user.email}: ${openOrderCount} offene Auftraege per ${delivery.channel} gemeldet.`);
+    logger.info(`Auftrags-Reminder fuer ${user.email}: ${openOrderCount} offene Auftraege per ${delivery.channel}${delivery.transport ? ` ueber ${delivery.transport}` : ''} gemeldet.`);
     return {
       status: 'notified',
       email: user.email,
@@ -435,6 +444,7 @@ function startUnfinalizedOrderReminderWorker() {
 module.exports = {
   buildOpenOrderCountSql,
   buildOpenOrderCountsByOwnerSql,
+  buildReminderClientMessageId,
   formatReminderPushBody,
   formatReminderPushTitle,
   normalizeReminderConfig,

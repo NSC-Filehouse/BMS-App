@@ -2,7 +2,8 @@
   "name": "bms-app",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently -n backend,frontend \"npm run dev -w @bms-app/backend\" \"npm run dev -w @bms-app/frontend\"",
