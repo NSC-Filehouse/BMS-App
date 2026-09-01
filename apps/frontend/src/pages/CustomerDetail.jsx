@@ -140,7 +140,7 @@ function DocumentScopeControls({
       onChange={onScopeChange}
       sx={{
         flexWrap: 'wrap',
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-start',
         gap: 0.25,
         '& .MuiFormControlLabel-root': {
           margin: 0,
@@ -199,6 +199,45 @@ function DocumentScopeControls({
         ))}
       </TextField>
     </RadioGroup>
+  );
+}
+
+function DocumentAccordionSummary({ title, controls }) {
+  return (
+    <AccordionSummary
+      expandIcon={<ExpandMoreIcon />}
+      sx={{
+        alignItems: 'flex-start',
+        '& .MuiAccordionSummary-content': {
+          my: 0.75,
+          minWidth: 0,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.25,
+          width: '100%',
+          minWidth: 0,
+          pr: 0.5,
+        }}
+      >
+        <Typography variant="subtitle1" sx={{ minWidth: 0, lineHeight: 1.3 }}>
+          {title}
+        </Typography>
+        {controls && (
+          <Box
+            sx={{ alignSelf: 'flex-start', minWidth: 0 }}
+            onClick={(event) => event.stopPropagation()}
+            onFocus={(event) => event.stopPropagation()}
+          >
+            {controls}
+          </Box>
+        )}
+      </Box>
+    </AccordionSummary>
   );
 }
 
@@ -690,28 +729,18 @@ export default function CustomerDetail() {
             </Box>
 
             <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
-                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
-                    {t('customer_docs_offers')}
-                  </Typography>
-                  {docs.offers.expanded && (
-                    <Box
-                      sx={{ ml: 'auto', minWidth: 0 }}
-                      onClick={(event) => event.stopPropagation()}
-                      onFocus={(event) => event.stopPropagation()}
-                    >
-                      <DocumentScopeControls
-                        t={t}
-                        scope={offerScope}
-                        year={offerYear}
-                        onScopeChange={handleOfferScopeChange}
-                        onYearChange={handleOfferYearChange}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              </AccordionSummary>
+              <DocumentAccordionSummary
+                title={t('customer_docs_offers')}
+                controls={docs.offers.expanded && (
+                  <DocumentScopeControls
+                    t={t}
+                    scope={offerScope}
+                    year={offerYear}
+                    onScopeChange={handleOfferScopeChange}
+                    onYearChange={handleOfferYearChange}
+                  />
+                )}
+              />
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.offers.loading && <CircularProgress size={20} />}
                 {docs.offers.error && <Alert severity="error">{docs.offers.error}</Alert>}
@@ -736,29 +765,19 @@ export default function CustomerDetail() {
             </Accordion>
 
             <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', orderEndpoint)}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
-                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
-                    {t('customer_docs_orders')}
-                  </Typography>
-                  {docs.orders.expanded && (
-                    <Box
-                      sx={{ ml: 'auto', minWidth: 0 }}
-                      onClick={(event) => event.stopPropagation()}
-                      onFocus={(event) => event.stopPropagation()}
-                    >
-                      <DocumentScopeControls
-                        t={t}
-                        scope={orderScope}
-                        year={orderYear}
-                        includeOpen
-                        onScopeChange={handleOrderScopeChange}
-                        onYearChange={handleOrderYearChange}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              </AccordionSummary>
+              <DocumentAccordionSummary
+                title={t('customer_docs_orders')}
+                controls={docs.orders.expanded && (
+                  <DocumentScopeControls
+                    t={t}
+                    scope={orderScope}
+                    year={orderYear}
+                    includeOpen
+                    onScopeChange={handleOrderScopeChange}
+                    onYearChange={handleOrderYearChange}
+                  />
+                )}
+              />
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.orders.loading && <CircularProgress size={20} />}
                 {docs.orders.error && <Alert severity="error">{docs.orders.error}</Alert>}
@@ -784,29 +803,19 @@ export default function CustomerDetail() {
             </Accordion>
 
             <Accordion expanded={docs.invoices.expanded} onChange={onToggleSection('invoices', invoiceEndpoint)}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
-                  <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
-                    {t('customer_docs_invoices')}
-                  </Typography>
-                  {docs.invoices.expanded && (
-                    <Box
-                      sx={{ ml: 'auto', minWidth: 0 }}
-                      onClick={(event) => event.stopPropagation()}
-                      onFocus={(event) => event.stopPropagation()}
-                    >
-                      <DocumentScopeControls
-                        t={t}
-                        scope={invoiceScope}
-                        year={invoiceYear}
-                        includeOpen
-                        onScopeChange={handleInvoiceScopeChange}
-                        onYearChange={handleInvoiceYearChange}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              </AccordionSummary>
+              <DocumentAccordionSummary
+                title={t('customer_docs_invoices')}
+                controls={docs.invoices.expanded && (
+                  <DocumentScopeControls
+                    t={t}
+                    scope={invoiceScope}
+                    year={invoiceYear}
+                    includeOpen
+                    onScopeChange={handleInvoiceScopeChange}
+                    onYearChange={handleInvoiceYearChange}
+                  />
+                )}
+              />
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.invoices.loading && <CircularProgress size={20} />}
                 {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
