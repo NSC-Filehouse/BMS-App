@@ -134,6 +134,15 @@ Timeout-Fehlern sowie HTTP 408, 429 und 5xx verwendet die BMS-App bei aktivierte
 Fallback den bisherigen EWS-Versand; fachliche HTTP-4xx-Fehler werden nicht
 blind über EWS wiederholt.
 
+Beim Deployment muss der gesamte Monorepo-Inhalt einschließlich
+`packages/filehouse-mailservice-client`, der Root-`package.json` und
+`package-lock.json` übernommen werden. Nicht nur `apps/backend` kopieren. Nach
+dem Kopieren im Projekt-Root einmal `npm install --include=dev` ausführen; damit
+wird der Workspace-Client unter `node_modules/@filehouse/mailservice-client`
+verfügbar und auch `vite` für `npm run dev` bzw. den Frontend-Build installiert.
+Für eine fertige Produktion, deren Frontend bereits gebaut wurde und nur über
+`npm start` läuft, kann stattdessen `npm install --omit=dev` verwendet werden.
+
 Wenn `BMS_ORDER_MAIL_TEST_RECIPIENT` gesetzt ist, werden ausnahmslos alle
 Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
 Wert geleert werden; danach gilt Customer Service aus
