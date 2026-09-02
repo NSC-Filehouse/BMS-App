@@ -314,39 +314,6 @@ function InfoRow({ icon, label, value, link, onClick, forceRight = false }) {
   );
 }
 
-function CompactInfoRow({ icon, label, value }) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 2,
-        py: 0.75,
-        minWidth: 0,
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', minWidth: 0 }}>
-        {icon}
-        <Typography variant="body2" color="text.secondary">
-          {label}
-        </Typography>
-      </Box>
-      <Typography
-        variant="body2"
-        sx={{
-          textAlign: 'right',
-          minWidth: 0,
-          overflowWrap: 'anywhere',
-          wordBreak: 'break-word',
-        }}
-      >
-        {value}
-      </Typography>
-    </Box>
-  );
-}
-
 export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -670,31 +637,48 @@ export default function CustomerDetail() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={handleBack}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 1, mb: 2, minWidth: 0 }}>
+        <IconButton aria-label="back" onClick={handleBack} sx={{ mt: 0.25 }}>
           <ArrowBackIcon />
         </IconButton>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ minWidth: 0 }}>
           {!loading && !error && item && (
-            <CompactInfoRow
-              icon={<PersonIcon fontSize="small" />}
-              label={t('sales_rep_label')}
-              value={salesRep || '-'}
-            />
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                alignItems: 'center',
+                columnGap: 2,
+                minWidth: 0,
+                py: 0.75,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', minWidth: 0 }}>
+                <PersonIcon fontSize="small" />
+                <Typography variant="body2" color="text.secondary">
+                  {t('sales_rep_label')}
+                </Typography>
+              </Box>
+              <Typography variant="body2" sx={{ textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 }}>
+                {salesRep || '-'}
+              </Typography>
+            </Box>
           )}
-          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-            {name || String(id)}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            <Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {name || String(id)}
+            </Typography>
+            <Button
+              variant={isSelectedCustomer ? 'outlined' : 'contained'}
+              size="small"
+              sx={{ flexShrink: 0 }}
+              disabled={!item || isSelectedCustomer}
+              onClick={handleSelectCustomer}
+            >
+              {isSelectedCustomer ? t('selected_label') : t('select_label')}
+            </Button>
+          </Box>
         </Box>
-        <Button
-          variant={isSelectedCustomer ? 'outlined' : 'contained'}
-          size="small"
-          sx={{ ml: 'auto', flexShrink: 0, mt: 1.1 }}
-          disabled={!item || isSelectedCustomer}
-          onClick={handleSelectCustomer}
-        >
-          {isSelectedCustomer ? t('selected_label') : t('select_label')}
-        </Button>
       </Box>
 
       {loading && (
@@ -711,37 +695,54 @@ export default function CustomerDetail() {
             <Box sx={{ mb: 1 }}>
               <Box
                 sx={{
-                  display: 'flex',
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
                   alignItems: 'center',
-                  gap: 1,
+                  columnGap: 2,
                   py: 0.75,
                   color: creditLimit?.status === 'expired' ? 'error.main' : 'text.secondary',
                 }}
               >
-                <AccountBalanceWalletIcon fontSize="small" />
-                <Typography
-                  variant="body2"
-                  sx={{
-                    minWidth: 0,
-                    flex: 1,
-                    fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
-                  }}
-                >
-                  {creditLimitText}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                  <AccountBalanceWalletIcon fontSize="small" />
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      minWidth: 0,
+                      fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
+                    }}
+                  >
+                    {creditLimitText}
+                  </Typography>
+                </Box>
                 {hasAvailableCredit && (
                   <Typography
                     variant="body2"
-                    sx={{ color: availableCreditColor, fontWeight: 700, flexShrink: 0, textAlign: 'right' }}
+                    sx={{ color: availableCreditColor, fontWeight: 700, whiteSpace: 'nowrap', textAlign: 'right' }}
                   >
                     {t('credit_limit_available', { amount: formatEuro(availableCreditAmount) })}
                   </Typography>
                 )}
               </Box>
               {hasOpenOrdersAmount && (
-                <Typography variant="body2" sx={{ ml: 4, color: 'text.secondary' }}>
-                  {t('credit_limit_open_orders', { amount: formatEuro(openOrdersAmount) })}
-                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    alignItems: 'center',
+                    columnGap: 2,
+                    ml: 4,
+                    mt: 0.25,
+                    color: 'text.secondary',
+                  }}
+                >
+                  <Typography variant="body2">
+                    {t('credit_limit_open_orders_label')}:
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatEuro(openOrdersAmount)}
+                  </Typography>
+                </Box>
               )}
             </Box>
 
