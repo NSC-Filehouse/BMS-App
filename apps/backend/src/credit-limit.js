@@ -14,7 +14,7 @@ function calculateAvailableCredit({ amount, unpaidInvoicesAmount = 0, openOrders
     unpaidInvoicesAmount: unpaidInvoices,
     openOrdersAmount: openOrders,
     availableAmount: Number.isFinite(limit)
-      ? limit - unpaidInvoices - openOrders
+      ? limit - unpaidInvoices
       : null,
   };
 }

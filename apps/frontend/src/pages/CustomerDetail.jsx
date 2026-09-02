@@ -429,6 +429,8 @@ export default function CustomerDetail() {
       : t('credit_limit_missing');
   const availableCreditAmount = Number(creditLimit?.availableAmount);
   const hasAvailableCredit = creditLimit?.status === 'active' && Number.isFinite(availableCreditAmount);
+  const openOrdersAmount = Number(creditLimit?.openOrdersAmount);
+  const hasOpenOrdersAmount = Boolean(creditLimit) && Number.isFinite(openOrdersAmount);
   const availableCreditColor = availableCreditAmount > 0
     ? 'success.main'
     : availableCreditAmount < 0
@@ -697,33 +699,39 @@ export default function CustomerDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                py: 0.75,
-                mb: 1,
-                color: creditLimit?.status === 'expired' ? 'error.main' : 'text.secondary',
-              }}
-            >
-              <AccountBalanceWalletIcon fontSize="small" />
-              <Typography
-                variant="body2"
+            <Box sx={{ mb: 1 }}>
+              <Box
                 sx={{
-                  minWidth: 0,
-                  flex: 1,
-                  fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  py: 0.75,
+                  color: creditLimit?.status === 'expired' ? 'error.main' : 'text.secondary',
                 }}
               >
-                {creditLimitText}
-              </Typography>
-              {hasAvailableCredit && (
+                <AccountBalanceWalletIcon fontSize="small" />
                 <Typography
                   variant="body2"
-                  sx={{ color: availableCreditColor, fontWeight: 700, flexShrink: 0, textAlign: 'right' }}
+                  sx={{
+                    minWidth: 0,
+                    flex: 1,
+                    fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
+                  }}
                 >
-                  {t('credit_limit_available', { amount: formatEuro(availableCreditAmount) })}
+                  {creditLimitText}
+                </Typography>
+                {hasAvailableCredit && (
+                  <Typography
+                    variant="body2"
+                    sx={{ color: availableCreditColor, fontWeight: 700, flexShrink: 0, textAlign: 'right' }}
+                  >
+                    {t('credit_limit_available', { amount: formatEuro(availableCreditAmount) })}
+                  </Typography>
+                )}
+              </Box>
+              {hasOpenOrdersAmount && (
+                <Typography variant="body2" sx={{ ml: 4, color: 'text.secondary' }}>
+                  {t('credit_limit_open_orders', { amount: formatEuro(openOrdersAmount) })}
                 </Typography>
               )}
             </Box>

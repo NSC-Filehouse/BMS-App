@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { calculateAvailableCredit } = require('../src/credit-limit');
 
-test('calculates available credit from unpaid invoices and open orders', () => {
+test('calculates available credit from unpaid invoices and keeps open orders separate', () => {
   assert.deepEqual(calculateAvailableCredit({
     amount: 10000,
     unpaidInvoicesAmount: 1250.5,
@@ -12,14 +12,14 @@ test('calculates available credit from unpaid invoices and open orders', () => {
     amount: 10000,
     unpaidInvoicesAmount: 1250.5,
     openOrdersAmount: 3000,
-    availableAmount: 5749.5,
+    availableAmount: 8749.5,
   });
 });
 
-test('keeps negative available credit negative', () => {
+test('keeps available credit negative when unpaid invoices exceed the limit', () => {
   assert.equal(calculateAvailableCredit({
     amount: 1000,
-    unpaidInvoicesAmount: 900,
+    unpaidInvoicesAmount: 1100,
     openOrdersAmount: 200,
   }).availableAmount, -100);
 });
