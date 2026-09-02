@@ -339,6 +339,7 @@ export default function CustomerDetail() {
   const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
+  const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -635,6 +636,31 @@ export default function CustomerDetail() {
     }));
   }, []);
 
+  const togglePurchasedArticleGroup = React.useCallback((groupKey) => {
+    setExpandedPurchasedArticleGroups((prev) => ({
+      ...prev,
+      [groupKey]: prev[groupKey] !== true,
+    }));
+  }, []);
+
+  React.useEffect(() => {
+    setExpandedPurchasedArticleGroups({});
+  }, [id]);
+
+  const navigateToPurchasedProduct = React.useCallback((productId) => {
+    if (!productId) return;
+    navigate(`/products/${encodeURIComponent(productId)}`, {
+      state: {
+        fromCustomer: {
+          id,
+          name,
+          address,
+          representative: salesRep,
+        },
+      },
+    });
+  }, [address, id, name, navigate, salesRep]);
+
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 1, mb: 2, minWidth: 0 }}>
@@ -895,44 +921,92 @@ export default function CustomerDetail() {
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_purchased_articles')}</Typography>
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.map((group, groupIdx) => (
-                  <Box key={group.id || group.key || `${group.name}-${groupIdx}`} sx={{ display: 'grid', gap: 0.45 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mt: groupIdx ? 0.45 : 0 }}>
-                      {group.name || '-'}
-                    </Typography>
-                    <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
-                      {(Array.isArray(group.articles) ? group.articles : []).map((article, idx) => (
-                        <Card
-                          key={article.id || `${article.article}-${idx}`}
-                          variant="outlined"
-                          sx={article.productId ? { cursor: 'pointer' } : undefined}
-                          onClick={article.productId
-                            ? () => navigate(`/products/${encodeURIComponent(article.productId)}`, {
-                              state: {
-                                fromCustomer: {
-                                  id,
-                                  name,
-                                  address,
-                                  representative: salesRep,
-                                },
-                              },
-                            })
-                            : undefined}
+                  (() => {
+                    const groupKey = group.id || group.key || `${group.name}-${groupIdx}`;
+                    const articles = Array.isArray(group.articles) ? group.articles : [];
+                    const firstAvailableArticle = articles.find((article) => article?.productId);
+                    const hasAvailableArticle = Boolean(firstAvailableArticle?.productId);
+                    const isExpanded = purchasedArticlesQuery.trim() !== ''
+                      || expandedPurchasedArticleGroups[groupKey] === true;
+
+                    return (
+                      <Box key={groupKey} sx={{ display: 'grid', gap: 0.45 }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.25,
+                            mt: groupIdx ? 0.45 : 0,
+                            minWidth: 0,
+                          }}
                         >
-                          <CardContent sx={{ py: '6px !important', px: '10px !important' }}>
-                            <Typography
-                              variant="body2"
+                          <IconButton
+                            size="small"
+                            aria-label={isExpanded ? 'Produkte einklappen' : 'Produkte ausklappen'}
+                            aria-expanded={isExpanded}
+                            onClick={() => togglePurchasedArticleGroup(groupKey)}
+                            sx={{ p: 0.25, color: 'text.secondary' }}
+                          >
+                            <ChevronRightIcon
+                              fontSize="small"
                               sx={{
-                                fontSize: '0.84rem',
-                                ...(article.productId ? { color: 'primary.main', textDecoration: 'underline' } : {}),
+                                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                transition: 'transform 160ms ease',
                               }}
-                            >
-                              {article.article || '-'}
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </Box>
-                  </Box>
+                            />
+                          </IconButton>
+                          <Typography
+                            component={hasAvailableArticle ? 'button' : 'div'}
+                            variant="body2"
+                            onClick={hasAvailableArticle
+                              ? () => navigateToPurchasedProduct(firstAvailableArticle.productId)
+                              : () => togglePurchasedArticleGroup(groupKey)}
+                            sx={{
+                              minWidth: 0,
+                              fontWeight: 600,
+                              border: 0,
+                              bgcolor: 'transparent',
+                              p: 0,
+                              font: 'inherit',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              ...(hasAvailableArticle
+                                ? { color: 'primary.main', textDecoration: 'underline' }
+                                : {}),
+                            }}
+                          >
+                            {group.name || '-'}
+                          </Typography>
+                        </Box>
+                        {isExpanded && (
+                          <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
+                            {articles.map((article, idx) => (
+                              <Card
+                                key={article.id || `${article.article}-${idx}`}
+                                variant="outlined"
+                                sx={article.productId ? { cursor: 'pointer' } : undefined}
+                                onClick={article.productId
+                                  ? () => navigateToPurchasedProduct(article.productId)
+                                  : undefined}
+                              >
+                                <CardContent sx={{ py: '6px !important', px: '10px !important' }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      fontSize: '0.84rem',
+                                      ...(article.productId ? { color: 'primary.main', textDecoration: 'underline' } : {}),
+                                    }}
+                                  >
+                                    {article.article || '-'}
+                                  </Typography>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </Box>
+                        )}
+                      </Box>
+                    );
+                  })()
                 ))}
               </AccordionDetails>
             </Accordion>
