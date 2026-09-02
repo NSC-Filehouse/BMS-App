@@ -670,17 +670,26 @@ export default function CustomerDetail() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {name || String(id)}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {!loading && !error && item && (
+            <CompactInfoRow
+              icon={<PersonIcon fontSize="small" />}
+              label={t('sales_rep_label')}
+              value={salesRep || '-'}
+            />
+          )}
+          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+            {name || String(id)}
+          </Typography>
+        </Box>
         <Button
           variant={isSelectedCustomer ? 'outlined' : 'contained'}
           size="small"
-          sx={{ ml: 'auto', flexShrink: 0 }}
+          sx={{ ml: 'auto', flexShrink: 0, mt: 1.1 }}
           disabled={!item || isSelectedCustomer}
           onClick={handleSelectCustomer}
         >
@@ -960,13 +969,6 @@ export default function CustomerDetail() {
               value={homepageRaw || '-'}
               link={homepageLink || undefined}
               forceRight
-            />
-
-            <Divider sx={{ my: 3 }} />
-            <CompactInfoRow
-              icon={<PersonIcon fontSize="small" />}
-              label={t('sales_rep_label')}
-              value={salesRep || '-'}
             />
 
             {representatives.length > 0 && (
