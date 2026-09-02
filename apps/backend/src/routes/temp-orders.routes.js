@@ -578,7 +578,7 @@ async function loadCustomerPaymentDefaultId(database, clientReferenceId) {
   return Number.isFinite(paymentTextId) && paymentTextId > 0 ? paymentTextId : null;
 }
 
-async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
+async function normalizeOrderLevelInput(req, body, clientAddress, lang, defaultPackagingBeNumber = '') {
   const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
   const customerPaymentDefaultId = await loadCustomerPaymentDefaultId(req.database, body?.clientReferenceId);
   const requestedPaymentId = asInt(body?.specialPaymentId, 0) || null;
@@ -602,7 +602,10 @@ async function normalizeOrderLevelInput(req, body, clientAddress, lang) {
     throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const packagingType = asText(body?.packagingType);
+  const packagingType = asText(body?.packagingType)
+    || (asText(defaultPackagingBeNumber)
+      ? await loadPackagingType(req.database, asText(defaultPackagingBeNumber))
+      : '');
   if (!packagingType) {
     throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
@@ -1012,7 +1015,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
-  const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
+  const orderLevel = await normalizeOrderLevelInput(
+    req,
+    body,
+    clientAddress,
+    lang,
+    asText(positionsInput[0]?.beNumber),
+  );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
@@ -1504,16 +1513,22 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
-  const orderLevel = await normalizeOrderLevelInput(req, body, clientAddress, lang);
+  const positionsInput = normalizePositionsInput(body);
+  if (!Array.isArray(positionsInput) || !positionsInput.length) {
+    throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
+  }
+  const orderLevel = await normalizeOrderLevelInput(
+    req,
+    body,
+    clientAddress,
+    lang,
+    asText(positionsInput[0]?.beNumber),
+  );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
 
-  const positionsInput = normalizePositionsInput(body);
-  if (!Array.isArray(positionsInput) || !positionsInput.length) {
-    throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
-  }
   const normalizedPositions = [];
   for (const raw of positionsInput) {
     const beNumber = asText(raw?.beNumber);

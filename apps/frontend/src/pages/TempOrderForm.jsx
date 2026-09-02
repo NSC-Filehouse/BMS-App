@@ -185,6 +185,29 @@ const PACKAGING_TYPES_EN = [
   'NEUTRAL Octas',
 ];
 
+const PACKAGING_TYPE_LABELS = {
+  sackware: { de: 'Sackware', en: 'Bags' },
+  'siloware': { de: 'Siloware', en: 'Silo/bulk' },
+  'big bags': { de: 'Big Bags', en: 'Big Bags' },
+  octa: { de: 'Octa', en: 'Octabins' },
+  octabins: { de: 'Octa', en: 'Octabins' },
+  andere: { de: 'Andere', en: 'Others' },
+  others: { de: 'Andere', en: 'Others' },
+  'neutrale sackware': { de: 'NEUTRALE Sackware', en: 'NEUTRAL Bags' },
+  'neutral bags': { de: 'NEUTRALE Sackware', en: 'NEUTRAL Bags' },
+  'neutrale oktabins': { de: 'NEUTRALE Oktabins', en: 'NEUTRAL Octas' },
+  'neutral octas': { de: 'NEUTRALE Oktabins', en: 'NEUTRAL Octas' },
+};
+
+function resolvePackagingOption(value, options, lang) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const direct = (Array.isArray(options) ? options : [])
+    .find((option) => String(option || '').trim().toLowerCase() === text.toLowerCase());
+  if (direct) return direct;
+  return PACKAGING_TYPE_LABELS[text.toLowerCase()]?.[lang] || text;
+}
+
 export default function TempOrderForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -266,6 +289,48 @@ export default function TempOrderForm() {
     deliveryAddressManual: false,
   });
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
+  const packagingTouchedRef = React.useRef(false);
+  const packagingCacheRef = React.useRef(new Map());
+  const packagingRequestsRef = React.useRef(new Map());
+
+  const loadPackagingDefault = React.useCallback(async (beNumber) => {
+    if (isEdit || isCopyCreate || packagingTouchedRef.current || String(form.packagingType || '').trim()) {
+      return '';
+    }
+    const key = String(beNumber || '').trim();
+    if (!key) return '';
+
+    if (packagingCacheRef.current.has(key)) {
+      const cached = packagingCacheRef.current.get(key) || '';
+      if (cached && !packagingTouchedRef.current) {
+        setForm((prev) => (String(prev.packagingType || '').trim() ? prev : { ...prev, packagingType: cached }));
+      }
+      return cached;
+    }
+
+    const existingRequest = packagingRequestsRef.current.get(key);
+    if (existingRequest) return existingRequest;
+
+    const request = apiRequest(`/temp-orders/meta/by-be-number/${encodeURIComponent(key)}`)
+      .then((res) => {
+        const raw = String(res?.data?.packagingType || '').trim();
+        const resolved = resolvePackagingOption(raw, packagingOptions, lang);
+        packagingCacheRef.current.set(key, resolved);
+        if (resolved && !packagingTouchedRef.current) {
+          setForm((prev) => (String(prev.packagingType || '').trim() ? prev : { ...prev, packagingType: resolved }));
+        }
+        return resolved;
+      })
+      .catch(() => {
+        packagingCacheRef.current.set(key, '');
+        return '';
+      })
+      .finally(() => {
+        packagingRequestsRef.current.delete(key);
+      });
+    packagingRequestsRef.current.set(key, request);
+    return request;
+  }, [form.packagingType, isCopyCreate, isEdit, lang, packagingOptions]);
 
   const resolvePaymentTextById = React.useCallback((id) => {
     const idNum = Number(id);
@@ -501,6 +566,15 @@ export default function TempOrderForm() {
     run();
     return () => { alive = false; };
   }, [id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
+
+  React.useEffect(() => {
+    if (isEdit || isCopyCreate || String(form.packagingType || '').trim() || !Array.isArray(positions) || positions.length === 0) {
+      return;
+    }
+    const firstPosition = positions.find((position) => String(position?.beNumber || '').trim());
+    if (!firstPosition) return;
+    void loadPackagingDefault(firstPosition.beNumber);
+  }, [form.packagingType, isCopyCreate, isEdit, loadPackagingDefault, positions]);
 
   React.useEffect(() => {
     const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);
@@ -743,6 +817,13 @@ export default function TempOrderForm() {
   }, []);
 
   const submit = async () => {
+    let defaultPackagingType = '';
+    if (!isEdit && !isCopyCreate && !String(form.packagingType || '').trim()) {
+      const firstPosition = (Array.isArray(positions) ? positions : [])
+        .find((position) => String(position?.beNumber || '').trim());
+      defaultPackagingType = await loadPackagingDefault(firstPosition?.beNumber);
+    }
+    const effectivePackagingType = String(form.packagingType || '').trim() || defaultPackagingType;
     const messages = [];
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
     if (isPositionsMode && (!Array.isArray(positions) || positions.length === 0)) {
@@ -754,7 +835,7 @@ export default function TempOrderForm() {
       messages.push(t('validation_contact_required'));
     }
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
-    if (!form.packagingType) messages.push(t('validation_packaging_required'));
+    if (!effectivePackagingType) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
@@ -802,7 +883,7 @@ export default function TempOrderForm() {
         specialPaymentId: form.specialPaymentId === '' ? null : Number(form.specialPaymentId),
         incotermText: form.incotermText || null,
         incotermId: form.incotermId === '' ? null : Number(form.incotermId),
-        packagingType: form.packagingType || '',
+        packagingType: effectivePackagingType,
         deliveryAddress: form.deliveryAddress || null,
         deliveryAddressChanged: Boolean(form.deliveryAddressManual),
       };
@@ -1008,9 +1089,15 @@ export default function TempOrderForm() {
               select
               label={t('packaging_type_label')}
               value={form.packagingType || ''}
-              onChange={(e) => setForm((p) => ({ ...p, packagingType: e.target.value }))}
+              onChange={(e) => {
+                packagingTouchedRef.current = true;
+                setForm((p) => ({ ...p, packagingType: e.target.value }));
+              }}
               fullWidth
             >
+              {form.packagingType
+                && !packagingOptions.some((option) => String(option).toLowerCase() === String(form.packagingType).toLowerCase())
+                && <MenuItem value={form.packagingType}>{form.packagingType}</MenuItem>}
               {packagingOptions.map((z) => (
                 <MenuItem key={z} value={z}>{z}</MenuItem>
               ))}
@@ -1295,6 +1382,7 @@ export default function TempOrderForm() {
               setAddPosWpzOriginal(false);
               setAddPosWpzComment('Neutralisieren');
               if (value?.id) {
+                void loadPackagingDefault(value.beNumber);
                 (async () => {
                   try {
                     const wpzRes = await apiRequest(`/products/${encodeURIComponent(value.id)}/wpz`);
