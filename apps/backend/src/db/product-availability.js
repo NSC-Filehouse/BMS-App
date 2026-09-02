@@ -17,6 +17,7 @@ function productAvailabilitySource(alias = 'availability') {
       [plastic_sub].[art5_Bezeichnung] AS [Kunststoff_Untergruppe],
       [base].[beP_VL] AS [beP_VL],
       [base].[Menge] AS [Menge],
+      [base].[beP_Artikelindex] AS [beP_Artikelindex],
       [base].[Einheit] AS [Einheit],
       [base].[Artikel] AS [Artikel],
       [base].[beP_Additive] AS [beP_Additive],

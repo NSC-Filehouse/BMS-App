@@ -333,6 +333,21 @@ function isPpCopo3600Article(value) {
 }
 
 function resolvePurchasedArticleGroup(row) {
+  const articleIndex = toText(row.articleIndex);
+  const masterArticleName = toText(row.masterArticleName);
+  if (articleIndex && masterArticleName) {
+    return {
+      key: `master-article:${articleIndex}`,
+      name: masterArticleName,
+    };
+  }
+  if (masterArticleName) {
+    return {
+      key: `master-article-name:${masterArticleName.toLowerCase()}`,
+      name: masterArticleName,
+    };
+  }
+
   if (isPpCopo3600Article(row.article)) {
     return { key: 'pp-copo-3600-og', name: 'PP Copo 3600 OG' };
   }
@@ -998,6 +1013,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     const metaRows = await runSQLQueryAccess(req.database, `
       SELECT
         [a].[agA_Artikelindex] AS articleIndex,
+        [a].[agA_Artikelname] AS masterArticleName,
         [a].[agA_Artikelgruppe] AS articleGroupId,
         [g].[ag_Gruppenname] AS articleGroupName,
         [a].[agA_MFI] AS mfi,
@@ -1019,74 +1035,144 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     }
   }
 
-  const articles = [...new Set(purchasedRows
-    .map((row) => toText(row.article))
-    .filter(Boolean))];
-  const viewMap = new Map();
-  if (articles.length) {
-    const placeholders = articles.map(() => '?').join(', ');
-    const viewRows = await runSQLQueryAccess(req.database, `
+  const viewRows = [];
+  const viewProductMap = new Map();
+  const viewProductMapByArticle = new Map();
+  if (articleIndexes.length) {
+    const placeholders = articleIndexes.map(() => '?').join(', ');
+    const currentViewRows = await runSQLQueryAccess(req.database, `
       SELECT
+        [beP_Artikelindex] AS articleIndex,
         [Artikel] AS article,
+        [beP_MFI] AS mfi,
+        [beP_MFIgemessen] AS mfiMeasured,
         [Lagerort] AS warehouse,
         [Bestell-Pos] AS beNumber,
         [Kunststoff] AS plastic,
         [Kunststoff_Untergruppe] AS sub
       FROM ${PRODUCTS_VIEW_SQL}
-      WHERE COALESCE([Artikel], '') IN (${placeholders})
-    `, articles);
+      WHERE [beP_Artikelindex] IN (${placeholders})
+    `, articleIndexes);
+    viewRows.push(...(Array.isArray(currentViewRows) ? currentViewRows : []));
 
-    const groupedViewRows = new Map();
-    for (const viewRow of (Array.isArray(viewRows) ? viewRows : [])) {
+    for (const viewRow of viewRows) {
+      const articleIndex = toText(viewRow.articleIndex);
       const article = toText(viewRow.article);
-      if (!article) continue;
-      if (!groupedViewRows.has(article)) groupedViewRows.set(article, []);
-      groupedViewRows.get(article).push(viewRow);
-    }
-
-    for (const article of articles) {
-      const candidates = groupedViewRows.get(article) || [];
-      const chosen = candidates[0] || null;
-      if (chosen) {
-        viewMap.set(article, buildProductIdFromViewRow(chosen));
+      if (!articleIndex || !article) continue;
+      const mapKey = `${articleIndex}\u0000${article}`;
+      if (!viewProductMap.has(mapKey)) {
+        viewProductMap.set(mapKey, buildProductIdFromViewRow(viewRow));
+      }
+      if (!viewProductMapByArticle.has(article)) {
+        viewProductMapByArticle.set(article, buildProductIdFromViewRow(viewRow));
       }
     }
   }
 
   const groups = new Map();
-  const seenArticles = new Set();
+
+  function ensureGroup(group) {
+    if (!groups.has(group.key)) {
+      groups.set(group.key, {
+        ...group,
+        articles: [],
+        articleMap: new Map(),
+      });
+    }
+    return groups.get(group.key);
+  }
+
+  function addArticleToGroup(group, articleData) {
+    const articleIndex = toText(articleData.articleIndex);
+    const article = toText(articleData.article);
+    if (!article) return;
+    const childKey = `${articleIndex}\u0000${article}`;
+    const existing = group.articleMap.get(childKey);
+    if (existing) {
+      if (!existing.productId && articleData.productId) existing.productId = articleData.productId;
+      if (existing.mfi === null && articleData.mfi !== null) existing.mfi = articleData.mfi;
+      return;
+    }
+
+    const child = {
+      id: `${customerId}-purchased-article-${group.key}-${group.articles.length + 1}`,
+      article,
+      articleIndex: articleIndex || null,
+      mfi: articleData.mfi,
+      productId: articleData.productId || null,
+    };
+    group.articleMap.set(childKey, child);
+    group.articles.push(child);
+  }
+
   for (const row of purchasedRows) {
     const article = toText(row.article);
-    if (!article || seenArticles.has(article)) continue;
-    seenArticles.add(article);
+    if (!article) continue;
     const articleIndex = toText(row.articleIndex);
     const meta = articleMetaMap.get(articleIndex) || {};
     const group = resolvePurchasedArticleGroup({
       article,
+      articleIndex,
+      masterArticleName: meta.masterArticleName,
       articleGroupId: meta.articleGroupId,
       articleGroupName: meta.articleGroupName,
       plastic: meta.plastic,
       plasticSubCategory: meta.plasticSubCategory,
     });
-    if (!groups.has(group.key)) groups.set(group.key, { ...group, articles: [] });
+    const groupEntry = ensureGroup(group);
 
     const textMfi = parseMfiFromText(article);
-    const masterMfi = Number(meta.mfi);
+    const masterMfi = meta.mfi === null || meta.mfi === undefined || meta.mfi === ''
+      ? null
+      : Number(meta.mfi);
     const mfi = textMfi !== null
       ? textMfi
       : (Number.isFinite(masterMfi) ? masterMfi : null);
-    const groupArticles = groups.get(group.key).articles;
-    groupArticles.push({
-      id: `${customerId}-purchased-article-${group.key}-${groupArticles.length + 1}`,
+    const mapKey = `${articleIndex}\u0000${article}`;
+    addArticleToGroup(groupEntry, {
       article,
-      articleIndex: articleIndex || null,
       mfi,
-      productId: viewMap.get(article) || null,
+      articleIndex,
+      productId: viewProductMap.get(mapKey) || viewProductMapByArticle.get(article) || null,
+    });
+  }
+
+  for (const viewRow of viewRows) {
+    const articleIndex = toText(viewRow.articleIndex);
+    const article = toText(viewRow.article);
+    if (!articleIndex || !article) continue;
+    const meta = articleMetaMap.get(articleIndex) || {};
+    const group = resolvePurchasedArticleGroup({
+      article,
+      articleIndex,
+      masterArticleName: meta.masterArticleName,
+      articleGroupId: meta.articleGroupId,
+      articleGroupName: meta.articleGroupName,
+      plastic: meta.plastic,
+      plasticSubCategory: meta.plasticSubCategory,
+    });
+    const groupEntry = ensureGroup(group);
+    const textMfi = parseMfiFromText(article);
+    const viewMfiValue = viewRow.mfiMeasured !== null && viewRow.mfiMeasured !== undefined && viewRow.mfiMeasured !== ''
+      ? viewRow.mfiMeasured
+      : viewRow.mfi;
+    const viewMfi = viewMfiValue === null || viewMfiValue === undefined || viewMfiValue === ''
+      ? null
+      : Number(viewMfiValue);
+    const mfi = textMfi !== null
+      ? textMfi
+      : (Number.isFinite(viewMfi) ? viewMfi : null);
+    const mapKey = `${articleIndex}\u0000${article}`;
+    addArticleToGroup(groupEntry, {
+      article,
+      articleIndex,
+      mfi,
+      productId: viewProductMap.get(mapKey) || null,
     });
   }
 
   const data = Array.from(groups.values())
-    .map((group) => ({
+    .map(({ articleMap, ...group }) => ({
       ...group,
       articles: group.articles.sort((left, right) => {
         if (left.mfi === null && right.mfi !== null) return 1;
