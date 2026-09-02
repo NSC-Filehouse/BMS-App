@@ -41,8 +41,8 @@ test('open order count query only selects own non-final orders', () => {
   const sql = buildOpenOrderCountSql('[BMSApp].[tbl_Temp_Auftrag]');
   assert.match(sql, /COUNT_BIG\(\*\)/);
   assert.match(sql, /ta_CreatedBy/);
-  assert.match(sql, /ta_completed/);
-  assert.match(sql, /COALESCE\(\[ta_completed\], 0\) = 0/);
+  assert.match(sql, /ta_Status/);
+  assert.match(sql, /COALESCE\(\[ta_Status\], 0\) IN \(0, 3\)/);
 });
 
 test('all-user query groups open orders by normalized creator short code', () => {
@@ -50,7 +50,7 @@ test('all-user query groups open orders by normalized creator short code', () =>
   assert.match(sql, /userShortCode/);
   assert.match(sql, /openOrderCount/);
   assert.match(sql, /GROUP BY LOWER\(LTRIM\(RTRIM\(COALESCE\(\[ta_CreatedBy\]/);
-  assert.match(sql, /ta_completed/);
+  assert.match(sql, /ta_Status/);
 });
 
 test('reminder push text is localized and includes the count', () => {

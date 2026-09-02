@@ -16,6 +16,24 @@ BEGIN
   ADD [ta_CompletedBy] NVARCHAR(100) NULL;
 END;
 
+IF COL_LENGTH('BMSApp.tbl_Temp_Auftrag', 'ta_Status') IS NULL
+BEGIN
+  IF COL_LENGTH('BMSApp.tbl_Temp_Auftrag', 'ta_Statsu') IS NOT NULL
+  BEGIN
+    EXEC sys.sp_rename
+      N'BMSApp.tbl_Temp_Auftrag.ta_Statsu',
+      N'ta_Status',
+      N'COLUMN';
+  END
+  ELSE
+  BEGIN
+    ALTER TABLE [BMSApp].[tbl_Temp_Auftrag]
+    ADD [ta_Status] INT NOT NULL
+      CONSTRAINT [DF_tbl_Temp_Auftrag_ta_Status]
+      DEFAULT ((0));
+  END;
+END;
+
 IF OBJECT_ID(N'BMSApp.OrderMailOutbox', N'U') IS NULL
 BEGIN
   CREATE TABLE [BMSApp].[OrderMailOutbox] (
@@ -53,9 +71,20 @@ AFTER UPDATE, DELETE
 AS
 BEGIN
   SET NOCOUNT ON;
-  IF EXISTS (SELECT 1 FROM deleted WHERE [ta_completed] = 1)
+  IF EXISTS (
+    SELECT 1
+    FROM deleted d
+    LEFT JOIN inserted i
+      ON i.[ta_id] = d.[ta_id]
+    WHERE COALESCE(d.[ta_Status], CASE WHEN d.[ta_completed] = 1 THEN 1 ELSE 0 END) NOT IN (0, 3)
+      AND (
+        i.[ta_id] IS NULL
+        OR COALESCE(i.[ta_Status], CASE WHEN i.[ta_completed] = 1 THEN 1 ELSE 0 END)
+           = COALESCE(d.[ta_Status], CASE WHEN d.[ta_completed] = 1 THEN 1 ELSE 0 END)
+      )
+  )
   BEGIN
-    THROW 50001, ''Ein finalisierter Auftrag darf nicht geaendert oder geloescht werden.'', 1;
+    THROW 50001, ''Ein gesperrter Auftrag darf nicht geaendert oder geloescht werden.'', 1;
   END;
 END;
 ');
@@ -76,10 +105,10 @@ BEGIN
     ) changed
     INNER JOIN [BMSApp].[tbl_Temp_Auftrag] orders
       ON orders.[ta_id] = changed.[tap_ta_id]
-    WHERE orders.[ta_completed] = 1
+    WHERE COALESCE(orders.[ta_Status], CASE WHEN orders.[ta_completed] = 1 THEN 1 ELSE 0 END) NOT IN (0, 3)
   )
   BEGIN
-    THROW 50002, ''Positionen eines finalisierten Auftrags duerfen nicht geaendert werden.'', 1;
+    THROW 50002, ''Positionen eines gesperrten Auftrags duerfen nicht geaendert werden.'', 1;
   END;
 END;
 ');

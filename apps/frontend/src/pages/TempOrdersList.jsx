@@ -21,6 +21,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import {
+  getTempOrderStatusColor,
+  getTempOrderStatusLabel,
+} from '../utils/tempOrderStatus.js';
 
 const PAGE_SIZE = 12;
 
@@ -92,7 +96,7 @@ export default function TempOrdersList() {
     if (listState && (listState.page || listState.q !== undefined || listState.status !== undefined || listState.ownerScope !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
-      const restoredStatus = ['all', 'draft', 'sent'].includes(String(listState.status || ''))
+      const restoredStatus = ['all', 'draft', 'sent', 'rework'].includes(String(listState.status || ''))
         ? String(listState.status)
         : 'all';
       const restoredOwnerScope = String(listState.ownerScope || '') === 'mine' ? 'mine' : 'all';
@@ -186,6 +190,7 @@ export default function TempOrdersList() {
           >
             <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton>
             <ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton>
+            <ToggleButton value="rework">{t('temp_orders_status_rework')}</ToggleButton>
             <ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
           </ToggleButtonGroup>
 
@@ -244,8 +249,14 @@ export default function TempOrdersList() {
                     <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {row.clientName || row.id}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: row.completed ? 'success.main' : 'text.secondary', fontWeight: 600 }}>
-                      {row.completed ? t('temp_order_status_final') : t('temp_order_status_draft')}
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: getTempOrderStatusColor(row.orderStatus, row.completed),
+                        fontWeight: 600,
+                      }}
+                    >
+                      {getTempOrderStatusLabel(t, row.orderStatus, row.completed)}
                     </Typography>
                     {(Array.isArray(row.positions) && row.positions.length > 0
                       ? row.positions

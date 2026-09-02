@@ -18,6 +18,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import {
+  TEMP_ORDER_STATUS,
+  getTempOrderStatusColor,
+  getTempOrderStatusLabel,
+  isTempOrderEditableStatus,
+  isTempOrderFinalizedStatus,
+  normalizeTempOrderStatus,
+} from '../utils/tempOrderStatus.js';
 
 function formatDateOnly(value) {
   if (!value) return '';
@@ -86,6 +94,10 @@ export default function TempOrderDetail() {
   const [error, setError] = React.useState('');
   const [finalizeOpen, setFinalizeOpen] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
+
+  const orderStatus = normalizeTempOrderStatus(item?.orderStatus, item?.completed);
+  const orderIsEditable = item ? isTempOrderEditableStatus(orderStatus, item.completed) : false;
+  const orderIsFinalized = item ? isTempOrderFinalizedStatus(orderStatus, item.completed) : false;
 
   const load = React.useCallback(async () => {
     try {
@@ -162,12 +174,12 @@ export default function TempOrderDetail() {
                 minWidth: 0,
               }}
             >
-              {!item.completed && (
+              {orderIsEditable && (
                 <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
                   {t('temp_order_send_bms')}
                 </Button>
               )}
-              {!item.completed && (
+              {orderIsEditable && (
                 <Button
                   variant="outlined"
                   sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
@@ -203,7 +215,7 @@ export default function TempOrderDetail() {
               >
                 {t('copy_label')}
               </Button>
-              {!item.completed && (
+              {orderIsEditable && (
                 <Button variant="outlined" color="error" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={deleteOrder}>
                   {t('delete_label')}
                 </Button>
@@ -215,10 +227,20 @@ export default function TempOrderDetail() {
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />
             <InfoRow label={t('order_received_from')} value={item.receivedFrom} />
-            <InfoRow label={t('order_completed')} value={item.completed ? t('yes_label') : t('no_label')} />
-            <InfoRow label={t('temp_order_status')} value={item.completed ? t('temp_order_status_final') : t('temp_order_status_draft')} />
-            {item.completed && <InfoRow label={t('temp_order_sent_at')} value={formatDateTime(item.closingDate)} />}
-            {item.completed && <InfoRow label={t('temp_order_sent_by')} value={item.completedBy} />}
+            <InfoRow label={t('order_completed')} value={orderIsFinalized ? t('yes_label') : t('no_label')} />
+            <Box sx={{ py: 0.75 }}>
+              <InfoRow
+                label={t('temp_order_status')}
+                value={getTempOrderStatusLabel(t, orderStatus, item.completed)}
+              />
+              {orderStatus === TEMP_ORDER_STATUS.NEEDS_REWORK && (
+                <Typography variant="caption" sx={{ color: getTempOrderStatusColor(orderStatus), display: 'block', mt: -0.25 }}>
+                  {t('temp_order_status_rework_hint')}
+                </Typography>
+              )}
+            </Box>
+            {orderIsFinalized && <InfoRow label={t('temp_order_sent_at')} value={formatDateTime(item.closingDate)} />}
+            {orderIsFinalized && <InfoRow label={t('temp_order_sent_by')} value={item.completedBy} />}
             {item.mail && <InfoRow label={t('temp_order_mail_status')} value={t(`temp_order_mail_${item.mail.status || 'pending'}`)} />}
             {item.mail?.recipient && <InfoRow label={t('temp_order_mail_recipient')} value={item.mail.recipient} />}
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />

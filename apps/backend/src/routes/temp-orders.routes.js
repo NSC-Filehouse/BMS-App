@@ -73,6 +73,13 @@ const ORDER_MAIL_OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TIMELINE_TABLE = appTableSql('timeline');
 const APP_SCHEMA_NAME = appSchemaName();
 
+const TEMP_ORDER_STATUS = Object.freeze({
+  DRAFT: 0,
+  APP_FINALIZED: 1,
+  CS_ACCEPTED: 2,
+  NEEDS_REWORK: 3,
+});
+
 function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 }
@@ -102,7 +109,26 @@ function normalizeTempOrderOwnerScope(scope) {
 
 function normalizeTempOrderStatus(status) {
   const value = asText(status).toLowerCase();
-  return value === 'draft' || value === 'sent' ? value : 'all';
+  return value === 'draft' || value === 'sent' || value === 'rework' ? value : 'all';
+}
+
+function normalizeStoredTempOrderStatus(value, legacyCompleted = false) {
+  const text = asText(value);
+  if (text) {
+    const numeric = Number(text);
+    if (Number.isInteger(numeric) && numeric >= 0) return numeric;
+  }
+  return legacyCompleted ? TEMP_ORDER_STATUS.APP_FINALIZED : TEMP_ORDER_STATUS.DRAFT;
+}
+
+function isTempOrderEditableStatus(value, legacyCompleted = false) {
+  const status = normalizeStoredTempOrderStatus(value, legacyCompleted);
+  return status === TEMP_ORDER_STATUS.DRAFT || status === TEMP_ORDER_STATUS.NEEDS_REWORK;
+}
+
+function isTempOrderFinalizedStatus(value, legacyCompleted = false) {
+  const status = normalizeStoredTempOrderStatus(value, legacyCompleted);
+  return status === TEMP_ORDER_STATUS.APP_FINALIZED || status === TEMP_ORDER_STATUS.CS_ACCEPTED;
 }
 
 function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_CreatedBy]', requestedScope = 'all') {
@@ -117,13 +143,16 @@ function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_Cr
   };
 }
 
-function buildTempOrderStatusFilter(status, column = '[o].[ta_completed]') {
+function buildTempOrderStatusFilter(status, column = '[o].[ta_Status]') {
   const normalizedStatus = normalizeTempOrderStatus(status);
   if (normalizedStatus === 'sent') {
-    return { whereSql: ` AND COALESCE(${column}, 0) = 1`, status: normalizedStatus };
+    return { whereSql: ` AND COALESCE(${column}, 0) IN (1, 2)`, status: normalizedStatus };
   }
   if (normalizedStatus === 'draft') {
     return { whereSql: ` AND COALESCE(${column}, 0) = 0`, status: normalizedStatus };
+  }
+  if (normalizedStatus === 'rework') {
+    return { whereSql: ` AND COALESCE(${column}, 0) = 3`, status: normalizedStatus };
   }
   return { whereSql: '', status: normalizedStatus };
 }
@@ -221,6 +250,7 @@ function normalizeTotal(rows) {
 }
 
 function mapTempOrderRow(row) {
+  const orderStatus = normalizeStoredTempOrderStatus(row.ta_Status, row.ta_completed);
   return {
     id: row.ta_id,
     companyId: row.ta_company_id,
@@ -241,6 +271,9 @@ function mapTempOrderRow(row) {
     deliveryAddress: asText(row.ta_delivery_address),
     deliveryAddressChanged: Boolean(row.ta_delivery_address_changed),
     completed: Boolean(row.ta_completed),
+    finalized: isTempOrderFinalizedStatus(orderStatus),
+    orderStatus,
+    editable: isTempOrderEditableStatus(orderStatus),
     closingDate: row.ta_closing_date,
     completedBy: row.ta_CompletedBy,
     createdBy: row.ta_CreatedBy,
@@ -809,7 +842,8 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       [o].[ta_CreateDate] AS createdAt,
       [o].[ta_CreatedBy] AS createdBy,
       [o].[ta_completed] AS completed,
-      [o].[ta_IsConfirmed] AS isConfirmed
+      [o].[ta_IsConfirmed] AS isConfirmed,
+      [o].[ta_Status] AS orderStatus
     FROM ${TEMP_ORDER_TABLE} o
     OUTER APPLY (
       SELECT TOP 1
@@ -847,6 +881,9 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     createdAt: row.createdAt,
     createdBy: row.createdBy,
     completed: Boolean(row.completed),
+    finalized: isTempOrderFinalizedStatus(row.orderStatus, row.completed),
+    orderStatus: normalizeStoredTempOrderStatus(row.orderStatus, row.completed),
+    editable: isTempOrderEditableStatus(row.orderStatus, row.completed),
     isConfirmed: Boolean(row.isConfirmed),
     positions: summariesByOrderId.get(Number(row.id)) || [],
   }));
@@ -1041,7 +1078,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]',
     '[ta_comment]', '[ta_special_payment_condition]', '[ta_special_payment_text]', '[ta_special_payment_id]', '[ta_delivery_type_id]', '[ta_delivery_type]',
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date]'] : []),
-    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_changed]', '[ta_completed]',
+    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
     '[ta_Attachment]', '[ta_AttachmentFileName]', '[ta_AttachmentMimeType]',
     '[ta_CreatedBy]', '[ta_CreateDate]', '[ta_LastModifiedBy]', '[ta_LastModifiedDate]',
     '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
@@ -1050,7 +1087,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '?', '?', '?', '?', '?',
     '?', '?', '?', '?', '?', '?',
     ...(hasOrderDeliveryDate ? ['?'] : []),
-    '?', '?', '?', '?',
+    '?', '?', '?', '?', '?',
     'CAST(? AS VARBINARY(MAX))', '?', '?',
     '?', '?', '?', '?',
     '?', '?', '?', '?', '?',
@@ -1072,6 +1109,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressChanged,
     0,
+    TEMP_ORDER_STATUS.DRAFT,
     attachment.buffer,
     attachment.fileName,
     attachment.mimeType,
@@ -1200,18 +1238,27 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
       }
 
+      const orderStatus = normalizeStoredTempOrderStatus(orderRow.ta_Status, orderRow.ta_completed);
+
       const existingOutboxResult = await query(`
         SELECT TOP 1 [om_ID] AS id, [om_Status] AS status
         FROM ${ORDER_MAIL_OUTBOX_TABLE} WITH (UPDLOCK, HOLDLOCK)
         WHERE [om_OrderID] = ?
       `, [id]);
       const existingOutbox = existingOutboxResult.rows[0] || null;
-      if (Boolean(orderRow.ta_completed)) {
+      if (isTempOrderFinalizedStatus(orderStatus)) {
         return {
           alreadyFinalized: true,
           outboxId: existingOutbox ? Number(existingOutbox.id) : null,
           timelineEntries: [],
         };
+      }
+      if (!isTempOrderEditableStatus(orderStatus)) {
+        throw createHttpError(409, `Temp order status ${orderStatus} cannot be finalized.`, {
+          code: 'TEMP_ORDER_STATUS_LOCKED',
+          id,
+          orderStatus,
+        });
       }
 
       const positionsResult = await query(`
@@ -1261,18 +1308,19 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 
       await query(`
         UPDATE ${TEMP_ORDER_TABLE}
-        SET [ta_completed] = 1,
+        SET [ta_Status] = 1,
             [ta_closing_date] = ?,
             [ta_CompletedBy] = ?,
             [ta_LastModifiedBy] = ?,
             [ta_LastModifiedDate] = ?
         WHERE [ta_id] = ? AND [ta_company_id] = ?
           ${ownerFilter.whereSql}
-          AND [ta_completed] = 0
+          AND [ta_Status] IN (0, 3)
       `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, ...ownerFilter.params]);
 
       let outboxId;
-      if (existingOutbox && asText(existingOutbox.status).toLowerCase() !== 'sent') {
+      const shouldRequeueExistingMail = orderStatus === TEMP_ORDER_STATUS.NEEDS_REWORK;
+      if (existingOutbox && (asText(existingOutbox.status).toLowerCase() !== 'sent' || shouldRequeueExistingMail)) {
         const requeuedOutboxResult = await query(`
           UPDATE ${ORDER_MAIL_OUTBOX_TABLE}
           SET [om_CompanyID] = ?,
@@ -1385,7 +1433,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     });
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
-    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby'))
+    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status'))
       || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }
@@ -1520,7 +1568,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   }
 
   const existingRows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 [ta_id] AS id, [ta_completed] AS completed
+    SELECT TOP 1
+      [ta_id] AS id,
+      [ta_completed] AS completed,
+      [ta_Status] AS orderStatus
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
@@ -1529,7 +1580,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!existing) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
-  if (Boolean(existing.completed)) {
+  const existingStatus = normalizeStoredTempOrderStatus(existing.orderStatus, existing.completed);
+  if (!isTempOrderEditableStatus(existingStatus)) {
     throw createHttpError(409, 'Finalized temp order cannot be edited.', { code: 'TEMP_ORDER_FINALIZED', id });
   }
   const fallbackOrderDeliveryDate = deliveryDates[0] || null;
@@ -1562,7 +1614,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     SET ${orderAssignments.join(',\n        ')}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
-      AND [ta_completed] = 0
+      AND [ta_Status] IN (0, 3)
   `;
   const updateParams = [
     clientReferenceId,
@@ -1593,7 +1645,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     WHERE [tap_ta_id] = ?
       AND EXISTS (
         SELECT 1 FROM ${TEMP_ORDER_TABLE}
-        WHERE [ta_id] = ? AND [ta_completed] = 0
+        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
       )
   `, [id, id]);
 
@@ -1675,7 +1727,9 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
 
   const existsSql = `
-    SELECT TOP 1 [ta_completed] AS completed
+    SELECT TOP 1
+      [ta_completed] AS completed,
+      [ta_Status] AS orderStatus
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
@@ -1684,7 +1738,8 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
   if (!Array.isArray(existsRows) || !existsRows.length) {
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
-  if (Boolean(existsRows[0].completed)) {
+  const existingStatus = normalizeStoredTempOrderStatus(existsRows[0].orderStatus, existsRows[0].completed);
+  if (!isTempOrderEditableStatus(existingStatus)) {
     throw createHttpError(409, 'Finalized temp order cannot be deleted.', { code: 'TEMP_ORDER_FINALIZED', id });
   }
 
@@ -1693,14 +1748,18 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     WHERE [tap_ta_id] = ?
       AND EXISTS (
         SELECT 1 FROM ${TEMP_ORDER_TABLE}
-        WHERE [ta_id] = ? AND [ta_completed] = 0
+        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
       )
-  `, [id, id]);
+    `, [id, id]);
+  await runSQLQuerySqlServer(config.sql.database, `
+    DELETE FROM ${ORDER_MAIL_OUTBOX_TABLE}
+    WHERE [om_OrderID] = ?
+  `, [id]);
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
-      AND [ta_completed] = 0
+      AND [ta_Status] IN (0, 3)
   `, [id, companyId, ...ownerFilter.params]);
 
   sendEnvelope(res, {
@@ -1716,3 +1775,6 @@ module.exports.buildTempOrderOwnerFilter = buildTempOrderOwnerFilter;
 module.exports.buildTempOrderStatusFilter = buildTempOrderStatusFilter;
 module.exports.normalizeTempOrderOwnerScope = normalizeTempOrderOwnerScope;
 module.exports.normalizeTempOrderStatus = normalizeTempOrderStatus;
+module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
+module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
+module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;

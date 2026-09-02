@@ -51,7 +51,7 @@ function buildOpenOrderCountSql(tableName = TEMP_ORDER_TABLE) {
     SELECT COUNT_BIG(*) AS openCount
     FROM ${tableName}
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) = ?
-      AND COALESCE([ta_completed], 0) = 0
+      AND COALESCE([ta_Status], 0) IN (0, 3)
   `;
 }
 
@@ -61,7 +61,7 @@ function buildOpenOrderCountsByOwnerSql(tableName = TEMP_ORDER_TABLE) {
       LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) AS userShortCode,
       COUNT_BIG(*) AS openOrderCount
     FROM ${tableName}
-    WHERE COALESCE([ta_completed], 0) = 0
+    WHERE COALESCE([ta_Status], 0) IN (0, 3)
       AND LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) <> ''
     GROUP BY LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], ''))))
   `;

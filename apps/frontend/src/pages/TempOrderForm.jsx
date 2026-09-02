@@ -33,6 +33,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { clearOrderCart } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
+import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
   getSelectedCustomer as getStoredSelectedCustomer,
   setSelectedCustomer as storeSelectedCustomer,
@@ -364,7 +365,8 @@ export default function TempOrderForm() {
           const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}`);
           if (!alive) return;
           const d = res?.data || {};
-          if (d.completed) {
+          const loadedStatus = normalizeTempOrderStatus(d.orderStatus, d.completed);
+          if (!isTempOrderEditableStatus(loadedStatus, d.completed)) {
             navigate(`/temp-orders/${encodeURIComponent(id)}`, { replace: true });
             return;
           }

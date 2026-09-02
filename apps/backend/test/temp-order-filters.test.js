@@ -6,12 +6,16 @@ const {
   buildTempOrderStatusFilter,
   normalizeTempOrderOwnerScope,
   normalizeTempOrderStatus,
+  normalizeStoredTempOrderStatus,
+  isTempOrderEditableStatus,
+  isTempOrderFinalizedStatus,
 } = require('../src/routes/temp-orders.routes');
 
 test('normalizes temp-order list filters to supported values', () => {
   assert.equal(normalizeTempOrderOwnerScope('mine'), 'mine');
   assert.equal(normalizeTempOrderOwnerScope('unexpected'), 'all');
   assert.equal(normalizeTempOrderStatus('sent'), 'sent');
+  assert.equal(normalizeTempOrderStatus('rework'), 'rework');
   assert.equal(normalizeTempOrderStatus('unexpected'), 'all');
 });
 
@@ -40,11 +44,28 @@ test('non-full-access users are always restricted to their own temp orders', () 
 test('temp-order status filter distinguishes drafts and orders sent to BMS', () => {
   assert.deepEqual(buildTempOrderStatusFilter('all'), { whereSql: '', status: 'all' });
   assert.deepEqual(buildTempOrderStatusFilter('draft'), {
-    whereSql: ' AND COALESCE([o].[ta_completed], 0) = 0',
+    whereSql: ' AND COALESCE([o].[ta_Status], 0) = 0',
     status: 'draft',
   });
   assert.deepEqual(buildTempOrderStatusFilter('sent'), {
-    whereSql: ' AND COALESCE([o].[ta_completed], 0) = 1',
+    whereSql: ' AND COALESCE([o].[ta_Status], 0) IN (1, 2)',
     status: 'sent',
   });
+  assert.deepEqual(buildTempOrderStatusFilter('rework'), {
+    whereSql: ' AND COALESCE([o].[ta_Status], 0) = 3',
+    status: 'rework',
+  });
+});
+
+test('temp-order workflow status controls edit and finalization permissions', () => {
+  assert.equal(normalizeStoredTempOrderStatus(null), 0);
+  assert.equal(normalizeStoredTempOrderStatus(null, true), 1);
+  assert.equal(isTempOrderEditableStatus(0), true);
+  assert.equal(isTempOrderEditableStatus(3), true);
+  assert.equal(isTempOrderEditableStatus(1), false);
+  assert.equal(isTempOrderEditableStatus(2), false);
+  assert.equal(isTempOrderEditableStatus(4), false);
+  assert.equal(isTempOrderFinalizedStatus(1), true);
+  assert.equal(isTempOrderFinalizedStatus(2), true);
+  assert.equal(isTempOrderFinalizedStatus(3), false);
 });
