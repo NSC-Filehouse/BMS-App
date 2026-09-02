@@ -188,6 +188,10 @@ kommagetrennte BMS-Mandanten-IDs ausgeblendet werden. Die Einstellung wirkt auf
 die Auswahl im Frontend; die eigentliche Berechtigungspruefung des Backends bleibt
 unveraendert.
 
+Der offizielle Testmandant mit ID `0` bleibt fuer die meisten Benutzer ausgeblendet.
+Benutzer mit den Kuerzeln `MFR` oder `NSC` sehen ihn wieder, sofern die bestehende
+Mandantenberechtigung des Backends den Mandanten ebenfalls liefert.
+
 Beispiel:
 
 ```dotenv

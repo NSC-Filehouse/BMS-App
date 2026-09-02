@@ -121,7 +121,7 @@ export default function Layout() {
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);
-        const available = getSelectableMandants(mandantsRes?.data);
+        const available = getSelectableMandants(mandantsRes?.data, res);
         setCanSwitchMandant(available.length > 1);
         setReminderCustomersCount(Number(remindersRes?.data?.count) || 0);
       } catch {

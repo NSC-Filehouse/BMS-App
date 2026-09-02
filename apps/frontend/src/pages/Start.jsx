@@ -47,7 +47,7 @@ export default function Start() {
           given: meRes?.givenName || '',
           surname: meRes?.surname || '',
         });
-        const allowed = getSelectableMandants(res?.data);
+        const allowed = getSelectableMandants(res?.data, meRes);
         setMandants(allowed);
 
         if (!allowed.length) {
