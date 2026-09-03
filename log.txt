@@ -40,3 +40,121 @@
   
 24.8.2026, 11:27:47 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_LagerID'."}
 24.8.2026, 11:27:47 [DEBUG] Params: []
+2.9.2026, 16:37:20 [ERROR] SQL Server query failed - Invalid column name 'beP_Pulver'.
+2.9.2026, 16:37:20 [DEBUG] Query: WITH best AS (SELECT beP_BEposID, COALESCE(beP_Anzahl,0) AS Bestellmenge, beP_VL, beP_Produktion, beP_Vorprodukt, beP_Pulver, beP_Distribution FROM dbo.tblBest_Position), auf AS (SELECT auP_BEposID, SUM(COALESCE(auP_Anzahl,0)) AS Auftragsmenge FROM dbo.tblAuf_Position WHERE auP_BEposID IS NOT NULL GROUP BY auP_BEposID), credit AS (SELECT rp.reP_BEposID, SUM(CASE WHEN r.re_Auftragsstatus=? AND COALESCE(r.re_Preisgutschrift,0)=0 THEN COALESCE(rp.reP_Anzahl,0) ELSE 0 END) AS Gutschriftmenge FROM dbo.tblRech_Position rp LEFT JOIN dbo.tblRechnung r ON r.re_RgNummer=rp.reP_RGnummer WHERE rp.reP_BEposID IS NOT NULL GROUP BY rp.reP_BEposID), lager AS (SELECT bePL_BEposID, SUM(COALESCE(bePL_Anzahl,0)) AS Lagermenge FROM dbo.tblBest_Pos_Lager GROUP BY bePL_BEposID), tvf AS (SELECT [Bestell-Pos] AS BE, SUM(COALESCE(Menge,0)) AS TVF_Menge FROM dbo.tvfMengen_Verfügbar_Alle(NULL) WHERE COALESCE(beP_VL,0)=1 AND COALESCE(beP_Pulver,0)=0 AND COALESCE(beP_Produktion,0)=0 AND COALESCE(beP_Vorprodukt,0)=0 AND COALESCE(kd_Distribution,0)=0 GROUP BY [Bestell-Pos]), calc AS (SELECT b.beP_BEposID, COALESCE(l.Lagermenge,b.Bestellmenge)-COALESCE(a.Auftragsmenge,0)+COALESCE(c.Gutschriftmenge,0) AS Formel, COALESCE(t.TVF_Menge,0) AS TVF_Menge, CASE WHEN t.BE IS NULL THEN 0 ELSE 1 END AS TVF_exists FROM best b LEFT JOIN auf a ON a.auP_BEposID=b.beP_BEposID LEFT JOIN credit c ON c.reP_BEposID=b.beP_BEposID LEFT JOIN lager l ON l.bePL_BEposID=b.beP_BEposID LEFT JOIN tvf t ON t.BE=b.beP_BEposID WHERE COALESCE(b.beP_VL,0)=1 AND COALESCE(b.beP_Pulver,0)=0 AND COALESCE(b.beP_Produktion,0)=0 AND COALESCE(b.beP_Vorprodukt,0)=0 AND COALESCE(b.beP_Distribution,0)=0) SELECT COUNT(*) AS Basis, SUM(CASE WHEN Formel>0 THEN 1 ELSE 0 END) AS Formel_pos, SUM(CASE WHEN TVF_Menge>0 THEN 1 ELSE 0 END) AS TVF_pos, SUM(CASE WHEN Formel>0 AND TVF_Menge>0 THEN 1 ELSE 0 END) AS beide_pos, SUM(CASE WHEN Formel>0 AND TVF_Menge=0 THEN 1 ELSE 0 END) AS Formel_pos_TVF_nicht, SUM(CASE WHEN Formel=0 AND TVF_Menge>0 THEN 1 ELSE 0 END) AS TVF_pos_Formel_nicht, SUM(CASE WHEN TVF_exists=0 THEN 1 ELSE 0 END) AS Ohne_TVF FROM calc
+2.9.2026, 16:37:20 [DEBUG] Params: ["Gutschrift"]
+2.9.2026, 16:37:20 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_Pulver'."}
+3.9.2026, 14:45:42 [ERROR] SQL Server query failed - Invalid column name 'kdL_LagerID'.
+3.9.2026, 14:45:42 [DEBUG] Query: SELECT TOP (10) * FROM dbo.tblKun_Lager_ALL WHERE kdL_LagerID IN (?,?,?) OR kdLa_LagerID IN (?,?,?)
+3.9.2026, 14:45:42 [DEBUG] Params: ["LG0031","LG0345","LG0682","LG0031","LG0345","LG0682"]
+3.9.2026, 14:45:42 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'kdL_LagerID'."}
+3.9.2026, 14:52:58 [ERROR] SQL Server query failed - Invalid column name 'beP_EK_EU'.
+3.9.2026, 14:52:58 [DEBUG] Query: SELECT [Bestell-Pos], EPtest, EPdiff, EP, beP_EK_EU, Gesamt, bePL_Anzahl, Menge, Verwendet FROM dbo.tvfMengen_Base(NULL) WHERE [Bestell-Pos] IN (?,?,?,?)
+3.9.2026, 14:52:58 [DEBUG] Params: ["3-02-26-00691-01","3-02-26-00723-01","3-02-25-01092-01","3-02-26-00310-02"]
+3.9.2026, 14:52:58 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_EK_EU'."}
+3.9.2026, 14:57:58 [ERROR] SQL Server query failed - Invalid column name 'beP_Pulver'.
+3.9.2026, 14:57:58 [DEBUG] Query: 
+WITH [stock] AS (
+  SELECT [bePL_BEposID], [bePL_LagerID], SUM(COALESCE([bePL_Anzahl], 0)) AS [Basis]
+  FROM [dbo].[tblBest_Pos_Lager]
+  GROUP BY [bePL_BEposID], [bePL_LagerID]
+), [orders] AS (
+  SELECT [auP_BEposID], [auP_LagerID], SUM(COALESCE([auP_Anzahl], 0)) AS [Verplant]
+  FROM [dbo].[tblAuf_Position]
+  WHERE [auP_BEposID] IS NOT NULL
+  GROUP BY [auP_BEposID], [auP_LagerID]
+), [credits] AS (
+  SELECT [rp].[reP_BEposID], [rp].[reP_LagerID], SUM(COALESCE([rp].[reP_Anzahl], 0)) AS [Gutschrift]
+  FROM [dbo].[tblRech_Position] AS [rp]
+  INNER JOIN [dbo].[tblRechnung] AS [r]
+    ON [r].[re_RgNummer] = [rp].[reP_RGnummer]
+  WHERE [r].[re_Auftragsstatus] = N'Gutschrift'
+    AND COALESCE([r].[re_Preisgutschrift], 0) = 0
+  GROUP BY [rp].[reP_BEposID], [rp].[reP_LagerID]
+), [calc] AS (
+  SELECT
+    [b].[beP_BEposID] AS [BestellPos],
+    [s].[bePL_LagerID] AS [LagerID],
+    CAST([s].[Basis] - COALESCE([o].[Verplant], 0) + COALESCE([c].[Gutschrift], 0) AS float) AS [MengeCalc]
+  FROM [dbo].[tblBest_Position] AS [b]
+  INNER JOIN [stock] AS [s]
+    ON [s].[bePL_BEposID] = [b].[beP_BEposID]
+  LEFT JOIN [orders] AS [o]
+    ON [o].[auP_BEposID] = [s].[bePL_BEposID]
+   AND COALESCE([o].[auP_LagerID], N'') = COALESCE([s].[bePL_LagerID], N'')
+  LEFT JOIN [credits] AS [c]
+    ON [c].[reP_BEposID] = [s].[bePL_BEposID]
+   AND COALESCE([c].[reP_LagerID], N'') = COALESCE([s].[bePL_LagerID], N'')
+  WHERE COALESCE([b].[beP_VL], 0) = 1
+    AND COALESCE([b].[beP_Pulver], 0) = 0
+    AND COALESCE([b].[beP_Produktion], 0) = 0
+    AND COALESCE([b].[beP_Vorprodukt], 0) = 0
+), [tvf] AS (
+  SELECT [Bestell-Pos] AS [BestellPos], [bePL_LagerID] AS [LagerID], CAST([Menge] AS float) AS [MengeTVF]
+  FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL)
+  WHERE COALESCE([beP_VL], 0) = 1
+    AND COALESCE([beP_Pulver], 0) = 0
+    AND COALESCE([beP_Produktion], 0) = 0
+    AND COALESCE([beP_Vorprodukt], 0) = 0
+), [cmp] AS (
+  SELECT
+    COALESCE([t].[BestellPos], [c].[BestellPos]) AS [BestellPos],
+    COALESCE([t].[LagerID], [c].[LagerID]) AS [LagerID],
+    [t].[MengeTVF], [c].[MengeCalc],
+    CASE WHEN [t].[BestellPos] IS NULL THEN N'NurCalc'
+         WHEN [c].[BestellPos] IS NULL THEN N'NurTVF'
+         WHEN ABS(COALESCE([t].[MengeTVF], 0) - COALESCE([c].[MengeCalc], 0)) > 0.0001 THEN N'Abweichung'
+         ELSE N'Gleich' END AS [Status]
+  FROM [tvf] AS [t]
+  FULL OUTER JOIN [calc] AS [c]
+    ON [c].[BestellPos] = [t].[BestellPos]
+   AND COALESCE([c].[LagerID], N'') = COALESCE([t].[LagerID], N'')
+  WHERE COALESCE([t].[MengeTVF], 0) > 0 OR COALESCE([c].[MengeCalc], 0) > 0
+)
+SELECT [Status], COUNT(*) AS [Anzahl], SUM(COALESCE([MengeTVF], 0)) AS [SumTVF], SUM(COALESCE([MengeCalc], 0)) AS [SumCalc]
+FROM [cmp]
+GROUP BY [Status]
+ORDER BY [Status];
+SELECT TOP (100) * FROM [cmp] WHERE [Status] <> N'Gleich' ORDER BY [BestellPos], [LagerID];
+
+3.9.2026, 14:57:58 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_Pulver'."}
+3.9.2026, 14:57:58 [DEBUG] Params: []
+3.9.2026, 15:01:22 [ERROR] SQL Server query failed - Invalid column name 'beP_Lieferdatum'.
+3.9.2026, 15:01:22 [DEBUG] Query: 
+SELECT [Bestell-Pos], [Menge], [bePL_LagerID], [bePL_Anzahl], [Verwendet], [Gesamt], [verkauft], [beauftragt], [Eingang], [Eingang2], [EingangSORT], [Liefertermin], [EPtest], [LagerkostenBisher], [beP_Anzahl], [beP_EK_EU], [beP_Lieferdatum], [beP_VL], [beP_Produktion], [beP_Vorprodukt], [beP_Abgerechnet]
+FROM [dbo].[tvfMengen_Base](NULL)
+WHERE [Bestell-Pos] IN (N'3-02-19-00184-01',N'3-02-20-00503-01',N'3-02-24-00217-06',N'3-02-24-00305-04',N'3-02-24-00330-02',N'3-02-24-00446-02',N'3-02-25-00383-02',N'3-02-25-00396-02');
+
+3.9.2026, 15:01:22 [DEBUG] Params: []
+3.9.2026, 15:01:22 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_Lieferdatum'."}
+3.9.2026, 15:02:46 [ERROR] SQL Server query failed - Invalid column name 'beP_Eingang2'.
+3.9.2026, 15:02:47 [DEBUG] Query: 
+SELECT [b].[beP_BEposID], [b].[beP_Anzahl], [b].[beP_VL], [b].[beP_Pulver], [b].[beP_Produktion], [b].[beP_Vorprodukt], [b].[beP_Abgerechnet], [b].[beP_Eingang], [b].[beP_Eingang2], [b].[beP_LagerBeiStrecke], [b].[beP_LagerInfo], [b].[beP_EK_EU], [b].[beP_Artikelindex], [s].[bePL_LagerID], [s].[bePL_Anzahl], [s].[bePL_Verwendet], [s].[bePL_Rest], [s].[bePL_Teilgenutzt], [s].[bePL_LagerIDgeplant]
+FROM [dbo].[tblBest_Position] [b] LEFT JOIN [dbo].[tblBest_Pos_Lager] [s] ON [s].[bePL_BEposID]=[b].[beP_BEposID]
+WHERE [b].[beP_BEposID] IN (N'3-02-19-00184-01',N'3-02-20-00503-01',N'3-02-24-00217-06',N'3-02-24-00305-04',N'3-02-24-00330-02',N'3-02-24-00446-02',N'3-02-25-00383-02',N'3-02-25-00396-02');
+
+3.9.2026, 15:02:47 [DEBUG] Params: []
+3.9.2026, 15:02:47 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'beP_Eingang2'."}
+3.9.2026, 15:18:11 [ERROR] SQL Server query failed - Invalid object name 'dbo.qryMengen_Verfügbar_Alle_fürAPP'.
+3.9.2026, 15:18:11 [DEBUG] Params: []
+3.9.2026, 15:18:11 [DEBUG] Query: 
+SELECT N'TVF' AS [Source], COUNT(*) AS [Rows], SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) AS [Positive], SUM(CASE WHEN [beP_VL]=1 AND COALESCE([Menge],0)>0 THEN 1 ELSE 0 END) AS [ActivePositive] FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL)
+UNION ALL
+SELECT N'Alle_fürAPP', COUNT(*), SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END), SUM(CASE WHEN [beP_VL]=1 AND COALESCE([Menge],0)>0 THEN 1 ELSE 0 END) FROM [dbo].[qryMengen_Verfügbar_Alle_fürAPP]
+UNION ALL
+SELECT N'Alle', COUNT(*), SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END), SUM(CASE WHEN [beP_VL]=1 AND COALESCE([Menge],0)>0 THEN 1 ELSE 0 END) FROM [dbo].[qryMengen_Verfügbar_Alle];
+SELECT TOP (10) [Bestell-Pos], [bePL_LagerID], [Menge], [EPtest], [EP], [Lagerort], [beP_VL], [beP_Produktion], [beP_Vorprodukt], [txtLagerInfo] FROM [dbo].[qryMengen_Verfügbar_Alle_fürAPP] WHERE [Menge]>0 ORDER BY [Bestell-Pos];
+
+3.9.2026, 15:18:11 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'dbo.qryMengen_Verfügbar_Alle_fürAPP'."}
+3.9.2026, 15:18:53 [ERROR] SQL Server query failed - Invalid object name 'dbo.tvfMengen_Verfügbar_Alle'.
+3.9.2026, 15:18:53 [DEBUG] Query: 
+SELECT N'TVF' AS [Source], COUNT(*) AS [Rows], SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) AS [Positive] FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL)
+UNION ALL SELECT N'Historisch', COUNT(*), SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) FROM [dbo].[qryMengen_Verfügbarkeitsliste_fürAPP];
+SELECT TOP (10) [Bestell-Pos], [Menge], [EPtest], [EP], [Lagerort], [beP_VL] FROM [dbo].[qryMengen_Verfügbarkeitsliste_fürAPP] WHERE [Menge]>0 ORDER BY [Bestell-Pos];
+
+3.9.2026, 15:18:53 [DEBUG] Params: []
+3.9.2026, 15:18:53 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'dbo.tvfMengen_Verfügbar_Alle'."}
+3.9.2026, 15:20:53 [ERROR] SQL Server query failed - Invalid object name 'dbo.qryMengen_Verfügbar_Alle'.
+3.9.2026, 15:20:53 [DEBUG] Query: SELECT N'TVF' AS [Source], COUNT(*) AS [Rows], SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) AS [Positive] FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL) UNION ALL SELECT N'VIEW', COUNT(*), SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) FROM [dbo].[qryMengen_Verfügbar_Alle];
+3.9.2026, 15:20:53 [DEBUG] Params: []
+3.9.2026, 15:20:53 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'dbo.qryMengen_Verfügbar_Alle'."}
