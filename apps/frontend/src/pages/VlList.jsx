@@ -156,6 +156,7 @@ function SwipeableProductRow({
   t,
 }) {
   const rowId = getItemId(item);
+  const swipeEnabled = variant !== 'classic';
   const interactionRef = React.useRef({
     x: 0,
     y: 0,
@@ -174,10 +175,10 @@ function SwipeableProductRow({
 
   React.useEffect(() => clearLongPress, [clearLongPress]);
 
-  const isCartRevealed = !isFinePointer
+  const isCartRevealed = swipeEnabled && !isFinePointer
     && String(revealedRow?.id || '') === rowId
     && revealedRow?.side === 'cart';
-  const isLeftRevealed = !isFinePointer
+  const isLeftRevealed = swipeEnabled && !isFinePointer
     && String(revealedRow?.id || '') === rowId
     && revealedRow?.side === 'left';
 
@@ -219,6 +220,10 @@ function SwipeableProductRow({
     const dy = Number(touch?.clientY || 0) - state.y;
     clearLongPress();
     if (state.longPressed) return;
+    if (!swipeEnabled) {
+      if (state.moved) suppressClickRef.current = rowId;
+      return;
+    }
     if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 35) return;
     suppressClickRef.current = rowId;
     if (dx <= -35) onReveal(rowId, 'cart');
@@ -267,7 +272,7 @@ function SwipeableProductRow({
 
   return (
     <Box sx={{ position: 'relative', overflow: 'hidden', borderRadius: 0.5 }}>
-      {!isFinePointer && (
+      {swipeEnabled && !isFinePointer && (
         <Box
           sx={{
             position: 'absolute',
@@ -307,7 +312,7 @@ function SwipeableProductRow({
         </Box>
       )}
 
-      {!isFinePointer && (
+      {swipeEnabled && !isFinePointer && (
         <Box
           sx={{
             position: 'absolute',
