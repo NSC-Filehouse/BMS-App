@@ -10,6 +10,7 @@ const {
 const { productAvailabilitySource } = require('../db/product-availability');
 const { calculateAvailableCredit } = require('../credit-limit');
 const { resolveProductGroup: resolvePurchasedArticleGroup } = require('../product-grouping');
+const { getUserIdentityByShortCode } = require('../db/users');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -601,6 +602,50 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
       idField: 'kd_KdNR',
       id,
     },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHandler(async (req, res) => {
+  const id = toText(req.params.id);
+  const shortCode = toText(req.params.shortCode);
+  const customer = await requireVisibleCustomer(req, id);
+  const normalizedCode = shortCode.toLowerCase();
+  const roles = [];
+
+  if (toText(customer.kd_Aussendienst).toLowerCase() === normalizedCode) {
+    roles.push('aussendienst');
+  }
+  if (toText(customer.kd_Innendienst).toLowerCase() === normalizedCode) {
+    roles.push('innendienst');
+  }
+  if (!roles.length) {
+    throw createHttpError(404, `Representative not assigned to customer: ${shortCode}`, {
+      code: 'REPRESENTATIVE_NOT_ASSIGNED',
+      id,
+      shortCode,
+    });
+  }
+
+  const identity = await getUserIdentityByShortCode(shortCode, req.database?.firmaId);
+  if (!identity) {
+    throw createHttpError(404, `Employee not found: ${shortCode}`, {
+      code: 'EMPLOYEE_NOT_FOUND',
+      shortCode,
+    });
+  }
+
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      shortCode: identity.shortCode || shortCode,
+      roles,
+      givenName: identity.givenName || null,
+      surname: identity.surname || null,
+      email: identity.email || null,
+      phone: identity.phone || null,
+    },
+    meta: { mandant: req.mandant, customerId: id, shortCode },
     error: null,
   });
 }));

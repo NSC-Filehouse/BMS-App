@@ -156,7 +156,8 @@ function SwipeableProductRow({
   t,
 }) {
   const rowId = getItemId(item);
-  const swipeEnabled = variant !== 'classic';
+  // VL actions are intentionally direct; horizontal swipe is disabled in both views.
+  const swipeEnabled = false;
   const interactionRef = React.useRef({
     x: 0,
     y: 0,
@@ -259,10 +260,10 @@ function SwipeableProductRow({
     wordBreak: 'break-word',
     overflowWrap: 'anywhere',
     lineHeight: 1.35,
-    pr: isFinePointer ? 9.5 : (variant === 'grouped' ? 0 : 0.75),
+    pr: 9.5,
     '& .vl-row-action': {
-      opacity: 0,
-      pointerEvents: 'none',
+      opacity: isFinePointer ? 0 : 1,
+      pointerEvents: isFinePointer ? 'none' : 'auto',
     },
     '&:hover .vl-row-action': isFinePointer ? {
       opacity: 1,
@@ -428,7 +429,7 @@ function SwipeableProductRow({
           </IconButton>
         )}
 
-        {isFinePointer && (
+        {(isFinePointer || !swipeEnabled) && (
           <IconButton
             className="vl-row-action"
             size="small"
@@ -444,7 +445,7 @@ function SwipeableProductRow({
           </IconButton>
         )}
 
-        {isFinePointer && (
+        {(isFinePointer || !swipeEnabled) && (
           <IconButton
             className="vl-row-action"
             size="small"

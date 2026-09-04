@@ -67,6 +67,7 @@ function mapIdentityRow(row) {
   const sur = String(row.surname || row.ma_Nachname || '').trim();
   const fullName = `${given} ${sur}`.trim() || null;
   const email = String(row.email || row.ma_eMail || '').trim() || null;
+  const phone = String(row.phone || row.ma_Telefon || row.mobile || row.ma_Handy || row.extension || row.ma_Durchwahl || '').trim() || null;
   const shortCode = String(row.shortCode || row['ma_K\u00FCrzel'] || '').trim() || null;
   const mainCompanyIdRaw = row.mainCompanyId ?? row.ma_FirmaID ?? null;
   const mainCompanyId = Number(mainCompanyIdRaw);
@@ -74,8 +75,11 @@ function mapIdentityRow(row) {
   return {
     personNumber: numeric,
     shortCode,
+    givenName: given || null,
+    surname: sur || null,
     fullName,
     email,
+    phone,
     mainCompanyId: Number.isFinite(mainCompanyId) ? mainCompanyId : null,
   };
 }
@@ -87,6 +91,9 @@ function buildIdentitySelectSql(whereClause) {
       [ma_eMail] AS email,
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
+      [ma_Telefon] AS phone,
+      [ma_Handy] AS mobile,
+      [ma_Durchwahl] AS extension,
       [ma_FirmaID] AS mainCompanyId,
       [ma_K\u00FCrzel] AS shortCode
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
@@ -146,6 +153,9 @@ async function getUserIdentitiesByShortCodes(shortCodes) {
       [ma_eMail] AS email,
       [ma_Vorname] AS givenName,
       [ma_Nachname] AS surname,
+      [ma_Telefon] AS phone,
+      [ma_Handy] AS mobile,
+      [ma_Durchwahl] AS extension,
       [ma_FirmaID] AS mainCompanyId,
       [ma_K\u00FCrzel] AS shortCode
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
@@ -161,6 +171,38 @@ async function getUserIdentitiesByShortCodes(shortCodes) {
     setCached(identity);
   }
   return identities;
+}
+
+async function getUserIdentityByShortCode(shortCode, companyId = null) {
+  const normalized = String(shortCode || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  const numericCompanyId = Number(companyId);
+  const hasCompanyId = companyId !== null && companyId !== undefined && Number.isFinite(numericCompanyId);
+  const orderSql = hasCompanyId
+    ? 'ORDER BY CASE WHEN [ma_FirmaID] = ? THEN 0 ELSE 1 END, [ma_Aktiv] DESC, [ma_PersNR] ASC'
+    : 'ORDER BY [ma_Aktiv] DESC, [ma_PersNR] ASC';
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, `
+    SELECT
+      [ma_PersNR] AS personNumber,
+      [ma_eMail] AS email,
+      [ma_Vorname] AS givenName,
+      [ma_Nachname] AS surname,
+      [ma_Telefon] AS phone,
+      [ma_Handy] AS mobile,
+      [ma_Durchwahl] AS extension,
+      [ma_FirmaID] AS mainCompanyId,
+      [ma_K\u00FCrzel] AS shortCode
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
+    WHERE LOWER(LTRIM(RTRIM(COALESCE([ma_K\u00FCrzel], '')))) = ?
+    ${orderSql}
+  `, hasCompanyId ? [normalized, numericCompanyId] : [normalized]);
+
+  const identity = (Array.isArray(rows) ? rows : [])
+    .map(mapIdentityRow)
+    .find(Boolean) || null;
+  if (identity) setCached(identity);
+  return identity;
 }
 
 async function getUserPersonNumberByEmail(email) {
@@ -208,6 +250,7 @@ async function getUserShortCodeByPersonNumber(personNumber) {
 
 module.exports = {
   getUserIdentityByEmail,
+  getUserIdentityByShortCode,
   getUserIdentitiesByShortCodes,
   getUserPersonNumberByEmail,
   getUserDisplayNameByPersonNumber,

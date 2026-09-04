@@ -10,6 +10,7 @@ import Start from './pages/Start.jsx';
 
 import CustomersList from './pages/CustomersList.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
+import EmployeeDetail from './pages/EmployeeDetail.jsx';
 
 import ProductsList from './pages/ProductsList.jsx';
 import VlList from './pages/VlList.jsx';
@@ -40,6 +41,14 @@ export default function App() {
           element={
             <MandantGuard>
               <CustomersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/customers/:customerId/representatives/:shortCode"
+          element={
+            <MandantGuard>
+              <EmployeeDetail />
             </MandantGuard>
           }
         />

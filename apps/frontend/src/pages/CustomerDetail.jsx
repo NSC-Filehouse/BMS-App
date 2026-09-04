@@ -421,6 +421,14 @@ export default function CustomerDetail() {
     ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
+  const insideSalesRep = item?.kd_Innendienst ? String(item.kd_Innendienst).trim() : '';
+  const customerEmployeeAssignments = [
+    { code: salesRep, role: 'aussendienst' },
+    { code: insideSalesRep, role: 'innendienst' },
+  ].filter((assignment, index, assignments) => (
+    assignment.code
+    && assignments.findIndex((candidate) => candidate.code.toLowerCase() === assignment.code.toLowerCase()) === index
+  ));
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const creditLimit = item?.creditLimit || null;
   const creditLimitText = creditLimit?.status === 'expired'
@@ -473,6 +481,18 @@ export default function CustomerDetail() {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
     }
   }, [address, id, location.state, name, navigate, salesRep]);
+  const openEmployeeDetail = React.useCallback((shortCode) => {
+    const code = String(shortCode || '').trim();
+    if (!code) return;
+    navigate(`/customers/${encodeURIComponent(id)}/representatives/${encodeURIComponent(code)}`, {
+      state: {
+        fromCustomer: {
+          id,
+          fromCustomers: location.state?.fromCustomers || null,
+        },
+      },
+    });
+  }, [id, location.state, navigate]);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}&year=${encodeURIComponent(offerYear)}`;
   const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
   const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
@@ -847,7 +867,7 @@ export default function CustomerDetail() {
           <ArrowBackIcon />
         </IconButton>
         <Box sx={{ minWidth: 0 }}>
-          {!loading && !error && item && (
+          {!loading && !error && item && customerEmployeeAssignments.length > 0 && (
             <Box
               sx={{
                 display: 'grid',
@@ -864,9 +884,30 @@ export default function CustomerDetail() {
                   {t('sales_rep_label')}
                 </Typography>
               </Box>
-              <Typography variant="body2" sx={{ textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 }}>
-                {salesRep || '-'}
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: 0.35, minWidth: 0 }}>
+                {customerEmployeeAssignments.map((assignment, index) => (
+                  <React.Fragment key={`${assignment.role}-${assignment.code}`}>
+                    {index > 0 && <Typography component="span" variant="body2">,</Typography>}
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={() => openEmployeeDetail(assignment.code)}
+                      aria-label={`${t('employee_detail_title')}: ${assignment.code}`}
+                      sx={{
+                        p: 0,
+                        border: 0,
+                        bgcolor: 'transparent',
+                        color: 'primary.main',
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {assignment.code}
+                    </Box>
+                  </React.Fragment>
+                ))}
+              </Box>
             </Box>
           )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
