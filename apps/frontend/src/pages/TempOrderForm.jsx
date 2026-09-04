@@ -544,6 +544,7 @@ export default function TempOrderForm() {
             reservationInKg: null,
             reservationDate: null,
             ...createPositionDefaults({
+              deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
               wpzId: x.wpzId ?? null,
               wpzOriginal: x.wpzOriginal ?? true,
               wpzComment: x.wpzComment || '',

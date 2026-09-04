@@ -111,7 +111,7 @@ export function addOrderCartItem(item, quantityKg) {
     acquisitionPrice: item.acquisitionPrice ?? null,
     // A sales price must be entered explicitly; never use the acquisition price as VK.
     salePrice: item.salePrice ?? null,
-    deliveryDate: item.deliveryDate || tomorrow(),
+    deliveryDate: item.deliveryDate || (idx >= 0 ? current[idx].deliveryDate : null) || tomorrow(),
     quantityKg: qty,
     wpzId: item.wpzId ?? null,
     wpzOriginal: item.wpzOriginal ?? null,
