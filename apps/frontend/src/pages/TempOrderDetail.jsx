@@ -176,7 +176,7 @@ export default function TempOrderDetail() {
             >
               {orderIsEditable && (
                 <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
-                  {t('temp_order_send_bms')}
+                  {t('temp_order_send_cs')}
                 </Button>
               )}
               {orderIsEditable && (
