@@ -158,3 +158,11 @@ SELECT TOP (10) [Bestell-Pos], [Menge], [EPtest], [EP], [Lagerort], [beP_VL] FRO
 3.9.2026, 15:20:53 [DEBUG] Query: SELECT N'TVF' AS [Source], COUNT(*) AS [Rows], SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) AS [Positive] FROM [dbo].[tvfMengen_Verfügbar_Alle](NULL) UNION ALL SELECT N'VIEW', COUNT(*), SUM(CASE WHEN [Menge]>0 THEN 1 ELSE 0 END) FROM [dbo].[qryMengen_Verfügbar_Alle];
 3.9.2026, 15:20:53 [DEBUG] Params: []
 3.9.2026, 15:20:53 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'dbo.qryMengen_Verfügbar_Alle'."}
+4.9.2026, 09:39:06 [ERROR] SQL Server query failed - Invalid column name 'referenced_minor_name'.
+4.9.2026, 09:39:06 [DEBUG] Query: SELECT OBJECT_SCHEMA_NAME(referencing_id) AS [schema],OBJECT_NAME(referencing_id) AS [object],referenced_schema_name AS [refSchema],referenced_entity_name AS [refName],referenced_minor_name AS [refColumn] FROM sys.sql_expression_dependencies WHERE referencing_id=OBJECT_ID(N'dbo.vwALLE_MargenAD_Excel')
+4.9.2026, 09:39:06 [DEBUG] Params: []
+4.9.2026, 09:39:06 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'referenced_minor_name'."}
+4.9.2026, 09:45:21 [ERROR] SQL Server query failed - Invalid column name 'au_KundenNr'.
+4.9.2026, 09:45:21 [DEBUG] Query: SELECT p.auP_Auftragsindex,p.auP_PosNr,p.auP_ABposID,p.auP_Anzahl,p.auP_VK_EU,p.auP_VK_Gesamt_EU,p.auP_NK_EK_Bestell,p.auP_NK_EK_Provision,p.auP_NK_EK_Zusatz,p.auP_NK_EK_Gesamt,p.auP_NK_VK_Rechnung,p.auP_NK_VK_Rabatt,p.auP_NK_VK_Zusatz,p.auP_NK_VK_Gesamt,p.auP_NK_Marge,p.auP_Artikelindex,p.auP_BEposID,a.au_Aussendienst,a.au_KundenNr FROM dbo.tblAuf_Position p LEFT JOIN dbo.tblAuftrag a ON a.au_Auftragsindex=p.auP_Auftragsindex WHERE p.auP_ABposID IN (N'2-03-26-01675-01',N'2-03-26-01674-01',N'2-03-26-01858-01',N'2-03-26-01702-02') ORDER BY p.auP_ABposID
+4.9.2026, 09:45:21 [DEBUG] Params: []
+4.9.2026, 09:45:21 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid column name 'au_KundenNr'."}

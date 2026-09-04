@@ -24,6 +24,7 @@ import { addOrderCartItem } from '../utils/orderCart.js';
 import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
+import SaleMarginHint from '../components/SaleMarginHint.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -500,11 +501,11 @@ export default function ProductDetail() {
             onChange={(e) => setCartSalePrice(e.target.value)}
             inputProps={{ min: 0.01, step: 'any' }}
           />
-          {Number.isFinite(Number(item?.acquisitionPrice)) && (
-            <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
-              {t('sale_price_hint', { price: formatPrice(item.acquisitionPrice) })}
-            </Typography>
-          )}
+          <SaleMarginHint
+            salePrice={cartSalePrice}
+            costPrice={item?.acquisitionPrice}
+            sx={{ mt: -0.5 }}
+          />
           <WpzCommentField
             wpzId={wpzExists ? wpzId : null}
             wpzOriginal={cartWpzOriginal}

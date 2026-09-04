@@ -24,6 +24,7 @@ import {
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
+import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 
 function formatPrice(value) {
@@ -202,11 +203,7 @@ export default function OrderCart() {
                   error={Boolean(rowErr.salePrice)}
                   helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
-                {Number.isFinite(Number(row.acquisitionPrice)) && (
-                  <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.75 }}>
-                    {t('sale_price_hint', { price: formatPrice(row.acquisitionPrice) })}
-                  </Typography>
-                )}
+                <SaleMarginHint salePrice={row.salePrice} costPrice={row.acquisitionPrice} />
                 <TextField
                   type="date"
                   label={t('delivery_date')}

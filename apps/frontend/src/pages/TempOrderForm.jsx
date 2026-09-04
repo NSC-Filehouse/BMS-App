@@ -32,6 +32,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { clearOrderCart } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
+import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
@@ -1289,11 +1290,7 @@ export default function TempOrderForm() {
                                 inputProps={{ min: 0.01, step: 'any' }}
                                 size="small"
                               />
-                              {Number.isFinite(Number(x.costPrice)) && (
-                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  {t('sale_price_hint', { price: formatPrice(x.costPrice) })}
-                                </Typography>
-                              )}
+                              <SaleMarginHint salePrice={x.price} costPrice={x.costPrice} />
                             </Box>
                             <TextField
                               type="number"
@@ -1443,11 +1440,7 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
-          {Number.isFinite(Number(addPosProduct?.acquisitionPrice)) && (
-            <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.75 }}>
-              {t('sale_price_hint', { price: formatPrice(addPosProduct.acquisitionPrice) })}
-            </Typography>
-          )}
+          <SaleMarginHint salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
           <TextField
             type="date"
             label={t('delivery_date')}
