@@ -316,7 +316,7 @@ function buildProductIdFromViewRow(row) {
     toText(row?.warehouse),
     toText(row?.beNumber),
     toText(row?.plastic),
-    toText(row?.sub),
+    toText(row?.sub ?? row?.plasticSubCategory),
   ].join(PRODUCT_ID_SEPARATOR);
 }
 
@@ -1038,21 +1038,37 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
   const viewRows = [];
   const viewProductMap = new Map();
   const viewProductMapByArticle = new Map();
-  if (articleIndexes.length) {
-    const placeholders = articleIndexes.map(() => '?').join(', ');
+  if (purchasedRows.length) {
     const currentViewRows = await runSQLQueryAccess(req.database, `
       SELECT
-        [beP_Artikelindex] AS articleIndex,
-        [Artikel] AS article,
-        [beP_MFI] AS mfi,
-        [beP_MFIgemessen] AS mfiMeasured,
-        [Lagerort] AS warehouse,
-        [Bestell-Pos] AS beNumber,
-        [Kunststoff] AS plastic,
-        [Kunststoff_Untergruppe] AS sub
+        [availability].[beP_Artikelindex] AS articleIndex,
+        [availability].[Artikel] AS article,
+        [availability].[beP_MFI] AS mfi,
+        [availability].[beP_MFIgemessen] AS mfiMeasured,
+        [availability].[beP_MFI_Pruefmethode] AS mfiTestMethod,
+        [availability].[Menge] AS amount,
+        [availability].[Einheit] AS unit,
+        [availability].[bePR_Anzahl] AS reserved,
+        [availability].[EP] AS acquisitionPrice,
+        [availability].[Lagerort] AS warehouse,
+        [availability].[bePL_LagerID] AS warehouseId,
+        [availability].[Bestell-Pos] AS beNumber,
+        [availability].[Kunststoff] AS plastic,
+        [availability].[Kunststoff_Untergruppe] AS plasticSubCategory,
+        [availability].[beP_Additive] AS packaging,
+        [availability].[beP_VLbemerkung] AS about,
+        [availability].[beP_LagerBeiStrecke] AS warehouseSection,
+        [availability].[txtLagerInfo] AS description,
+        [article].[agA_Artikelname] AS masterArticleName,
+        [article].[agA_Artikelgruppe] AS articleGroupId,
+        [articleGroup].[ag_Gruppenname] AS articleGroupName
       FROM ${PRODUCTS_VIEW_SQL}
-      WHERE [beP_Artikelindex] IN (${placeholders})
-    `, articleIndexes);
+      LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
+        ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
+      LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
+        ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
+      ORDER BY [availability].[Artikel], [availability].[Bestell-Pos], [availability].[Lagerort]
+    `, []);
     viewRows.push(...(Array.isArray(currentViewRows) ? currentViewRows : []));
 
     for (const viewRow of viewRows) {
@@ -1077,6 +1093,8 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
         ...group,
         articles: [],
         articleMap: new Map(),
+        availablePositions: [],
+        availablePositionMap: new Map(),
       });
     }
     return groups.get(group.key);
@@ -1103,6 +1121,52 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     };
     group.articleMap.set(childKey, child);
     group.articles.push(child);
+  }
+
+  function addAvailablePositionToGroup(group, positionData) {
+    const articleIndex = toText(positionData.articleIndex);
+    const article = toText(positionData.article);
+    const beNumber = toText(positionData.beNumber);
+    const warehouseId = toText(positionData.warehouseId);
+    if (!article || !beNumber || !warehouseId) return;
+
+    const productId = buildProductIdFromViewRow({
+      article,
+      warehouse: positionData.warehouse,
+      beNumber,
+      plastic: positionData.plastic,
+      sub: positionData.plasticSubCategory,
+    });
+    if (!productId || group.availablePositionMap.has(productId)) return;
+
+    const position = {
+      id: productId,
+      productId,
+      article,
+      articleIndex: articleIndex || null,
+      beNumber,
+      warehouseId,
+      warehouse: toText(positionData.warehouse),
+      amount: positionData.amount ?? null,
+      reserved: positionData.reserved ?? null,
+      unit: toText(positionData.unit),
+      acquisitionPrice: positionData.acquisitionPrice ?? null,
+      mfi: positionData.mfiMeasured !== null
+        && positionData.mfiMeasured !== undefined
+        && positionData.mfiMeasured !== ''
+        ? positionData.mfiMeasured
+        : positionData.mfi,
+      mfiMeasured: positionData.mfiMeasured ?? null,
+      mfiTestMethod: toText(positionData.mfiTestMethod),
+      plastic: toText(positionData.plastic),
+      plasticSubCategory: toText(positionData.plasticSubCategory),
+      packaging: toText(positionData.packaging),
+      about: toText(positionData.about),
+      warehouseSection: toText(positionData.warehouseSection),
+      description: toText(positionData.description),
+    };
+    group.availablePositionMap.set(productId, position);
+    group.availablePositions.push(position);
   }
 
   for (const row of purchasedRows) {
@@ -1145,13 +1209,14 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     const group = resolvePurchasedArticleGroup({
       article,
       articleIndex,
-      masterArticleName: meta.masterArticleName,
-      articleGroupId: meta.articleGroupId,
-      articleGroupName: meta.articleGroupName,
-      plastic: meta.plastic,
-      plasticSubCategory: meta.plasticSubCategory,
+      masterArticleName: viewRow.masterArticleName || meta.masterArticleName,
+      articleGroupId: viewRow.articleGroupId ?? meta.articleGroupId,
+      articleGroupName: viewRow.articleGroupName || meta.articleGroupName,
+      plastic: viewRow.plastic || meta.plastic,
+      plasticSubCategory: viewRow.plasticSubCategory || meta.plasticSubCategory,
     });
-    const groupEntry = ensureGroup(group);
+    const groupEntry = groups.get(group.key);
+    if (!groupEntry) continue;
     const textMfi = parseMfiFromText(article);
     const viewMfiValue = viewRow.mfiMeasured !== null && viewRow.mfiMeasured !== undefined && viewRow.mfiMeasured !== ''
       ? viewRow.mfiMeasured
@@ -1162,17 +1227,16 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     const mfi = textMfi !== null
       ? textMfi
       : (Number.isFinite(viewMfi) ? viewMfi : null);
-    const mapKey = `${articleIndex}\u0000${article}`;
-    addArticleToGroup(groupEntry, {
-      article,
-      articleIndex,
+    addAvailablePositionToGroup(groupEntry, {
+      ...viewRow,
       mfi,
-      productId: viewProductMap.get(mapKey) || null,
+      articleIndex,
+      article,
     });
   }
 
   const data = Array.from(groups.values())
-    .map(({ articleMap, ...group }) => ({
+    .map(({ articleMap, availablePositionMap, ...group }) => ({
       ...group,
       articles: group.articles.sort((left, right) => {
         if (left.mfi === null && right.mfi !== null) return 1;
@@ -1182,6 +1246,14 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
         }
         return left.article.localeCompare(right.article, 'de');
       }),
+      availablePositions: group.availablePositions.sort((left, right) => {
+        const articleCompare = left.article.localeCompare(right.article, 'de');
+        if (articleCompare !== 0) return articleCompare;
+        const warehouseCompare = left.warehouse.localeCompare(right.warehouse, 'de');
+        if (warehouseCompare !== 0) return warehouseCompare;
+        return left.beNumber.localeCompare(right.beNumber, 'de');
+      }),
+      availableCount: group.availablePositions.length,
     }))
     .sort((left, right) => left.name.localeCompare(right.name, 'de'));
 

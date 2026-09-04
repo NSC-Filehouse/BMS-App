@@ -9,6 +9,7 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Checkbox,
   Divider,
   Dialog,
   DialogActions,
@@ -38,6 +39,8 @@ import {
   getSelectedCustomer,
   setSelectedCustomer,
 } from '../utils/customerSelection.js';
+import { addOrderCartItem } from '../utils/orderCart.js';
+import WpzCommentField from '../components/WpzCommentField.jsx';
 import {
   MAP_PROVIDER_APPLE,
   MAP_PROVIDER_GOOGLE,
@@ -102,6 +105,18 @@ function formatMoney(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+}
+
+function formatQuantity(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+function tomorrow() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function formatEuro(value) {
@@ -340,6 +355,17 @@ export default function CustomerDetail() {
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
+  const [selectedPurchasedPositionIds, setSelectedPurchasedPositionIds] = React.useState([]);
+  const [batchCartOpen, setBatchCartOpen] = React.useState(false);
+  const [batchCartError, setBatchCartError] = React.useState('');
+  const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
+  const [batchCartSalePrice, setBatchCartSalePrice] = React.useState('');
+  const [batchCartDeliveryDate, setBatchCartDeliveryDate] = React.useState(tomorrow);
+  const [batchCartQuantities, setBatchCartQuantities] = React.useState({});
+  const [batchCartWpzIds, setBatchCartWpzIds] = React.useState({});
+  const [batchCartWpzLoading, setBatchCartWpzLoading] = React.useState(false);
+  const [batchCartWpzOriginal, setBatchCartWpzOriginal] = React.useState(false);
+  const [batchCartWpzComment, setBatchCartWpzComment] = React.useState('Neutralisieren');
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -474,15 +500,34 @@ export default function CustomerDetail() {
       .map((group) => {
         const groupMatches = String(group?.name || '').toLowerCase().includes(query);
         const articles = Array.isArray(group?.articles) ? group.articles : [];
+        const availablePositions = Array.isArray(group?.availablePositions) ? group.availablePositions : [];
         return {
           ...group,
           articles: groupMatches
             ? articles
             : articles.filter((itemRow) => String(itemRow?.article || '').toLowerCase().includes(query)),
+          availablePositions: groupMatches
+            ? availablePositions
+            : availablePositions.filter((position) => (
+              [position?.article, position?.warehouse, position?.warehouseId, position?.beNumber]
+                .some((value) => String(value || '').toLowerCase().includes(query))
+            )),
         };
       })
-      .filter((group) => group.articles.length > 0);
+      .filter((group) => group.articles.length > 0 || group.availablePositions.length > 0);
   }, [docs.purchasedArticles.items, purchasedArticlesQuery]);
+
+  const allPurchasedAvailablePositions = React.useMemo(() => (
+    (Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [])
+      .flatMap((group) => (Array.isArray(group?.availablePositions) ? group.availablePositions : []))
+  ), [docs.purchasedArticles.items]);
+
+  const selectedPurchasedPositions = React.useMemo(() => {
+    const selected = new Set(selectedPurchasedPositionIds);
+    return allPurchasedAvailablePositions.filter((position) => selected.has(position.id || position.productId));
+  }, [allPurchasedAvailablePositions, selectedPurchasedPositionIds]);
+
+  const selectedPurchasedPositionCount = selectedPurchasedPositions.length;
   const loadDocSection = React.useCallback(async (section, endpoint) => {
     setDocs((prev) => ({
       ...prev,
@@ -643,8 +688,124 @@ export default function CustomerDetail() {
     }));
   }, []);
 
+  const togglePurchasedPosition = React.useCallback((positionId) => {
+    const key = String(positionId || '');
+    if (!key) return;
+    setSelectedPurchasedPositionIds((previous) => (
+      previous.includes(key)
+        ? previous.filter((value) => value !== key)
+        : [...previous, key]
+    ));
+    setBatchCartSuccess('');
+  }, []);
+
+  const setPurchasedGroupSelection = React.useCallback((positions, selected) => {
+    const ids = positions
+      .map((position) => String(position?.id || position?.productId || '').trim())
+      .filter(Boolean);
+    setSelectedPurchasedPositionIds((previous) => {
+      const next = new Set(previous);
+      ids.forEach((idValue) => {
+        if (selected) next.add(idValue);
+        else next.delete(idValue);
+      });
+      return Array.from(next);
+    });
+    setBatchCartSuccess('');
+  }, []);
+
+  const openBatchCartDialog = React.useCallback(async () => {
+    if (!selectedPurchasedPositions.length) return;
+
+    const quantities = {};
+    selectedPurchasedPositions.forEach((position) => {
+      const available = Math.max(Number(position.amount || 0) - Number(position.reserved || 0), 0);
+      quantities[position.id || position.productId] = available;
+    });
+    setBatchCartQuantities(quantities);
+    setBatchCartSalePrice('');
+    setBatchCartDeliveryDate(tomorrow());
+    setBatchCartWpzOriginal(false);
+    setBatchCartWpzComment('Neutralisieren');
+    setBatchCartError('');
+    setBatchCartSuccess('');
+    setBatchCartWpzIds({});
+    setBatchCartOpen(true);
+    setBatchCartWpzLoading(true);
+
+    const wpzEntries = await Promise.all(selectedPurchasedPositions.map(async (position) => {
+      const key = position.id || position.productId;
+      try {
+        const response = await apiRequest(`/products/${encodeURIComponent(position.productId || position.id)}/wpz`);
+        const wpzId = Number(response?.data?.wpzId);
+        return [key, Number.isFinite(wpzId) && wpzId > 0 ? wpzId : null];
+      } catch {
+        return [key, null];
+      }
+    }));
+    setBatchCartWpzIds(Object.fromEntries(wpzEntries));
+    setBatchCartWpzLoading(false);
+  }, [selectedPurchasedPositions]);
+
+  const addSelectedPositionsToCart = React.useCallback(() => {
+    if (!selectedPurchasedPositions.length) return;
+
+    const salePrice = Number(batchCartSalePrice);
+    if (!Number.isFinite(salePrice) || salePrice <= 0) {
+      setBatchCartError(t('validation_sale_price_positive'));
+      return;
+    }
+    if (!String(batchCartDeliveryDate || '').trim()) {
+      setBatchCartError(t('validation_delivery_date_required'));
+      return;
+    }
+    if (batchCartWpzLoading) {
+      setBatchCartError(t('purchased_batch_waiting_for_wpz'));
+      return;
+    }
+
+    for (const position of selectedPurchasedPositions) {
+      const key = position.id || position.productId;
+      const quantity = Number(batchCartQuantities[key]);
+      const available = Math.max(Number(position.amount || 0) - Number(position.reserved || 0), 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        setBatchCartError(`${position.article || position.beNumber}: ${t('validation_cart_quantity_positive')}`);
+        return;
+      }
+      if (quantity > available) {
+        setBatchCartError(`${position.article || position.beNumber}: ${t('validation_cart_quantity_not_above_available')}`);
+        return;
+      }
+    }
+
+    const selectedCount = selectedPurchasedPositions.length;
+    selectedPurchasedPositions.forEach((position) => {
+      const key = position.id || position.productId;
+      const wpzId = batchCartWpzIds[key] || null;
+      addOrderCartItem({
+        ...position,
+        id: position.productId || position.id,
+        storageId: position.warehouseId,
+        salePrice,
+        deliveryDate: batchCartDeliveryDate,
+        wpzId,
+        wpzOriginal: wpzId ? batchCartWpzOriginal : null,
+        wpzComment: batchCartWpzComment || '',
+      }, Number(batchCartQuantities[key]));
+    });
+
+    setSelectedPurchasedPositionIds((previous) => previous.filter(
+      (idValue) => !selectedPurchasedPositions.some((position) => (position.id || position.productId) === idValue),
+    ));
+    setBatchCartOpen(false);
+    setBatchCartError('');
+    setBatchCartSuccess(t('purchased_batch_success', { count: selectedCount }));
+  }, [batchCartDeliveryDate, batchCartQuantities, batchCartSalePrice, batchCartWpzComment, batchCartWpzIds, batchCartWpzLoading, batchCartWpzOriginal, selectedPurchasedPositions, t]);
+
   React.useEffect(() => {
     setExpandedPurchasedArticleGroups({});
+    setSelectedPurchasedPositionIds([]);
+    setBatchCartSuccess('');
   }, [id]);
 
   const navigateToPurchasedProduct = React.useCallback((productId) => {
@@ -915,6 +1076,21 @@ export default function CustomerDetail() {
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
                   placeholder={t('customer_docs_purchased_articles_search')}
                 />
+                {batchCartSuccess && (
+                  <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+                    {batchCartSuccess}
+                  </Typography>
+                )}
+                {selectedPurchasedPositionCount > 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+                      {t('purchased_batch_selected', { count: selectedPurchasedPositionCount })}
+                    </Typography>
+                    <Button size="small" variant="contained" onClick={openBatchCartDialog}>
+                      {t('purchased_batch_add_selected')}
+                    </Button>
+                  </Box>
+                )}
                 {docs.purchasedArticles.loading && <CircularProgress size={20} />}
                 {docs.purchasedArticles.error && <Alert severity="error">{docs.purchasedArticles.error}</Alert>}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.length === 0 && (
@@ -924,8 +1100,18 @@ export default function CustomerDetail() {
                   (() => {
                     const groupKey = group.id || group.key || `${group.name}-${groupIdx}`;
                     const articles = Array.isArray(group.articles) ? group.articles : [];
-                    const firstAvailableArticle = articles.find((article) => article?.productId);
-                    const hasAvailableArticle = Boolean(firstAvailableArticle?.productId);
+                    const availablePositions = Array.isArray(group.availablePositions) ? group.availablePositions : [];
+                    const availableArticleKeys = new Set(
+                      availablePositions.map((position) => `${position.articleIndex || ''}\u0000${position.article || ''}`),
+                    );
+                    const historicalArticles = articles.filter((article) => (
+                      !availableArticleKeys.has(`${article.articleIndex || ''}\u0000${article.article || ''}`)
+                    ));
+                    const selectedInGroup = availablePositions.filter((position) => (
+                      selectedPurchasedPositionIds.includes(position.id || position.productId)
+                    ));
+                    const allGroupPositionsSelected = availablePositions.length > 0
+                      && selectedInGroup.length === availablePositions.length;
                     const isExpanded = purchasedArticlesQuery.trim() !== ''
                       || expandedPurchasedArticleGroups[groupKey] === true;
 
@@ -938,13 +1124,26 @@ export default function CustomerDetail() {
                             gap: 0.25,
                             mt: groupIdx ? 0.45 : 0,
                             minWidth: 0,
+                            cursor: 'pointer',
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => togglePurchasedArticleGroup(groupKey)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              togglePurchasedArticleGroup(groupKey);
+                            }
                           }}
                         >
                           <IconButton
                             size="small"
                             aria-label={isExpanded ? 'Produkte einklappen' : 'Produkte ausklappen'}
                             aria-expanded={isExpanded}
-                            onClick={() => togglePurchasedArticleGroup(groupKey)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              togglePurchasedArticleGroup(groupKey);
+                            }}
                             sx={{ p: 0.25, color: 'text.secondary' }}
                           >
                             <ChevronRightIcon
@@ -955,53 +1154,118 @@ export default function CustomerDetail() {
                               }}
                             />
                           </IconButton>
-                          <Typography
-                            component={hasAvailableArticle ? 'button' : 'div'}
-                            variant="body2"
-                            onClick={hasAvailableArticle
-                              ? () => navigateToPurchasedProduct(firstAvailableArticle.productId)
-                              : () => togglePurchasedArticleGroup(groupKey)}
-                            sx={{
-                              minWidth: 0,
-                              fontWeight: 600,
-                              border: 0,
-                              bgcolor: 'transparent',
-                              p: 0,
-                              font: 'inherit',
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              ...(hasAvailableArticle
-                                ? { color: 'primary.main', textDecoration: 'underline' }
-                                : {}),
-                            }}
-                          >
-                            {group.name || '-'}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
+                            <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>
+                              {group.name || '-'}
+                            </Typography>
+                            {availablePositions.length > 0 && (
+                              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                                {t('purchased_available_count', { count: availablePositions.length })}
+                              </Typography>
+                            )}
+                            {selectedInGroup.length > 0 && (
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {t('purchased_batch_selected_short', { count: selectedInGroup.length })}
+                              </Typography>
+                            )}
+                          </Box>
                         </Box>
                         {isExpanded && (
                           <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
-                            {articles.map((article, idx) => (
-                              <Card
-                                key={article.id || `${article.article}-${idx}`}
-                                variant="outlined"
-                                sx={article.productId ? { cursor: 'pointer' } : undefined}
-                                onClick={article.productId
-                                  ? () => navigateToPurchasedProduct(article.productId)
-                                  : undefined}
-                              >
-                                <CardContent sx={{ py: '6px !important', px: '10px !important' }}>
-                                  <Typography
-                                    variant="body2"
-                                    sx={{
-                                      fontSize: '0.84rem',
-                                      ...(article.productId ? { color: 'primary.main', textDecoration: 'underline' } : {}),
-                                    }}
-                                  >
-                                    {article.article || '-'}
+                            {availablePositions.length > 0 && (
+                              <Box sx={{ display: 'grid', gap: 0.5 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                                    {t('purchased_available_heading')}
                                   </Typography>
-                                </CardContent>
-                              </Card>
-                            ))}
+                                  <Button
+                                    size="small"
+                                    onClick={() => setPurchasedGroupSelection(availablePositions, !allGroupPositionsSelected)}
+                                  >
+                                    {allGroupPositionsSelected
+                                      ? t('purchased_clear_selection')
+                                      : t('purchased_select_all')}
+                                  </Button>
+                                </Box>
+                                {availablePositions.map((position) => {
+                                  const positionId = position.id || position.productId;
+                                  const selected = selectedPurchasedPositionIds.includes(positionId);
+                                  const availableAmount = Math.max(
+                                    Number(position.amount || 0) - Number(position.reserved || 0),
+                                    0,
+                                  );
+                                  return (
+                                    <Card
+                                      key={positionId}
+                                      variant="outlined"
+                                      sx={selected ? { borderColor: 'primary.main', bgcolor: 'action.selected' } : undefined}
+                                    >
+                                      <CardContent sx={{ py: '5px !important', px: '8px !important' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                                          <Checkbox
+                                            size="small"
+                                            checked={selected}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onChange={() => togglePurchasedPosition(positionId)}
+                                            inputProps={{ 'aria-label': `${position.article || '-'} ${position.beNumber || ''}`.trim() }}
+                                          />
+                                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
+                                              {position.article || '-'}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                                              {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'} · ${t('product_be_number')}: ${position.beNumber || '-'}`}
+                                            </Typography>
+                                          </Box>
+                                          {position.productId && (
+                                            <Button
+                                              size="small"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                navigateToPurchasedProduct(position.productId);
+                                              }}
+                                            >
+                                              {t('purchased_batch_details')}
+                                            </Button>
+                                          )}
+                                        </Box>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                            {historicalArticles.length > 0 && (
+                              <Box sx={{ display: 'grid', gap: 0.5 }}>
+                                {availablePositions.length > 0 && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, mt: 0.35 }}>
+                                    {t('purchased_history_heading')}
+                                  </Typography>
+                                )}
+                                {historicalArticles.map((article, idx) => (
+                                  <Card
+                                    key={article.id || `${article.article}-${idx}`}
+                                    variant="outlined"
+                                    sx={article.productId ? { cursor: 'pointer' } : undefined}
+                                    onClick={article.productId
+                                      ? () => navigateToPurchasedProduct(article.productId)
+                                      : undefined}
+                                  >
+                                    <CardContent sx={{ py: '6px !important', px: '10px !important' }}>
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          fontSize: '0.84rem',
+                                          ...(article.productId ? { color: 'primary.main', textDecoration: 'underline' } : {}),
+                                        }}
+                                      >
+                                        {article.article || '-'}
+                                      </Typography>
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </Box>
+                            )}
                           </Box>
                         )}
                       </Box>
@@ -1159,6 +1423,92 @@ export default function CustomerDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={batchCartOpen} onClose={() => setBatchCartOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>
+          {t('purchased_batch_title', { count: selectedPurchasedPositionCount })}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
+          {batchCartError && <Alert severity="error">{batchCartError}</Alert>}
+          <TextField
+            type="number"
+            label={t('purchased_batch_global_price')}
+            value={batchCartSalePrice}
+            onChange={(event) => setBatchCartSalePrice(event.target.value)}
+            inputProps={{ min: 0.01, step: 'any' }}
+            fullWidth
+            required
+          />
+          <TextField
+            type="date"
+            label={t('purchased_batch_global_date')}
+            value={batchCartDeliveryDate}
+            onChange={(event) => setBatchCartDeliveryDate(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            fullWidth
+            required
+          />
+          {batchCartWpzLoading && <CircularProgress size={20} />}
+          {!batchCartWpzLoading && Object.values(batchCartWpzIds).some(Boolean) && (
+            <WpzCommentField
+              wpzId={Object.values(batchCartWpzIds).find(Boolean) || null}
+              wpzOriginal={batchCartWpzOriginal}
+              wpzComment={batchCartWpzComment}
+              onChange={({ wpzOriginal, wpzComment }) => {
+                setBatchCartWpzOriginal(wpzOriginal);
+                setBatchCartWpzComment(wpzComment);
+              }}
+            />
+          )}
+          {!batchCartWpzLoading && !Object.values(batchCartWpzIds).some(Boolean) && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {t('purchased_batch_wpz_none')}
+            </Typography>
+          )}
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.25 }}>
+            {t('purchased_batch_quantity_hint')}
+          </Typography>
+          <Box sx={{ display: 'grid', gap: 0.75 }}>
+            {selectedPurchasedPositions.map((position) => {
+              const positionId = position.id || position.productId;
+              const availableAmount = Math.max(
+                Number(position.amount || 0) - Number(position.reserved || 0),
+                0,
+              );
+              return (
+                <Card key={positionId} variant="outlined">
+                  <CardContent sx={{ display: 'grid', gap: 0.75, py: '8px !important', px: '10px !important' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+                      {position.article || '-'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                      {`${position.warehouse || position.warehouseId || '-'} · ${t('product_be_number')}: ${position.beNumber || '-'} · ${t('product_available_now')}: ${formatQuantity(availableAmount)} ${position.unit || 'kg'}`}
+                    </Typography>
+                    <TextField
+                      type="number"
+                      label={t('purchased_batch_quantity')}
+                      value={batchCartQuantities[positionId] ?? ''}
+                      onChange={(event) => setBatchCartQuantities((previous) => ({
+                        ...previous,
+                        [positionId]: event.target.value,
+                      }))}
+                      inputProps={{ min: 1, max: availableAmount, step: 'any' }}
+                      size="small"
+                      fullWidth
+                    />
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBatchCartOpen(false)}>{t('back_label')}</Button>
+          <Button variant="contained" onClick={addSelectedPositionsToCart} disabled={batchCartWpzLoading}>
+            {t('purchased_batch_add_selected')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={mapChoiceOpen} onClose={() => setMapChoiceOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>{t('navigation_choose_title')}</DialogTitle>
