@@ -41,6 +41,7 @@ import {
 } from '../utils/customerSelection.js';
 import { addOrderCartItem } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
+import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import {
   MAP_PROVIDER_APPLE,
   MAP_PROVIDER_GOOGLE,
@@ -111,6 +112,10 @@ function formatQuantity(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
   return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+function getPositionLabel(count, t) {
+  return Number(count) === 1 ? t('position_singular') : t('position_plural');
 }
 
 function tomorrow() {
@@ -799,7 +804,10 @@ export default function CustomerDetail() {
     ));
     setBatchCartOpen(false);
     setBatchCartError('');
-    setBatchCartSuccess(t('purchased_batch_success', { count: selectedCount }));
+    setBatchCartSuccess(t('purchased_batch_success', {
+      count: selectedCount,
+      positionLabel: getPositionLabel(selectedCount, t),
+    }));
   }, [batchCartDeliveryDate, batchCartQuantities, batchCartSalePrice, batchCartWpzComment, batchCartWpzIds, batchCartWpzLoading, batchCartWpzOriginal, selectedPurchasedPositions, t]);
 
   React.useEffect(() => {
@@ -1084,7 +1092,10 @@ export default function CustomerDetail() {
                 {selectedPurchasedPositionCount > 0 && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
-                      {t('purchased_batch_selected', { count: selectedPurchasedPositionCount })}
+                      {t('purchased_batch_selected', {
+                        count: selectedPurchasedPositionCount,
+                        positionLabel: getPositionLabel(selectedPurchasedPositionCount, t),
+                      })}
                     </Typography>
                     <Button size="small" variant="contained" onClick={openBatchCartDialog}>
                       {t('purchased_batch_add_selected')}
@@ -1160,7 +1171,10 @@ export default function CustomerDetail() {
                             </Typography>
                             {availablePositions.length > 0 && (
                               <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
-                                {t('purchased_available_count', { count: availablePositions.length })}
+                                {t('purchased_available_count', {
+                                  count: availablePositions.length,
+                                  positionLabel: getPositionLabel(availablePositions.length, t),
+                                })}
                               </Typography>
                             )}
                             {selectedInGroup.length > 0 && (
@@ -1426,7 +1440,10 @@ export default function CustomerDetail() {
 
       <Dialog open={batchCartOpen} onClose={() => setBatchCartOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>
-          {t('purchased_batch_title', { count: selectedPurchasedPositionCount })}
+          {t('purchased_batch_title', {
+            count: selectedPurchasedPositionCount,
+            positionLabel: getPositionLabel(selectedPurchasedPositionCount, t),
+          })}
         </DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
           {batchCartError && <Alert severity="error">{batchCartError}</Alert>}
@@ -1495,6 +1512,10 @@ export default function CustomerDetail() {
                       inputProps={{ min: 1, max: availableAmount, step: 'any' }}
                       size="small"
                       fullWidth
+                    />
+                    <SaleMarginHint
+                      salePrice={batchCartSalePrice}
+                      costPrice={position.acquisitionPrice}
                     />
                   </CardContent>
                 </Card>
