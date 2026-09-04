@@ -31,6 +31,7 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -360,6 +361,7 @@ export default function CustomerDetail() {
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
+  const [expandedPurchasedHistoryGroups, setExpandedPurchasedHistoryGroups] = React.useState({});
   const [selectedPurchasedPositionIds, setSelectedPurchasedPositionIds] = React.useState([]);
   const [batchCartOpen, setBatchCartOpen] = React.useState(false);
   const [batchCartError, setBatchCartError] = React.useState('');
@@ -693,6 +695,13 @@ export default function CustomerDetail() {
     }));
   }, []);
 
+  const togglePurchasedHistoryGroup = React.useCallback((groupKey) => {
+    setExpandedPurchasedHistoryGroups((prev) => ({
+      ...prev,
+      [groupKey]: prev[groupKey] !== true,
+    }));
+  }, []);
+
   const togglePurchasedPosition = React.useCallback((positionId) => {
     const key = String(positionId || '');
     if (!key) return;
@@ -812,6 +821,7 @@ export default function CustomerDetail() {
 
   React.useEffect(() => {
     setExpandedPurchasedArticleGroups({});
+    setExpandedPurchasedHistoryGroups({});
     setSelectedPurchasedPositionIds([]);
     setBatchCartSuccess('');
   }, [id]);
@@ -1090,16 +1100,13 @@ export default function CustomerDetail() {
                   </Typography>
                 )}
                 {selectedPurchasedPositionCount > 0 && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
                       {t('purchased_batch_selected', {
                         count: selectedPurchasedPositionCount,
                         positionLabel: getPositionLabel(selectedPurchasedPositionCount, t),
                       })}
                     </Typography>
-                    <Button size="small" variant="contained" onClick={openBatchCartDialog}>
-                      {t('purchased_batch_add_selected')}
-                    </Button>
                   </Box>
                 )}
                 {docs.purchasedArticles.loading && <CircularProgress size={20} />}
@@ -1125,6 +1132,7 @@ export default function CustomerDetail() {
                       && selectedInGroup.length === availablePositions.length;
                     const isExpanded = purchasedArticlesQuery.trim() !== ''
                       || expandedPurchasedArticleGroups[groupKey] === true;
+                    const isHistoryExpanded = expandedPurchasedHistoryGroups[groupKey] === true;
 
                     return (
                       <Box key={groupKey} sx={{ display: 'grid', gap: 0.45 }}>
@@ -1192,14 +1200,32 @@ export default function CustomerDetail() {
                                   <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                                     {t('purchased_available_heading')}
                                   </Typography>
-                                  <Button
-                                    size="small"
-                                    onClick={() => setPurchasedGroupSelection(availablePositions, !allGroupPositionsSelected)}
-                                  >
-                                    {allGroupPositionsSelected
-                                      ? t('purchased_clear_selection')
-                                      : t('purchased_select_all')}
-                                  </Button>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                    <Button
+                                      size="small"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setPurchasedGroupSelection(availablePositions, !allGroupPositionsSelected);
+                                      }}
+                                    >
+                                      {allGroupPositionsSelected
+                                        ? t('purchased_clear_selection')
+                                        : t('purchased_select_all')}
+                                    </Button>
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      aria-label={t('purchased_batch_add_selected')}
+                                      title={t('purchased_batch_add_selected')}
+                                      disabled={selectedPurchasedPositionCount === 0}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openBatchCartDialog();
+                                      }}
+                                    >
+                                      <ShoppingCartIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
                                 </Box>
                                 {availablePositions.map((position) => {
                                   const positionId = position.id || position.productId;
@@ -1251,12 +1277,43 @@ export default function CustomerDetail() {
                             )}
                             {historicalArticles.length > 0 && (
                               <Box sx={{ display: 'grid', gap: 0.5 }}>
-                                {availablePositions.length > 0 && (
-                                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, mt: 0.35 }}>
+                                <Box
+                                  sx={{ display: 'flex', alignItems: 'center', gap: 0.25, cursor: 'pointer' }}
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-expanded={isHistoryExpanded}
+                                  onClick={() => togglePurchasedHistoryGroup(groupKey)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      togglePurchasedHistoryGroup(groupKey);
+                                    }
+                                  }}
+                                >
+                                  <IconButton
+                                    size="small"
+                                    aria-label={isHistoryExpanded
+                                      ? t('purchased_history_collapse')
+                                      : t('purchased_history_expand')}
+                                    sx={{ p: 0.25, color: 'text.secondary' }}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      togglePurchasedHistoryGroup(groupKey);
+                                    }}
+                                  >
+                                    <ChevronRightIcon
+                                      fontSize="small"
+                                      sx={{
+                                        transform: isHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                        transition: 'transform 160ms ease',
+                                      }}
+                                    />
+                                  </IconButton>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                                     {t('purchased_history_heading')}
                                   </Typography>
-                                )}
-                                {historicalArticles.map((article, idx) => (
+                                </Box>
+                                {isHistoryExpanded && historicalArticles.map((article, idx) => (
                                   <Card
                                     key={article.id || `${article.article}-${idx}`}
                                     variant="outlined"
