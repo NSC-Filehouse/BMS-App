@@ -5,6 +5,7 @@ const { runSQLQueryAccess } = require('../db/access');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { resolveProductGroup } = require('../product-grouping');
 
 const router = express.Router();
 const VIEW_SQL = productAvailabilitySource('availability');
@@ -63,6 +64,7 @@ function mapProductRow(row) {
 
   return {
     id: buildProductId(row),
+    articleIndex: asText(getField(row, 'beP_Artikelindex')),
     article: asText(getField(row, 'Artikel')),
     articleName: asText(getField(row, 'Artikel')),
     category,
@@ -85,10 +87,15 @@ function mapProductRow(row) {
     plastic: categoryMain,
     plasticSubCategory: categorySub,
     storageInfo: asText(getField(row, 'txtLagerInfo')),
+    masterArticleName: asText(getField(row, 'masterArticleName')),
+    articleGroupId: asText(getField(row, 'articleGroupId')),
+    articleGroupName: asText(getField(row, 'articleGroupName')),
+    groupKey: asText(getField(row, 'groupKey')),
+    groupName: asText(getField(row, 'groupName')),
   };
 }
 
-function buildWhereClause(filters = {}) {
+function buildWhereClause(filters = {}, options = {}) {
   const text = asText(filters.q);
   const plastic = asText(filters.plastic);
   const sub = asText(filters.sub);
@@ -115,6 +122,7 @@ function buildWhereClause(filters = {}) {
       "CONVERT(nvarchar(64), [beP_MFI])",
       "CONVERT(nvarchar(64), [beP_MFIgemessen])",
       "CONVERT(nvarchar(64), [bePR_Anzahl])",
+      ...(Array.isArray(options.textFields) ? options.textFields : []),
     ];
     clauses.push(`(${fields.map((f) => `${f} LIKE ?`).join(' OR ')})`);
     params.push(...fields.map(() => like));
@@ -136,6 +144,49 @@ function buildWhereClause(filters = {}) {
     whereSql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
     params,
   };
+}
+
+function groupProductRows(rows) {
+  const groups = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const item = mapProductRow(row);
+    const group = resolveProductGroup({
+      article: item.article,
+      articleIndex: item.articleIndex,
+      masterArticleName: item.masterArticleName,
+      articleGroupId: item.articleGroupId,
+      articleGroupName: item.articleGroupName,
+      plastic: item.plastic,
+      plasticSubCategory: item.plasticSubCategory,
+    });
+    const groupEntry = groups.get(group.key) || {
+      key: group.key,
+      name: group.name,
+      positions: [],
+      positionIds: new Set(),
+    };
+    item.groupKey = group.key;
+    item.groupName = group.name;
+    if (!groupEntry.positionIds.has(item.id)) {
+      groupEntry.positionIds.add(item.id);
+      groupEntry.positions.push(item);
+    }
+    groups.set(group.key, groupEntry);
+  }
+
+  return Array.from(groups.values())
+    .map(({ positionIds, ...group }) => ({
+      ...group,
+      positions: group.positions.sort((left, right) => {
+        const articleCompare = left.article.localeCompare(right.article, 'de');
+        if (articleCompare !== 0) return articleCompare;
+        const warehouseCompare = left.warehouse.localeCompare(right.warehouse, 'de');
+        if (warehouseCompare !== 0) return warehouseCompare;
+        return left.beNumber.localeCompare(right.beNumber, 'de');
+      }),
+      availableCount: group.positions.length,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'de'));
 }
 
 function resolveSort(sort) {
@@ -209,6 +260,63 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
       subEmpty: String(req.query?.subEmpty || '') === '1',
       sort: String(sort || 'article'),
       dir: safeDir,
+    },
+    error: null,
+  });
+}));
+
+router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) => {
+  const { page, pageSize, q } = parseListParams(req.query, {
+    page: 1,
+    pageSize: 40,
+    sort: 'vl',
+    dir: 'ASC',
+  });
+  const { whereSql, params } = buildWhereClause({
+    q,
+    plastic: req.query?.plastic,
+    sub: req.query?.sub,
+    subEmpty: req.query?.subEmpty,
+  }, {
+    textFields: [
+      '[article].[agA_Artikelname]',
+      '[articleGroup].[ag_Gruppenname]',
+    ],
+  });
+
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT
+      [availability].*,
+      [article].[agA_Artikelname] AS [masterArticleName],
+      [article].[agA_Artikelgruppe] AS [articleGroupId],
+      [articleGroup].[ag_Gruppenname] AS [articleGroupName]
+    FROM ${VIEW_SQL}
+    LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
+      ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
+    LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
+      ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
+    ${whereSql}
+    ORDER BY [availability].[Kunststoff], [availability].[Kunststoff_Untergruppe], [availability].[Artikel], [availability].[Bestell-Pos]
+  `, params);
+
+  const allGroups = groupProductRows(rows);
+  const offset = (page - 1) * pageSize;
+  const data = allGroups.slice(offset, offset + pageSize);
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      page,
+      pageSize,
+      count: data.length,
+      total: allGroups.length,
+      totalGroups: allGroups.length,
+      totalPositions: allGroups.reduce((sum, group) => sum + group.positions.length, 0),
+      q,
+      plastic: asText(req.query?.plastic),
+      sub: asText(req.query?.sub),
+      subEmpty: String(req.query?.subEmpty || '') === '1',
     },
     error: null,
   });
