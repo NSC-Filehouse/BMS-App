@@ -7,6 +7,8 @@ const {
 const logger = require('../logger');
 
 const ORDER_MAIL_SUBJECT = 'BMS-App es liegt ein neuer Auftrag vor';
+const TEST_MANDANT_ID = 0;
+const TEST_MANDANT_ORDER_MAIL_RECIPIENT = 'm.frank@filehouse.net';
 const UNFINALIZED_ORDER_REMINDER_SUBJECT = 'BMS-App: offene Aufträge noch nicht an BMS übertragen';
 
 function asText(value) {
@@ -45,6 +47,14 @@ function isEmailAddress(value) {
 
 function resolveOrderMailRecipient(companyId, orderMailConfig) {
   const mandantId = Number(companyId);
+  if (mandantId === TEST_MANDANT_ID) {
+    return {
+      ok: true,
+      address: TEST_MANDANT_ORDER_MAIL_RECIPIENT,
+      source: 'test_mandant_override',
+    };
+  }
+
   const testRecipient = asText(orderMailConfig?.testRecipient).toLowerCase();
   if (testRecipient) {
     if (!isEmailAddress(testRecipient)) {

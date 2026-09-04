@@ -147,6 +147,8 @@ Wenn `BMS_ORDER_MAIL_TEST_RECIPIENT` gesetzt ist, werden ausnahmslos alle
 Auftragsmails an diese Adresse gesendet. Erst nach Abschluss der Tests darf der
 Wert geleert werden; danach gilt Customer Service aus
 `INVOICE_ROUTER_ADDRESS_MAP` mit `EWS_SHARED_MAILBOXES` als Buchhaltungs-Fallback.
+Der Testmandant mit der ID `0` ist davon ausgenommen und sendet Auftragsmails
+an `m.frank@filehouse.net`.
 
 ## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
 

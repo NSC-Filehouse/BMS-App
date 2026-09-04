@@ -30,6 +30,20 @@ test('test recipient overrides customer service and accounting recipients', () =
   });
 });
 
+test('test mandant 0 sends order mail to the dedicated recipient', () => {
+  const result = resolveOrderMailRecipient(0, {
+    testRecipient: 'n.schroeder@filehouse.net',
+    customerServiceAddressMap: 'cs@mlplastics.de|2',
+    accountingMailboxMap: 'buchhaltung@mlplastics.de|2',
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    address: 'm.frank@filehouse.net',
+    source: 'test_mandant_override',
+  });
+});
+
 test('customer service is preferred and accounting is the fallback', () => {
   const config = {
     testRecipient: '',

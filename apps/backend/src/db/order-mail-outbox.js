@@ -2,7 +2,11 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
-const { sendOrderMail, validateOrderMailConfig } = require('../mail/order-mail');
+const {
+  sendOrderMail,
+  resolveOrderMailRecipient,
+  validateOrderMailConfig,
+} = require('../mail/order-mail');
 
 const OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
@@ -19,6 +23,7 @@ function mapOutboxRow(row) {
   return {
     id: Number(row.id),
     orderId: Number(row.orderId),
+    companyId: Number(row.companyId),
     recipient: asText(row.recipient),
     recipientSource: asText(row.recipientSource),
     subject: asText(row.subject),
@@ -38,6 +43,7 @@ async function claimSpecificOutboxItem(outboxId) {
     OUTPUT
       INSERTED.[om_ID] AS id,
       INSERTED.[om_OrderID] AS orderId,
+      INSERTED.[om_CompanyID] AS companyId,
       INSERTED.[om_Recipient] AS recipient,
       INSERTED.[om_RecipientSource] AS recipientSource,
       INSERTED.[om_Subject] AS subject,
@@ -92,7 +98,8 @@ function nextRetryDate(attemptCount) {
 async function processOrderMailOutboxById(outboxId) {
   const item = await claimSpecificOutboxItem(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
-  const effectiveRecipient = asText(config.orderMail.testRecipient).toLowerCase() || item.recipient;
+  const configuredRecipient = resolveOrderMailRecipient(item.companyId, config.orderMail);
+  const effectiveRecipient = configuredRecipient.ok ? configuredRecipient.address : item.recipient;
 
   try {
     const delivery = await sendOrderMail({
