@@ -165,10 +165,23 @@ export default function OrderCreate() {
     });
   }, [location.state, navigate]);
 
+  const handleBack = React.useCallback(() => {
+    if (location.state?.fromVl) {
+      navigate('/vl', {
+        replace: true,
+        state: location.state?.vlReturnState
+          ? { vlReturnState: location.state.vlReturnState }
+          : null,
+      });
+      return;
+    }
+    navigate('/orders');
+  }, [location.state, navigate]);
+
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={() => navigate('/orders')}>
+        <IconButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('reservation_create_title')}</Typography>

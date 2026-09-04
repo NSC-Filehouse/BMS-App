@@ -470,10 +470,11 @@ export default function VlList() {
   const location = useLocation();
   const { lang, t } = useI18n();
   const isFinePointer = useMediaQuery('(pointer: fine)');
+  const initialReturnState = location.state?.vlReturnState || null;
 
-  const [viewMode, setViewMode] = React.useState('grouped');
-  const [searchOpen, setSearchOpen] = React.useState(false);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [viewMode, setViewMode] = React.useState(() => initialReturnState?.viewMode === 'classic' ? 'classic' : 'grouped');
+  const [searchOpen, setSearchOpen] = React.useState(() => Boolean(initialReturnState?.searchOpen || initialReturnState?.searchInput));
+  const [searchInput, setSearchInput] = React.useState(() => String(initialReturnState?.searchInput || ''));
   const [classicItems, setClassicItems] = React.useState([]);
   const [groupedGroups, setGroupedGroups] = React.useState([]);
   const [page, setPage] = React.useState(0);
@@ -482,8 +483,10 @@ export default function VlList() {
   const [error, setError] = React.useState('');
   const [initialLoaded, setInitialLoaded] = React.useState(false);
   const [revealedRow, setRevealedRow] = React.useState({ id: '', side: '' });
-  const [expandedGroups, setExpandedGroups] = React.useState({});
-  const [selectedItems, setSelectedItems] = React.useState([]);
+  const [expandedGroups, setExpandedGroups] = React.useState(() => initialReturnState?.expandedGroups || {});
+  const [selectedItems, setSelectedItems] = React.useState(() => (
+    Array.isArray(initialReturnState?.selectedItems) ? initialReturnState.selectedItems : []
+  ));
   const [singleCartItem, setSingleCartItem] = React.useState(null);
   const [singleCartQuantity, setSingleCartQuantity] = React.useState('');
   const [singleCartError, setSingleCartError] = React.useState('');
@@ -501,10 +504,21 @@ export default function VlList() {
   const listRef = React.useRef(null);
   const loadingRef = React.useRef(false);
   const wpzRequestRef = React.useRef(0);
+  const restorationRef = React.useRef(initialReturnState);
   const normalizedSearch = String(searchInput || '').trim();
   const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
   const visibleItemCount = viewMode === 'grouped' ? groupedGroups.length : classicItems.length;
   const hasMore = visibleItemCount < total;
+
+  const getVlReturnState = React.useCallback(() => ({
+    viewMode,
+    searchOpen,
+    searchInput,
+    page: Math.max(Number(page) || 1, 1),
+    scrollTop: Number(listRef.current?.scrollTop || 0),
+    expandedGroups,
+    selectedItems,
+  }), [expandedGroups, page, searchInput, searchOpen, selectedItems, viewMode]);
 
   const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (loadingRef.current) return;
@@ -544,6 +558,28 @@ export default function VlList() {
   }, [effectiveQuery, hasMore, initialLoaded, loadPage, page]);
 
   React.useEffect(() => {
+    const returnState = restorationRef.current;
+    if (returnState) {
+      restorationRef.current = null;
+      setClassicItems([]);
+      setGroupedGroups([]);
+      setPage(0);
+      setTotal(0);
+      setInitialLoaded(false);
+      setRevealedRow({ id: '', side: '' });
+      const targetPage = Math.max(Number(returnState.page) || 1, 1);
+      const restorePages = async () => {
+        for (let restorePage = 1; restorePage <= targetPage; restorePage += 1) {
+          await loadPage(restorePage, effectiveQuery, restorePage === 1);
+        }
+        window.requestAnimationFrame(() => {
+          if (listRef.current) listRef.current.scrollTop = Math.max(Number(returnState.scrollTop) || 0, 0);
+        });
+        navigate(location.pathname, { replace: true, state: null });
+      };
+      void restorePages();
+      return;
+    }
     setClassicItems([]);
     setGroupedGroups([]);
     setPage(0);
@@ -553,7 +589,7 @@ export default function VlList() {
     setRevealedRow({ id: '', side: '' });
     if (listRef.current) listRef.current.scrollTop = 0;
     void loadPage(1, effectiveQuery, true);
-  }, [effectiveQuery, loadPage]);
+  }, [effectiveQuery, loadPage, location.pathname, navigate]);
 
   React.useEffect(() => {
     const node = sentinelRef.current;
@@ -655,14 +691,15 @@ export default function VlList() {
   }, [lang, selectedItems]);
 
   const requestProductAction = React.useCallback((action, item) => {
+    const vlReturnState = getVlReturnState();
     if (!getSelectedCustomer()?.id) {
-      setPendingCustomerAction({ type: action, product: item });
+      setPendingCustomerAction({ type: action, product: item, vlReturnState });
       setCustomerRequiredOpen(true);
       return;
     }
-    if (action === 'reserve') navigate('/orders/new', { state: { source: item, fromVl: true } });
+    if (action === 'reserve') navigate('/orders/new', { state: { source: item, fromVl: true, vlReturnState } });
     else if (action === 'cart') openSingleAddDialog(item);
-  }, [navigate, openSingleAddDialog]);
+  }, [getVlReturnState, navigate, openSingleAddDialog]);
 
   const requestBatchCart = React.useCallback(() => {
     if (!selectedItems.length) return;
@@ -700,7 +737,7 @@ export default function VlList() {
       setSelectedItems(pending.items);
       void openBatchCartDialog(pending.items);
     } else if (pending.type === 'reserve' && pending.product) {
-      navigate('/orders/new', { state: { source: pending.product, fromVl: true } });
+      navigate('/orders/new', { state: { source: pending.product, fromVl: true, vlReturnState: pending.vlReturnState || null } });
     } else if (pending.type === 'cart' && pending.product) {
       openSingleAddDialog(pending.product);
     }
