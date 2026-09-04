@@ -9,6 +9,7 @@ const {
   normalizeStoredTempOrderStatus,
   isTempOrderEditableStatus,
   isTempOrderFinalizedStatus,
+  normalizeTempOrderCompanyId,
 } = require('../src/routes/temp-orders.routes');
 
 test('normalizes temp-order list filters to supported values', () => {
@@ -68,4 +69,15 @@ test('temp-order workflow status controls edit and finalization permissions', ()
   assert.equal(isTempOrderFinalizedStatus(1), true);
   assert.equal(isTempOrderFinalizedStatus(2), true);
   assert.equal(isTempOrderFinalizedStatus(3), false);
+});
+
+test('accepts test mandant company id 0 while rejecting missing or invalid ids', () => {
+  assert.equal(normalizeTempOrderCompanyId(0), 0);
+  assert.equal(normalizeTempOrderCompanyId('0'), 0);
+  assert.equal(normalizeTempOrderCompanyId(1), 1);
+  assert.equal(normalizeTempOrderCompanyId(null), null);
+  assert.equal(normalizeTempOrderCompanyId(''), null);
+  assert.equal(normalizeTempOrderCompanyId(-1), null);
+  assert.equal(normalizeTempOrderCompanyId('1.5'), null);
+  assert.equal(normalizeTempOrderCompanyId('not-a-number'), null);
 });

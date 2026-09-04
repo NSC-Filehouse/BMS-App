@@ -89,6 +89,14 @@ function asText(value) {
   return String(value).trim();
 }
 
+function normalizeTempOrderCompanyId(value) {
+  const text = asText(value);
+  if (!text) return null;
+
+  const companyId = Number(text);
+  return Number.isSafeInteger(companyId) && companyId >= 0 ? companyId : null;
+}
+
 async function requireVisibleCustomer(req, customerId) {
   const id = asText(customerId);
   if (!id) {
@@ -993,8 +1001,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
-  const companyId = Number(req.database?.firmaId || 0);
-  if (!Number.isFinite(companyId) || companyId <= 0) {
+  const companyId = normalizeTempOrderCompanyId(req.database?.firmaId);
+  if (companyId === null) {
     throw createHttpError(400, 'Invalid company id for selected mandant.', { code: 'INVALID_COMPANY_ID' });
   }
 
@@ -1793,3 +1801,4 @@ module.exports.normalizeTempOrderStatus = normalizeTempOrderStatus;
 module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
 module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;
+module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
