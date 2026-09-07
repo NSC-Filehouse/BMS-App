@@ -378,8 +378,8 @@ export default function CustomerDetail() {
   const [batchCartQuantities, setBatchCartQuantities] = React.useState({});
   const [batchCartWpzIds, setBatchCartWpzIds] = React.useState({});
   const [batchCartWpzLoading, setBatchCartWpzLoading] = React.useState(false);
-  const [batchCartWpzOriginal, setBatchCartWpzOriginal] = React.useState(false);
-  const [batchCartWpzComment, setBatchCartWpzComment] = React.useState('Schw\u00e4rzen/Neutralisieren');
+  const [batchCartWpzOriginal, setBatchCartWpzOriginal] = React.useState(true);
+  const [batchCartWpzComment, setBatchCartWpzComment] = React.useState('Original verwenden');
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -768,8 +768,8 @@ export default function CustomerDetail() {
     setBatchCartQuantities(quantities);
     setBatchCartSalePrice('');
     setBatchCartDeliveryDate(tomorrow());
-    setBatchCartWpzOriginal(false);
-    setBatchCartWpzComment('Schw\u00e4rzen/Neutralisieren');
+    setBatchCartWpzOriginal(true);
+    setBatchCartWpzComment('Original verwenden');
     setBatchCartError('');
     setBatchCartSuccess('');
     setBatchCartWpzIds({});

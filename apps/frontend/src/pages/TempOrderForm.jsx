@@ -98,8 +98,8 @@ function createPositionDefaults(overrides = {}) {
   return {
     deliveryDate: tomorrow(),
     wpzId: null,
-    wpzOriginal: false,
-    wpzComment: 'Schw\u00e4rzen/Neutralisieren',
+    wpzOriginal: true,
+    wpzComment: 'Original verwenden',
     ...overrides,
   };
 }
@@ -262,8 +262,8 @@ export default function TempOrderForm() {
   const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
   const [addPosError, setAddPosError] = React.useState('');
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
-  const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(false);
-  const [addPosWpzComment, setAddPosWpzComment] = React.useState('Schw\u00e4rzen/Neutralisieren');
+  const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
+  const [addPosWpzComment, setAddPosWpzComment] = React.useState('Original verwenden');
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -494,8 +494,8 @@ export default function TempOrderForm() {
             ...createPositionDefaults({
               deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : (d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow()),
               wpzId: p.wpzId ?? null,
-              wpzOriginal: p.wpzOriginal ?? false,
-              wpzComment: p.wpzComment || 'Schw\u00e4rzen/Neutralisieren',
+              wpzOriginal: p.wpzOriginal ?? true,
+              wpzComment: p.wpzComment || 'Original verwenden',
             }),
           })));
         } catch (e) {
@@ -539,8 +539,8 @@ export default function TempOrderForm() {
           ...createPositionDefaults({
             deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow()),
             wpzId: x.wpzId ?? null,
-            wpzOriginal: x.wpzOriginal ?? false,
-            wpzComment: x.wpzComment || 'Schw\u00e4rzen/Neutralisieren',
+            wpzOriginal: x.wpzOriginal ?? true,
+            wpzComment: x.wpzComment || 'Original verwenden',
           }),
         })));
         setAttachmentFile(null);
@@ -564,8 +564,8 @@ export default function TempOrderForm() {
             ...createPositionDefaults({
               deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
               wpzId: x.wpzId ?? null,
-              wpzOriginal: x.wpzOriginal ?? false,
-              wpzComment: x.wpzComment || 'Schw\u00e4rzen/Neutralisieren',
+              wpzOriginal: x.wpzOriginal ?? true,
+              wpzComment: x.wpzComment || 'Original verwenden',
             }),
           })));
         }
@@ -1272,8 +1272,8 @@ export default function TempOrderForm() {
                         setAddPosSalePrice('');
                         setAddPosDeliveryDate(tomorrow());
                         setAddPosWpzId(null);
-                        setAddPosWpzOriginal(false);
-                        setAddPosWpzComment('Schw\u00e4rzen/Neutralisieren');
+                        setAddPosWpzOriginal(true);
+                        setAddPosWpzComment('Original verwenden');
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -1424,8 +1424,8 @@ export default function TempOrderForm() {
               setAddPosQty(value && Number.isFinite(available) ? String(available) : '');
               setAddPosSalePrice('');
               setAddPosWpzId(null);
-              setAddPosWpzOriginal(false);
-              setAddPosWpzComment('Schw\u00e4rzen/Neutralisieren');
+              setAddPosWpzOriginal(true);
+              setAddPosWpzComment('Original verwenden');
               if (value?.id) {
                 void loadPackagingDefault(value.beNumber);
                 (async () => {
