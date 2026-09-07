@@ -6,6 +6,10 @@ const { getDatabaseConnectionForUserById } = require('../db/databases');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
+const {
+  getTempOrderPlanningEntry,
+  loadTempOrderPlanning,
+} = require('../db/temp-order-planning');
 const { resolveProductGroup } = require('../product-grouping');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
@@ -120,6 +124,55 @@ function mapProductRow(row, database = null) {
   };
 }
 
+function getBaseAvailableAmount(item) {
+  const amount = asNumber(item?.amount) ?? 0;
+  const reserved = asNumber(item?.reserved) ?? 0;
+  return Math.max(amount - reserved, 0);
+}
+
+function applyTempOrderPlanning(item, planning) {
+  const entry = getTempOrderPlanningEntry(planning, item?.beNumber, item?.storageId);
+  const tempPlannedAmount = Math.max(Number(entry.totalAmountKg) || 0, 0);
+  const availableAmount = Math.max(getBaseAvailableAmount(item) - tempPlannedAmount, 0);
+  return {
+    ...item,
+    tempPlannedAmount,
+    tempPlannedOtherAmount: Math.max(Number(entry.otherAmountKg) || 0, 0),
+    tempPlannedBy: entry.otherOwners.map((owner) => ({
+      shortCode: owner.shortCode,
+      amountInKg: owner.amountInKg,
+    })),
+    availableAmount,
+  };
+}
+
+async function resolveCurrentUserShortCode(req) {
+  try {
+    const identity = await getUserIdentityByEmail(req.userEmail);
+    return asText(identity?.shortCode);
+  } catch {
+    return '';
+  }
+}
+
+async function loadProductPlanning(req, database, items) {
+  const productItems = Array.isArray(items) ? items : [];
+  const companyId = asNumber(database?.firmaId);
+  if (!productItems.length || companyId === null) {
+    return new Map();
+  }
+
+  const currentOwnerShortCode = await resolveCurrentUserShortCode(req);
+  return loadTempOrderPlanning({
+    companyId,
+    currentOwnerShortCode,
+    keys: productItems.map((item) => ({
+      beNumber: item.beNumber,
+      warehouseId: item.storageId,
+    })),
+  });
+}
+
 function buildWhereClause(filters = {}, options = {}) {
   const text = asText(filters.q);
   const plastic = asText(filters.plastic);
@@ -171,10 +224,10 @@ function buildWhereClause(filters = {}, options = {}) {
   };
 }
 
-function groupProductRows(rows, database = null) {
+function groupProductRows(rows, database = null, planning = new Map()) {
   const groups = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const item = mapProductRow(row, database);
+    const item = applyTempOrderPlanning(mapProductRow(row, database), planning);
     const group = resolveProductGroup({
       article: item.article,
       articleIndex: item.articleIndex,
@@ -268,7 +321,9 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(viewDatabase, dataSql, [...params, offset, pageSize]);
-  const data = (rows || []).map((row) => mapProductRow(row, viewDatabase));
+  const mappedRows = (rows || []).map((row) => mapProductRow(row, viewDatabase));
+  const planning = await loadProductPlanning(req, viewDatabase, mappedRows);
+  const data = mappedRows.map((item) => applyTempOrderPlanning(item, planning));
 
   sendEnvelope(res, {
     status: 200,
@@ -325,7 +380,9 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
     ORDER BY [availability].[Kunststoff], [availability].[Kunststoff_Untergruppe], [availability].[Artikel], [availability].[Bestell-Pos]
   `, params);
 
-  const allGroups = groupProductRows(rows, viewDatabase);
+  const mappedRows = (rows || []).map((row) => mapProductRow(row, viewDatabase));
+  const planning = await loadProductPlanning(req, viewDatabase, mappedRows);
+  const allGroups = groupProductRows(rows, viewDatabase, planning);
   const offset = (page - 1) * pageSize;
   const data = allGroups.slice(offset, offset + pageSize);
   sendEnvelope(res, {
@@ -375,9 +432,12 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(404, `products not found: ${id}`, { code: 'PRODUCT_NOT_FOUND', id });
   }
 
+  const item = mapProductRow(row, viewDatabase);
+  const planning = await loadProductPlanning(req, viewDatabase, [item]);
+
   sendEnvelope(res, {
     status: 200,
-    data: mapProductRow(row, viewDatabase),
+    data: applyTempOrderPlanning(item, planning),
     meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
     error: null,
   });
@@ -481,7 +541,12 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   }
   const totalAmount = asNumber(getField(productRow, 'amount')) ?? asNumber(getField(productRow, 'Menge')) ?? 0;
   const alreadyReserved = asNumber(getField(productRow, 'reserved')) ?? asNumber(getField(productRow, 'bePR_Anzahl')) ?? 0;
-  const availableAmount = Math.max(totalAmount - alreadyReserved, 0);
+  const planning = await loadTempOrderPlanning({
+    companyId: sourceDatabase?.firmaId,
+    keys: [{ beNumber, warehouseId }],
+  });
+  const tempPlannedAmount = getTempOrderPlanningEntry(planning, beNumber, warehouseId).totalAmountKg;
+  const availableAmount = Math.max(totalAmount - alreadyReserved - tempPlannedAmount, 0);
   if (amount > availableAmount) {
     throw createHttpError(400, `Reservation amount exceeds available quantity (${availableAmount}).`, {
       code: 'RESERVATION_AMOUNT_EXCEEDS_AVAILABLE',

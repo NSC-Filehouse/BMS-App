@@ -123,6 +123,10 @@ const errorTexts = {
     de: 'Die Datenbankmigration fuer Verpackungsaenderungen fehlt.',
     en: 'The database migration for packaging changes is missing.',
   },
+  TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE: {
+    de: (d) => `Die angeforderte Menge ueberschreitet die verfuegbare Restmenge (${d?.availableAmount ?? 0}).`,
+    en: (d) => `The requested amount exceeds the remaining available quantity (${d?.availableAmount ?? 0}).`,
+  },
 };
 
 function localizeMessage({ code, details, fallbackMessage, lang }) {

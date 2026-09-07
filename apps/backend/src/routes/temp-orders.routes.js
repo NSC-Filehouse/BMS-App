@@ -18,6 +18,11 @@ const {
 } = require('../mail/order-mail');
 const logger = require('../logger');
 const { productAvailabilitySource } = require('../db/product-availability');
+const {
+  buildTempPlanningKey,
+  getTempOrderPlanningEntry,
+  loadTempOrderPlanning,
+} = require('../db/temp-order-planning');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
@@ -471,6 +476,8 @@ async function loadProductContext(database, beNumber, warehouseId) {
     SELECT TOP 1
       [Artikel] AS article,
       [Lagerort] AS warehouse,
+      [Menge] AS amount,
+      [bePR_Anzahl] AS reserved,
       [beP_VLbemerkung] AS about,
       [beP_Additive] AS packaging,
       [beP_MFIgemessen] AS mfiMeasured,
@@ -488,6 +495,8 @@ async function loadProductContext(database, beNumber, warehouseId) {
       SELECT TOP 1
         [Artikel] AS article,
         [Lagerort] AS warehouse,
+        [Menge] AS amount,
+        [bePR_Anzahl] AS reserved,
         [beP_VLbemerkung] AS about,
         [beP_Additive] AS packaging,
         [beP_MFIgemessen] AS mfiMeasured,
@@ -517,10 +526,55 @@ async function loadProductContext(database, beNumber, warehouseId) {
   return {
     article: asText(row.article),
     warehouse: asText(row.warehouse),
+    amount: Number(row.amount) || 0,
+    reserved: Number(row.reserved) || 0,
     about: asText(row.about),
     packaging: asText(row.packaging),
     mfi,
   };
+}
+
+async function assertTempOrderPositionsAvailable({ companyId, positions, excludeOrderId = null }) {
+  const normalizedPositions = Array.isArray(positions) ? positions : [];
+  if (!normalizedPositions.length) return;
+
+  const planning = await loadTempOrderPlanning({
+    companyId,
+    excludeOrderId,
+    keys: normalizedPositions,
+  });
+  const requestedByKey = new Map();
+
+  for (const position of normalizedPositions) {
+    const key = buildTempPlanningKey(position.beNumber, position.warehouseId);
+    const current = requestedByKey.get(key) || { position, amountInKg: 0 };
+    current.amountInKg += Number(position.amountInKg) || 0;
+    requestedByKey.set(key, current);
+  }
+
+  for (const { position, amountInKg } of requestedByKey.values()) {
+    const baseAmount = Math.max(
+      (Number(position.productContext?.amount) || 0)
+        - (Number(position.productContext?.reserved) || 0),
+      0,
+    );
+    const plannedAmount = getTempOrderPlanningEntry(
+      planning,
+      position.beNumber,
+      position.warehouseId,
+    ).totalAmountKg;
+    const availableAmount = Math.max(baseAmount - plannedAmount, 0);
+    if (amountInKg > availableAmount + 0.000001) {
+      throw createHttpError(400, `Temp order amount exceeds available quantity (${availableAmount}).`, {
+        code: 'TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE',
+        availableAmount,
+        plannedAmount,
+        requestedAmount: amountInKg,
+        beNumber: position.beNumber,
+        warehouseId: position.warehouseId,
+      });
+    }
+  }
 }
 
 async function loadPackagingType(database, beNumber) {
@@ -1131,6 +1185,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
     const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
@@ -1153,9 +1208,15 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       wpzOriginal,
       wpzComment,
       packagingTypeChanged,
+      productContext,
       sourceDatabase,
     });
   }
+
+  await assertTempOrderPositionsAvailable({
+    companyId,
+    positions: normalizedPositions,
+  });
 
   const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
   if (!hasPositionDeliveryDate && deliveryDates.length > 1) {
@@ -1237,7 +1298,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
-    const posCtx = await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
+    const posCtx = pos.productContext || await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
     const posInsertColumns = [
       '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
@@ -1647,6 +1708,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
     const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
@@ -1669,9 +1731,16 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzOriginal,
       wpzComment,
       packagingTypeChanged,
+      productContext,
       sourceDatabase,
     });
   }
+  await assertTempOrderPositionsAvailable({
+    companyId,
+    excludeOrderId: id,
+    positions: normalizedPositions,
+  });
+
   const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
   if (!hasPositionDeliveryDate && deliveryDates.length > 1) {
     throw createHttpError(500, 'Temp order position table is missing delivery date support. Apply the migration first.', { code: 'TEMP_ORDER_POSITION_DELIVERY_DATE_MISSING' });
@@ -1765,7 +1834,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const nowIso = new Date().toISOString();
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
-    const posCtx = await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
+    const posCtx = pos.productContext || await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
     const posInsertColumns = [
       '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
