@@ -138,7 +138,7 @@ function applyTempOrderPlanning(item, planning) {
     ...item,
     tempPlannedAmount,
     tempPlannedOtherAmount: Math.max(Number(entry.otherAmountKg) || 0, 0),
-    tempPlannedBy: entry.otherOwners.map((owner) => ({
+    tempPlannedBy: entry.byOwner.map((owner) => ({
       shortCode: owner.shortCode,
       amountInKg: owner.amountInKg,
     })),

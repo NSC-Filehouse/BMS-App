@@ -1172,7 +1172,7 @@ export default function VlList() {
           </IconButton>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap', minWidth: 0, overflowX: 'auto', pb: 0.25 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, pb: 0.25 }}>
           <RadioGroup
             row
             value={viewMode}
@@ -1182,14 +1182,6 @@ export default function VlList() {
             <FormControlLabel value="classic" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_classic')} />
             <FormControlLabel value="grouped" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_grouped')} />
           </RadioGroup>
-          {!isForeignVl && selectedCount > 0 && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, ml: 'auto' }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{t('vl_selected', { count: selectedCount })}</Typography>
-              <IconButton size="small" color="primary" aria-label={t('vl_batch_add_selected')} title={t('vl_batch_add_selected')} onClick={requestBatchCart}>
-                <ShoppingCartIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          )}
           <TextField
             select
             size="small"
@@ -1197,7 +1189,7 @@ export default function VlList() {
             value={vlMandantId}
             onChange={handleVlMandantChange}
             disabled={!vlMandantsLoaded || vlMandants.length === 0}
-            sx={{ minWidth: 150, ml: selectedCount > 0 ? 0 : 'auto', flexShrink: 0 }}
+            sx={{ minWidth: 150, flexShrink: 0 }}
             SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 320 } } } }}
           >
             {vlMandants.map((mandant) => (
@@ -1205,6 +1197,17 @@ export default function VlList() {
             ))}
           </TextField>
         </Box>
+
+        {!isForeignVl && selectedCount > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, mt: 0.25, pl: 0.25 }}>
+            <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
+              {t('vl_selected', { count: selectedCount })}
+            </Typography>
+            <IconButton size="small" color="primary" aria-label={t('vl_batch_add_selected')} title={t('vl_batch_add_selected')} onClick={requestBatchCart}>
+              <ShoppingCartIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        )}
 
         {searchOpen && (
           <TextField

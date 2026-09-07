@@ -1208,7 +1208,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
       availableAmount,
       tempPlannedAmount: planning.totalAmountKg,
       tempPlannedOtherAmount: planning.otherAmountKg,
-      tempPlannedBy: planning.otherOwners.map((owner) => ({
+      tempPlannedBy: planning.byOwner.map((owner) => ({
         shortCode: owner.shortCode,
         amountInKg: owner.amountInKg,
       })),

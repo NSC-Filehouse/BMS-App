@@ -35,14 +35,11 @@ export default function TempPlanningHint({ item, onEmployeeClick, t }) {
       }}
       sx={{
         mt: 0.25,
-        px: 0.55,
-        py: 0.2,
-        borderRadius: 0.35,
-        bgcolor: '#FFF3C4',
-        color: '#8A5A00',
+        color: '#E65100',
+        fontWeight: 600,
         cursor: 'pointer',
         lineHeight: 1.25,
-        '&:hover': { bgcolor: '#FFE9A3' },
+        '&:hover': { color: '#BF360C' },
       }}
     >
       {plannedBy.map((owner) => (
