@@ -53,6 +53,14 @@ export default function App() {
           }
         />
         <Route
+          path="/employees/:shortCode"
+          element={
+            <MandantGuard>
+              <EmployeeDetail />
+            </MandantGuard>
+          }
+        />
+        <Route
           path="/customers/:id"
           element={
             <MandantGuard>

@@ -115,6 +115,8 @@ export default function ProductDetail() {
   const [customerPromptType, setCustomerPromptType] = React.useState('generic');
   const sourceCustomer = location.state?.fromCustomer || null;
   const availableAmount = React.useMemo(() => {
+    const backendAvailable = Number(item?.availableAmount);
+    if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
     const total = Number(item?.amount ?? 0);
     const reserved = Number(item?.reserved ?? 0);
     if (!Number.isFinite(total) || !Number.isFinite(reserved)) return null;

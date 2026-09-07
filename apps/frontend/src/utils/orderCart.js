@@ -100,13 +100,16 @@ export function addOrderCartItem(item, quantityKg) {
   const current = read();
   const id = String(item.id || '');
   const idx = current.findIndex((x) => String(x.id || '') === id);
+  const backendAvailableAmount = Number(item.availableAmount);
   const payload = {
     id,
     article: item.article || '',
     beNumber: item.beNumber || '',
     warehouseId: item.storageId || item.warehouseId || '',
     unit: item.unit || 'kg',
-    availableAmount: Number(item.amount || 0) - Number(item.reserved || 0),
+    availableAmount: Number.isFinite(backendAvailableAmount)
+      ? Math.max(backendAvailableAmount, 0)
+      : Number(item.amount || 0) - Number(item.reserved || 0),
     amountTotal: item.amount ?? null,
     acquisitionPrice: item.acquisitionPrice ?? null,
     // A sales price must be entered explicitly; never use the acquisition price as VK.

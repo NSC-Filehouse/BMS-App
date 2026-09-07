@@ -68,6 +68,9 @@ export default function EmployeeDetail() {
   const location = useLocation();
   const { t } = useI18n();
   const shortCode = text(routeShortCode);
+  const employeeEndpoint = customerId
+    ? `/customers/${encodeURIComponent(customerId)}/representatives/${encodeURIComponent(shortCode)}`
+    : `/employees/${encodeURIComponent(shortCode)}`;
   const [employee, setEmployee] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -79,9 +82,7 @@ export default function EmployeeDetail() {
       try {
         setLoading(true);
         setError('');
-        const response = await apiRequest(
-          `/customers/${encodeURIComponent(customerId)}/representatives/${encodeURIComponent(shortCode)}`,
-        );
+        const response = await apiRequest(employeeEndpoint);
         if (!alive) return;
         setEmployee(response?.data || null);
       } catch (requestError) {
@@ -93,7 +94,7 @@ export default function EmployeeDetail() {
     })();
 
     return () => { alive = false; };
-  }, [customerId, shortCode, t]);
+  }, [employeeEndpoint, t]);
 
   const givenName = text(employee?.givenName);
   const surname = text(employee?.surname);

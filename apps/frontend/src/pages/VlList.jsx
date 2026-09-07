@@ -87,7 +87,70 @@ function getItemId(item) {
 }
 
 function getAvailableAmount(item) {
+  const backendAmount = Number(item?.availableAmount);
+  if (Number.isFinite(backendAmount)) return Math.max(backendAmount, 0);
   return Math.max(Number(item?.amount || 0) - Number(item?.reserved || 0), 0);
+}
+
+function TempPlanningHint({ item, onEmployeeClick, t }) {
+  const plannedBy = Array.isArray(item?.tempPlannedBy)
+    ? item.tempPlannedBy.filter((owner) => String(owner?.shortCode || '').trim())
+    : [];
+  if (!plannedBy.length) return null;
+
+  const openEmployee = (shortCode) => {
+    const code = String(shortCode || '').trim();
+    if (code) onEmployeeClick(code);
+  };
+
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        openEmployee(plannedBy[0].shortCode);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          openEmployee(plannedBy[0].shortCode);
+        }
+      }}
+      sx={{
+        mt: 0.25,
+        px: 0.55,
+        py: 0.2,
+        borderRadius: 0.35,
+        bgcolor: '#FFF3C4',
+        color: '#8A5A00',
+        cursor: 'pointer',
+        lineHeight: 1.25,
+        '&:hover': { bgcolor: '#FFE9A3' },
+      }}
+    >
+      {plannedBy.map((owner) => (
+        <Box
+          key={owner.shortCode}
+          component="span"
+          sx={{ display: 'block', overflowWrap: 'anywhere' }}
+          onClick={(event) => {
+            event.stopPropagation();
+            openEmployee(owner.shortCode);
+          }}
+        >
+          <Typography component="span" variant="caption" sx={{ fontSize: '0.72rem', color: 'inherit' }}>
+            {t('vl_temp_planned_hint', {
+              amount: formatQuantity(owner.amountInKg),
+              unit: item?.unit || 'kg',
+              shortCode: owner.shortCode,
+            })}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
 function buildGroupTitle(item, lang) {
@@ -161,6 +224,7 @@ function SwipeableProductRow({
   onTap,
   onAction,
   onDetails,
+  onEmployeeClick,
   inCart,
   readOnly,
   t,
@@ -250,6 +314,7 @@ function SwipeableProductRow({
   };
 
   const availableAmount = getAvailableAmount(item);
+  const unavailable = availableAmount <= 0;
   const parts = buildLineParts(item);
   const surfaceSx = {
     position: 'relative',
@@ -371,6 +436,7 @@ function SwipeableProductRow({
                   <Checkbox
                     size="small"
                     checked={selected}
+                    disabled={unavailable && !selected}
                     onTouchStart={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                     onChange={() => onToggleSelection(item)}
@@ -389,6 +455,7 @@ function SwipeableProductRow({
                       {parts.remark}
                     </Typography>
                   )}
+                  <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
                 </Box>
                 {item.id && (
                   <Button
@@ -411,6 +478,7 @@ function SwipeableProductRow({
               <Checkbox
                 size="small"
                 checked={selected}
+                disabled={unavailable && !selected}
                 onTouchStart={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
                 onChange={() => onToggleSelection(item)}
@@ -418,14 +486,17 @@ function SwipeableProductRow({
                 sx={{ p: 0.25, mr: 0.35 }}
               />
             )}
-            <Typography variant="body2" sx={{ minWidth: 0 }}>
-              {parts.main}
-              {parts.remark ? (
-                <Box component="span" sx={{ color: 'error.main' }}>
-                  {` - ${parts.remark}`}
-                </Box>
-              ) : null}
-            </Typography>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" sx={{ minWidth: 0 }}>
+                {parts.main}
+                {parts.remark ? (
+                  <Box component="span" sx={{ color: 'error.main' }}>
+                    {` - ${parts.remark}`}
+                  </Box>
+                ) : null}
+              </Typography>
+              <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
+            </Box>
           </Box>
         )}
 
@@ -434,6 +505,7 @@ function SwipeableProductRow({
             className="vl-row-action"
             size="small"
             color={selected ? 'success' : 'default'}
+            disabled={unavailable && !selected}
             aria-label={selected ? t('vl_deselect') : t('vl_select')}
             onClick={(event) => {
               event.stopPropagation();
@@ -466,6 +538,7 @@ function SwipeableProductRow({
             className="vl-row-action"
             size="small"
             color={inCart ? 'error' : 'primary'}
+            disabled={unavailable}
             aria-label={inCart ? t('vl_cart_remove') : t('cart_add')}
             onClick={(event) => {
               event.stopPropagation();
@@ -695,6 +768,7 @@ export default function VlList() {
       if (previous.some((entry) => getItemId(entry) === itemId)) {
         return previous.filter((entry) => getItemId(entry) !== itemId);
       }
+      if (getAvailableAmount(item) <= 0) return previous;
       const group = getGroupInfo(item, lang);
       return [...previous, { ...item, groupKey: group.key, groupName: group.name }];
     });
@@ -709,6 +783,7 @@ export default function VlList() {
         const id = getItemId(item);
         if (!id) return;
         if (selected) {
+          if (getAvailableAmount(item) <= 0) return;
           const group = getGroupInfo(item, lang);
           next.set(id, { ...item, groupKey: group.key, groupName: group.name });
         } else {
@@ -730,7 +805,7 @@ export default function VlList() {
   const openBatchCartDialog = React.useCallback(async (itemsOverride = null, scope = 'grouped') => {
     if (isForeignVl) return;
     const sourceItems = (Array.isArray(itemsOverride) ? itemsOverride : selectedItems)
-      .filter((item) => !cartIds.has(getItemId(item)));
+      .filter((item) => !cartIds.has(getItemId(item)) && getAvailableAmount(item) > 0);
     if (!sourceItems.length) return;
     const normalizedScope = scope === 'classic' ? 'classic' : 'grouped';
     const quantities = {};
@@ -972,8 +1047,10 @@ export default function VlList() {
 
   const renderGrouped = () => groupedGroups.map((group, groupIndex) => {
     const positions = Array.isArray(group.positions) ? group.positions : [];
+    const selectablePositions = positions.filter((item) => getAvailableAmount(item) > 0);
     const selectedInGroup = positions.filter((item) => selectedItems.some((entry) => getItemId(entry) === getItemId(item)));
-    const allSelected = positions.length > 0 && selectedInGroup.length === positions.length;
+    const allSelected = selectablePositions.length > 0
+      && selectablePositions.every((item) => selectedItems.some((entry) => getItemId(entry) === getItemId(item)));
     const isExpanded = Boolean(effectiveQuery) || expandedGroups[group.key] === true;
     return (
       <Box key={group.key} sx={{ display: 'grid', gap: 0.45 }}>
@@ -1020,7 +1097,7 @@ export default function VlList() {
               <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>{t('vl_available_heading')}</Typography>
               {!isForeignVl && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                  <Button size="small" onClick={() => setGroupSelection(positions, !allSelected)}>
+                  <Button size="small" disabled={selectablePositions.length === 0} onClick={() => setGroupSelection(positions, !allSelected)}>
                     {allSelected ? t('vl_clear_selection') : t('vl_select_all')}
                   </Button>
                   <IconButton
@@ -1050,6 +1127,7 @@ export default function VlList() {
                 onTap={handleRowTap}
                 onAction={handleAction}
                 onDetails={(id) => navigate(`/products/${encodeURIComponent(id)}`, { state: { fromVl: true, vlMandantId, vlReadOnly: isForeignVl, vlReturnState: getVlReturnState() } })}
+                onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
                 inCart={!isForeignVl && cartIds.has(getItemId(item))}
                 readOnly={isForeignVl}
                 t={t}
@@ -1081,6 +1159,7 @@ export default function VlList() {
           onTap={handleRowTap}
           onAction={handleAction}
           onDetails={(id) => navigate(`/products/${encodeURIComponent(id)}`, { state: { fromVl: true, vlMandantId, vlReadOnly: isForeignVl, vlReturnState: getVlReturnState() } })}
+          onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
           inCart={!isForeignVl && cartIds.has(getItemId(item))}
           readOnly={isForeignVl}
           t={t}
@@ -1153,13 +1232,12 @@ export default function VlList() {
           </IconButton>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('vl_view_label')}:</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap', minWidth: 0, overflowX: 'auto', pb: 0.25 }}>
           <RadioGroup
             row
             value={viewMode}
             onChange={(event) => setViewMode(event.target.value === 'classic' ? 'classic' : 'grouped')}
-            sx={{ flexWrap: 'wrap', gap: 0.25, '& .MuiFormControlLabel-root': { margin: 0 }, '& .MuiFormControlLabel-label': { fontSize: '0.78rem' } }}
+            sx={{ flexWrap: 'nowrap', gap: 0.25, flexShrink: 0, '& .MuiFormControlLabel-root': { margin: 0 }, '& .MuiFormControlLabel-label': { fontSize: '0.78rem', whiteSpace: 'nowrap' } }}
           >
             <FormControlLabel value="classic" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_classic')} />
             <FormControlLabel value="grouped" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_grouped')} />
@@ -1179,7 +1257,7 @@ export default function VlList() {
             value={vlMandantId}
             onChange={handleVlMandantChange}
             disabled={!vlMandantsLoaded || vlMandants.length === 0}
-            sx={{ minWidth: 170, ml: selectedCount > 0 ? 0 : 'auto' }}
+            sx={{ minWidth: 150, ml: selectedCount > 0 ? 0 : 'auto', flexShrink: 0 }}
             SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 320 } } } }}
           >
             {vlMandants.map((mandant) => (

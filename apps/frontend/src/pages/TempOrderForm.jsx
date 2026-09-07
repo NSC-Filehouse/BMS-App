@@ -270,6 +270,8 @@ export default function TempOrderForm() {
     return exists ? addPosOptions : [addPosProduct, ...addPosOptions];
   }, [addPosOptions, addPosProduct]);
   const addPosAvailableAmount = React.useMemo(() => {
+    const backendAvailable = Number(addPosProduct?.availableAmount);
+    if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
     const total = Number(addPosProduct?.amount);
     const reserved = Number(addPosProduct?.reserved);
     if (!Number.isFinite(total)) return null;
@@ -747,6 +749,13 @@ export default function TempOrderForm() {
           specialPaymentText: customerPayment.text || '',
         };
       }
+      if (!customerPayment.id) {
+        return {
+          ...prev,
+          specialPaymentId: '',
+          specialPaymentText: '',
+        };
+      }
       if (!prev.specialPaymentId && customerPayment.id) {
         return {
           ...prev,
@@ -1182,6 +1191,9 @@ export default function TempOrderForm() {
                 {form.deliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
               </IconButton>
             </Box>
+            <Typography variant="caption" sx={{ color: 'text.secondary', pl: 0.5, mt: -0.35, overflowWrap: 'anywhere' }}>
+              {t('current_payment_condition')}: {customerPaymentDefaultText || t('payment_select_placeholder')}
+            </Typography>
             <FormControlLabel
               sx={{ m: 0, minWidth: 0, '& .MuiFormControlLabel-label': { overflowWrap: 'anywhere' } }}
               control={(
@@ -1232,6 +1244,7 @@ export default function TempOrderForm() {
                 }}
                 fullWidth
               >
+                <MenuItem value="" disabled>{t('payment_select_placeholder')}</MenuItem>
                 {paymentTextOptions.map((z) => (
                   <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
                 ))}
@@ -1397,9 +1410,17 @@ export default function TempOrderForm() {
             value={addPosProduct}
             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
             getOptionLabel={(opt) => String(opt?.article || '')}
+            getOptionDisabled={(option) => {
+              const available = Number(option?.availableAmount);
+              if (Number.isFinite(available)) return available <= 0;
+              return Math.max(Number(option?.amount || 0) - Number(option?.reserved || 0), 0) <= 0;
+            }}
             onChange={(e, value) => {
               setAddPosProduct(value);
-              const available = Math.max(Number(value?.amount || 0) - Number(value?.reserved || 0), 0);
+              const backendAvailable = Number(value?.availableAmount);
+              const available = Number.isFinite(backendAvailable)
+                ? Math.max(backendAvailable, 0)
+                : Math.max(Number(value?.amount || 0) - Number(value?.reserved || 0), 0);
               setAddPosQty(value && Number.isFinite(available) ? String(available) : '');
               setAddPosSalePrice('');
               setAddPosWpzId(null);
@@ -1438,7 +1459,9 @@ export default function TempOrderForm() {
                   {String(option?.article || '')}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary', width: '100%', textAlign: 'left' }}>
-                  {`${String(option?.warehouse || '-')}; ${option?.amount ?? '-'} ${String(option?.unit || 'kg')}; ${Number.isFinite(Number(option?.acquisitionPrice))
+                  {`${String(option?.warehouse || '-')}; ${Number.isFinite(Number(option?.availableAmount))
+                    ? Number(option.availableAmount)
+                    : (option?.amount ?? '-')} ${String(option?.unit || 'kg')}; ${Number.isFinite(Number(option?.acquisitionPrice))
                     ? Number(option.acquisitionPrice).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : '-'} EUR`}
                 </Typography>

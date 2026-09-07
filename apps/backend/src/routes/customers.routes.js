@@ -650,6 +650,31 @@ router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHan
   });
 }));
 
+router.get('/employees/:shortCode', requireMandant, asyncHandler(async (req, res) => {
+  const shortCode = toText(req.params.shortCode);
+  const identity = await getUserIdentityByShortCode(shortCode, req.database?.firmaId);
+  if (!identity) {
+    throw createHttpError(404, `Employee not found: ${shortCode}`, {
+      code: 'EMPLOYEE_NOT_FOUND',
+      shortCode,
+    });
+  }
+
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      shortCode: identity.shortCode || shortCode,
+      roles: [],
+      givenName: identity.givenName || null,
+      surname: identity.surname || null,
+      email: identity.email || null,
+      phone: identity.phone || null,
+    },
+    meta: { mandant: req.mandant, shortCode },
+    error: null,
+  });
+}));
+
 router.get('/customers/:id/activities', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   if (!customerId) {
