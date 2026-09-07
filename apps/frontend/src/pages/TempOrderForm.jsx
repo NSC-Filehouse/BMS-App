@@ -73,6 +73,11 @@ function findDefaultIncoterm(options) {
   }) || null;
 }
 
+function parsePaymentTextId(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : '';
+}
+
 function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -357,30 +362,30 @@ export default function TempOrderForm() {
     const hit = paymentTextOptions.find((x) => Number(x.id) === idNum);
     return hit ? { id: idNum, text: String(hit.text || '') } : null;
   }, [paymentTextOptions]);
-  const loadCustomerPaymentDefault = React.useCallback(async (clientReferenceId) => {
+  const loadCustomerPaymentDefault = React.useCallback(async (clientReferenceId, customer = null) => {
     const id = String(clientReferenceId || '').trim();
     if (!id) {
       setCustomerPaymentDefaultId('');
       setCustomerPaymentDefaultText('');
       return { id: '', text: '' };
     }
-    try {
-      const detail = await apiRequest(`/customers/${encodeURIComponent(id)}`);
-      const paymentTextIdRaw = detail?.data?.kd_Zahltext;
-      const paymentTextIdParsed = Number(paymentTextIdRaw);
-      const paymentTextId = Number.isFinite(paymentTextIdParsed) && paymentTextIdParsed > 0
-        ? paymentTextIdParsed
-        : '';
-      const resolved = paymentTextId ? resolvePaymentTextById(paymentTextId) : null;
-      const next = { id: paymentTextId, text: resolved?.text || '' };
-      setCustomerPaymentDefaultId(next.id);
-      setCustomerPaymentDefaultText(next.text);
-      return next;
-    } catch {
-      setCustomerPaymentDefaultId('');
-      setCustomerPaymentDefaultText('');
-      return { id: '', text: '' };
+
+    let paymentTextId = parsePaymentTextId(customer?.kd_Zahltext);
+    if (!paymentTextId) {
+      try {
+        const detail = await apiRequest(`/customers/${encodeURIComponent(id)}`);
+        paymentTextId = parsePaymentTextId(detail?.data?.kd_Zahltext);
+      } catch {
+        // The customer selection remains usable even when the optional detail
+        // refresh is temporarily unavailable. The payment list is retried below.
+      }
     }
+
+    const resolved = paymentTextId ? resolvePaymentTextById(paymentTextId) : null;
+    const next = { id: paymentTextId, text: resolved?.text || '' };
+    setCustomerPaymentDefaultId(next.id);
+    setCustomerPaymentDefaultText(next.text);
+    return next;
   }, [resolvePaymentTextById]);
   const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
     const id = String(clientReferenceId || '').trim();
@@ -625,19 +630,37 @@ export default function TempOrderForm() {
 
   React.useEffect(() => {
     let alive = true;
-    const run = async () => {
+    let retryTimer = null;
+    const retryDelays = [0, 400, 1200, 2500];
+
+    const run = async (attempt = 0) => {
       try {
         const res = await apiRequest('/temp-orders/payment-texts');
         if (!alive) return;
-        setPaymentTextOptions(Array.isArray(res?.data) ? res.data : []);
+        const data = Array.isArray(res?.data) ? res.data : [];
+        if (data.length > 0 || attempt >= retryDelays.length - 1) {
+          setPaymentTextOptions(data);
+          return;
+        }
       } catch {
         if (!alive) return;
-        setPaymentTextOptions([]);
       }
+
+      if (!alive) return;
+      const nextAttempt = attempt + 1;
+      if (nextAttempt >= retryDelays.length) {
+        setPaymentTextOptions([]);
+        return;
+      }
+      retryTimer = window.setTimeout(() => { void run(nextAttempt); }, retryDelays[nextAttempt]);
     };
-    run();
-    return () => { alive = false; };
-  }, []);
+
+    void run();
+    return () => {
+      alive = false;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [activeMandant]);
 
   React.useEffect(() => {
     let alive = true;
@@ -740,7 +763,7 @@ export default function TempOrderForm() {
       deliveryAddressManual: false,
     }));
 
-    const customerPayment = await loadCustomerPaymentDefault(clientReferenceId);
+    const customerPayment = await loadCustomerPaymentDefault(clientReferenceId, customer);
     setForm((prev) => {
       if (!prev.specialPaymentCondition) {
         return {
