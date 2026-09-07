@@ -105,7 +105,7 @@ export default function ProductDetail() {
   const [cartQty, setCartQty] = React.useState('');
   const [cartSalePrice, setCartSalePrice] = React.useState('');
   const [cartWpzOriginal, setCartWpzOriginal] = React.useState(false);
-  const [cartWpzComment, setCartWpzComment] = React.useState('Neutralisieren');
+  const [cartWpzComment, setCartWpzComment] = React.useState('Schw\u00e4rzen/Neutralisieren');
   const [cartSuccess, setCartSuccess] = React.useState('');
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
@@ -151,7 +151,7 @@ export default function ProductDetail() {
     setCartQty(availableAmount !== null ? String(availableAmount) : '');
     setCartSalePrice('');
     setCartWpzOriginal(false);
-    setCartWpzComment('Neutralisieren');
+    setCartWpzComment('Schw\u00e4rzen/Neutralisieren');
     setCartError('');
     setCartWpzError(false);
     setCartOpen(true);

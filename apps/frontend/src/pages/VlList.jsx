@@ -517,7 +517,7 @@ export default function VlList() {
     salePrice: '',
     deliveryDate: tomorrow(),
     wpzOriginal: false,
-    wpzComment: 'Neutralisieren',
+    wpzComment: 'Schw\u00e4rzen/Neutralisieren',
   });
   const [batchCartQuantities, setBatchCartQuantities] = React.useState({});
   const [batchCartWpzIds, setBatchCartWpzIds] = React.useState({});
@@ -743,7 +743,7 @@ export default function VlList() {
         salePrice: '',
         deliveryDate: tomorrow(),
         wpzOriginal: false,
-        wpzComment: 'Neutralisieren',
+        wpzComment: 'Schw\u00e4rzen/Neutralisieren',
       };
     });
     setBatchCartItems(sourceItems);
@@ -754,7 +754,7 @@ export default function VlList() {
       salePrice: '',
       deliveryDate: tomorrow(),
       wpzOriginal: false,
-      wpzComment: 'Neutralisieren',
+      wpzComment: 'Schw\u00e4rzen/Neutralisieren',
     });
     setBatchCartError('');
     setBatchCartWpzIds({});
@@ -916,7 +916,7 @@ export default function VlList() {
           deliveryDate: settings.deliveryDate,
           wpzId,
           wpzOriginal: wpzId ? Boolean(settings.wpzOriginal) : null,
-          wpzComment: settings.wpzComment || 'Neutralisieren',
+          wpzComment: settings.wpzComment || 'Schw\u00e4rzen/Neutralisieren',
         }, Number(batchCartQuantities[id]));
       });
     });
@@ -1257,7 +1257,7 @@ export default function VlList() {
               <WpzCommentField
                 wpzId={firstWpzId}
                 wpzOriginal={Boolean(batchCartGlobalSettings.wpzOriginal)}
-                wpzComment={batchCartGlobalSettings.wpzComment || 'Neutralisieren'}
+                wpzComment={batchCartGlobalSettings.wpzComment || 'Schw\u00e4rzen/Neutralisieren'}
                 onChange={({ wpzOriginal, wpzComment }) => setBatchCartGlobalSettings((previous) => ({ ...previous, wpzOriginal, wpzComment }))}
               />
             ) : !batchCartWpzLoading ? (
@@ -1310,7 +1310,7 @@ export default function VlList() {
                   <WpzCommentField
                     wpzId={firstWpzId}
                     wpzOriginal={Boolean(settings.wpzOriginal)}
-                    wpzComment={settings.wpzComment || 'Neutralisieren'}
+                    wpzComment={settings.wpzComment || 'Schw\u00e4rzen/Neutralisieren'}
                     onChange={({ wpzOriginal, wpzComment }) => setBatchCartSettings((previous) => ({ ...previous, [group.key]: { ...settings, wpzOriginal, wpzComment } }))}
                   />
                 ) : !batchCartWpzLoading ? (

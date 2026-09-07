@@ -13,9 +13,9 @@ import { useI18n } from '../utils/i18n.jsx';
 import {
   getWpzCommentForMode,
   getWpzMode,
-  WPZ_MODE_BLACKEN,
-  WPZ_MODE_INDIVIDUAL,
-  WPZ_MODE_NEUTRALIZE,
+  WPZ_MODE_MASK_OR_NEUTRALIZE,
+  WPZ_MODE_ORIGINAL,
+  WPZ_MODE_OTHER,
 } from '../utils/wpz.js';
 
 export default function WpzCommentField({
@@ -32,7 +32,7 @@ export default function WpzCommentField({
   const handleModeChange = (event) => {
     const nextMode = event.target.value;
     onChange({
-      wpzOriginal: false,
+      wpzOriginal: nextMode === WPZ_MODE_ORIGINAL,
       wpzComment: getWpzCommentForMode(nextMode),
     });
   };
@@ -44,28 +44,28 @@ export default function WpzCommentField({
           {t('wpz_label')}: {t('wpz_not_available')}
         </Typography>
       )}
-      <FormLabel component="legend">{t('wpz_comment_label')}</FormLabel>
+      <FormLabel component="legend">{t('wpz_option_label')}</FormLabel>
       <RadioGroup value={mode} onChange={handleModeChange}>
         <FormControlLabel
-          value={WPZ_MODE_NEUTRALIZE}
+          value={WPZ_MODE_ORIGINAL}
           control={<Radio size="small" />}
-          label={t('wpz_option_neutralize')}
+          label={t('wpz_option_original')}
         />
         <FormControlLabel
-          value={WPZ_MODE_BLACKEN}
+          value={WPZ_MODE_MASK_OR_NEUTRALIZE}
           control={<Radio size="small" />}
-          label={t('wpz_option_blacken')}
+          label={t('wpz_option_mask_or_neutralize')}
         />
         <FormControlLabel
-          value={WPZ_MODE_INDIVIDUAL}
+          value={WPZ_MODE_OTHER}
           control={<Radio size="small" />}
-          label={t('wpz_option_individual')}
+          label={t('wpz_option_other')}
         />
       </RadioGroup>
-      {mode === WPZ_MODE_INDIVIDUAL && (
+      {mode === WPZ_MODE_OTHER && (
         <TextField
           margin="dense"
-          label={t('wpz_individual_comment_label')}
+          label={t('wpz_other_info_label')}
           value={wpzComment || ''}
           onChange={(event) => onChange({ wpzOriginal: false, wpzComment: event.target.value })}
           multiline
@@ -75,7 +75,7 @@ export default function WpzCommentField({
           helperText={error ? helperText : ''}
         />
       )}
-      {error && mode !== WPZ_MODE_INDIVIDUAL && helperText && (
+      {error && mode !== WPZ_MODE_OTHER && helperText && (
         <FormHelperText>{helperText}</FormHelperText>
       )}
     </FormControl>
