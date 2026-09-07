@@ -45,6 +45,7 @@ import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import TempPlanningHint from '../components/TempPlanningHint.jsx';
 
 const PAGE_SIZE = 100;
 const GROUP_PAGE_SIZE = 40;
@@ -90,67 +91,6 @@ function getAvailableAmount(item) {
   const backendAmount = Number(item?.availableAmount);
   if (Number.isFinite(backendAmount)) return Math.max(backendAmount, 0);
   return Math.max(Number(item?.amount || 0) - Number(item?.reserved || 0), 0);
-}
-
-function TempPlanningHint({ item, onEmployeeClick, t }) {
-  const plannedBy = Array.isArray(item?.tempPlannedBy)
-    ? item.tempPlannedBy.filter((owner) => String(owner?.shortCode || '').trim())
-    : [];
-  if (!plannedBy.length) return null;
-
-  const openEmployee = (shortCode) => {
-    const code = String(shortCode || '').trim();
-    if (code) onEmployeeClick(code);
-  };
-
-  return (
-    <Box
-      role="button"
-      tabIndex={0}
-      onClick={(event) => {
-        event.stopPropagation();
-        openEmployee(plannedBy[0].shortCode);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          event.stopPropagation();
-          openEmployee(plannedBy[0].shortCode);
-        }
-      }}
-      sx={{
-        mt: 0.25,
-        px: 0.55,
-        py: 0.2,
-        borderRadius: 0.35,
-        bgcolor: '#FFF3C4',
-        color: '#8A5A00',
-        cursor: 'pointer',
-        lineHeight: 1.25,
-        '&:hover': { bgcolor: '#FFE9A3' },
-      }}
-    >
-      {plannedBy.map((owner) => (
-        <Box
-          key={owner.shortCode}
-          component="span"
-          sx={{ display: 'block', overflowWrap: 'anywhere' }}
-          onClick={(event) => {
-            event.stopPropagation();
-            openEmployee(owner.shortCode);
-          }}
-        >
-          <Typography component="span" variant="caption" sx={{ fontSize: '0.72rem', color: 'inherit' }}>
-            {t('vl_temp_planned_hint', {
-              amount: formatQuantity(owner.amountInKg),
-              unit: item?.unit || 'kg',
-              shortCode: owner.shortCode,
-            })}
-          </Typography>
-        </Box>
-      ))}
-    </Box>
-  );
 }
 
 function buildGroupTitle(item, lang) {

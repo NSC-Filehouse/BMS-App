@@ -43,6 +43,7 @@ import {
 import { addOrderCartItem } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import {
   MAP_PROVIDER_APPLE,
   MAP_PROVIDER_GOOGLE,
@@ -113,6 +114,12 @@ function formatQuantity(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
   return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+function getAvailableAmount(position) {
+  const backendAvailable = Number(position?.availableAmount);
+  if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
+  return Math.max(Number(position?.amount || 0) - Number(position?.reserved || 0), 0);
 }
 
 function getPositionLabel(count, t) {
@@ -725,16 +732,18 @@ export default function CustomerDetail() {
   const togglePurchasedPosition = React.useCallback((positionId) => {
     const key = String(positionId || '');
     if (!key) return;
+    const position = allPurchasedAvailablePositions.find((item) => String(item?.id || item?.productId || '') === key);
     setSelectedPurchasedPositionIds((previous) => (
       previous.includes(key)
         ? previous.filter((value) => value !== key)
-        : [...previous, key]
+        : (position && getAvailableAmount(position) > 0 ? [...previous, key] : previous)
     ));
     setBatchCartSuccess('');
-  }, []);
+  }, [allPurchasedAvailablePositions]);
 
   const setPurchasedGroupSelection = React.useCallback((positions, selected) => {
     const ids = positions
+      .filter((position) => !selected || getAvailableAmount(position) > 0)
       .map((position) => String(position?.id || position?.productId || '').trim())
       .filter(Boolean);
     setSelectedPurchasedPositionIds((previous) => {
@@ -753,7 +762,7 @@ export default function CustomerDetail() {
 
     const quantities = {};
     selectedPurchasedPositions.forEach((position) => {
-      const available = Math.max(Number(position.amount || 0) - Number(position.reserved || 0), 0);
+      const available = getAvailableAmount(position);
       quantities[position.id || position.productId] = available;
     });
     setBatchCartQuantities(quantities);
@@ -801,7 +810,7 @@ export default function CustomerDetail() {
     for (const position of selectedPurchasedPositions) {
       const key = position.id || position.productId;
       const quantity = Number(batchCartQuantities[key]);
-      const available = Math.max(Number(position.amount || 0) - Number(position.reserved || 0), 0);
+      const available = getAvailableAmount(position);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setBatchCartError(`${position.article || position.beNumber}: ${t('validation_cart_quantity_positive')}`);
         return;
@@ -1160,6 +1169,7 @@ export default function CustomerDetail() {
                     const groupKey = group.id || group.key || `${group.name}-${groupIdx}`;
                     const articles = Array.isArray(group.articles) ? group.articles : [];
                     const availablePositions = Array.isArray(group.availablePositions) ? group.availablePositions : [];
+                    const selectablePositions = availablePositions.filter((position) => getAvailableAmount(position) > 0);
                     const availableArticleKeys = new Set(
                       availablePositions.map((position) => `${position.articleIndex || ''}\u0000${position.article || ''}`),
                     );
@@ -1169,8 +1179,8 @@ export default function CustomerDetail() {
                     const selectedInGroup = availablePositions.filter((position) => (
                       selectedPurchasedPositionIds.includes(position.id || position.productId)
                     ));
-                    const allGroupPositionsSelected = availablePositions.length > 0
-                      && selectedInGroup.length === availablePositions.length;
+                    const allGroupPositionsSelected = selectablePositions.length > 0
+                      && selectablePositions.every((position) => selectedPurchasedPositionIds.includes(position.id || position.productId));
                     const isExpanded = purchasedArticlesQuery.trim() !== ''
                       || expandedPurchasedArticleGroups[groupKey] === true;
                     const isHistoryExpanded = expandedPurchasedHistoryGroups[groupKey] === true;
@@ -1244,6 +1254,7 @@ export default function CustomerDetail() {
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                                     <Button
                                       size="small"
+                                      disabled={selectablePositions.length === 0}
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         setPurchasedGroupSelection(availablePositions, !allGroupPositionsSelected);
@@ -1271,10 +1282,7 @@ export default function CustomerDetail() {
                                 {availablePositions.map((position) => {
                                   const positionId = position.id || position.productId;
                                   const selected = selectedPurchasedPositionIds.includes(positionId);
-                                  const availableAmount = Math.max(
-                                    Number(position.amount || 0) - Number(position.reserved || 0),
-                                    0,
-                                  );
+                                  const availableAmount = getAvailableAmount(position);
                                   return (
                                     <Card
                                       key={positionId}
@@ -1286,6 +1294,7 @@ export default function CustomerDetail() {
                                           <Checkbox
                                             size="small"
                                             checked={selected}
+                                            disabled={availableAmount <= 0 && !selected}
                                             onClick={(event) => event.stopPropagation()}
                                             onChange={() => togglePurchasedPosition(positionId)}
                                             inputProps={{ 'aria-label': `${position.article || '-'} ${position.beNumber || ''}`.trim() }}
@@ -1297,6 +1306,11 @@ export default function CustomerDetail() {
                                             <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
                                               {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'} · ${t('product_be_number')}: ${position.beNumber || '-'}`}
                                             </Typography>
+                                            <TempPlanningHint
+                                              item={position}
+                                              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+                                              t={t}
+                                            />
                                           </Box>
                                           {position.productId && (
                                             <Button
@@ -1586,10 +1600,7 @@ export default function CustomerDetail() {
           <Box sx={{ display: 'grid', gap: 0.75 }}>
             {selectedPurchasedPositions.map((position) => {
               const positionId = position.id || position.productId;
-              const availableAmount = Math.max(
-                Number(position.amount || 0) - Number(position.reserved || 0),
-                0,
-              );
+              const availableAmount = getAvailableAmount(position);
               return (
                 <Card key={positionId} variant="outlined">
                   <CardContent sx={{ display: 'grid', gap: 0.75, py: '8px !important', px: '10px !important' }}>

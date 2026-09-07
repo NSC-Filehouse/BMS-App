@@ -10,7 +10,14 @@ const {
 const { productAvailabilitySource } = require('../db/product-availability');
 const { calculateAvailableCredit } = require('../credit-limit');
 const { resolveProductGroup: resolvePurchasedArticleGroup } = require('../product-grouping');
-const { getUserIdentityByShortCode } = require('../db/users');
+const {
+  getUserIdentityByEmail,
+  getUserIdentityByShortCode,
+} = require('../db/users');
+const {
+  getTempOrderPlanningEntry,
+  loadTempOrderPlanning,
+} = require('../db/temp-order-planning');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -1115,6 +1122,13 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     }
   }
 
+  const currentUserIdentity = await getUserIdentityByEmail(req.userEmail).catch(() => null);
+  const tempPlanning = await loadTempOrderPlanning({
+    companyId: req.database?.firmaId,
+    currentOwnerShortCode: currentUserIdentity?.shortCode || '',
+    keys: viewRows,
+  });
+
   const groups = new Map();
 
   function ensureGroup(group) {
@@ -1169,6 +1183,18 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     });
     if (!productId || group.availablePositionMap.has(productId)) return;
 
+    const planning = getTempOrderPlanningEntry(
+      tempPlanning,
+      beNumber,
+      warehouseId,
+    );
+    const availableAmount = Math.max(
+      (Number(positionData.amount) || 0)
+        - (Number(positionData.reserved) || 0)
+        - (Number(planning.totalAmountKg) || 0),
+      0,
+    );
+
     const position = {
       id: productId,
       productId,
@@ -1179,6 +1205,13 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
       warehouse: toText(positionData.warehouse),
       amount: positionData.amount ?? null,
       reserved: positionData.reserved ?? null,
+      availableAmount,
+      tempPlannedAmount: planning.totalAmountKg,
+      tempPlannedOtherAmount: planning.otherAmountKg,
+      tempPlannedBy: planning.otherOwners.map((owner) => ({
+        shortCode: owner.shortCode,
+        amountInKg: owner.amountInKg,
+      })),
       unit: toText(positionData.unit),
       acquisitionPrice: positionData.acquisitionPrice ?? null,
       mfi: positionData.mfiMeasured !== null
