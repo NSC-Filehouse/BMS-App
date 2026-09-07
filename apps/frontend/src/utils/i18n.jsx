@@ -595,7 +595,6 @@ const translations = {
     wpz_option_mask_or_neutralize: 'Black out/Neutralize',
     wpz_option_other: 'Allow other information',
     wpz_other_info_label: 'Other information',
-    wpz_option_blacken: 'Black out',
     wpz_available: 'Available',
     wpz_not_available: 'Not available',
     product_reserved_by: 'Reserved by',
