@@ -35,58 +35,16 @@ BEGIN
 END;
 GO
 
--- Status 1 und 2 sowie unbekannte Status >= 4 sind gesperrt.
--- Ein Statuswechsel durch den CS darf einen gesperrten Auftrag
--- in einen anderen Status überführen; Inhaltsänderungen bleiben
--- für gesperrte Status blockiert.
-CREATE OR ALTER TRIGGER [BMSApp].[TR_tbl_Temp_Auftrag_FinalLock]
-ON [BMSApp].[tbl_Temp_Auftrag]
-AFTER UPDATE, DELETE
-AS
-BEGIN
-  SET NOCOUNT ON;
+-- The status column is the workflow state. There is intentionally no
+-- database trigger lock here because the ERP must continue to process
+-- finalized orders and positions.
 
-  IF EXISTS (
-    SELECT 1
-    FROM deleted d
-    LEFT JOIN inserted i
-      ON i.[ta_id] = d.[ta_id]
-    WHERE COALESCE(d.[ta_Status], CASE WHEN d.[ta_completed] = 1 THEN 1 ELSE 0 END) NOT IN (0, 3)
-      AND (
-        i.[ta_id] IS NULL
-        OR COALESCE(i.[ta_Status], CASE WHEN i.[ta_completed] = 1 THEN 1 ELSE 0 END)
-           = COALESCE(d.[ta_Status], CASE WHEN d.[ta_completed] = 1 THEN 1 ELSE 0 END)
-      )
-  )
-  BEGIN
-    THROW 50001, 'Ein gesperrter Auftrag darf nicht geaendert oder geloescht werden.', 1;
-  END;
-END;
-GO
+-- Remove the legacy triggers on installations where they still exist.
+IF OBJECT_ID(N'BMSApp.TR_tbl_Temp_Auftrag_FinalLock', N'TR') IS NOT NULL
+  DROP TRIGGER [BMSApp].[TR_tbl_Temp_Auftrag_FinalLock];
 
-CREATE OR ALTER TRIGGER [BMSApp].[TR_tbl_Temp_Auf_Position_FinalLock]
-ON [BMSApp].[tbl_Temp_Auf_Position]
-AFTER INSERT, UPDATE, DELETE
-AS
-BEGIN
-  SET NOCOUNT ON;
-
-  IF EXISTS (
-    SELECT 1
-    FROM (
-      SELECT [tap_ta_id] FROM inserted
-      UNION
-      SELECT [tap_ta_id] FROM deleted
-    ) changed
-    INNER JOIN [BMSApp].[tbl_Temp_Auftrag] orders
-      ON orders.[ta_id] = changed.[tap_ta_id]
-    WHERE COALESCE(orders.[ta_Status], CASE WHEN orders.[ta_completed] = 1 THEN 1 ELSE 0 END) NOT IN (0, 3)
-  )
-  BEGIN
-    THROW 50002, 'Positionen eines gesperrten Auftrags duerfen nicht geaendert werden.', 1;
-  END;
-END;
-GO
+IF OBJECT_ID(N'BMSApp.TR_tbl_Temp_Auf_Position_FinalLock', N'TR') IS NOT NULL
+  DROP TRIGGER [BMSApp].[TR_tbl_Temp_Auf_Position_FinalLock];
 
 -- Nur alte, bisher finalisierte Datensätze nachtragen.
 UPDATE [BMSApp].[tbl_Temp_Auftrag]
