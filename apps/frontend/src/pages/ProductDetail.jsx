@@ -25,6 +25,7 @@ import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelec
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import TempPlanningHint from '../components/TempPlanningHint.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -359,6 +360,11 @@ export default function ProductDetail() {
             <InfoRow label={t('product_category')} value={item.category} />
             <InfoRow label={t('product_amount')} value={item.amount} />
             <InfoRow label={t('product_reserved')} value={item.reserved} />
+            <TempPlanningHint
+              item={item}
+              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+              t={t}
+            />
             <InfoRow label={t('product_unit')} value={item.unit} />
             <Divider sx={{ my: 2 }} />
             <InfoRow label={t('product_warehouse')} value={item.warehouse} />
