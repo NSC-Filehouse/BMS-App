@@ -8,19 +8,24 @@ function firstHeader(req, names) {
   return null;
 }
 
+function looksLikeEmail(value) {
+  return /^[^\s@]+@[^\s@]+$/.test(String(value || '').trim());
+}
+
 function getUserContextFromRequest(req) {
   const givenName = firstHeader(req, ['x-ms-client-given-name']);
   const surname = firstHeader(req, ['x-ms-client-surname']);
   const mail = firstHeader(req, ['x-ms-client-mail']);
-  const principalName = firstHeader(req, [
-    'x-ms-client-principal-name',
-    'x-forwarded-user',
-  ]);
+  const principalHeader = firstHeader(req, ['x-ms-client-principal-name']);
+  const forwardedUser = firstHeader(req, ['x-forwarded-user']);
+  const identityCandidates = [principalHeader, mail, forwardedUser].filter(Boolean);
+  const email = identityCandidates.find(looksLikeEmail) || identityCandidates[0] || null;
+  const principalName = email || principalHeader || forwardedUser || null;
 
-  const email = (principalName || mail || '').trim() || null;
+  const normalizedEmail = String(email || '').trim() || null;
 
   return {
-    email,
+    email: normalizedEmail,
     mail: mail || null,
     principalName: principalName || null,
     givenName: givenName || null,
