@@ -2,10 +2,12 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
+const { getDatabaseConnectionForUserById } = require('../db/databases');
 const { getUserIdentityByEmail } = require('../db/users');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
 const { resolveProductGroup } = require('../product-grouping');
+const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
 const VIEW_SQL = productAvailabilitySource('availability');
@@ -18,6 +20,27 @@ function normalizeDir(dir) {
 function asText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+async function resolveVlDatabase(req, rawMandantId) {
+  const value = asText(rawMandantId);
+  if (!value) return req.database;
+
+  const selectedId = Number(value);
+  if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
+    throw createHttpError(400, `Invalid VL mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
+  }
+  if (Number(req.database?.firmaId) === selectedId) return req.database;
+  return getDatabaseConnectionForUserById(req.userEmail, selectedId);
+}
+
+function buildVlMeta(req, database) {
+  return {
+    mandant: req.mandant,
+    viewMandant: database?.name || req.mandant,
+    viewMandantId: database?.firmaId ?? null,
+    databaseName: database?.databaseName || null,
+  };
 }
 
 function asNumber(value) {
@@ -54,7 +77,7 @@ function parseProductId(id) {
   };
 }
 
-function mapProductRow(row) {
+function mapProductRow(row, database = null) {
   const categorySub = asText(getField(row, 'Kunststoff_Untergruppe'));
   const categoryMain = asText(getField(row, 'Kunststoff'));
   const category = categorySub || categoryMain;
@@ -92,6 +115,8 @@ function mapProductRow(row) {
     articleGroupName: asText(getField(row, 'articleGroupName')),
     groupKey: asText(getField(row, 'groupKey')),
     groupName: asText(getField(row, 'groupName')),
+    sourceMandantId: database?.firmaId ?? null,
+    sourceMandantName: database?.name || null,
   };
 }
 
@@ -146,10 +171,10 @@ function buildWhereClause(filters = {}, options = {}) {
   };
 }
 
-function groupProductRows(rows) {
+function groupProductRows(rows, database = null) {
   const groups = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const item = mapProductRow(row);
+    const item = mapProductRow(row, database);
     const group = resolveProductGroup({
       article: item.article,
       articleIndex: item.articleIndex,
@@ -213,6 +238,7 @@ function normalizeTotal(rows) {
 }
 
 router.get('/products', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -231,7 +257,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   const offset = (page - 1) * pageSize;
 
   const countSql = `SELECT COUNT(*) AS total FROM ${VIEW_SQL} ${whereSql}`;
-  const totalRows = await runSQLQueryAccess(req.database, countSql, params);
+  const totalRows = await runSQLQueryAccess(viewDatabase, countSql, params);
   const total = normalizeTotal(totalRows);
 
   const dataSql = `
@@ -241,15 +267,14 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
-  const rows = await runSQLQueryAccess(req.database, dataSql, [...params, offset, pageSize]);
-  const data = (rows || []).map(mapProductRow);
+  const rows = await runSQLQueryAccess(viewDatabase, dataSql, [...params, offset, pageSize]);
+  const data = (rows || []).map((row) => mapProductRow(row, viewDatabase));
 
   sendEnvelope(res, {
     status: 200,
     data,
     meta: {
-      mandant: req.mandant,
-      databaseName: req.database?.databaseName || null,
+      ...buildVlMeta(req, viewDatabase),
       page,
       pageSize,
       count: data.length,
@@ -266,6 +291,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const { page, pageSize, q } = parseListParams(req.query, {
     page: 1,
     pageSize: 40,
@@ -284,7 +310,7 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
     ],
   });
 
-  const rows = await runSQLQueryAccess(req.database, `
+  const rows = await runSQLQueryAccess(viewDatabase, `
     SELECT
       [availability].*,
       [article].[agA_Artikelname] AS [masterArticleName],
@@ -299,14 +325,14 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
     ORDER BY [availability].[Kunststoff], [availability].[Kunststoff_Untergruppe], [availability].[Artikel], [availability].[Bestell-Pos]
   `, params);
 
-  const allGroups = groupProductRows(rows);
+  const allGroups = groupProductRows(rows, viewDatabase);
   const offset = (page - 1) * pageSize;
   const data = allGroups.slice(offset, offset + pageSize);
   sendEnvelope(res, {
     status: 200,
     data,
     meta: {
-      mandant: req.mandant,
+      ...buildVlMeta(req, viewDatabase),
       page,
       pageSize,
       count: data.length,
@@ -323,6 +349,7 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
 }));
 
 router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const id = req.params.id;
   const key = parseProductId(id);
 
@@ -335,7 +362,7 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
       AND COALESCE([Kunststoff], '') = ?
       AND COALESCE([Kunststoff_Untergruppe], '') = ?
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [
+  const rows = await runSQLQueryAccess(viewDatabase, sql, [
     key.article,
     key.warehouse,
     key.beNumber,
@@ -350,13 +377,14 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
 
   sendEnvelope(res, {
     status: 200,
-    data: mapProductRow(row),
-    meta: { mandant: req.mandant, idField: 'id', id },
+    data: mapProductRow(row, viewDatabase),
+    meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
     error: null,
   });
 }));
 
 router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const id = req.params.id;
   const key = parseProductId(id);
   const beNumber = asText(key.beNumber);
@@ -370,14 +398,14 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
     WHERE COALESCE([bePZ_BEposID], '') = ?
     ORDER BY [bePZ_ID] DESC
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [beNumber]);
+  const rows = await runSQLQueryAccess(viewDatabase, sql, [beNumber]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
 
   if (!row) {
     sendEnvelope(res, {
       status: 200,
       data: { exists: false, wpzId: null, beNumber, fields: [] },
-      meta: { mandant: req.mandant, idField: 'id', id },
+      meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
       error: null,
     });
     return;
@@ -394,7 +422,7 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
   sendEnvelope(res, {
     status: 200,
     data: { exists: true, wpzId: Number(row?.bePZ_ID || null), beNumber, fields },
-    meta: { mandant: req.mandant, idField: 'id', id },
+    meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
     error: null,
   });
 }));
@@ -429,13 +457,24 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
 
+  const requestedSourceMandantId = asText(req.body?.sourceMandantId);
+  const sourceMandantId = requestedSourceMandantId || parseMandantIdFromBeNumber(beNumber);
+  if (sourceMandantId !== null && sourceMandantId !== undefined
+    && Number(req.database?.firmaId) !== Number(sourceMandantId)) {
+    throw createHttpError(403, 'Fremde VL-Mandanten sind nur lesbar.', {
+      code: 'FOREIGN_VL_READ_ONLY',
+      sourceMandantId: Number(sourceMandantId),
+    });
+  }
+  const sourceDatabase = req.database;
+
   const productSql = `
     SELECT TOP 1 [Menge] AS amount, [bePR_Anzahl] AS reserved, [Artikel] AS article
     FROM ${VIEW_SQL}
     WHERE COALESCE([Bestell-Pos], '') = ?
       AND COALESCE([bePL_LagerID], '') = ?
   `;
-  const productRows = await runSQLQueryAccess(req.database, productSql, [beNumber, warehouseId]);
+  const productRows = await runSQLQueryAccess(sourceDatabase, productSql, [beNumber, warehouseId]);
   const productRow = Array.isArray(productRows) && productRows.length ? productRows[0] : null;
   if (!productRow) {
     throw createHttpError(404, 'Product availability row not found for reservation.', { code: 'PRODUCT_AVAILABILITY_NOT_FOUND' });
@@ -460,7 +499,7 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   try {
-    await runSQLQueryAccess(req.database, insertSql, [
+    await runSQLQueryAccess(sourceDatabase, insertSql, [
       beNumber,
       warehouseId,
       1,
@@ -484,7 +523,7 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
           FROM [dbo].[tblBest_Pos_Reserviert]
           WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
         `;
-        const existingRows = await runSQLQueryAccess(req.database, existingSql, [beNumber, warehouseId]);
+        const existingRows = await runSQLQueryAccess(sourceDatabase, existingSql, [beNumber, warehouseId]);
         const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;
         existingBy = String(existing?.reservedBy || '').trim();
       } catch (ignored) {
@@ -508,7 +547,7 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
     FROM [dbo].[tblBest_Pos_Reserviert]
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
   `;
-  const rows = await runSQLQueryAccess(req.database, createdSql, [beNumber, warehouseId]);
+  const rows = await runSQLQueryAccess(sourceDatabase, createdSql, [beNumber, warehouseId]);
   const created = Array.isArray(rows) && rows.length ? rows[0] : null;
   const createdData = created
     ? { ...created, id: `${created.beNumber}${ID_SEPARATOR}${created.warehouseId}` }
@@ -516,9 +555,9 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
 
   await appendTimelineEntries([{
     createdAt: nowIso,
-    mandant: req.mandant,
-    mandantShortName: req.database?.shortName || null,
-    companyId: req.database?.firmaId || null,
+    mandant: sourceDatabase?.name || req.mandant,
+    mandantShortName: sourceDatabase?.shortName || null,
+    companyId: sourceDatabase?.firmaId || null,
     userEmail: req.userEmail || null,
     userShortCode,
     type: 'reservation',
@@ -537,13 +576,17 @@ router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) =
   sendEnvelope(res, {
     status: 201,
     data: createdData,
-    meta: { mandant: req.mandant, reservationUserShortCode: userShortCode },
+    meta: {
+      ...buildVlMeta(req, sourceDatabase),
+      reservationUserShortCode: userShortCode,
+    },
     error: null,
   });
 }));
 
 // No category tree for availability view; keep endpoint for frontend compatibility.
 router.get('/product-categories', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const { whereSql, params } = buildWhereClause({ q: req.query?.q });
   const sql = `
     SELECT
@@ -555,7 +598,7 @@ router.get('/product-categories', requireMandant, asyncHandler(async (req, res) 
     GROUP BY COALESCE([Kunststoff], ''), COALESCE([Kunststoff_Untergruppe], '')
     ORDER BY COALESCE([Kunststoff], '') ASC, COALESCE([Kunststoff_Untergruppe], '') ASC
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, params);
+  const rows = await runSQLQueryAccess(viewDatabase, sql, params);
 
   const grouped = new Map();
   for (const row of (rows || [])) {
@@ -574,7 +617,7 @@ router.get('/product-categories', requireMandant, asyncHandler(async (req, res) 
   sendEnvelope(res, {
     status: 200,
     data,
-    meta: { mandant: req.mandant, count: data.length, q: asText(req.query?.q) },
+    meta: { ...buildVlMeta(req, viewDatabase), count: data.length, q: asText(req.query?.q) },
     error: null,
   });
 }));

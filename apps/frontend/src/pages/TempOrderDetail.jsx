@@ -18,6 +18,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getMandant } from '../utils/mandant.js';
+import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
   TEMP_ORDER_STATUS,
   getTempOrderStatusColor,
@@ -88,12 +90,26 @@ export default function TempOrderDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const activeMandant = getMandant();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [finalizeOpen, setFinalizeOpen] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
+  const [mandants, setMandants] = React.useState([]);
+
+  React.useEffect(() => {
+    let alive = true;
+    apiRequest('/mandants')
+      .then((response) => {
+        if (alive) setMandants(Array.isArray(response?.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (alive) setMandants([]);
+      });
+    return () => { alive = false; };
+  }, []);
 
   const orderStatus = normalizeTempOrderStatus(item?.orderStatus, item?.completed);
   const orderIsEditable = item ? isTempOrderEditableStatus(orderStatus, item.completed) : false;
@@ -279,6 +295,11 @@ export default function TempOrderDetail() {
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
                   </Typography>
+                  {findForeignMandantName(pos.beNumber, mandants, activeMandant) && (
+                    <Typography variant="caption" sx={{ color: '#C56A00', overflowWrap: 'anywhere' }}>
+                      {t('article_from_mandant', { name: findForeignMandantName(pos.beNumber, mandants, activeMandant) })}
+                    </Typography>
+                  )}
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('delivery_date')}: {formatDateOnly(pos.deliveryDate) || '-'}
                   </Typography>

@@ -2,9 +2,11 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
+const { getDatabaseConnectionForUserById } = require('../db/databases');
 const { getUserIdentityByEmail } = require('../db/users');
 const { getCustomerAccessScope } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
 const VIEW_SQL = productAvailabilitySource('v');
@@ -17,6 +19,17 @@ function buildReservationId(beNumber, warehouseId) {
 function parseReservationId(id) {
   const [beNumber = '', warehouseId = ''] = String(id || '').split(ID_SEPARATOR);
   return { beNumber: beNumber.trim(), warehouseId: warehouseId.trim() };
+}
+
+async function resolveSourceDatabase(req, rawMandantId, beNumber = '') {
+  const requestedId = String(rawMandantId ?? '').trim();
+  const sourceMandantId = requestedId ? Number(requestedId) : parseMandantIdFromBeNumber(beNumber);
+  if (sourceMandantId === null || sourceMandantId === undefined) return req.database;
+  if (!Number.isSafeInteger(sourceMandantId) || sourceMandantId < 0) {
+    throw createHttpError(400, `Invalid mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
+  }
+  if (Number(req.database?.firmaId) === sourceMandantId) return req.database;
+  return getDatabaseConnectionForUserById(req.userEmail, sourceMandantId);
 }
 
 function normalizeDir(dir) {
@@ -74,6 +87,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
+  const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId);
 
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
@@ -101,7 +115,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
   `;
 
   const countSql = `SELECT COUNT(*) AS total ${fromSql}`;
-  const totalRows = await runSQLQueryAccess(req.database, countSql, [...scopeParams, ...params]);
+  const totalRows = await runSQLQueryAccess(sourceDatabase, countSql, [...scopeParams, ...params]);
   const total = normalizeTotal(totalRows);
 
   const dataSql = `
@@ -117,7 +131,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
-  const rows = await runSQLQueryAccess(req.database, dataSql, [...scopeParams, ...params, offset, pageSize]);
+  const rows = await runSQLQueryAccess(sourceDatabase, dataSql, [...scopeParams, ...params, offset, pageSize]);
   const data = (rows || []).map((row) => {
     const beNumber = row.beNumber || null;
     const warehouseId = row.warehouseId || null;
@@ -129,6 +143,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
       reserveAmount: row.reserveAmount,
       reservationDate: row.reservationDate,
       createdAt: row.createdAt,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
     };
   });
 
@@ -137,6 +152,8 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
     data,
     meta: {
       mandant: req.mandant,
+      sourceMandant: sourceDatabase?.name || req.mandant,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
       page,
       pageSize,
       count: data.length,
@@ -152,7 +169,6 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
 
 router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -163,6 +179,8 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   if (!parsedId.beNumber || !parsedId.warehouseId) {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
+  const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
+  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
 
   const sql = `
     SELECT TOP 1
@@ -182,7 +200,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
      AND COALESCE(v.[bePL_LagerID], '') = COALESCE(r.[bePR_LagerID], '')
     WHERE r.[bePR_BEposID] = ? AND r.[bePR_LagerID] = ?
   `;
-  const rows = await runSQLQueryAccess(req.database, sql, [
+  const rows = await runSQLQueryAccess(sourceDatabase, sql, [
     parsedId.beNumber,
     parsedId.warehouseId,
   ]);
@@ -195,7 +213,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     id: buildReservationId(row.beNumber, row.warehouseId),
     orderNumber: row.beNumber || row.id,
     clientName: null,
-    distributor: req.mandant,
+    distributor: sourceDatabase?.name || req.mandant,
     article: row.article || row.beNumber || null,
     price: row.price,
     closingDate: null,
@@ -215,14 +233,19 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   sendEnvelope(res, {
     status: 200,
     data: detail,
-    meta: { mandant: req.mandant, idField: 'id', id },
+    meta: {
+      mandant: req.mandant,
+      sourceMandant: sourceDatabase?.name || req.mandant,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
+      idField: 'id',
+      id,
+    },
     error: null,
   });
 }));
 
 router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -233,6 +256,8 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   if (!parsedId.beNumber || !parsedId.warehouseId) {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
+  const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
+  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
 
   const amount = Number(req.body?.amount);
   const reservationEndDateRaw = req.body?.reservationEndDate;
@@ -253,7 +278,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
       ${ownerFilter.whereSql.replace('r.', '')}
   `;
-  const currentRows = await runSQLQueryAccess(req.database, currentSql, [
+  const currentRows = await runSQLQueryAccess(sourceDatabase, currentSql, [
     parsedId.beNumber,
     parsedId.warehouseId,
     ...ownerFilter.params,
@@ -269,7 +294,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     FROM ${VIEW_SQL}
     WHERE COALESCE([Bestell-Pos], '') = ? AND COALESCE([bePL_LagerID], '') = ?
   `;
-  const availableRows = await runSQLQueryAccess(req.database, availableSql, [parsedId.beNumber, parsedId.warehouseId]);
+  const availableRows = await runSQLQueryAccess(sourceDatabase, availableSql, [parsedId.beNumber, parsedId.warehouseId]);
   const availableRow = Array.isArray(availableRows) && availableRows.length ? availableRows[0] : null;
   if (!availableRow) {
     throw createHttpError(404, 'Product availability row not found for reservation.', { code: 'PRODUCT_AVAILABILITY_NOT_FOUND' });
@@ -294,7 +319,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
       ${ownerFilter.whereSql.replace('r.', '')}
   `;
-  await runSQLQueryAccess(req.database, updateSql, [
+  await runSQLQueryAccess(sourceDatabase, updateSql, [
     amount,
     reservationEndDate.toISOString(),
     comment,
@@ -312,14 +337,17 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       reservationEndDate: reservationEndDate.toISOString(),
       comment,
     },
-    meta: { mandant: req.mandant },
+    meta: {
+      mandant: req.mandant,
+      sourceMandant: sourceDatabase?.name || req.mandant,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
+    },
     error: null,
   });
 }));
 
 router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -330,6 +358,8 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   if (!parsedId.beNumber || !parsedId.warehouseId) {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
+  const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
+  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
 
   const ownerFilter = buildReservationOwnerFilter(userShortCode, accessScope.isFullAccess);
 
@@ -339,7 +369,7 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
       ${ownerFilter.whereSql.replace('r.', '')}
   `;
-  const existsRows = await runSQLQueryAccess(req.database, existsSql, [
+  const existsRows = await runSQLQueryAccess(sourceDatabase, existsSql, [
     parsedId.beNumber,
     parsedId.warehouseId,
     ...ownerFilter.params,
@@ -353,7 +383,7 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
       ${ownerFilter.whereSql.replace('r.', '')}
   `;
-  await runSQLQueryAccess(req.database, sql, [
+  await runSQLQueryAccess(sourceDatabase, sql, [
     parsedId.beNumber,
     parsedId.warehouseId,
     ...ownerFilter.params,
@@ -362,7 +392,11 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
   sendEnvelope(res, {
     status: 200,
     data: { id, deleted: true },
-    meta: { mandant: req.mandant },
+    meta: {
+      mandant: req.mandant,
+      sourceMandant: sourceDatabase?.name || req.mandant,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
+    },
     error: null,
   });
 }));

@@ -4,6 +4,7 @@ const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
+const { getDatabaseConnectionForUserById } = require('../db/databases');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getUserIdentityByEmail } = require('../db/users');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
@@ -17,6 +18,7 @@ const {
 } = require('../mail/order-mail');
 const logger = require('../logger');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -87,6 +89,28 @@ function normalizeDir(dir) {
 function asText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+async function resolvePositionDatabase(req, beNumber) {
+  const sourceMandantId = parseMandantIdFromBeNumber(beNumber);
+  if (sourceMandantId === null || Number(req.database?.firmaId) === sourceMandantId) {
+    return req.database;
+  }
+  return getDatabaseConnectionForUserById(req.userEmail, sourceMandantId);
+}
+
+function assertPositionsBelongToActiveMandant(req, positions) {
+  for (const position of Array.isArray(positions) ? positions : []) {
+    const beNumber = asText(position?.beNumber);
+    const sourceMandantId = parseMandantIdFromBeNumber(beNumber);
+    if (sourceMandantId !== null && Number(req.database?.firmaId) !== sourceMandantId) {
+      throw createHttpError(403, 'Fremde VL-Mandanten sind im Auftrag nicht zulaessig.', {
+        code: 'FOREIGN_VL_READ_ONLY',
+        beNumber,
+        sourceMandantId,
+      });
+    }
+  }
 }
 
 function normalizeTempOrderCompanyId(value) {
@@ -586,7 +610,14 @@ async function loadCustomerPaymentDefaultId(database, clientReferenceId) {
   return Number.isFinite(paymentTextId) && paymentTextId > 0 ? paymentTextId : null;
 }
 
-async function normalizeOrderLevelInput(req, body, clientAddress, lang, defaultPackagingBeNumber = '') {
+async function normalizeOrderLevelInput(
+  req,
+  body,
+  clientAddress,
+  lang,
+  defaultPackagingBeNumber = '',
+  defaultPackagingDatabase = req.database,
+) {
   const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
   const customerPaymentDefaultId = await loadCustomerPaymentDefaultId(req.database, body?.clientReferenceId);
   const requestedPaymentId = asInt(body?.specialPaymentId, 0) || null;
@@ -612,7 +643,7 @@ async function normalizeOrderLevelInput(req, body, clientAddress, lang, defaultP
 
   const packagingType = asText(body?.packagingType)
     || (asText(defaultPackagingBeNumber)
-      ? await loadPackagingType(req.database, asText(defaultPackagingBeNumber))
+      ? await loadPackagingType(defaultPackagingDatabase, asText(defaultPackagingBeNumber))
       : '');
   if (!packagingType) {
     throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -745,8 +776,9 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
     throw createHttpError(400, 'Missing beNumber.', { code: 'MISSING_BE_NUMBER' });
   }
 
-  const packagingType = await loadPackagingType(req.database, beNumber);
-  const deliveryType = await loadDeliveryType(req.database, beNumber);
+  const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+  const packagingType = await loadPackagingType(sourceDatabase, beNumber);
+  const deliveryType = await loadDeliveryType(sourceDatabase, beNumber);
   sendEnvelope(res, {
     status: 200,
     data: {
@@ -754,7 +786,11 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
       packagingType,
       deliveryType,
     },
-    meta: { mandant: req.mandant },
+    meta: {
+      mandant: req.mandant,
+      sourceMandant: sourceDatabase?.name || req.mandant,
+      sourceMandantId: sourceDatabase?.firmaId ?? null,
+    },
     error: null,
   });
 }));
@@ -1012,6 +1048,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
+  assertPositionsBelongToActiveMandant(req, positionsInput);
 
   const clientReferenceId = asText(body?.clientReferenceId);
   const clientName = asText(body?.clientName);
@@ -1023,12 +1060,14 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
+  const firstPositionDatabase = await resolvePositionDatabase(req, asText(positionsInput[0]?.beNumber));
   const orderLevel = await normalizeOrderLevelInput(
     req,
     body,
     clientAddress,
     lang,
     asText(positionsInput[0]?.beNumber),
+    firstPositionDatabase,
   );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
@@ -1059,7 +1098,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
-    const wpzId = await loadLatestWpzId(req.database, beNumber);
+    const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
     const wpzComment = wpzCommentText || null;
@@ -1078,6 +1118,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       wpzId,
       wpzOriginal,
       wpzComment,
+      sourceDatabase,
     });
   }
 
@@ -1161,7 +1202,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
-    const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
+    const posCtx = await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
     const posInsertColumns = [
       '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
@@ -1525,12 +1566,15 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
+  assertPositionsBelongToActiveMandant(req, positionsInput);
+  const firstPositionDatabase = await resolvePositionDatabase(req, asText(positionsInput[0]?.beNumber));
   const orderLevel = await normalizeOrderLevelInput(
     req,
     body,
     clientAddress,
     lang,
     asText(positionsInput[0]?.beNumber),
+    firstPositionDatabase,
   );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
@@ -1561,7 +1605,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
-    const wpzId = await loadLatestWpzId(req.database, beNumber);
+    const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
     const wpzComment = wpzCommentText || null;
@@ -1580,6 +1625,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzId,
       wpzOriginal,
       wpzComment,
+      sourceDatabase,
     });
   }
   const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
@@ -1675,7 +1721,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const nowIso = new Date().toISOString();
   for (let i = 0; i < normalizedPositions.length; i += 1) {
     const pos = normalizedPositions[i];
-    const posCtx = await loadProductContext(req.database, pos.beNumber, pos.warehouseId);
+    const posCtx = await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
     const posInsertColumns = [
       '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',

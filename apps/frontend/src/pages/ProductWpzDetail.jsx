@@ -61,6 +61,8 @@ export default function ProductWpzDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const vlMandantId = String(location.state?.fromProduct?.vlMandantId || '').trim();
+  const sourceQuery = vlMandantId ? `?vlMandantId=${encodeURIComponent(vlMandantId)}` : '';
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -72,7 +74,7 @@ export default function ProductWpzDetail() {
       try {
         setLoading(true);
         setError('');
-        const res = await apiRequest(`/products/${encodeURIComponent(id)}/wpz`);
+        const res = await apiRequest(`/products/${encodeURIComponent(id)}/wpz${sourceQuery}`);
         if (!alive) return;
         setData(res?.data || null);
       } catch (e) {
@@ -83,7 +85,7 @@ export default function ProductWpzDetail() {
       }
     })();
     return () => { alive = false; };
-  }, [id, t]);
+  }, [id, sourceQuery, t]);
 
   const handleBack = React.useCallback(() => {
     const fromProduct = location.state?.fromProduct || {};
@@ -91,6 +93,9 @@ export default function ProductWpzDetail() {
       state: {
         fromProducts: fromProduct.fromProducts || null,
         fromVl: Boolean(fromProduct.fromVl),
+        vlMandantId: fromProduct.vlMandantId || null,
+        vlReadOnly: Boolean(fromProduct.vlReadOnly),
+        vlReturnState: fromProduct.vlReturnState || null,
       },
     });
   }, [id, location.state, navigate]);

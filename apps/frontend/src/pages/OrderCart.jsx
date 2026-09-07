@@ -12,7 +12,10 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getMandant } from '../utils/mandant.js';
+import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
   getOrderCartItems,
   removeOrderCartItem,
@@ -42,6 +45,20 @@ export default function OrderCart() {
   const [fieldErrors, setFieldErrors] = React.useState({});
   const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
   const [pendingSourceItems, setPendingSourceItems] = React.useState(null);
+  const [mandants, setMandants] = React.useState([]);
+  const activeMandant = getMandant();
+
+  React.useEffect(() => {
+    let alive = true;
+    apiRequest('/mandants')
+      .then((response) => {
+        if (alive) setMandants(Array.isArray(response?.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (alive) setMandants([]);
+      });
+    return () => { alive = false; };
+  }, []);
 
   const chooseCustomer = React.useCallback(() => {
     setCustomerRequiredOpen(false);
@@ -101,6 +118,10 @@ export default function OrderCart() {
       nextFieldErrors[key][field] = true;
     };
     for (const x of items) {
+      const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
+      if (foreignMandant) {
+        messages.push(t('article_from_mandant_readonly', { name: foreignMandant }));
+      }
       const qty = Number(x.quantityKg);
       if (!Number.isFinite(qty) || qty <= 0) {
         messages.push(t('validation_cart_quantity_positive'));
@@ -160,9 +181,16 @@ export default function OrderCart() {
             <Card key={row.id} sx={{ width: '100%', minWidth: 0 }}>
               <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
-                  <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                    {row.article || row.beNumber}
-                  </Typography>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                      {row.article || row.beNumber}
+                    </Typography>
+                    {findForeignMandantName(row.beNumber, mandants, activeMandant) && (
+                      <Typography variant="caption" sx={{ display: 'block', color: '#C56A00', overflowWrap: 'anywhere' }}>
+                        {t('article_from_mandant_readonly', { name: findForeignMandantName(row.beNumber, mandants, activeMandant) })}
+                      </Typography>
+                    )}
+                  </Box>
                   <IconButton
                     aria-label={t('cart_remove')}
                     color="error"

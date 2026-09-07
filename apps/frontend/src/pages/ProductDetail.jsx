@@ -84,6 +84,9 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const vlMandantId = String(location.state?.vlMandantId || '').trim();
+  const readOnlyVl = Boolean(location.state?.vlReadOnly);
+  const sourceQuery = vlMandantId ? `?vlMandantId=${encodeURIComponent(vlMandantId)}` : '';
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -209,7 +212,7 @@ export default function ProductDetail() {
         setWpzLoading(true);
         setWpzExists(false);
         setWpzId(null);
-        const res = await apiRequest(`/products/${encodeURIComponent(id)}`);
+        const res = await apiRequest(`/products/${encodeURIComponent(id)}${sourceQuery}`);
         if (!alive) return;
         const baseItem = res?.data || null;
         if (!baseItem) {
@@ -218,7 +221,7 @@ export default function ProductDetail() {
           return;
         }
         try {
-          const wpzRes = await apiRequest(`/products/${encodeURIComponent(id)}/wpz`);
+          const wpzRes = await apiRequest(`/products/${encodeURIComponent(id)}/wpz${sourceQuery}`);
           if (alive) {
             setWpzExists(Boolean(wpzRes?.data?.exists));
             const idNum = Number(wpzRes?.data?.wpzId);
@@ -243,7 +246,7 @@ export default function ProductDetail() {
     })();
 
     return () => { alive = false; };
-  }, [id, t]);
+  }, [id, sourceQuery, t]);
 
   React.useEffect(() => {
     const action = location.state?.pendingCustomerAction;
@@ -266,7 +269,12 @@ export default function ProductDetail() {
   const handleBack = React.useCallback(() => {
     const fromVl = Boolean(location.state?.fromVl);
     if (fromVl) {
-      navigate('/vl');
+      navigate('/vl', {
+        replace: true,
+        state: location.state?.vlReturnState
+          ? { vlReturnState: location.state.vlReturnState }
+          : null,
+      });
       return;
     }
     const fromProducts = location.state?.fromProducts;
@@ -323,23 +331,27 @@ export default function ProductDetail() {
               </Typography>
             </Box>
 
-            <Button
-              variant="contained"
-              fullWidth
-              sx={{ mb: 1 }}
-              onClick={() => requestProductAction('reserve')}
-            >
-              {t('product_reserve_submit')}
-            </Button>
-            <Button
-              variant="outlined"
-              fullWidth
-              startIcon={<ShoppingCartIcon />}
-              sx={{ mb: 2 }}
-              onClick={() => requestProductAction('cart')}
-            >
-              {t('cart_add')}
-            </Button>
+            {!readOnlyVl && (
+              <>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ mb: 1 }}
+                  onClick={() => requestProductAction('reserve')}
+                >
+                  {t('product_reserve_submit')}
+                </Button>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<ShoppingCartIcon />}
+                  sx={{ mb: 2 }}
+                  onClick={() => requestProductAction('cart')}
+                >
+                  {t('cart_add')}
+                </Button>
+              </>
+            )}
 
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_category')} value={item.category} />
@@ -367,6 +379,9 @@ export default function ProductDetail() {
                           fromProduct: {
                             fromProducts: location.state?.fromProducts || null,
                             fromVl: Boolean(location.state?.fromVl),
+                            vlMandantId,
+                            vlReadOnly: readOnlyVl,
+                            vlReturnState: location.state?.vlReturnState || null,
                           },
                         },
                       })}
@@ -455,11 +470,16 @@ export default function ProductDetail() {
                     amount: Number(reserveAmount),
                     reservationEndDate: reserveDate,
                     comment: reserveComment || '',
+                    sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
                   }),
                 });
                 setReserveOpen(false);
                 setReserveSuccess(t('product_reserve_confirmed'));
-                navigate('/orders');
+                navigate('/orders', {
+                  state: {
+                    sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
+                  },
+                });
               } catch (e) {
                 if (e?.code === 'RESERVATION_ALREADY_EXISTS') {
                   const by = String(e?.payload?.error?.details?.reservedBy || '').trim();

@@ -75,6 +75,8 @@ export default function OrderDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const sourceMandantId = String(location.state?.sourceMandantId || '').trim();
+  const sourceQuery = sourceMandantId ? `?sourceMandantId=${encodeURIComponent(sourceMandantId)}` : '';
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -94,7 +96,7 @@ export default function OrderDetail() {
       try {
         setLoading(true);
         setError('');
-        const res = await apiRequest(`/orders/${encodeURIComponent(id)}`);
+        const res = await apiRequest(`/orders/${encodeURIComponent(id)}${sourceQuery}`);
         if (!alive) return;
         setItem(res?.data || null);
       } catch (e) {
@@ -106,7 +108,7 @@ export default function OrderDetail() {
     })();
 
     return () => { alive = false; };
-  }, [id, t]);
+  }, [id, sourceQuery, t]);
 
   const mandant = getMandant();
   const isReserved = Boolean(item?.isReserved);
@@ -171,9 +173,9 @@ export default function OrderDetail() {
                       try {
                         setError('');
                         setSuccess('');
-                        await apiRequest(`/orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                        await apiRequest(`/orders/${encodeURIComponent(id)}${sourceQuery}`, { method: 'DELETE' });
                         setSuccess(t('reservation_deleted'));
-                        navigate('/orders');
+                        navigate('/orders', { state: { sourceMandantId: sourceMandantId || null } });
                       } catch (e) {
                         setError(e?.message || t('loading_error'));
                       }
@@ -185,7 +187,7 @@ export default function OrderDetail() {
               </Box>
             )}
             {!isReserved && <InfoRow label={t('order_customer')} value={item.clientName} />}
-            <InfoRow label={t('order_distributor')} value={mandant} />
+            <InfoRow label={t('order_distributor')} value={item.distributor || mandant} />
             <InfoRow label={t('order_article')} value={item.article} />
             <InfoRow label={t('order_price')} value={formatPrice(item.price)} />
             {item?.isReserved && <InfoRow label={t('order_reserve_amount')} value={item.reserveAmount ? `${item.reserveAmount} ${item.unit || 'kg'}` : ''} />}
@@ -242,7 +244,7 @@ export default function OrderDetail() {
                 setEditLoading(true);
                 setEditError('');
                 setSuccess('');
-                await apiRequest(`/orders/${encodeURIComponent(id)}`, {
+                await apiRequest(`/orders/${encodeURIComponent(id)}${sourceQuery}`, {
                   method: 'PUT',
                   body: JSON.stringify({
                     amount: Number(editAmount),
@@ -252,7 +254,7 @@ export default function OrderDetail() {
                 });
                 setEditOpen(false);
                 setSuccess(t('reservation_updated'));
-                const res = await apiRequest(`/orders/${encodeURIComponent(id)}`);
+                const res = await apiRequest(`/orders/${encodeURIComponent(id)}${sourceQuery}`);
                 setItem(res?.data || null);
               } catch (e) {
                 setEditError(e?.message || t('loading_error'));

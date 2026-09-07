@@ -261,10 +261,14 @@ async function getDatabaseConnectionForUser(email, mandantName) {
 
   const mandants = await getMandantsForUser(email);
   const match = mandants.find((m) => m.name.toLowerCase() === selected);
+  return getDatabaseConnectionForMandantMatch(match, mandantName);
+}
+
+async function getDatabaseConnectionForMandantMatch(match, requestedMandant) {
   if (!match) {
-    throw createHttpError(403, `No permission for mandant: ${mandantName}`, {
+    throw createHttpError(403, `No permission for mandant: ${requestedMandant}`, {
       code: 'MANDANT_FORBIDDEN',
-      mandant: mandantName,
+      mandant: requestedMandant,
     });
   }
 
@@ -286,8 +290,20 @@ async function getDatabaseConnectionForUser(email, mandantName) {
   };
 }
 
+async function getDatabaseConnectionForUserById(email, firmaId) {
+  const selectedId = Number(firmaId);
+  if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
+    throw createHttpError(400, `Invalid mandant id: ${firmaId}`, { code: 'MANDANT_ID_INVALID' });
+  }
+
+  const mandants = await getMandantsForUser(email);
+  const match = mandants.find((m) => Number(m.firmaId) === selectedId);
+  return getDatabaseConnectionForMandantMatch(match, selectedId);
+}
+
 module.exports = {
   getMandantsForUser,
   listMandantsForUser,
   getDatabaseConnectionForUser,
+  getDatabaseConnectionForUserById,
 };

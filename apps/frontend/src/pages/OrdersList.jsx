@@ -34,6 +34,7 @@ export default function OrdersList() {
   const [error, setError] = React.useState('');
   const [q, setQ] = React.useState('');
   const [scope, setScope] = React.useState('mine');
+  const [sourceMandantId, setSourceMandantId] = React.useState(() => String(location.state?.sourceMandantId || ''));
 
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
@@ -60,10 +61,12 @@ export default function OrdersList() {
     const pageSize = PAGE_SIZE;
     const qVal = opts.q ?? qRef.current ?? '';
     const scopeVal = opts.scope ?? scopeRef.current ?? 'mine';
+    const sourceId = String(opts.sourceMandantId ?? sourceMandantId ?? '').trim();
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&scope=${encodeURIComponent(scopeVal)}&sort=au_Auftragsdatum&dir=DESC`);
+      const sourceQuery = sourceId ? `&sourceMandantId=${encodeURIComponent(sourceId)}` : '';
+      const res = await apiRequest(`/orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&scope=${encodeURIComponent(scopeVal)}&sort=au_Auftragsdatum&dir=DESC${sourceQuery}`);
       const rows = res?.data || [];
       setItems(rows.slice(0, PAGE_SIZE));
       setMeta(res?.meta || { page, pageSize, total: null });
@@ -72,21 +75,23 @@ export default function OrdersList() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [sourceMandantId, t]);
 
   React.useEffect(() => {
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
 
     const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.sourceMandantId)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredScope = String(listState.scope || 'mine') === 'all' ? 'all' : 'mine';
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setScope(restoredScope);
-      load({ page: restoredPage, q: restoredQ, scope: restoredScope });
+      const restoredSourceMandantId = String(listState.sourceMandantId || '').trim();
+      setSourceMandantId(restoredSourceMandantId);
+      load({ page: restoredPage, q: restoredQ, scope: restoredScope, sourceMandantId: restoredSourceMandantId });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
@@ -202,7 +207,10 @@ export default function OrdersList() {
                 minWidth: 0,
               }}
               onClick={() => navigate(`/orders/${encodeURIComponent(row.id)}`, {
-                state: { fromOrders: { page: meta.page || 1, q, scope } },
+                state: {
+                  fromOrders: { page: meta.page || 1, q, scope, sourceMandantId: sourceMandantId || row.sourceMandantId || '' },
+                  sourceMandantId: sourceMandantId || row.sourceMandantId || '',
+                },
               })}
             >
               <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>

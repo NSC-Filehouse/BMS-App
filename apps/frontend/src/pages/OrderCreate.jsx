@@ -142,10 +142,15 @@ export default function OrderCreate() {
           amount: Number(form.amount),
           reservationEndDate: form.reservationEndDate,
           comment: form.comment || '',
+          sourceMandantId: location.state?.vlMandantId || selectedProduct?.sourceMandantId || null,
         }),
       });
       setSuccess(t('product_reserve_confirmed'));
-      navigate('/orders');
+      navigate('/orders', {
+        state: {
+          sourceMandantId: location.state?.vlMandantId || selectedProduct?.sourceMandantId || null,
+        },
+      });
     } catch (e) {
       setError(e?.message || t('loading_error'));
     } finally {

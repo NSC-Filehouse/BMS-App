@@ -30,6 +30,8 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getMandant } from '../utils/mandant.js';
+import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import { clearOrderCart } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
@@ -215,6 +217,7 @@ export default function TempOrderForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, lang } = useI18n();
+  const activeMandant = getMandant();
 
   const source = location.state?.source || null;
   const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
@@ -246,6 +249,7 @@ export default function TempOrderForm() {
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
   const [customerReminderInvoicesCount, setCustomerReminderInvoicesCount] = React.useState(0);
   const [positions, setPositions] = React.useState([]);
+  const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [incotermOptions, setIncotermOptions] = React.useState([]);
@@ -293,6 +297,18 @@ export default function TempOrderForm() {
   const packagingTouchedRef = React.useRef(false);
   const packagingCacheRef = React.useRef(new Map());
   const packagingRequestsRef = React.useRef(new Map());
+
+  React.useEffect(() => {
+    let alive = true;
+    apiRequest('/mandants')
+      .then((response) => {
+        if (alive) setMandants(Array.isArray(response?.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (alive) setMandants([]);
+      });
+    return () => { alive = false; };
+  }, []);
 
   const loadPackagingDefault = React.useCallback(async (beNumber) => {
     if (isEdit || isCopyCreate || packagingTouchedRef.current || String(form.packagingType || '').trim()) {
@@ -842,6 +858,10 @@ export default function TempOrderForm() {
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
+      const foreignMandant = findForeignMandantName(pos.beNumber, mandants, activeMandant);
+      if (foreignMandant) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('article_from_mandant_readonly', { name: foreignMandant })}`);
+      }
       const amount = Number(pos.amountInKg);
       const salePrice = Number(pos.price);
       const costPrice = Number(pos.costPrice);
@@ -1249,6 +1269,7 @@ export default function TempOrderForm() {
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {positions.map((x, idx) => {
+                    const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
                     return (
                       <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
                       <AccordionSummary
@@ -1262,6 +1283,11 @@ export default function TempOrderForm() {
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                             </Typography>
+                            {foreignMandant && (
+                              <Typography variant="caption" sx={{ color: '#C56A00', overflowWrap: 'anywhere' }}>
+                                {t('article_from_mandant', { name: foreignMandant })}
+                              </Typography>
+                            )}
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
