@@ -91,6 +91,31 @@ function asText(value) {
   return String(value).trim();
 }
 
+const PACKAGING_TYPE_CANONICAL = new Map([
+  ['sackware', 'sackware'],
+  ['bags', 'sackware'],
+  ['siloware', 'siloware'],
+  ['silo/bulk', 'siloware'],
+  ['big bags', 'big bags'],
+  ['octa', 'octa'],
+  ['octabins', 'octa'],
+  ['andere', 'andere'],
+  ['others', 'andere'],
+  ['neutrale sackware', 'neutrale sackware'],
+  ['neutral bags', 'neutrale sackware'],
+  ['neutrale oktabins', 'neutrale oktabins'],
+  ['neutral octas', 'neutrale oktabins'],
+]);
+
+function normalizePackagingType(value) {
+  const key = asText(value).toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
+  return PACKAGING_TYPE_CANONICAL.get(key) || key;
+}
+
+function packagingTypesEqual(left, right) {
+  return normalizePackagingType(left) === normalizePackagingType(right);
+}
+
 async function resolvePositionDatabase(req, beNumber) {
   const sourceMandantId = parseMandantIdFromBeNumber(beNumber);
   if (sourceMandantId === null || Number(req.database?.firmaId) === sourceMandantId) {
@@ -383,6 +408,7 @@ function mapTempOrderWithPositions(row, positions) {
     wpzId: p.wpzId === null || p.wpzId === undefined ? null : Number(p.wpzId),
     wpzOriginal: p.wpzOriginal === null || p.wpzOriginal === undefined ? null : Boolean(p.wpzOriginal),
     wpzComment: asText(p.wpzComment),
+    packagingTypeChanged: Boolean(p.packagingTypeChanged),
   }));
   return {
     ...base,
@@ -691,6 +717,7 @@ async function loadOrderPositions(orderId) {
     const cWpzId = resolveColumn(cols, ['tap_wpz_id']);
     const cWpzOriginal = resolveColumn(cols, ['tap_wpz_original']);
     const cWpzComment = resolveColumn(cols, ['tap_wpz_comment']);
+    const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const sql = `
@@ -712,7 +739,8 @@ async function loadOrderPositions(orderId) {
         NULL AS [packaging],
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
-        ${pick(cWpzComment, 'wpzComment')}
+        ${pick(cWpzComment, 'wpzComment')},
+        ${pick(cPackagingTypeChanged, 'packagingTypeChanged')}
       FROM ${TEMP_ORDER_POSITION_TABLE}
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -1073,6 +1101,10 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
+  if (!hasPackagingTypeChanged) {
+    throw createHttpError(503, 'Temp order position table is missing packaging change support. Apply the migration first.', { code: 'TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING' });
+  }
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -1099,6 +1131,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
@@ -1118,6 +1152,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       wpzId,
       wpzOriginal,
       wpzComment,
+      packagingTypeChanged,
       sourceDatabase,
     });
   }
@@ -1208,7 +1243,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
       ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
       '[tap_about]', '[tap_mfi]',
-      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]',
+      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart_Gewechselt]',
       '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
     ];
     const posSql = `
@@ -1235,6 +1270,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.wpzOriginal,
         pos.wpzComment,
         pos.wpzId,
+        pos.packagingTypeChanged,
         userShortCode,
         nowIso,
         userShortCode,
@@ -1336,7 +1372,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           [tap_mfi] AS mfi,
           [tap_wpz_id] AS wpzId,
           [tap_wpz_original] AS wpzOriginal,
-          [tap_wpz_comment] AS wpzComment
+          [tap_wpz_comment] AS wpzComment,
+          [tap_Verpackungsart_Gewechselt] AS packagingTypeChanged
         FROM ${TEMP_ORDER_POSITION_TABLE} WITH (HOLDLOCK)
         WHERE [tap_ta_id] = ?
         ORDER BY [tap_line_no] ASC
@@ -1580,6 +1617,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
+  if (!hasPackagingTypeChanged) {
+    throw createHttpError(503, 'Temp order position table is missing packaging change support. Apply the migration first.', { code: 'TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING' });
+  }
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -1606,6 +1647,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
@@ -1625,6 +1668,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzId,
       wpzOriginal,
       wpzComment,
+      packagingTypeChanged,
       sourceDatabase,
     });
   }
@@ -1727,7 +1771,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
       ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
       '[tap_about]', '[tap_mfi]',
-      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]',
+      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart_Gewechselt]',
       '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
     ];
     const posSql = `
@@ -1753,6 +1797,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       pos.wpzOriginal,
       pos.wpzComment,
       pos.wpzId,
+      pos.packagingTypeChanged,
       userShortCode,
       nowIso,
       userShortCode,

@@ -119,6 +119,10 @@ const errorTexts = {
     de: 'Die Datenbankmigration fuer das Senden an BMS fehlt.',
     en: 'The database migration for sending orders to BMS is missing.',
   },
+  TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING: {
+    de: 'Die Datenbankmigration fuer Verpackungsaenderungen fehlt.',
+    en: 'The database migration for packaging changes is missing.',
+  },
 };
 
 function localizeMessage({ code, details, fallbackMessage, lang }) {
