@@ -323,6 +323,7 @@ function mapTempOrderRow(row) {
     clientAddress: row.ta_client_address,
     clientRepresentative: row.ta_client_representative,
     comment: row.ta_comment,
+    returnComment: asText(row.ta_return_comment),
     specialPaymentCondition: Boolean(row.ta_special_payment_condition),
     specialPaymentText: asText(row.ta_special_payment_text),
     specialPaymentId: row.ta_special_payment_id === null || row.ta_special_payment_id === undefined ? null : Number(row.ta_special_payment_id),
@@ -1504,6 +1505,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       await query(`
         UPDATE ${TEMP_ORDER_TABLE}
         SET [ta_Status] = 1,
+            [ta_return_comment] = NULL,
             [ta_closing_date] = ?,
             [ta_CompletedBy] = ?,
             [ta_LastModifiedBy] = ?,
@@ -1628,7 +1630,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     });
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
-    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status') || message.includes('tap_verpackungsart'))
+    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status') || message.includes('ta_return_comment') || message.includes('tap_verpackungsart'))
       || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }

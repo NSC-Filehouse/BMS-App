@@ -183,6 +183,22 @@ Push-Abonnements dieses Benutzers. Wenn kein Push zugestellt werden kann, wird
 die E-Mail über den MailService an die ermittelte Benutzeradresse gesendet;
 bei einem Servicefehler bleibt EWS der Fallback.
 
+## Rueckgabe eines Temp-Auftrags durch den CS
+
+Fuer den Rueckgabegrund und den Push bei Status 3 muss die idempotente Migration
+`apps/backend/sql/add_temp_order_return_comment_and_push_state.sql` auf der
+zentralen `BMS`-Datenbank ausgefuehrt werden. Sie legt `ta_return_comment` in
+`BMSApp.tbl_Temp_Auftrag` und den Zustandsbereich fuer die einmalige Push-Zustellung
+an. Bereits vorhandene Status-3-Auftraege werden dabei als Initialbestand erkannt
+und loesen keine rueckwirkende Meldung aus.
+
+Das Backend prueft die Temp-Auftraege standardmaessig alle 60 Sekunden. Der Abstand
+kann ueber `BMS_TEMP_ORDER_REWORK_PUSH_INTERVAL_SECONDS` geaendert werden. Wenn der
+CS den Status auf `3` setzt, wird der Auftragsersteller anhand von `ta_CreatedBy`
+ermittelt und erhaelt den Rueckgabegrund per Push. Ein Klick auf die Meldung oeffnet
+den Auftrag direkt; der Rueckgabegrund steht zusaetzlich im Auftragsdetail. Nach dem
+erneuten Senden an BMS wird der alte Rueckgabegrund geloescht.
+
 ## Mandantenauswahl
 
 Die im Frontend angezeigten Mandanten koennen ueber `VITE_MANDANT_EXCLUDE_IDS` als

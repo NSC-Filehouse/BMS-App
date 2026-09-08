@@ -22,6 +22,7 @@ const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityFromRequestContext } = require('./db/users');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
+const { startTempOrderReworkPushWorker } = require('./db/temp-order-rework-push');
 const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
 
 const { notFound } = require('./middlewares/notFound.middleware');
@@ -144,5 +145,6 @@ app.listen(config.port, config.host, () => {
   logger.info(`BMS backend listening on http://${config.host}:${config.port}${config.apiBasePath}`);
   startOrderMailOutboxWorker();
   startUnfinalizedOrderReminderWorker();
+  startTempOrderReworkPushWorker();
   startVlCompletionMailWorker();
 });

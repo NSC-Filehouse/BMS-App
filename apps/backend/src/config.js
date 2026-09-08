@@ -66,6 +66,10 @@ const config = {
     userEmail: String(process.env.BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL || '').trim().toLowerCase(),
   },
 
+  tempOrderReworkPush: {
+    intervalSeconds: toPositiveIntOrNull(process.env.BMS_TEMP_ORDER_REWORK_PUSH_INTERVAL_SECONDS) || 60,
+  },
+
   sql: {
     server: (process.env.BMS_SQL_SERVER || '').trim(),
     host: (process.env.BMS_SQL_HOST || '').trim(),
@@ -92,6 +96,7 @@ const config = {
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
       orderReminderState: (process.env.BMS_SQL_APP_TABLE_ORDER_REMINDER_STATE || 'OrderReminderState').trim(),
+      tempOrderReworkPushState: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_REWORK_PUSH_STATE || 'TempOrderReworkPushState').trim(),
       vlMailUserSetting: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_USER_SETTING || 'VlMailUserSetting').trim(),
       vlMailOutbox: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_OUTBOX || 'VlMailOutbox').trim(),
       vlMailOrderState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_ORDER_STATE || 'VlMailOrderState').trim(),

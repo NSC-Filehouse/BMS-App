@@ -262,6 +262,7 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_confirmed')} value={item.isConfirmed ? t('yes_label') : t('no_label')} />
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
             <InfoRow label={t('order_comment')} value={item.comment} />
+            {item.returnComment && <InfoRow label={t('temp_order_return_comment')} value={item.returnComment} />}
             <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
             <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
