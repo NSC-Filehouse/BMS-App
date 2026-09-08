@@ -15,6 +15,12 @@ const {
   validateOrderMailConfig,
 } = require('../src/mail/order-mail');
 const { MailServiceClientError } = require('@filehouse/mailservice-client');
+const {
+  VL_COMPLETION_MAIL_SUBJECT,
+  formatMargin,
+  formatVlCompletionMailBody,
+} = require('../src/mail/vl-completion-mail');
+const { getVlMailRecipients } = require('../src/db/vl-completion-mail');
 
 test('test recipient overrides customer service and accounting recipients', () => {
   const result = resolveOrderMailRecipient(2, {
@@ -130,6 +136,92 @@ test('BMS sends the mail-service request with the shared contract', async () => 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('VL completion mail uses HTML and shows one margin per sold position', async () => {
+  const body = formatVlCompletionMailBody({
+    mandantName: 'Test',
+    mandantShortName: 'TES',
+    completedAt: '2026-09-08T12:00:00.000Z',
+    order: {
+      id: 65,
+      clientName: 'Muster & Söhne <Kunde>',
+      clientReferenceId: 'K-65',
+      completedBy: 'CS',
+    },
+    positions: [{
+      article: 'Artikel A',
+      beNumber: 'BE-65',
+      amountInKg: 1000,
+      price: 1234,
+      costPrice: 1035,
+    }],
+    vlItems: [{
+      plastic: 'PA',
+      plasticSubCategory: 'GF',
+      amount: 500,
+      unit: 'KG',
+      article: 'VL A',
+      mfi: 12,
+      mfiTestMethod: 'ISO',
+      acquisitionPrice: 1040,
+      warehouse: 'Hamburg',
+      beNumber: 'BE-VL-1',
+      about: 'Chargenrein',
+    }],
+  });
+
+  assert.equal(VL_COMPLETION_MAIL_SUBJECT, 'BMS-App Verkauf');
+  assert.equal(formatMargin({ price: 1234, costPrice: 1035 }), '19.23 %');
+  assert.match(body, /<strong>Customer:<\/strong>/);
+  assert.match(body, /19\.23 %/);
+  assert.match(body, /font-weight:700/);
+  assert.match(body, /color:#d32f2f/);
+  assert.match(body, /Aktuelle VL \(klassische Ansicht\)/);
+  assert.match(body, /Muster &amp; Söhne &lt;Kunde&gt;/);
+});
+
+test('BMS can send an HTML VL completion body through MailService', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 202,
+      text: async () => JSON.stringify({ Id: 124, ClientMessageId: 'bms-app:vl-sale:test' }),
+    };
+  };
+
+  try {
+    await sendOrderMail({
+      orderMailConfig: { enabled: true, ewsFallback: false, ews: {} },
+      mailServiceConfig: {
+        enabled: true,
+        baseAddress: 'https://db03.example.test:3300/',
+        apiKey: 'fhm-test-key',
+        timeoutMs: 1000,
+      },
+      recipient: 'user@example.com',
+      subject: VL_COMPLETION_MAIL_SUBJECT,
+      body: '<strong>Sale completed</strong>',
+      clientMessageId: 'bms-app:vl-sale:test',
+      isBodyHtml: true,
+    });
+
+    const requestBody = JSON.parse(requests[0].options.body);
+    assert.equal(requestBody.IsBodyHtml, true);
+    assert.equal(requestBody.Body, '<strong>Sale completed</strong>');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('test mandant VL mail recipient list contains only MFR and NSC', async () => {
+  assert.deepEqual(await getVlMailRecipients(0), [
+    { address: 'm.frank@filehouse.net', source: 'test_mandant_override_mfr' },
+    { address: 'n.schroeder@filehouse.net', source: 'test_mandant_override_nsc' },
+  ]);
 });
 
 test('EWS fallback is restricted to transient MailService failures', () => {

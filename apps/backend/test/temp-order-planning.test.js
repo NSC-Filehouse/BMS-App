@@ -19,7 +19,7 @@ test('temp planning query only includes active temp-order statuses and requested
     ],
   });
 
-  assert.match(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1, 2\)/);
+  assert.match(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1\)/);
   assert.match(query.sql, /o\.\[ta_id\] <> \?/);
   assert.match(query.sql, /FROM \(VALUES \(\?, \?\), \(\?, \?\)\)/);
   assert.deepEqual(query.params, [7, 42, 'BE-1', 'L-1', 'BE-2', 'L-2']);

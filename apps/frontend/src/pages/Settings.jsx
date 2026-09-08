@@ -18,6 +18,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LanguageIcon from '@mui/icons-material/Language';
 import NavigationIcon from '@mui/icons-material/Navigation';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import EmailIcon from '@mui/icons-material/Email';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -31,7 +32,7 @@ export default function Settings() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
-  const [data, setData] = React.useState({ vapidPublicKey: '', subscribed: false, mandants: [] });
+  const [data, setData] = React.useState({ vapidPublicKey: '', subscribed: false, mandants: [], vlMailsEnabled: true });
   const [mapProvider, setMapProviderState] = React.useState(() => getMapPreference() || MAP_PROVIDER_GOOGLE);
   const [supported] = React.useState(() => isPushSupported());
   const [permission, setPermission] = React.useState(() => (typeof Notification !== 'undefined' ? Notification.permission : 'default'));
@@ -46,13 +47,17 @@ export default function Settings() {
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest('/push/settings');
+      const [res, mailRes] = await Promise.all([
+        apiRequest('/push/settings'),
+        apiRequest('/vl-mail/settings'),
+      ]);
       const currentSubscription = await getCurrentPushSubscription();
       setPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
       setData({
         vapidPublicKey: String(res?.data?.vapidPublicKey || ''),
         subscribed: Boolean(currentSubscription) && Boolean(res?.data?.subscribed),
         mandants: Array.isArray(res?.data?.mandants) ? res.data.mandants : [],
+        vlMailsEnabled: mailRes?.data?.vlMailsEnabled !== false,
       });
     } catch (e) {
       setError(e?.message || t('loading_error'));
@@ -114,6 +119,25 @@ export default function Settings() {
       setSaving(false);
     }
   }, [loadSettings, t]);
+
+  const handleVlMailToggle = React.useCallback(async (enabled) => {
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+      const res = await apiRequest('/vl-mail/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ vlMailsEnabled: Boolean(enabled) }),
+      });
+      const nextEnabled = res?.data?.vlMailsEnabled !== false;
+      setData((prev) => ({ ...prev, vlMailsEnabled: nextEnabled }));
+      setSuccess(t(nextEnabled ? 'vl_mail_enabled_success' : 'vl_mail_disabled_success'));
+    } catch (e) {
+      setError(e?.message || t('loading_error'));
+    } finally {
+      setSaving(false);
+    }
+  }, [t]);
 
   const handleMandantToggle = React.useCallback(async (companyId, enabled) => {
     try {
@@ -216,6 +240,28 @@ export default function Settings() {
                 <FormControlLabel value={MAP_PROVIDER_GOOGLE} control={<Radio size="small" />} label={t('navigation_google_maps')} />
                 <FormControlLabel value={MAP_PROVIDER_APPLE} control={<Radio size="small" />} label={t('navigation_apple_maps')} />
               </RadioGroup>
+            </Box>
+
+            <Divider />
+
+            <Box sx={{ display: 'grid', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EmailIcon fontSize="small" color="primary" />
+                <Typography variant="subtitle1">{t('vl_mail_settings_title')}</Typography>
+              </Box>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={data.vlMailsEnabled !== false}
+                    onChange={(event) => handleVlMailToggle(event.target.checked)}
+                    disabled={saving}
+                  />
+                )}
+                label={t('vl_mail_settings_title')}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {t('vl_mail_settings_hint')}
+              </Typography>
             </Box>
 
             <Divider />

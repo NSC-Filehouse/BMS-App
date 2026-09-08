@@ -16,11 +16,13 @@ const ordersRouter = require('./routes/orders.routes');
 const tempOrdersRouter = require('./routes/temp-orders.routes');
 const timelineRouter = require('./routes/timeline.routes');
 const pushRouter = require('./routes/push.routes');
+const vlMailRouter = require('./routes/vl-mail.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityFromRequestContext } = require('./db/users');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
+const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
 
 const { notFound } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
@@ -132,6 +134,7 @@ app.use(config.apiBasePath, ordersRouter);
 app.use(config.apiBasePath, tempOrdersRouter);
 app.use(config.apiBasePath, timelineRouter);
 app.use(config.apiBasePath, pushRouter);
+app.use(config.apiBasePath, vlMailRouter);
 
 // 404 + error
 app.use(notFound);
@@ -141,4 +144,5 @@ app.listen(config.port, config.host, () => {
   logger.info(`BMS backend listening on http://${config.host}:${config.port}${config.apiBasePath}`);
   startOrderMailOutboxWorker();
   startUnfinalizedOrderReminderWorker();
+  startVlCompletionMailWorker();
 });

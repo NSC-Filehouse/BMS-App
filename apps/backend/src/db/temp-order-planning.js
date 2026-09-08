@@ -4,7 +4,9 @@ const { appTableSql } = require('./app-tables');
 
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
-const ACTIVE_TEMP_ORDER_STATUSES = Object.freeze([0, 1, 2]);
+// Status 2 is already booked in the ERP. Keeping it here would subtract the
+// same quantity a second time from the current VL.
+const ACTIVE_TEMP_ORDER_STATUSES = Object.freeze([0, 1]);
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -36,7 +38,7 @@ function buildTempOrderPlanningQuery({ companyId, keys = [], excludeOrderId = nu
   const params = [companyId];
   const clauses = [
     'o.[ta_company_id] = ?',
-    'COALESCE(o.[ta_Status], 0) IN (0, 1, 2)',
+    'COALESCE(o.[ta_Status], 0) IN (0, 1)',
   ];
 
   if (excludeOrderId !== null && excludeOrderId !== undefined && asText(excludeOrderId)) {

@@ -227,7 +227,12 @@ function cleanEwsText(value) {
     .replace(/>/g, '&gt;');
 }
 
-async function sendOrderMailViaEws({ orderMailConfig, recipient, subject, body, attachment }) {
+function normalizeRecipients(recipient, recipients) {
+  const values = Array.isArray(recipients) ? recipients : [recipient];
+  return [...new Set(values.map((value) => asText(value)).filter(Boolean))];
+}
+
+async function sendOrderMailViaEws({ orderMailConfig, recipient, recipients, subject, body, attachment, isBodyHtml = false }) {
   const validation = validateEwsConfig(orderMailConfig);
   if (!validation.ok) {
     throw new Error(validation.missing?.length
@@ -247,8 +252,13 @@ async function sendOrderMailViaEws({ orderMailConfig, recipient, subject, body, 
 
   const message = new EWS.EmailMessage(service);
   message.Subject = cleanEwsText(subject);
-  message.Body = new EWS.MessageBody(EWS.BodyType.Text, cleanEwsText(body));
-  message.ToRecipients.Add(new EWS.EmailAddress(cleanEwsText(recipient)));
+  message.Body = new EWS.MessageBody(
+    isBodyHtml ? EWS.BodyType.HTML : EWS.BodyType.Text,
+    isBodyHtml ? String(body || '') : cleanEwsText(body),
+  );
+  for (const address of normalizeRecipients(recipient, recipients)) {
+    message.ToRecipients.Add(new EWS.EmailAddress(cleanEwsText(address)));
+  }
 
   if (attachment?.buffer && attachment?.fileName) {
     const fileAttachment = message.Attachments.AddFileAttachment(
@@ -273,13 +283,20 @@ async function sendOrderMail({
   orderMailConfig,
   mailServiceConfig,
   recipient,
+  recipients,
   subject,
   body,
   attachment,
   clientMessageId,
+  isBodyHtml = false,
 }) {
   if (!orderMailConfig?.enabled) {
     throw new Error('Auftragsmail-Versand ist deaktiviert.');
+  }
+
+  const targetRecipients = normalizeRecipients(recipient, recipients);
+  if (!targetRecipients.length) {
+    throw new Error('Kein E-Mail-Empfänger angegeben.');
   }
 
   const mailServiceValidation = validateMailServiceConfig(mailServiceConfig);
@@ -298,8 +315,8 @@ async function sendOrderMail({
         clientMessageId,
         subject,
         body,
-        isBodyHtml: false,
-        to: [{ address: recipient }],
+        isBodyHtml: Boolean(isBodyHtml),
+        to: targetRecipients.map((address) => ({ address })),
         attachments: attachment?.buffer && attachment?.fileName
           ? [{
               fileName: attachment.fileName,
@@ -321,7 +338,7 @@ async function sendOrderMail({
   }
 
   if (orderMailConfig.ewsFallback && ewsValidation.ok) {
-    await sendOrderMailViaEws({ orderMailConfig, recipient, subject, body, attachment });
+    await sendOrderMailViaEws({ orderMailConfig, recipient, recipients: targetRecipients, subject, body, attachment, isBodyHtml });
     return {
       transport: 'ews',
       accepted: true,

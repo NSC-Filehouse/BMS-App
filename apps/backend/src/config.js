@@ -56,6 +56,11 @@ const config = {
     },
   },
 
+  vlCompletionMail: {
+    enabled: toBool(process.env.BMS_VL_COMPLETION_MAIL_ENABLED, true),
+    intervalSeconds: toInt(process.env.BMS_VL_COMPLETION_MAIL_INTERVAL_SECONDS, 60),
+  },
+
   unfinalizedOrderReminder: {
     intervalMinutes: toPositiveIntOrNull(process.env.BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES),
     userEmail: String(process.env.BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL || '').trim().toLowerCase(),
@@ -87,6 +92,10 @@ const config = {
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
       orderReminderState: (process.env.BMS_SQL_APP_TABLE_ORDER_REMINDER_STATE || 'OrderReminderState').trim(),
+      vlMailUserSetting: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_USER_SETTING || 'VlMailUserSetting').trim(),
+      vlMailOutbox: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_OUTBOX || 'VlMailOutbox').trim(),
+      vlMailOrderState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_ORDER_STATE || 'VlMailOrderState').trim(),
+      vlMailWorkerState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_WORKER_STATE || 'VlMailWorkerState').trim(),
     },
     columns: {
       persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),
@@ -117,6 +126,7 @@ const config = {
     views: {
       mitarbeiter: (process.env.FX_SQL_VIEW_MITARBEITER || 'vwtblMitarbeiter').trim(),
       mitarbeiterMandant: (process.env.FX_SQL_VIEW_MITARBEITER_MANDANT || 'vwtblMitarbeiterMandant').trim(),
+      mitarbeiterExcelAd: (process.env.FX_SQL_VIEW_MITARBEITER_EXCEL_AD || 'vwtblMitarbeiter_ExcelAD').trim(),
     },
   },
 

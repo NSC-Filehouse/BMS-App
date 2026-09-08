@@ -330,6 +330,25 @@ async function getDatabaseConnectionForUserById(email, firmaId) {
   return getDatabaseConnectionForMandantMatch(match, selectedId);
 }
 
+async function getDatabaseConnectionForCompanyId(firmaId) {
+  const selectedId = Number(firmaId);
+  if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
+    throw createHttpError(400, `Invalid mandant id: ${firmaId}`, { code: 'MANDANT_ID_INVALID' });
+  }
+
+  const mandants = await queryMandantsForFilehouse();
+  const normalized = (mandants || [])
+    .map((row) => ({
+      firmaId: row.firmaId ?? row.md_FirmaID ?? null,
+      name: String(row.firma || row.md_Firma || '').trim(),
+      shortName: String(row.firmaKurz || row.md_FirmaKurz || '').trim().toUpperCase(),
+    }))
+    .filter((item) => item.name && item.shortName)
+    .map((item) => ({ ...item, databaseName: buildTenantDatabaseName(item.shortName) }));
+  const match = normalized.find((item) => Number(item.firmaId) === selectedId);
+  return getDatabaseConnectionForMandantMatch(match, selectedId);
+}
+
 module.exports = {
   getMandantsForUser,
   getMandantsForIdentity,
@@ -337,4 +356,5 @@ module.exports = {
   getDatabaseConnectionForUser,
   getDatabaseConnectionForIdentity,
   getDatabaseConnectionForUserById,
+  getDatabaseConnectionForCompanyId,
 };

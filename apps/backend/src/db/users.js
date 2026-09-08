@@ -407,6 +407,41 @@ async function getUserIdentitiesByShortCodes(shortCodes) {
   return identities;
 }
 
+async function getUserIdentitiesByPersonNumbers(personNumbers) {
+  const values = [...new Set(
+    (Array.isArray(personNumbers) ? personNumbers : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value)),
+  )];
+  if (!values.length) return new Map();
+
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, `
+    SELECT
+      [ma_PersNR] AS personNumber,
+      [ma_eMail] AS email,
+      [ma_UserID] AS userId,
+      [ma_Vorname] AS givenName,
+      [ma_Nachname] AS surname,
+      [ma_Telefon] AS phone,
+      [ma_Handy] AS mobile,
+      [ma_Durchwahl] AS extension,
+      [ma_FirmaID] AS mainCompanyId,
+      [ma_K\u00FCrzel] AS shortCode
+    FROM [dbo].[${config.fxSql.views.mitarbeiter}]
+    WHERE [ma_PersNR] IN (${values.map(() => '?').join(', ')})
+  `, values);
+
+  const identities = new Map();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const identity = mapIdentityRow(row);
+    const key = String(identity?.personNumber || '').trim();
+    if (!identity || !key || identities.has(key)) continue;
+    identities.set(key, identity);
+    setCached(identity);
+  }
+  return identities;
+}
+
 async function getUserIdentityByShortCode(shortCode, companyId = null) {
   const normalized = String(shortCode || '').trim().toLowerCase();
   if (!normalized) return null;
@@ -489,6 +524,7 @@ module.exports = {
   resolveIdentityFromRows,
   getUserIdentityByShortCode,
   getUserIdentitiesByShortCodes,
+  getUserIdentitiesByPersonNumbers,
   getUserPersonNumberByEmail,
   getUserDisplayNameByPersonNumber,
   getUserShortCodeByPersonNumber,
