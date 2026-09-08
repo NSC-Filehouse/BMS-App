@@ -223,6 +223,7 @@ export default function TempOrderDetail() {
                       packagingType: item.packagingType || '',
                       deliveryDate: item.deliveryDate || '',
                       deliveryAddress: item.deliveryAddress || '',
+                      deliveryAddressId: item.deliveryAddressId ?? '',
                       deliveryAddressChanged: Boolean(item.deliveryAddressChanged),
                       positions: Array.isArray(item.positions) ? item.positions : [],
                     },
@@ -266,6 +267,9 @@ export default function TempOrderDetail() {
             <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
             <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
+            {item.deliveryAddressId !== null && item.deliveryAddressId !== undefined && (
+              <InfoRow label={t('delivery_address_id_label')} value={item.deliveryAddressId} />
+            )}
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />
             <InfoRow
               label={t('special_payment_text_label')}

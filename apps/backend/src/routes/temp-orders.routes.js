@@ -23,6 +23,7 @@ const {
   getTempOrderPlanningEntry,
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
+const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
@@ -262,6 +263,18 @@ function asInt(value, fallback = 0) {
   return Math.round(n);
 }
 
+function parseDeliveryAddressId(value) {
+  if (value === undefined || value === null || asText(value) === '') {
+    return { provided: false, id: null };
+  }
+  const text = asText(value);
+  const id = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id > 32767) {
+    throw createHttpError(400, 'Invalid delivery address id.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+  }
+  return { provided: true, id };
+}
+
 function parseJsonField(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
   if (typeof value !== 'string') return value;
@@ -332,6 +345,9 @@ function mapTempOrderRow(row) {
     packagingType: asText(row.ta_packaging_type),
     deliveryDate: row.ta_delivery_date || null,
     deliveryAddress: asText(row.ta_delivery_address),
+    deliveryAddressId: row.ta_delivery_address_id === null || row.ta_delivery_address_id === undefined || row.ta_delivery_address_id === ''
+      ? null
+      : Number(row.ta_delivery_address_id),
     deliveryAddressChanged: Boolean(row.ta_delivery_address_changed),
     completed: Boolean(row.ta_completed),
     finalized: isTempOrderFinalizedStatus(orderStatus),
@@ -728,7 +744,25 @@ async function normalizeOrderLevelInput(
   }
 
   const deliveryAddressChanged = asBit(body?.deliveryAddressChanged ?? body?.deliveryAddressManual, 0);
-  const deliveryAddress = asText(body?.deliveryAddress || clientAddress);
+  const requestedDeliveryAddressId = parseDeliveryAddressId(body?.deliveryAddressId);
+  const submittedDeliveryAddress = asText(body?.deliveryAddress);
+  let deliveryAddressId = null;
+  let deliveryAddress = submittedDeliveryAddress || clientAddress;
+  if (!deliveryAddressChanged) {
+    const deliveryAddresses = await loadCustomerDeliveryAddresses(req.database, body?.clientReferenceId);
+    const selectedAddress = requestedDeliveryAddressId.provided
+      ? deliveryAddresses.find((address) => Number(address.id) === requestedDeliveryAddressId.id)
+      : deliveryAddresses.find((address) => address.text === submittedDeliveryAddress);
+    if (requestedDeliveryAddressId.provided && !selectedAddress) {
+      throw createHttpError(400, 'Delivery address does not belong to the selected customer.', {
+        code: 'INVALID_TEMP_ORDER_PAYLOAD',
+      });
+    }
+    if (selectedAddress) {
+      deliveryAddressId = Number(selectedAddress.id);
+      deliveryAddress = selectedAddress.text || submittedDeliveryAddress || clientAddress;
+    }
+  }
   if (!deliveryAddress) {
     throw createHttpError(400, 'Invalid delivery address.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
@@ -741,6 +775,7 @@ async function normalizeOrderLevelInput(
     incotermId: incoterm?.id || null,
     packagingType,
     deliveryAddress,
+    deliveryAddressId,
     deliveryAddressChanged,
   };
 }
@@ -1151,7 +1186,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  if (!hasOrderDeliveryAddressId) {
+    throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
+      code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
   const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
   const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
   if (!hasOriginalPackagingType || !hasPackagingTypeChanged) {
@@ -1237,7 +1278,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]',
     '[ta_comment]', '[ta_special_payment_condition]', '[ta_special_payment_text]', '[ta_special_payment_id]', '[ta_delivery_type_id]', '[ta_delivery_type]',
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date]'] : []),
-    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
+    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_id]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
     '[ta_Attachment]', '[ta_AttachmentFileName]', '[ta_AttachmentMimeType]',
     '[ta_CreatedBy]', '[ta_CreateDate]', '[ta_LastModifiedBy]', '[ta_LastModifiedDate]',
     '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
@@ -1246,7 +1287,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '?', '?', '?', '?', '?',
     '?', '?', '?', '?', '?', '?',
     ...(hasOrderDeliveryDate ? ['?'] : []),
-    '?', '?', '?', '?', '?',
+    '?', '?', '?', '?', '?', '?',
     'CAST(? AS VARBINARY(MAX))', '?', '?',
     '?', '?', '?', '?',
     '?', '?', '?', '?', '?',
@@ -1266,6 +1307,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
     orderLevel.deliveryAddress,
+    orderLevel.deliveryAddressId,
     orderLevel.deliveryAddressChanged,
     0,
     TEMP_ORDER_STATUS.DRAFT,
@@ -1716,7 +1758,13 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  if (!hasOrderDeliveryAddressId) {
+    throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
+      code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
   const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
   const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
   if (!hasOriginalPackagingType || !hasPackagingTypeChanged) {
@@ -1854,6 +1902,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date] = ?'] : []),
     '[ta_packaging_type] = ?',
     '[ta_delivery_address] = ?',
+    '[ta_delivery_address_id] = ?',
     '[ta_delivery_address_changed] = ?',
     '[ta_LastModifiedBy] = ?',
     '[ta_LastModifiedDate] = ?',
@@ -1885,6 +1934,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
     orderLevel.deliveryAddress,
+    orderLevel.deliveryAddressId,
     orderLevel.deliveryAddressChanged,
     userShortCode,
     new Date().toISOString(),
@@ -2051,5 +2101,6 @@ module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
 module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;
 module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
+module.exports.parseDeliveryAddressId = parseDeliveryAddressId;
 module.exports.normalizePackagingType = normalizePackagingType;
 module.exports.packagingTypesEqual = packagingTypesEqual;

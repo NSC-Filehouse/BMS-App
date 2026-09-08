@@ -169,6 +169,8 @@ test('VL completion mail uses HTML and shows one margin per sold position', asyn
       id: 65,
       clientName: 'Muster & Söhne <Kunde>',
       clientReferenceId: 'K-65',
+      deliveryAddress: 'Werk 2',
+      deliveryAddressId: 3,
       completedBy: 'CS',
     },
     positions: [{
@@ -211,6 +213,7 @@ test('VL completion mail uses HTML and shows one margin per sold position', asyn
   assert.equal(VL_COMPLETION_MAIL_SUBJECT, 'BMS-App Verkauf');
   assert.equal(formatMargin({ price: 1234, costPrice: 1035 }), '19.23 %');
   assert.match(body, /<strong>Customer:<\/strong>/);
+  assert.match(body, /<strong>Delivery address ID:<\/strong> 3/);
   assert.match(body, /19\.23 %/);
   assert.match(body, /font-weight:700/);
   assert.match(body, /color:#d32f2f/);
@@ -290,6 +293,7 @@ test('mail body contains the complete structured order data', () => {
       deliveryType: 'DAP',
       packagingType: 'Palette',
       deliveryAddress: 'Werk 2',
+      deliveryAddressId: 3,
       deliveryAddressChanged: true,
       specialPaymentCondition: false,
       specialPaymentText: '30 Tage netto',
@@ -324,6 +328,7 @@ test('mail body contains the complete structured order data', () => {
     'Kundenanschrift: Musterstra\u00dfe 1, 80331 M\u00fcnchen',
     'Position 1',
     'BE-Nummer: BE-1',
+    'Lieferadress-ID: 3',
     'VK: 120,00 EUR/kg',
     'EP: 80,00 EUR/kg',
     'Ursprüngliche Verpackungsart: Sackware',

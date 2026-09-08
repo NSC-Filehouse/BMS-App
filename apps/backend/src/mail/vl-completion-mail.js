@@ -143,6 +143,10 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
   const customer = asText(order?.clientName) || '-';
   const customerNumber = asText(order?.clientReferenceId) || '-';
   const orderId = asText(order?.id) || '-';
+  const deliveryAddress = asText(order?.deliveryAddress) || '-';
+  const deliveryAddressId = order?.deliveryAddressId === null || order?.deliveryAddressId === undefined || order?.deliveryAddressId === ''
+    ? '-'
+    : String(order.deliveryAddressId);
   const completedBy = asText(order?.completedBy) || '-';
   const completedAtText = formatDate(completedAt || order?.lastModifiedDate, true);
 
@@ -157,6 +161,8 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
         <p style="margin:4px 0;"><strong>Customer:</strong> ${escapeHtml(customer)} (${escapeHtml(customerNumber)})</p>
         <p style="margin:4px 0;"><strong>Mandant:</strong> ${escapeHtml(safeMandant)}</p>
         <p style="margin:4px 0;"><strong>BMS-App order:</strong> ${escapeHtml(orderId)}</p>
+        <p style="margin:4px 0;"><strong>Delivery address:</strong> ${escapeHtml(deliveryAddress)}</p>
+        <p style="margin:4px 0;"><strong>Delivery address ID:</strong> ${escapeHtml(deliveryAddressId)}</p>
         <p style="margin:4px 0;"><strong>Completed by:</strong> ${escapeHtml(completedBy)}</p>
         <p style="margin:4px 0 12px;"><strong>Completed at:</strong> ${escapeHtml(completedAtText)}</p>
 

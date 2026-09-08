@@ -93,6 +93,13 @@ Vor dem ersten Einsatz muss die idempotente Migration
 `apps/backend/sql/add_temp_order_finalization_and_mail_outbox.sql` mit einem
 DDL-berechtigten SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden.
 
+Für die Übergabe der ausgewählten Lieferadress-ID an die ERP-Seite muss außerdem
+die idempotente Migration
+`apps/backend/sql/add_temp_order_delivery_address_id.sql` auf der zentralen
+`BMS`-Datenbank ausgeführt werden. Bei einer manuellen Lieferadresse bleibt
+`ta_delivery_address_id` leer; bei einer Auswahl aus `tblKun_LiefAdress` wird
+`kdL_Lieferanschrift_Nr` gespeichert.
+
 Das Backend benötigt folgende Werte in `apps/backend/.env`:
 
 ```dotenv

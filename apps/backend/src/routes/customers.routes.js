@@ -18,6 +18,7 @@ const {
   getTempOrderPlanningEntry,
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
+const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -365,17 +366,6 @@ function mapRepresentatives(rows) {
       return { id, name, phone, email, position, salutation };
     })
     .filter((rep) => rep.name || rep.phone || rep.email);
-}
-
-function buildAddressText(row) {
-  const name1 = toText(row?.kdL_Name1);
-  const name2 = toText(row?.kdL_Name2);
-  const street = toText(row?.kdL_Strasse);
-  const plz = toText(row?.kdL_PLZ);
-  const city = toText(row?.kdL_Ort);
-  const country = toText(row?.kdL_LK);
-  const plzCity = [plz, city].filter(Boolean).join(' ');
-  return [name1, name2, street, plzCity, country].filter(Boolean).join(', ');
 }
 
 function mapCustomerActivities(rows, customerId) {
@@ -734,34 +724,7 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
   }
   await requireVisibleCustomer(req, id);
 
-  const sql = `
-    SELECT
-      [kdL_KdNR],
-      [kdL_Lieferanschrift_Nr],
-      [kdL_Kurz],
-      [kdL_Name1],
-      [kdL_Name2],
-      [kdL_Strasse],
-      [kdL_LK],
-      [kdL_PLZ],
-      [kdL_Ort],
-      [kdL_Region],
-      [kdL_Kontrakt],
-      [kdL_Abhol]
-    FROM [dbo].[tblKun_LiefAdress]
-    WHERE COALESCE([kdL_KdNR], '') = ?
-    ORDER BY [kdL_Lieferanschrift_Nr] ASC
-  `;
-  const rows = await runSQLQueryAccess(req.database, sql, [id]);
-  const data = (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      id: toText(row.kdL_Lieferanschrift_Nr),
-      customerId: toText(row.kdL_KdNR),
-      text: buildAddressText(row),
-      short: toText(row.kdL_Kurz),
-      name1: toText(row.kdL_Name1),
-      name2: toText(row.kdL_Name2),
-    }))
+  const data = (await loadCustomerDeliveryAddresses(req.database, id))
     .filter((x) => x.text);
 
   sendEnvelope(res, {
@@ -770,7 +733,7 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
     meta: {
       mandant: req.mandant,
       databaseName: req.database?.databaseName || null,
-      idField: 'kdL_KdNR',
+      idField: 'kdL_Lieferanschrift_Nr',
       id,
       count: data.length,
     },

@@ -265,6 +265,7 @@ export default function TempOrderForm() {
   const [attachmentMeta, setAttachmentMeta] = React.useState({ hasAttachment: false, fileName: '', mimeType: '' });
   const [removeAttachment, setRemoveAttachment] = React.useState(false);
   const attachmentInputRef = React.useRef(null);
+  const deliveryAddressRequestRef = React.useRef(0);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
@@ -319,6 +320,7 @@ export default function TempOrderForm() {
     incotermId: '',
     packagingType: '',
     deliveryAddress: '',
+    deliveryAddressId: '',
     deliveryAddressManual: false,
   });
   const packagingOptions = React.useMemo(() => (lang === 'en' ? PACKAGING_TYPES_EN : PACKAGING_TYPES_DE), [lang]);
@@ -400,6 +402,8 @@ export default function TempOrderForm() {
     return next;
   }, [resolvePaymentTextById]);
   const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
+    const requestId = deliveryAddressRequestRef.current + 1;
+    deliveryAddressRequestRef.current = requestId;
     const id = String(clientReferenceId || '').trim();
     if (!id) {
       setDeliveryAddressOptions([]);
@@ -408,23 +412,41 @@ export default function TempOrderForm() {
     try {
       const res = await apiRequest(`/customers/${encodeURIComponent(id)}/delivery-addresses`);
       const list = Array.isArray(res?.data) ? res.data : [];
-      setDeliveryAddressOptions(list);
+      if (deliveryAddressRequestRef.current === requestId) setDeliveryAddressOptions(list);
       return list;
     } catch {
-      setDeliveryAddressOptions([]);
+      if (deliveryAddressRequestRef.current === requestId) setDeliveryAddressOptions([]);
       return [];
     }
   }, []);
 
   React.useEffect(() => {
+    if (form.deliveryAddressManual || !String(form.deliveryAddress || '').trim()) {
+      return;
+    }
+    const matchingAddress = deliveryAddressOptions.find((address) => (
+      String(address?.text || '').trim() === String(form.deliveryAddress || '').trim()
+    ));
+    if (!matchingAddress || String(form.deliveryAddressId || '') === String(matchingAddress.id || '')) return;
+    setForm((prev) => {
+      if (prev.deliveryAddressManual || String(prev.deliveryAddressId || '') === String(matchingAddress.id || '')) return prev;
+      return { ...prev, deliveryAddressId: matchingAddress.id };
+    });
+  }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressId, form.deliveryAddressManual]);
+
+  React.useEffect(() => {
     if (form.deliveryAddressManual || String(form.deliveryAddress || '').trim() || deliveryAddressOptions.length !== 1) {
       return;
     }
-    const onlyAddress = String(deliveryAddressOptions[0]?.text || '').trim();
-    if (!onlyAddress) return;
+    const onlyAddress = deliveryAddressOptions[0];
+    if (!String(onlyAddress?.text || '').trim()) return;
     setForm((prev) => {
       if (prev.deliveryAddressManual || String(prev.deliveryAddress || '').trim()) return prev;
-      return { ...prev, deliveryAddress: onlyAddress };
+      return {
+        ...prev,
+        deliveryAddress: onlyAddress.text,
+        deliveryAddressId: onlyAddress.id || '',
+      };
     });
   }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressManual]);
 
@@ -492,6 +514,7 @@ export default function TempOrderForm() {
             incotermId: d.deliveryTypeId ?? '',
             packagingType: d.packagingType || '',
             deliveryAddress: d.deliveryAddress || '',
+            deliveryAddressId: d.deliveryAddressId === null || d.deliveryAddressId === undefined ? '' : String(d.deliveryAddressId),
             deliveryAddressManual: Boolean(d.deliveryAddressChanged),
           });
           await loadCustomerPaymentDefault(d.clientReferenceId || '');
@@ -540,6 +563,9 @@ export default function TempOrderForm() {
           incotermId: copyOrder?.deliveryTypeId ?? '',
           packagingType: copyOrder?.packagingType || '',
           deliveryAddress: copyOrder?.deliveryAddress || '',
+          deliveryAddressId: copyOrder?.deliveryAddressId === null || copyOrder?.deliveryAddressId === undefined
+            ? ''
+            : String(copyOrder.deliveryAddressId),
           deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged),
         }));
         await loadCustomerPaymentDefault(copyOrder?.clientReferenceId || '');
@@ -822,6 +848,7 @@ export default function TempOrderForm() {
       clientAddress,
       clientRepresentative: '',
       deliveryAddress: '',
+      deliveryAddressId: '',
       deliveryAddressManual: false,
     }));
 
@@ -996,6 +1023,9 @@ export default function TempOrderForm() {
         incotermId: form.incotermId === '' ? null : Number(form.incotermId),
         packagingType: effectivePackagingType,
         deliveryAddress: form.deliveryAddress || null,
+        deliveryAddressId: form.deliveryAddressId === '' || form.deliveryAddressId === null || form.deliveryAddressId === undefined
+          ? null
+          : Number(form.deliveryAddressId),
         deliveryAddressChanged: Boolean(form.deliveryAddressManual),
       };
       if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
@@ -1225,7 +1255,7 @@ export default function TempOrderForm() {
                 <TextField
                   label={t('delivery_address_label')}
                   value={form.deliveryAddress || ''}
-                  onChange={(e) => setForm((p) => ({ ...p, deliveryAddress: e.target.value }))}
+                  onChange={(e) => setForm((p) => ({ ...p, deliveryAddress: e.target.value, deliveryAddressId: '' }))}
                   fullWidth
                   sx={{ flex: 1, minWidth: 0 }}
                 />
@@ -1233,8 +1263,16 @@ export default function TempOrderForm() {
                 <TextField
                   select
                   label={t('delivery_address_label')}
-                  value={form.deliveryAddress || ''}
-                  onChange={(e) => setForm((p) => ({ ...p, deliveryAddress: e.target.value }))}
+                  value={form.deliveryAddressId || ''}
+                  onChange={(e) => {
+                    const selectedId = String(e.target.value || '');
+                    const selected = deliveryAddressOptions.find((address) => String(address?.id || '') === selectedId);
+                    setForm((p) => ({
+                      ...p,
+                      deliveryAddress: selected?.text || '',
+                      deliveryAddressId: selected?.id || '',
+                    }));
+                  }}
                   fullWidth
                   sx={{
                     flex: 1,
@@ -1247,21 +1285,19 @@ export default function TempOrderForm() {
                   SelectProps={{
                     renderValue: (selected) => {
                       if (!String(selected || '').trim()) {
-                        return deliveryAddressOptions.length > 1 ? t('delivery_address_select') : '-';
+                        return String(form.deliveryAddress || '').trim()
+                          || (deliveryAddressOptions.length > 1 ? t('delivery_address_select') : '-');
                       }
-                      const hit = deliveryAddressOptions.find((addr) => String(addr.text || '') === String(selected || ''));
-                      return hit ? renderDeliveryAddressOption(hit) : String(selected || '');
+                      const hit = deliveryAddressOptions.find((addr) => String(addr.id || '') === String(selected || ''));
+                      return hit ? renderDeliveryAddressOption(hit) : String(form.deliveryAddress || selected || '');
                     },
                   }}
                 >
                   <MenuItem value="" disabled={deliveryAddressOptions.length > 1}>
                     {deliveryAddressOptions.length > 1 ? t('delivery_address_select') : '-'}
                   </MenuItem>
-                  {String(form.deliveryAddress || '').trim()
-                    && !deliveryAddressOptions.some((addr) => String(addr.text || '') === String(form.deliveryAddress || ''))
-                    && <MenuItem value={form.deliveryAddress}>{form.deliveryAddress}</MenuItem>}
                   {deliveryAddressOptions.map((addr) => (
-                    <MenuItem key={`${addr.id}-${addr.text}`} value={addr.text}>
+                    <MenuItem key={`${addr.id}-${addr.text}`} value={addr.id}>
                       {renderDeliveryAddressOption(addr)}
                     </MenuItem>
                   ))}
@@ -1272,6 +1308,7 @@ export default function TempOrderForm() {
                 onClick={() => setForm((p) => ({
                   ...p,
                   deliveryAddress: '',
+                  deliveryAddressId: '',
                   deliveryAddressManual: !p.deliveryAddressManual,
                 }))}
               >
