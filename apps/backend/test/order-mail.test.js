@@ -21,6 +21,28 @@ const {
   formatVlCompletionMailBody,
 } = require('../src/mail/vl-completion-mail');
 const { getVlMailRecipients } = require('../src/db/vl-completion-mail');
+const {
+  compareMfiValues,
+  formatMfiValue,
+  getMfiSortValue,
+  sortVlItems,
+} = require('../src/mfi-sort');
+
+test('MFI sorting uses the first numeric bound and keeps text ranges readable', () => {
+  assert.equal(getMfiSortValue('2-3,99'), 2);
+  assert.equal(getMfiSortValue('3,5'), 3.5);
+  assert.equal(formatMfiValue('2-3,99'), '2-3,99');
+  assert.ok(compareMfiValues('2-3,99', '10-12') < 0);
+
+  const sorted = sortVlItems([
+    { plastic: 'PP', plasticSubCategory: 'GF', article: 'ten', mfi: '10-12' },
+    { plastic: 'PP', plasticSubCategory: 'GF', article: 'two', mfi: '2-3,99' },
+    { plastic: 'PP', plasticSubCategory: 'GF', article: 'empty', mfi: '' },
+    { plastic: 'PP', plasticSubCategory: 'GF', article: 'three', mfi: '3,5' },
+  ]);
+
+  assert.deepEqual(sorted.map((item) => item.article), ['two', 'three', 'ten', 'empty']);
+});
 
 test('test recipient overrides customer service and accounting recipients', () => {
   const result = resolveOrderMailRecipient(2, {
@@ -156,19 +178,34 @@ test('VL completion mail uses HTML and shows one margin per sold position', asyn
       price: 1234,
       costPrice: 1035,
     }],
-    vlItems: [{
-      plastic: 'PA',
-      plasticSubCategory: 'GF',
-      amount: 500,
-      unit: 'KG',
-      article: 'VL A',
-      mfi: 12,
-      mfiTestMethod: 'ISO',
-      acquisitionPrice: 1040,
-      warehouse: 'Hamburg',
-      beNumber: 'BE-VL-1',
-      about: 'Chargenrein',
-    }],
+    vlItems: [
+      {
+        plastic: 'PA',
+        plasticSubCategory: 'GF',
+        amount: 500,
+        unit: 'KG',
+        article: 'VL 10',
+        mfi: '10-12',
+        mfiTestMethod: 'ISO',
+        acquisitionPrice: 1040,
+        warehouse: 'Hamburg',
+        beNumber: 'BE-VL-1',
+        about: 'Chargenrein',
+      },
+      {
+        plastic: 'PA',
+        plasticSubCategory: 'GF',
+        amount: 500,
+        unit: 'KG',
+        article: 'VL 2',
+        mfi: '2-3,99',
+        mfiTestMethod: 'ISO',
+        acquisitionPrice: 1040,
+        warehouse: 'Hamburg',
+        beNumber: 'BE-VL-2',
+        about: 'Chargenrein',
+      },
+    ],
   });
 
   assert.equal(VL_COMPLETION_MAIL_SUBJECT, 'BMS-App Verkauf');
@@ -178,7 +215,10 @@ test('VL completion mail uses HTML and shows one margin per sold position', asyn
   assert.match(body, /font-weight:700/);
   assert.match(body, /color:#d32f2f/);
   assert.match(body, /Aktuelle VL \(klassische Ansicht\)/);
+  assert.match(body, /Übernahme des Verkaufs in BMS/);
+  assert.doesNotMatch(body, /Übernahme des Verkaufs in das ERP/);
   assert.match(body, /Muster &amp; Söhne &lt;Kunde&gt;/);
+  assert.ok(body.indexOf('VL 2') < body.indexOf('VL 10'));
 });
 
 test('BMS can send an HTML VL completion body through MailService', async () => {

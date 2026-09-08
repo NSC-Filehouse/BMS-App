@@ -46,6 +46,7 @@ import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
+import { formatMfiValue, sortVlItems, sortVlPositions } from '../utils/mfi.js';
 
 const PAGE_SIZE = 100;
 const GROUP_PAGE_SIZE = 40;
@@ -118,9 +119,7 @@ function buildLineParts(item) {
   const unit = asText(item?.unit);
   const article = asText(item?.article);
   const mfiValue = item?.mfiMeasured ?? item?.mfi;
-  const mfi = Number.isFinite(Number(mfiValue))
-    ? formatNumber(mfiValue, 2).replace(/,00$/, '')
-    : '';
+  const mfi = formatMfiValue(mfiValue);
   const mfiMethod = asText(item?.mfiTestMethod);
   const price = Number.isFinite(Number(item?.acquisitionPrice))
     ? formatNumber(item.acquisitionPrice, 0)
@@ -986,7 +985,7 @@ export default function VlList() {
   }, [vlMandantId]);
 
   const renderGrouped = () => groupedGroups.map((group, groupIndex) => {
-    const positions = Array.isArray(group.positions) ? group.positions : [];
+    const positions = sortVlPositions(group.positions);
     const selectablePositions = positions.filter((item) => getAvailableAmount(item) > 0);
     const selectedInGroup = positions.filter((item) => selectedItems.some((entry) => getItemId(entry) === getItemId(item)));
     const allSelected = selectablePositions.length > 0
@@ -1080,7 +1079,7 @@ export default function VlList() {
   });
 
   let lastClassicGroup = '';
-  const renderClassic = () => classicItems.map((item, index) => {
+  const renderClassic = () => sortVlItems(classicItems).map((item, index) => {
     const group = buildGroupTitle(item, lang);
     const showHeader = group !== lastClassicGroup;
     if (showHeader) lastClassicGroup = group;

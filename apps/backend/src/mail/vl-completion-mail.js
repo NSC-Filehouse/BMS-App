@@ -1,4 +1,8 @@
 const VL_COMPLETION_MAIL_SUBJECT = 'BMS-App Verkauf';
+const {
+  formatMfiValue,
+  sortVlItems,
+} = require('../mfi-sort');
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -66,8 +70,7 @@ function classicLineParts(item) {
   const unit = asText(item?.unit);
   const article = asText(item?.article);
   const mfiValue = item?.mfiMeasured ?? item?.mfi;
-  const mfiNumber = asNumber(mfiValue);
-  const mfi = mfiNumber === null ? '' : formatNumber(mfiNumber, 2).replace(/,00$/, '');
+  const mfi = formatMfiValue(mfiValue);
   const method = asText(item?.mfiTestMethod);
   const price = asNumber(item?.acquisitionPrice) === null
     ? asText(item?.acquisitionPrice)
@@ -112,7 +115,7 @@ function renderSaleRows(positions) {
 }
 
 function renderClassicVl(vlItems) {
-  const list = Array.isArray(vlItems) ? vlItems : [];
+  const list = sortVlItems(vlItems);
   if (!list.length) {
     return '<p style="margin:0;color:#546e7a;">Die aktuelle VL enthält keine verfügbaren Positionen.</p>';
   }
@@ -175,7 +178,7 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
       <div style="height:24px;"></div>
       <div style="border-top:2px solid #90a4ae;padding-top:14px;">
         <h3 style="margin:0 0 4px;color:#212121;font-size:17px;">Aktuelle VL (klassische Ansicht)</h3>
-        <p style="margin:0 0 8px;color:#546e7a;font-size:12px;">Vollständiger aktueller Stand nach Übernahme des Verkaufs in das ERP.</p>
+        <p style="margin:0 0 8px;color:#546e7a;font-size:12px;">Vollständiger aktueller Stand nach Übernahme des Verkaufs in BMS.</p>
         <div>${renderClassicVl(vlItems)}</div>
       </div>
     </div>
@@ -188,4 +191,5 @@ module.exports = {
   formatMargin,
   formatVlCompletionMailBody,
   classicLineParts,
+  sortVlItems,
 };

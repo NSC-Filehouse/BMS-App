@@ -13,6 +13,7 @@ const {
   VL_COMPLETION_MAIL_SUBJECT,
   formatVlCompletionMailBody,
 } = require('../mail/vl-completion-mail');
+const { normalizeMfiValue, sortVlItems } = require('../mfi-sort');
 
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
@@ -106,8 +107,8 @@ function mapTempPosition(row) {
 }
 
 function mapAvailabilityRow(row) {
-  const measured = asNumber(getField(row, 'beP_MFIgemessen'));
-  const base = asNumber(getField(row, 'beP_MFI'));
+  const measured = normalizeMfiValue(getField(row, 'beP_MFIgemessen'));
+  const base = normalizeMfiValue(getField(row, 'beP_MFI'));
   return {
     amount: asNumber(getField(row, 'Menge')),
     unit: asText(getField(row, 'Einheit')),
@@ -248,7 +249,7 @@ async function loadCurrentVl(database) {
     FROM ${productAvailabilitySource('availability')}
     ORDER BY [Kunststoff] ASC, [Kunststoff_Untergruppe] ASC, [Artikel] ASC, [Bestell-Pos] ASC
   `, []);
-  return (Array.isArray(rows) ? rows : []).map(mapAvailabilityRow);
+  return sortVlItems((Array.isArray(rows) ? rows : []).map(mapAvailabilityRow));
 }
 
 async function loadExcelAdRows(companyId) {

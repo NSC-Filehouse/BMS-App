@@ -12,6 +12,11 @@ const {
 } = require('../db/temp-order-planning');
 const { resolveProductGroup } = require('../product-grouping');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
+const {
+  compareVlPositions,
+  normalizeMfiValue,
+  sortVlItems,
+} = require('../mfi-sort');
 
 const router = express.Router();
 const VIEW_SQL = productAvailabilitySource('availability');
@@ -85,8 +90,8 @@ function mapProductRow(row, database = null) {
   const categorySub = asText(getField(row, 'Kunststoff_Untergruppe'));
   const categoryMain = asText(getField(row, 'Kunststoff'));
   const category = categorySub || categoryMain;
-  const mfiMeasured = asNumber(getField(row, 'beP_MFIgemessen'));
-  const mfiBase = asNumber(getField(row, 'beP_MFI'));
+  const mfiMeasured = normalizeMfiValue(getField(row, 'beP_MFIgemessen'));
+  const mfiBase = normalizeMfiValue(getField(row, 'beP_MFI'));
   const mfi = mfiMeasured !== null ? mfiMeasured : mfiBase;
 
   return {
@@ -255,13 +260,7 @@ function groupProductRows(rows, database = null, planning = new Map()) {
   return Array.from(groups.values())
     .map(({ positionIds, ...group }) => ({
       ...group,
-      positions: group.positions.sort((left, right) => {
-        const articleCompare = left.article.localeCompare(right.article, 'de');
-        if (articleCompare !== 0) return articleCompare;
-        const warehouseCompare = left.warehouse.localeCompare(right.warehouse, 'de');
-        if (warehouseCompare !== 0) return warehouseCompare;
-        return left.beNumber.localeCompare(right.beNumber, 'de');
-      }),
+      positions: group.positions.sort(compareVlPositions),
       availableCount: group.positions.length,
     }))
     .sort((left, right) => left.name.localeCompare(right.name, 'de'));
@@ -301,6 +300,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
 
   const safeSort = resolveSort(sort);
   const safeDir = normalizeDir(dir);
+  const isVlSort = String(sort || '').trim() === 'vl';
   const { whereSql, params } = buildWhereClause({
     q,
     plastic: req.query?.plastic,
@@ -313,17 +313,25 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   const totalRows = await runSQLQueryAccess(viewDatabase, countSql, params);
   const total = normalizeTotal(totalRows);
 
-  const dataSql = `
-    SELECT *
-    FROM ${VIEW_SQL}
-    ${whereSql}
-    ORDER BY ${safeSort} ${safeDir}
-    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-  `;
-  const rows = await runSQLQueryAccess(viewDatabase, dataSql, [...params, offset, pageSize]);
+  const dataSql = isVlSort
+    ? `
+      SELECT *
+      FROM ${VIEW_SQL}
+      ${whereSql}
+    `
+    : `
+      SELECT *
+      FROM ${VIEW_SQL}
+      ${whereSql}
+      ORDER BY ${safeSort} ${safeDir}
+      OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    `;
+  const rows = await runSQLQueryAccess(viewDatabase, dataSql, isVlSort ? params : [...params, offset, pageSize]);
   const mappedRows = (rows || []).map((row) => mapProductRow(row, viewDatabase));
-  const planning = await loadProductPlanning(req, viewDatabase, mappedRows);
-  const data = mappedRows.map((item) => applyTempOrderPlanning(item, planning));
+  const orderedRows = isVlSort ? sortVlItems(mappedRows) : mappedRows;
+  const pageRows = isVlSort ? orderedRows.slice(offset, offset + pageSize) : orderedRows;
+  const planning = await loadProductPlanning(req, viewDatabase, pageRows);
+  const data = pageRows.map((item) => applyTempOrderPlanning(item, planning));
 
   sendEnvelope(res, {
     status: 200,
@@ -339,7 +347,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
       sub: asText(req.query?.sub),
       subEmpty: String(req.query?.subEmpty || '') === '1',
       sort: String(sort || 'article'),
-      dir: safeDir,
+      dir: isVlSort ? 'ASC' : safeDir,
     },
     error: null,
   });
