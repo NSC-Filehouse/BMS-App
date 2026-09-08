@@ -101,7 +101,7 @@ async function queryMandantsForFilehouse() {
   throw lastError || new Error('Failed to query mandants table.');
 }
 
-async function queryMandantsForUser(normalizedEmail) {
+async function queryMandantsForIdentity(identity) {
   const tMandant = escIdentifier(config.sql.tables.mandant);
   const fxViewMitarbeiterMandant = escIdentifier(config.fxSql.views.mitarbeiterMandant);
 
@@ -111,7 +111,6 @@ async function queryMandantsForUser(normalizedEmail) {
   const colFirma = escIdentifier(config.sql.columns.firma);
   const colFirmaKurz = escIdentifier(config.sql.columns.firmaKurz);
 
-  const identity = await getUserIdentityByEmail(normalizedEmail);
   const personNumber = Number(identity.personNumber);
   if (!Number.isFinite(personNumber)) return [];
 
@@ -134,8 +133,7 @@ async function queryMandantsForUser(normalizedEmail) {
   return runSQLQuerySqlServer(config.sql.database, sql, firmaIds);
 }
 
-function getCachedMandants(email) {
-  const key = normalizeEmail(email);
+function getCachedMandants(key) {
   const item = mandantsCache.get(key);
   if (!item) return null;
   if (item.expiresAt <= now()) {
@@ -145,8 +143,8 @@ function getCachedMandants(email) {
   return item.data;
 }
 
-function setCachedMandants(email, data) {
-  mandantsCache.set(normalizeEmail(email), {
+function setCachedMandants(key, data) {
+  mandantsCache.set(key, {
     expiresAt: now() + config.cache.mandantsTtlMs,
     data,
   });
@@ -179,16 +177,38 @@ async function isDatabaseAvailable(databaseName) {
   return available;
 }
 
-async function loadMandantsForEmail(email) {
+async function getMandantsForUser(email) {
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) return [];
-
-  let rows = [];
-  if (isFilehouseEmail(normalizedEmail)) {
-    rows = await queryMandantsForFilehouse();
-  } else {
-    rows = await queryMandantsForUser(normalizedEmail);
+  if (!normalizedEmail) {
+    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
+
+  const cached = getCachedMandants(normalizedEmail);
+  if (cached) return cached;
+
+  const identity = await getUserIdentityByEmail(normalizedEmail);
+  const loaded = await loadMandantsForIdentity(identity);
+  setCachedMandants(normalizedEmail, loaded);
+  return loaded;
+}
+
+function getIdentityMandantsCacheKey(identity) {
+  const email = normalizeEmail(identity?.email);
+  if (email) return email;
+
+  const personNumber = String(identity?.personNumber || '').trim();
+  if (personNumber) return `person:${personNumber}`;
+
+  return `user:${String(identity?.userId || '').trim().toLowerCase()}`;
+}
+
+async function loadMandantsForIdentity(identity) {
+  if (!identity) return [];
+
+  const normalizedEmail = normalizeEmail(identity.email);
+  const rows = isFilehouseEmail(normalizedEmail)
+    ? await queryMandantsForFilehouse()
+    : await queryMandantsForIdentity(identity);
 
   const normalized = (rows || [])
     .map((row) => ({
@@ -224,24 +244,22 @@ async function loadMandantsForEmail(email) {
   const availableMandants = checks.filter((m) => m.available);
   const unavailableCount = checks.length - availableMandants.length;
   if (unavailableCount > 0) {
-    logger.warn(`Filtered ${unavailableCount} unavailable tenant databases for ${normalizedEmail}.`);
+    logger.warn(`Filtered ${unavailableCount} unavailable tenant databases for ${normalizedEmail || identity.userId || identity.personNumber}.`);
   }
 
   availableMandants.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   return availableMandants;
 }
 
-async function getMandantsForUser(email) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
-  }
+async function getMandantsForIdentity(identity) {
+  if (!identity) return [];
 
-  const cached = getCachedMandants(normalizedEmail);
+  const cacheKey = getIdentityMandantsCacheKey(identity);
+  const cached = getCachedMandants(cacheKey);
   if (cached) return cached;
 
-  const loaded = await loadMandantsForEmail(normalizedEmail);
-  setCachedMandants(normalizedEmail, loaded);
+  const loaded = await loadMandantsForIdentity(identity);
+  setCachedMandants(cacheKey, loaded);
   return loaded;
 }
 
@@ -260,6 +278,17 @@ async function getDatabaseConnectionForUser(email, mandantName) {
   }
 
   const mandants = await getMandantsForUser(email);
+  const match = mandants.find((m) => m.name.toLowerCase() === selected);
+  return getDatabaseConnectionForMandantMatch(match, mandantName);
+}
+
+async function getDatabaseConnectionForIdentity(identity, mandantName) {
+  const selected = String(mandantName || '').trim().toLowerCase();
+  if (!selected) {
+    throw createHttpError(400, 'Missing required header: x-mandant', { code: 'MANDANT_HEADER_REQUIRED' });
+  }
+
+  const mandants = await getMandantsForIdentity(identity);
   const match = mandants.find((m) => m.name.toLowerCase() === selected);
   return getDatabaseConnectionForMandantMatch(match, mandantName);
 }
@@ -303,7 +332,9 @@ async function getDatabaseConnectionForUserById(email, firmaId) {
 
 module.exports = {
   getMandantsForUser,
+  getMandantsForIdentity,
   listMandantsForUser,
   getDatabaseConnectionForUser,
+  getDatabaseConnectionForIdentity,
   getDatabaseConnectionForUserById,
 };

@@ -11,6 +11,10 @@ const errorTexts = {
     de: 'Fehlende Benutzeridentitaet.',
     en: 'Missing user identity.',
   },
+  AUTH_IDENTITY_CONFLICT: {
+    de: 'Die vom SSO gelieferten Benutzerkennungen widersprechen sich.',
+    en: 'The user identifiers supplied by SSO conflict.',
+  },
   MANDANT_HEADER_REQUIRED: {
     de: 'Fehlender erforderlicher Header: x-mandant.',
     en: 'Missing required header: x-mandant.',

@@ -17,10 +17,15 @@ function getUserContextFromRequest(req) {
   const surname = firstHeader(req, ['x-ms-client-surname']);
   const mail = firstHeader(req, ['x-ms-client-mail']);
   const principalHeader = firstHeader(req, ['x-ms-client-principal-name']);
+  const samAccountName = firstHeader(req, ['x-ms-client-samaccountname']);
   const forwardedUser = firstHeader(req, ['x-forwarded-user']);
-  const identityCandidates = [principalHeader, mail, forwardedUser].filter(Boolean);
-  const email = identityCandidates.find(looksLikeEmail) || identityCandidates[0] || null;
-  const principalName = email || principalHeader || forwardedUser || null;
+  const emailCandidates = [mail, principalHeader, forwardedUser].filter(Boolean);
+  const email = emailCandidates.find(looksLikeEmail)
+    || samAccountName
+    || principalHeader
+    || forwardedUser
+    || null;
+  const principalName = principalHeader || email || forwardedUser || samAccountName || null;
 
   const normalizedEmail = String(email || '').trim() || null;
 
@@ -28,6 +33,9 @@ function getUserContextFromRequest(req) {
     email: normalizedEmail,
     mail: mail || null,
     principalName: principalName || null,
+    principalHeader: principalHeader || null,
+    samAccountName: samAccountName || null,
+    forwardedUser: forwardedUser || null,
     givenName: givenName || null,
     surname: surname || null,
   };

@@ -18,7 +18,7 @@ const timelineRouter = require('./routes/timeline.routes');
 const pushRouter = require('./routes/push.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
-const { getUserIdentityByEmail } = require('./db/users');
+const { getUserIdentityFromRequestContext } = require('./db/users');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
 
@@ -55,21 +55,33 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'bms-backend' }))
 // Current user info (from reverse proxy headers)
 app.get(`${config.apiBasePath}/me`, async (req, res) => {
   const base = getUserContextFromRequest(req);
-  if (!base?.email) {
-    res.json(base);
+  const publicBase = { ...base };
+  delete publicBase.principalHeader;
+  delete publicBase.forwardedUser;
+  const hasIdentityHeader = [
+    base?.mail,
+    base?.principalHeader,
+    base?.samAccountName,
+    base?.forwardedUser,
+  ].some(Boolean);
+  if (!hasIdentityHeader) {
+    res.json({ ...publicBase, identityResolved: false });
     return;
   }
 
   try {
-    const identity = await getUserIdentityByEmail(base.email);
+    const identity = await getUserIdentityFromRequestContext(base);
     res.json({
-      ...base,
+      ...publicBase,
+      email: identity?.email || publicBase.email || null,
       shortCode: identity?.shortCode || null,
       personNumber: identity?.personNumber ?? null,
       mainCompanyId: identity?.mainCompanyId ?? null,
+      userId: identity?.userId || null,
+      identityResolved: true,
     });
   } catch {
-    res.json(base);
+    res.json({ ...publicBase, identityResolved: false });
   }
 });
 

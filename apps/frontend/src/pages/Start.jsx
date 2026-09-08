@@ -41,7 +41,7 @@ export default function Start() {
         ]);
         if (!alive) return;
 
-        const emailVal = meRes?.principalName || meRes?.mail || meRes?.email || '';
+        const emailVal = meRes?.email || meRes?.mail || meRes?.principalName || '';
         setEmail(emailVal);
         setMeName({
           given: meRes?.givenName || '',

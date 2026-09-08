@@ -1,18 +1,15 @@
 const express = require('express');
-const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
-const { listMandantsForUser } = require('../db/databases');
+const { asyncHandler, sendEnvelope } = require('../utils');
+const { getMandantsForIdentity } = require('../db/databases');
+const { getUserIdentityFromRequestContext } = require('../db/users');
 const { getUserContextFromRequest } = require('../user-context');
 
 const router = express.Router();
 
 router.get('/mandants', asyncHandler(async (req, res) => {
   const user = getUserContextFromRequest(req);
-  const email = String(user.email || '').trim();
-  if (!email) {
-    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
-  }
-
-  const mandants = await listMandantsForUser(email);
+  const identity = await getUserIdentityFromRequestContext(user);
+  const mandants = await getMandantsForIdentity(identity);
   sendEnvelope(res, {
     status: 200,
     data: mandants,

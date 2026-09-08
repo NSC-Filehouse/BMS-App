@@ -117,7 +117,7 @@ export default function Layout() {
         ];
         const [res, mandantsRes, remindersRes] = await Promise.all(requests);
         if (!alive) return;
-        const emailVal = res?.principalName || res?.mail || res?.email || '';
+        const emailVal = res?.email || res?.mail || res?.principalName || '';
         setEmail(emailVal);
         const nameVal = `${res?.givenName || ''} ${res?.surname || ''}`.trim();
         setUserName(nameVal);

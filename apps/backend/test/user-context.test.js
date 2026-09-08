@@ -34,3 +34,17 @@ test('uses the forwarded identity as a final fallback', () => {
   assert.equal(result.email, 'filehouse');
   assert.equal(result.principalName, 'filehouse');
 });
+
+test('keeps the mail and SAM account name separately when SSO sends both', () => {
+  const result = getUserContextFromRequest(request({
+    'x-ms-client-principal-name': 'rehder@frupack.de',
+    'x-ms-client-mail': 'dre@frupack.de',
+    'x-ms-client-samaccountname': 'rehder',
+  }));
+
+  assert.equal(result.email, 'dre@frupack.de');
+  assert.equal(result.mail, 'dre@frupack.de');
+  assert.equal(result.principalName, 'rehder@frupack.de');
+  assert.equal(result.principalHeader, 'rehder@frupack.de');
+  assert.equal(result.samAccountName, 'rehder');
+});
