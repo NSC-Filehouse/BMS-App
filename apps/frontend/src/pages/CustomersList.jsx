@@ -56,6 +56,7 @@ export default function CustomersList() {
   const [q, setQ] = React.useState('');
   const [searchField, setSearchField] = React.useState('name');
   const [reminderOnly, setReminderOnly] = React.useState(false);
+  const [orderQuantity, setOrderQuantity] = React.useState(true);
   const [includeInactive, setIncludeInactive] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
@@ -63,6 +64,7 @@ export default function CustomersList() {
   const qRef = React.useRef(q);
   const searchFieldRef = React.useRef(searchField);
   const reminderOnlyRef = React.useRef(reminderOnly);
+  const orderQuantityRef = React.useRef(orderQuantity);
   const includeInactiveRef = React.useRef(includeInactive);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
@@ -86,6 +88,10 @@ export default function CustomersList() {
   }, [reminderOnly]);
 
   React.useEffect(() => {
+    orderQuantityRef.current = orderQuantity;
+  }, [orderQuantity]);
+
+  React.useEffect(() => {
     includeInactiveRef.current = includeInactive;
   }, [includeInactive]);
 
@@ -100,13 +106,17 @@ export default function CustomersList() {
     const qVal = opts.q ?? qRef.current ?? '';
     const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
+    const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? true;
     const includeInactiveVal = opts.includeInactive ?? includeInactiveRef.current ?? false;
+    const useOrderQuantity = !reminderOnlyVal && orderQuantityVal;
+    const sortVal = useOrderQuantity ? 'orderCountLast2Years' : 'kd_Name1';
+    const dirVal = useOrderQuantity ? 'DESC' : 'ASC';
     const focusCustomerId = String(opts.focusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=kd_Name1&dir=ASC`),
+        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
@@ -133,19 +143,23 @@ export default function CustomersList() {
     const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
     const selectedCustomerId = getSelectedCustomer()?.id;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.includeInactive !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.includeInactive !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
       const restoredReminderOnly = Boolean(listState.reminderOnly);
+      const restoredOrderQuantity = listState.orderQuantity !== undefined
+        ? Boolean(listState.orderQuantity)
+        : true;
       const restoredIncludeInactive = Boolean(listState.includeInactive);
       hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setSearchField(restoredSearchField);
       setReminderOnly(restoredReminderOnly);
+      setOrderQuantity(restoredOrderQuantity);
       setIncludeInactive(restoredIncludeInactive);
-      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, includeInactive: restoredIncludeInactive, focusCustomerId: selectedCustomerId });
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, includeInactive: restoredIncludeInactive, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
@@ -157,12 +171,14 @@ export default function CustomersList() {
       setQ('');
       setSearchField('name');
       setReminderOnly(false);
+      setOrderQuantity(true);
       setIncludeInactive(false);
       load({
         page: 1,
         q: '',
         searchField: 'name',
         reminderOnly: false,
+        orderQuantity: true,
         includeInactive: false,
         focusCustomerId: currentSelectedCustomer?.id,
       });
@@ -173,7 +189,7 @@ export default function CustomersList() {
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
     skipSearchReloadRef.current = true;
-    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, includeInactive: false, focusCustomerId: selectedCustomerId });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: true, includeInactive: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -199,11 +215,11 @@ export default function CustomersList() {
         return;
       }
       if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal, searchField, reminderOnly, includeInactive });
+        load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, includeInactive });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, reminderOnly, includeInactive, load]);
+  }, [q, searchField, reminderOnly, orderQuantity, includeInactive, load]);
 
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
@@ -228,7 +244,7 @@ export default function CustomersList() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
             aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, includeInactive })}
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, includeInactive })}
             disabled={(meta.page || 1) <= 1}
           >
             <ArrowBackIcon />
@@ -238,7 +254,7 @@ export default function CustomersList() {
           </Typography>
           <IconButton
             aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, includeInactive })}
+            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, includeInactive })}
             disabled={meta.total !== null && meta.total !== undefined
               ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
               : false}
@@ -317,6 +333,20 @@ export default function CustomersList() {
                 control={(
                   <Switch
                     size="small"
+                    checked={orderQuantity}
+                    onChange={(event) => setOrderQuantity(event.target.checked)}
+                  />
+                )}
+                label={t('customers_sort_order_quantity')}
+                sx={{
+                  mr: 2,
+                  '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
+                }}
+              />
+              <FormControlLabel
+                control={(
+                  <Switch
+                    size="small"
                     checked={includeInactive}
                     onChange={(event) => setIncludeInactive(event.target.checked)}
                   />
@@ -389,7 +419,7 @@ export default function CustomersList() {
                   }
                   navigate(`/customers/${encodeURIComponent(id)}`, {
                     state: {
-                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, includeInactive },
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, includeInactive },
                       afterSelect: location.state?.afterSelect || null,
                     },
                   });

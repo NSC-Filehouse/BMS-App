@@ -36,24 +36,24 @@ function normalizeDir(dir) {
   return String(dir || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 }
 
-function resolveSortField(sort) {
+function resolveSortField(sort, fallback = 'kd_Name1') {
   const map = {
-    kd_KdNR: '[kd_KdNR]',
-    kd_Name1: '[kd_Name1]',
-    kd_Name2: '[kd_Name2]',
-    kd_PLZ: '[kd_PLZ]',
-    kd_Aussendienst: '[kd_Aussendienst]',
-    kd_Region: '[kd_Region]',
-    kd_Ort: '[kd_Ort]',
-    kd_LK: '[kd_LK]',
-    kd_eMail: '[kd_eMail]',
-    kd_Telefon: '[kd_Telefon]',
+    kd_KdNR: { key: 'kd_KdNR', sql: '[k].[kd_KdNR]' },
+    kd_Name1: { key: 'kd_Name1', sql: '[k].[kd_Name1]' },
+    kd_Name2: { key: 'kd_Name2', sql: '[k].[kd_Name2]' },
+    kd_PLZ: { key: 'kd_PLZ', sql: '[k].[kd_PLZ]' },
+    kd_Aussendienst: { key: 'kd_Aussendienst', sql: '[k].[kd_Aussendienst]' },
+    kd_Region: { key: 'kd_Region', sql: '[k].[kd_Region]' },
+    kd_Ort: { key: 'kd_Ort', sql: '[k].[kd_Ort]' },
+    kd_LK: { key: 'kd_LK', sql: '[k].[kd_LK]' },
+    kd_eMail: { key: 'kd_eMail', sql: '[k].[kd_eMail]' },
+    kd_Telefon: { key: 'kd_Telefon', sql: '[k].[kd_Telefon]' },
+    orderCountLast2Years: {
+      key: 'orderCountLast2Years',
+      sql: 'COALESCE([oc].[orderCountLast2Years], 0)',
+    },
   };
-  return map[String(sort || '').trim()] || '[kd_Name1]';
-}
-
-function qualifyCustomerSortField(sortField, alias = 'k') {
-  return String(sortField || '[kd_Name1]').replace(/\[([^\]]+)\]/g, `[${alias}].[$1]`);
+  return map[String(sort || '').trim()] || map[fallback] || map.kd_Name1;
 }
 
 function resolveSearchField(searchField) {
@@ -198,6 +198,20 @@ function getReminderCountsCte() {
           OR COALESCE([re_MahnTextIDneu], 0) > 0
         )
       GROUP BY COALESCE([re_KdNr], '')
+    )
+  `;
+}
+
+function getOrderCountsCte() {
+  return `
+    , [order_counts] AS (
+      SELECT
+        [customer_order].[au_KdNr] AS customerId,
+        COUNT(*) AS orderCountLast2Years
+      FROM [dbo].[tblAuftrag] [customer_order]
+      WHERE [customer_order].[au_Auftragsdatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+        AND COALESCE([customer_order].[au_KdNr], '') <> ''
+      GROUP BY [customer_order].[au_KdNr]
     )
   `;
 }
@@ -463,11 +477,11 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
-    sort: 'kd_Name1',
-    dir: 'ASC',
+    sort: reminderOnly ? 'kd_Name1' : 'orderCountLast2Years',
+    dir: reminderOnly ? 'ASC' : 'DESC',
   });
 
-  const safeSort = resolveSortField(sort);
+  const safeSort = resolveSortField(sort, reminderOnly ? 'kd_Name1' : 'orderCountLast2Years');
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
   const activeOnly = !reminderOnly && !includeInactive;
@@ -484,7 +498,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const queryParams = activeOnly ? [activeCustomerIdsJson, ...params] : params;
   const offset = (page - 1) * pageSize;
 
-  const cteSql = getReminderCountsCte();
+  const cteSql = `${getReminderCountsCte()}${getOrderCountsCte()}`;
   const countSql = `
     ${cteSql}
     SELECT COUNT(*) AS total
@@ -501,13 +515,16 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     ${cteSql}
     SELECT
       [k].*,
-      COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount
+      COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount,
+      COALESCE([oc].[orderCountLast2Years], 0) AS orderCountLast2Years
     FROM [dbo].[tblKunden] [k]
     ${activeJoinSql}
     LEFT JOIN [reminder_counts] [rc]
       ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
+    LEFT JOIN [order_counts] [oc]
+      ON COALESCE([k].[kd_KdNR], '') = [oc].[customerId]
     ${whereSql}
-    ORDER BY ${qualifyCustomerSortField(safeSort)} ${safeDir}
+    ORDER BY ${safeSort.sql} ${safeDir}, [k].[kd_Name1] ASC, [k].[kd_KdNR] ASC
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(req.database, dataSql, [...queryParams, offset, pageSize]);
@@ -527,7 +544,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       reminderOnly,
       includeInactive,
       activityWindowYears: 2,
-      sort: String(sort || 'kd_Name1'),
+      sort: safeSort.key,
       dir: safeDir,
     },
     error: null,

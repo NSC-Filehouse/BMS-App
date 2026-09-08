@@ -173,3 +173,15 @@ SELECT TOP (10) [Bestell-Pos], [Menge], [EPtest], [EP], [Lagerort], [beP_VL] FRO
   
 7.9.2026, 22:27:32 [DEBUG] Params: []
 7.9.2026, 22:27:32 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Incorrect syntax near the keyword 'rowCount'."}
+8.9.2026, 11:34:38 [DEBUG] Query: SELECT [ta_company_id] AS companyId,COALESCE([ta_Status],0) AS orderStatus,COUNT_BIG(*) AS total FROM [BMSApp][tbl_Temp_Auftrag] GROUP BY [ta_company_id],COALESCE([ta_Status],0) ORDER BY [ta_company_id],orderStatus
+8.9.2026, 11:34:38 [ERROR] SQL Server query failed - Invalid object name 'BMSApp'.
+8.9.2026, 11:34:38 [DEBUG] Params: []
+8.9.2026, 11:34:38 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'BMSApp'."}
+8.9.2026, 11:34:38 [ERROR] SQL Server query failed - Invalid object name 'BMSApp'.
+8.9.2026, 11:34:38 [DEBUG] Params: []
+8.9.2026, 11:34:38 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'BMSApp'."}
+8.9.2026, 11:34:38 [DEBUG] Query: SELECT COUNT_BIG(*) AS status2Total,MIN([ta_LastModifiedDate]) AS oldestLastModified,MAX([ta_LastModifiedDate]) AS newestLastModified FROM [BMSApp][tbl_Temp_Auftrag] WHERE [ta_Status]=2
+8.9.2026, 11:34:38 [ERROR] SQL Server query failed - Invalid object name 'BMSApp'.
+8.9.2026, 11:34:38 [DEBUG] Query: SELECT [om_Status] AS mailStatus,COUNT_BIG(*) AS total FROM [BMSApp][OrderMailOutbox] GROUP BY [om_Status] ORDER BY [om_Status]
+8.9.2026, 11:34:38 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'BMSApp'."}
+8.9.2026, 11:34:38 [DEBUG] Params: []
