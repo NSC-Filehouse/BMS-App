@@ -307,6 +307,9 @@ export default function TempOrderDetail() {
                     {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('order_sale_price')}: {formatPrice(pos.price)} | {t('product_price')}: {formatPrice(pos.costPrice)}
                   </Typography>
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {t('original_packaging_type_label')}: {pos.originalPackagingType || '-'} | {t('packaging_type_changed_label')}: {pos.packagingTypeChanged ? t('yes_label') : t('no_label')}
+                  </Typography>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('order_reserve_amount')}: {pos.reservationInKg ?? '-'} kg | {t('order_reserved_until')}: {formatDateOnly(pos.reservationDate)}
                   </Typography>
                   {(pos.wpzId || pos.wpzComment) && (

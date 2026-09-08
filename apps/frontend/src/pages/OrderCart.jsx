@@ -282,6 +282,7 @@ export default function OrderCart() {
                     salePrice: Number(x.salePrice),
                     costPrice: Number(x.acquisitionPrice),
                     deliveryDate: x.deliveryDate || null,
+                    originalPackagingType: x.originalPackagingType || '',
                     wpzId: x.wpzId ?? null,
                     wpzOriginal: x.wpzId ? wpz.wpzOriginal : null,
                     wpzComment: wpz.wpzComment,

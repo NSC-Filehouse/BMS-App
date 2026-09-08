@@ -100,25 +100,34 @@ export function addOrderCartItem(item, quantityKg) {
   const current = read();
   const id = String(item.id || '');
   const idx = current.findIndex((x) => String(x.id || '') === id);
-  const backendAvailableAmount = Number(item.availableAmount);
+  const existing = idx >= 0 ? current[idx] : null;
+  const hasBackendAvailableAmount = item.availableAmount !== null && item.availableAmount !== undefined && item.availableAmount !== '';
+  const backendAvailableAmount = hasBackendAvailableAmount ? Number(item.availableAmount) : Number.NaN;
+  const hasAmount = item.amount !== null && item.amount !== undefined && item.amount !== '';
+  const calculatedAvailableAmount = hasAmount
+    ? Number(item.amount) - Number(item.reserved || 0)
+    : Number.NaN;
   const payload = {
     id,
-    article: item.article || '',
-    beNumber: item.beNumber || '',
-    warehouseId: item.storageId || item.warehouseId || '',
-    unit: item.unit || 'kg',
+    article: item.article || existing?.article || '',
+    beNumber: item.beNumber || existing?.beNumber || '',
+    warehouseId: item.storageId || item.warehouseId || existing?.warehouseId || '',
+    unit: item.unit || existing?.unit || 'kg',
     availableAmount: Number.isFinite(backendAvailableAmount)
       ? Math.max(backendAvailableAmount, 0)
-      : Number(item.amount || 0) - Number(item.reserved || 0),
-    amountTotal: item.amount ?? null,
-    acquisitionPrice: item.acquisitionPrice ?? null,
+      : (Number.isFinite(calculatedAvailableAmount)
+        ? Math.max(calculatedAvailableAmount, 0)
+        : (existing?.availableAmount ?? null)),
+    amountTotal: item.amount ?? existing?.amountTotal ?? null,
+    acquisitionPrice: item.acquisitionPrice ?? existing?.acquisitionPrice ?? null,
     // A sales price must be entered explicitly; never use the acquisition price as VK.
-    salePrice: item.salePrice ?? null,
-    deliveryDate: item.deliveryDate || (idx >= 0 ? current[idx].deliveryDate : null) || tomorrow(),
+    salePrice: item.salePrice ?? existing?.salePrice ?? null,
+    deliveryDate: item.deliveryDate || existing?.deliveryDate || tomorrow(),
     quantityKg: qty,
-    wpzId: item.wpzId ?? null,
-    wpzOriginal: item.wpzOriginal ?? null,
-    wpzComment: item.wpzComment || '',
+    wpzId: item.wpzId !== undefined ? item.wpzId : (existing?.wpzId ?? null),
+    wpzOriginal: item.wpzOriginal !== undefined ? item.wpzOriginal : (existing?.wpzOriginal ?? null),
+    wpzComment: item.wpzComment !== undefined ? item.wpzComment : (existing?.wpzComment || ''),
+    originalPackagingType: item.originalPackagingType ?? existing?.originalPackagingType ?? '',
   };
   if (idx >= 0) {
     current[idx] = payload;

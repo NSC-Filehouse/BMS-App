@@ -216,6 +216,26 @@ function resolvePackagingOption(value, options, lang) {
   return PACKAGING_TYPE_LABELS[text.toLowerCase()]?.[lang] || text;
 }
 
+function normalizePackagingType(value) {
+  const key = String(value || '').trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
+  const canonical = {
+    sackware: 'sackware',
+    bags: 'sackware',
+    siloware: 'siloware',
+    'silo/bulk': 'siloware',
+    'big bags': 'big bags',
+    octa: 'octa',
+    octabins: 'octa',
+    andere: 'andere',
+    others: 'andere',
+    'neutrale sackware': 'neutrale sackware',
+    'neutral bags': 'neutrale sackware',
+    'neutrale oktabins': 'neutrale oktabins',
+    'neutral octas': 'neutrale oktabins',
+  };
+  return canonical[key] || key;
+}
+
 export default function TempOrderForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -269,6 +289,7 @@ export default function TempOrderForm() {
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
   const [addPosWpzComment, setAddPosWpzComment] = React.useState('Original verwenden');
+  const [addPosOriginalPackagingType, setAddPosOriginalPackagingType] = React.useState('');
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -304,6 +325,7 @@ export default function TempOrderForm() {
   const packagingTouchedRef = React.useRef(false);
   const packagingCacheRef = React.useRef(new Map());
   const packagingRequestsRef = React.useRef(new Map());
+  const addPosPackagingBeNumberRef = React.useRef('');
 
   React.useEffect(() => {
     let alive = true;
@@ -317,19 +339,12 @@ export default function TempOrderForm() {
     return () => { alive = false; };
   }, []);
 
-  const loadPackagingDefault = React.useCallback(async (beNumber) => {
-    if (isEdit || isCopyCreate || packagingTouchedRef.current || String(form.packagingType || '').trim()) {
-      return '';
-    }
+  const loadOriginalPackagingType = React.useCallback(async (beNumber) => {
     const key = String(beNumber || '').trim();
     if (!key) return '';
 
     if (packagingCacheRef.current.has(key)) {
-      const cached = packagingCacheRef.current.get(key) || '';
-      if (cached && !packagingTouchedRef.current) {
-        setForm((prev) => (String(prev.packagingType || '').trim() ? prev : { ...prev, packagingType: cached }));
-      }
-      return cached;
+      return packagingCacheRef.current.get(key) || '';
     }
 
     const existingRequest = packagingRequestsRef.current.get(key);
@@ -340,9 +355,6 @@ export default function TempOrderForm() {
         const raw = String(res?.data?.packagingType || '').trim();
         const resolved = resolvePackagingOption(raw, packagingOptions, lang);
         packagingCacheRef.current.set(key, resolved);
-        if (resolved && !packagingTouchedRef.current) {
-          setForm((prev) => (String(prev.packagingType || '').trim() ? prev : { ...prev, packagingType: resolved }));
-        }
         return resolved;
       })
       .catch(() => {
@@ -354,7 +366,7 @@ export default function TempOrderForm() {
       });
     packagingRequestsRef.current.set(key, request);
     return request;
-  }, [form.packagingType, isCopyCreate, isEdit, lang, packagingOptions]);
+  }, [lang, packagingOptions]);
 
   const resolvePaymentTextById = React.useCallback((id) => {
     const idNum = Number(id);
@@ -494,6 +506,8 @@ export default function TempOrderForm() {
             amountInKg: p.amountInKg,
             price: p.price,
             costPrice: p.costPrice ?? null,
+            originalPackagingType: p.originalPackagingType || '',
+            packagingTypeChanged: Boolean(p.packagingTypeChanged),
             reservationInKg: p.reservationInKg,
             reservationDate: p.reservationDate,
             ...createPositionDefaults({
@@ -538,7 +552,9 @@ export default function TempOrderForm() {
           article: x.article,
           amountInKg: x.amountInKg,
           price: x.salePrice ?? x.price,
-          costPrice: x.costPrice ?? x.ep ?? x.price,
+          costPrice: x.costPrice ?? x.ep ?? null,
+          originalPackagingType: '',
+          packagingTypeChanged: false,
           reservationInKg: x.reservationInKg ?? null,
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
@@ -563,7 +579,9 @@ export default function TempOrderForm() {
             article: x.article,
             amountInKg: x.amountInKg,
             price: x.salePrice ?? x.price,
-            costPrice: x.costPrice ?? x.price,
+            costPrice: x.costPrice ?? null,
+            originalPackagingType: x.originalPackagingType || '',
+            packagingTypeChanged: false,
             reservationInKg: null,
             reservationDate: null,
             ...createPositionDefaults({
@@ -593,13 +611,57 @@ export default function TempOrderForm() {
   }, [id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
 
   React.useEffect(() => {
-    if (isEdit || isCopyCreate || String(form.packagingType || '').trim() || !Array.isArray(positions) || positions.length === 0) {
-      return;
-    }
-    const firstPosition = positions.find((position) => String(position?.beNumber || '').trim());
-    if (!firstPosition) return;
-    void loadPackagingDefault(firstPosition.beNumber);
-  }, [form.packagingType, isCopyCreate, isEdit, loadPackagingDefault, positions]);
+    const missingPositions = (Array.isArray(positions) ? positions : [])
+      .filter((position) => String(position?.beNumber || '').trim() && !String(position?.originalPackagingType || '').trim());
+    if (!missingPositions.length) return undefined;
+
+    let cancelled = false;
+    void Promise.all(missingPositions.map(async (position) => ({
+      id: position.id,
+      beNumber: position.beNumber,
+      originalPackagingType: await loadOriginalPackagingType(position.beNumber),
+    }))).then((loaded) => {
+      if (cancelled) return;
+      const byKey = new Map(loaded.map((entry) => [`${String(entry.id || '')}\u001f${String(entry.beNumber || '')}`, entry.originalPackagingType]));
+      setPositions((previous) => {
+        let changed = false;
+        const next = previous.map((position) => {
+          if (String(position.originalPackagingType || '').trim()) return position;
+          const key = `${String(position.id || '')}\u001f${String(position.beNumber || '')}`;
+          const originalPackagingType = byKey.get(key);
+          if (!originalPackagingType) return position;
+          changed = true;
+          return { ...position, originalPackagingType };
+        });
+        return changed ? next : previous;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [loadOriginalPackagingType, positions]);
+
+  const packagingSelectionState = React.useMemo(() => {
+    const list = Array.isArray(positions) ? positions : [];
+    const originals = list.map((position) => String(position?.originalPackagingType || '').trim());
+    const complete = list.length > 0 && originals.every(Boolean);
+    const canonicalTypes = new Set(originals.filter(Boolean).map(normalizePackagingType));
+    return {
+      complete,
+      mixed: complete && canonicalTypes.size > 1,
+      singleType: complete && canonicalTypes.size === 1 ? originals[0] : '',
+    };
+  }, [positions]);
+
+  React.useEffect(() => {
+    if (isEdit || isCopyCreate || packagingTouchedRef.current || !packagingSelectionState.complete) return;
+    const defaultPackagingType = packagingSelectionState.mixed
+      ? ''
+      : resolvePackagingOption(packagingSelectionState.singleType, packagingOptions, lang);
+    setForm((previous) => (
+      String(previous.packagingType || '') === defaultPackagingType
+        ? previous
+        : { ...previous, packagingType: defaultPackagingType }
+    ));
+  }, [isCopyCreate, isEdit, lang, packagingOptions, packagingSelectionState]);
 
   React.useEffect(() => {
     const targetId = Number(form.specialPaymentId || customerPaymentDefaultId);
@@ -867,13 +929,7 @@ export default function TempOrderForm() {
   }, []);
 
   const submit = async () => {
-    let defaultPackagingType = '';
-    if (!isEdit && !isCopyCreate && !String(form.packagingType || '').trim()) {
-      const firstPosition = (Array.isArray(positions) ? positions : [])
-        .find((position) => String(position?.beNumber || '').trim());
-      defaultPackagingType = await loadPackagingDefault(firstPosition?.beNumber);
-    }
-    const effectivePackagingType = String(form.packagingType || '').trim() || defaultPackagingType;
+    const effectivePackagingType = String(form.packagingType || '').trim();
     const messages = [];
     if (!form.clientReferenceId) messages.push(t('validation_customer_required'));
     if (isPositionsMode && (!Array.isArray(positions) || positions.length === 0)) {
@@ -885,6 +941,7 @@ export default function TempOrderForm() {
       messages.push(t('validation_contact_required'));
     }
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
+    if (!packagingSelectionState.complete) messages.push(t('validation_original_packaging_required'));
     if (!effectivePackagingType) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
@@ -943,11 +1000,12 @@ export default function TempOrderForm() {
       };
       if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
+          id: x.id,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           amountInKg: Number(x.amountInKg),
           salePricePerKg: Number(x.price),
-          costPricePerKg: Number(x.costPrice ?? x.price),
+          costPricePerKg: Number(x.costPrice),
           deliveryDate: x.deliveryDate || null,
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
@@ -1149,6 +1207,7 @@ export default function TempOrderForm() {
               }}
               fullWidth
             >
+              <MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
               {form.packagingType
                 && !packagingOptions.some((option) => String(option).toLowerCase() === String(form.packagingType).toLowerCase())
                 && <MenuItem value={form.packagingType}>{form.packagingType}</MenuItem>}
@@ -1156,6 +1215,11 @@ export default function TempOrderForm() {
                 <MenuItem key={z} value={z}>{z}</MenuItem>
               ))}
             </TextField>
+            {packagingSelectionState.mixed && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
+                {t('packaging_types_mixed_hint')}
+              </Typography>
+            )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
               {form.deliveryAddressManual ? (
                 <TextField
@@ -1297,6 +1361,8 @@ export default function TempOrderForm() {
                         setAddPosWpzId(null);
                         setAddPosWpzOriginal(true);
                         setAddPosWpzComment('Original verwenden');
+                        setAddPosOriginalPackagingType('');
+                        addPosPackagingBeNumberRef.current = '';
                       }}
                     >
                       <AddCircleOutlineIcon fontSize="small" />
@@ -1318,6 +1384,9 @@ export default function TempOrderForm() {
                             </Typography>
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                              {t('original_packaging_type_label')}: {x.originalPackagingType || '-'}
                             </Typography>
                             {foreignMandant && (
                               <Typography variant="caption" sx={{ color: '#C56A00', overflowWrap: 'anywhere' }}>
@@ -1449,8 +1518,14 @@ export default function TempOrderForm() {
               setAddPosWpzId(null);
               setAddPosWpzOriginal(true);
               setAddPosWpzComment('Original verwenden');
+              setAddPosOriginalPackagingType('');
+              addPosPackagingBeNumberRef.current = String(value?.beNumber || '').trim();
               if (value?.id) {
-                void loadPackagingDefault(value.beNumber);
+                void loadOriginalPackagingType(value.beNumber).then((originalPackagingType) => {
+                  if (addPosPackagingBeNumberRef.current === String(value.beNumber || '').trim()) {
+                    setAddPosOriginalPackagingType(originalPackagingType);
+                  }
+                });
                 (async () => {
                   try {
                     const wpzRes = await apiRequest(`/products/${encodeURIComponent(value.id)}/wpz`);
@@ -1514,6 +1589,11 @@ export default function TempOrderForm() {
             fullWidth
           />
           <SaleMarginHint salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
+          {addPosProduct && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {t('original_packaging_type_label')}: {addPosOriginalPackagingType || '-'}
+            </Typography>
+          )}
           <TextField
             type="date"
             label={t('delivery_date')}
@@ -1579,6 +1659,8 @@ export default function TempOrderForm() {
                   amountInKg: qty,
                   price: salePrice,
                   costPrice: price,
+                  originalPackagingType: addPosOriginalPackagingType,
+                  packagingTypeChanged: false,
                   reservationInKg: null,
                   reservationDate: null,
                   ...createPositionDefaults({

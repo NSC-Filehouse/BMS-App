@@ -396,6 +396,7 @@ function validateFinalOrder(order, positions) {
   const invalidPosition = positions.find((position) => (
     !asText(position?.beNumber)
     || !asText(position?.warehouse)
+    || !asText(position?.originalPackagingType)
     || !position?.deliveryDate
     || Number(position?.amountInKg) <= 0
     || Number(position?.price) <= 0
@@ -413,6 +414,7 @@ function mapTempOrderWithPositions(row, positions) {
     wpzId: p.wpzId === null || p.wpzId === undefined ? null : Number(p.wpzId),
     wpzOriginal: p.wpzOriginal === null || p.wpzOriginal === undefined ? null : Boolean(p.wpzOriginal),
     wpzComment: asText(p.wpzComment),
+    originalPackagingType: asText(p.originalPackagingType),
     packagingTypeChanged: Boolean(p.packagingTypeChanged),
   }));
   return {
@@ -695,8 +697,6 @@ async function normalizeOrderLevelInput(
   body,
   clientAddress,
   lang,
-  defaultPackagingBeNumber = '',
-  defaultPackagingDatabase = req.database,
 ) {
   const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
   const customerPaymentDefaultId = await loadCustomerPaymentDefaultId(req.database, body?.clientReferenceId);
@@ -721,10 +721,7 @@ async function normalizeOrderLevelInput(
     throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const packagingType = asText(body?.packagingType)
-    || (asText(defaultPackagingBeNumber)
-      ? await loadPackagingType(defaultPackagingDatabase, asText(defaultPackagingBeNumber))
-      : '');
+  const packagingType = asText(body?.packagingType);
   if (!packagingType) {
     throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
@@ -771,6 +768,7 @@ async function loadOrderPositions(orderId) {
     const cWpzId = resolveColumn(cols, ['tap_wpz_id']);
     const cWpzOriginal = resolveColumn(cols, ['tap_wpz_original']);
     const cWpzComment = resolveColumn(cols, ['tap_wpz_comment']);
+    const cOriginalPackagingType = resolveColumn(cols, ['tap_Verpackungsart']);
     const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
@@ -790,7 +788,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cReservationDate, 'reservationDate')},
         ${pick(cAbout, 'about')},
         ${pick(cMfi, 'mfi')},
-        NULL AS [packaging],
+        ${pick(cOriginalPackagingType, 'originalPackagingType')},
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')},
@@ -801,8 +799,9 @@ async function loadOrderPositions(orderId) {
     `;
     const rows = await runSQLQuerySqlServer(config.sql.database, sql, [orderId]);
     return Array.isArray(rows) ? rows : [];
-  } catch {
-    return [];
+  } catch (error) {
+    logger.error(`Positionen fuer Temp-Auftrag ${orderId} konnten nicht geladen werden`, error);
+    throw error;
   }
 }
 
@@ -1142,21 +1141,19 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
-  const firstPositionDatabase = await resolvePositionDatabase(req, asText(positionsInput[0]?.beNumber));
   const orderLevel = await normalizeOrderLevelInput(
     req,
     body,
     clientAddress,
     lang,
-    asText(positionsInput[0]?.beNumber),
-    firstPositionDatabase,
   );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
   const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
-  if (!hasPackagingTypeChanged) {
+  if (!hasOriginalPackagingType || !hasPackagingTypeChanged) {
     throw createHttpError(503, 'Temp order position table is missing packaging change support. Apply the migration first.', { code: 'TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING' });
   }
 
@@ -1187,6 +1184,12 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    if (!originalPackagingType) {
+      throw createHttpError(400, 'Original packaging type is missing for position.', {
+        code: 'INVALID_TEMP_ORDER_PAYLOAD',
+        beNumber,
+      });
+    }
     const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
@@ -1207,6 +1210,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       wpzId,
       wpzOriginal,
       wpzComment,
+      originalPackagingType,
       packagingTypeChanged,
       productContext,
       sourceDatabase,
@@ -1281,41 +1285,35 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     INSERT INTO ${TEMP_ORDER_TABLE} (
       ${orderInsertColumns.join(', ')}
     )
+    OUTPUT INSERTED.*
     VALUES (${orderInsertValues.join(', ')})
   `;
-  await runSQLQuerySqlServer(config.sql.database, sql, orderInsertParams);
+  const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const createdResult = await query(sql, orderInsertParams);
+    const createdRow = createdResult.rows[0] || null;
+    if (!createdRow) {
+      throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
+    }
 
-  const createdRows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 *
-    FROM ${TEMP_ORDER_TABLE}
-    WHERE [ta_company_id] = ? AND LOWER(COALESCE([ta_CreatedBy], '')) = ?
-    ORDER BY [ta_id] DESC
-  `, [companyId, userShortCode.toLowerCase()]);
-  const created = Array.isArray(createdRows) && createdRows.length ? createdRows[0] : null;
-  if (!created) {
-    throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
-  }
-
-  for (let i = 0; i < normalizedPositions.length; i += 1) {
-    const pos = normalizedPositions[i];
-    const posCtx = pos.productContext || await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
-    const posInsertColumns = [
-      '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
-      '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
-      ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
-      '[tap_about]', '[tap_mfi]',
-      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart_Gewechselt]',
-      '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
-    ];
-    const posSql = `
-      INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
-        ${posInsertColumns.join(', ')}
-      )
-      VALUES (${posInsertColumns.map(() => '?').join(', ')})
-    `;
-    try {
-      await runSQLQuerySqlServer(config.sql.database, posSql, [
-        created.ta_id,
+    for (let i = 0; i < normalizedPositions.length; i += 1) {
+      const pos = normalizedPositions[i];
+      const posCtx = pos.productContext;
+      const posInsertColumns = [
+        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+        '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
+        ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+        '[tap_about]', '[tap_mfi]',
+        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_Gewechselt]',
+        '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
+      ];
+      const posSql = `
+        INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
+          ${posInsertColumns.join(', ')}
+        )
+        VALUES (${posInsertColumns.map(() => '?').join(', ')})
+      `;
+      await query(posSql, [
+        createdRow.ta_id,
         i + 1,
         pos.beNumber,
         posCtx.article,
@@ -1331,20 +1329,17 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.wpzOriginal,
         pos.wpzComment,
         pos.wpzId,
+        pos.originalPackagingType,
         pos.packagingTypeChanged,
         userShortCode,
         nowIso,
         userShortCode,
         nowIso,
       ]);
-    } catch (err) {
-      const msg = String(err?.message || '').toLowerCase();
-      if (msg.includes('invalid object name') && msg.includes('tbl_temp_auf_position')) {
-        throw createHttpError(500, `Position table ${appTableDisplayName('tempOrderPosition')} is missing.`, { code: 'TEMP_ORDER_POSITION_TABLE_MISSING' });
-      }
-      throw err;
     }
-  }
+
+    return createdRow;
+  });
 
   sendEnvelope(res, {
     status: 201,
@@ -1377,8 +1372,27 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   }
 
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+  const qualifiedOwnerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, 'o.[ta_CreatedBy]');
 
   const nowIso = new Date().toISOString();
+  const missingPackagingRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT p.[tap_id] AS id, p.[tap_be_number] AS beNumber
+    FROM ${TEMP_ORDER_POSITION_TABLE} AS p
+    INNER JOIN ${TEMP_ORDER_TABLE} AS o
+      ON o.[ta_id] = p.[tap_ta_id]
+    WHERE p.[tap_ta_id] = ?
+      AND o.[ta_company_id] = ?
+      AND o.[ta_Status] IN (0, 3)
+      AND NULLIF(LTRIM(RTRIM(COALESCE(p.[tap_Verpackungsart], N''))), N'') IS NULL
+      ${qualifiedOwnerFilter.whereSql}
+  `, [id, companyId, ...qualifiedOwnerFilter.params]);
+  const resolvedMissingPackaging = new Map();
+  for (const position of (missingPackagingRows || [])) {
+    const beNumber = asText(position.beNumber);
+    const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    if (originalPackagingType) resolvedMissingPackaging.set(Number(position.id), originalPackagingType);
+  }
   let finalized;
   try {
     finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
@@ -1434,6 +1448,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           [tap_wpz_id] AS wpzId,
           [tap_wpz_original] AS wpzOriginal,
           [tap_wpz_comment] AS wpzComment,
+          [tap_Verpackungsart] AS originalPackagingType,
           [tap_Verpackungsart_Gewechselt] AS packagingTypeChanged
         FROM ${TEMP_ORDER_POSITION_TABLE} WITH (HOLDLOCK)
         WHERE [tap_ta_id] = ?
@@ -1441,6 +1456,30 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       `, [id]);
       const positions = positionsResult.rows || [];
       const mappedOrder = mapTempOrderRow(orderRow);
+      for (const position of positions) {
+        const originalPackagingType = asText(position.originalPackagingType)
+          || asText(resolvedMissingPackaging.get(Number(position.id)));
+        if (!originalPackagingType) {
+          throw createHttpError(400, 'Original packaging type is missing for position.', {
+            code: 'INVALID_TEMP_ORDER_PAYLOAD',
+            beNumber: position.beNumber,
+          });
+        }
+        const packagingTypeChanged = !packagingTypesEqual(mappedOrder.packagingType, originalPackagingType);
+        if (asText(position.originalPackagingType) !== originalPackagingType
+          || Boolean(position.packagingTypeChanged) !== packagingTypeChanged) {
+          await query(`
+            UPDATE ${TEMP_ORDER_POSITION_TABLE}
+            SET [tap_Verpackungsart] = ?,
+                [tap_Verpackungsart_Gewechselt] = ?,
+                [tap_LastModifiedBy] = ?,
+                [tap_LastModifiedDate] = ?
+            WHERE [tap_id] = ? AND [tap_ta_id] = ?
+          `, [originalPackagingType, packagingTypeChanged ? 1 : 0, userShortCode, nowIso, position.id, id]);
+          position.originalPackagingType = originalPackagingType;
+          position.packagingTypeChanged = packagingTypeChanged;
+        }
+      }
       validateFinalOrder(mappedOrder, positions);
 
       const recipient = resolveOrderMailRecipient(companyId, config.orderMail);
@@ -1589,7 +1628,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     });
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
-    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status'))
+    if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status') || message.includes('tap_verpackungsart'))
       || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }
@@ -1655,6 +1694,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const clientRepresentative = asText(body?.clientRepresentative);
   const supplier = asText(body?.supplier);
   const lang = resolveLang(req);
+  const qualifiedOwnerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, 'o.[ta_CreatedBy]');
 
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -1665,23 +1705,38 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
   assertPositionsBelongToActiveMandant(req, positionsInput);
-  const firstPositionDatabase = await resolvePositionDatabase(req, asText(positionsInput[0]?.beNumber));
   const orderLevel = await normalizeOrderLevelInput(
     req,
     body,
     clientAddress,
     lang,
-    asText(positionsInput[0]?.beNumber),
-    firstPositionDatabase,
   );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
   const hasPackagingTypeChanged = hasColumn(positionCols, 'tap_Verpackungsart_Gewechselt');
-  if (!hasPackagingTypeChanged) {
+  if (!hasOriginalPackagingType || !hasPackagingTypeChanged) {
     throw createHttpError(503, 'Temp order position table is missing packaging change support. Apply the migration first.', { code: 'TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING' });
   }
+
+  const storedPackagingRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT
+      p.[tap_id] AS id,
+      p.[tap_be_number] AS beNumber,
+      p.[tap_warehouse] AS warehouseId,
+      p.[tap_Verpackungsart] AS originalPackagingType,
+      p.[tap_CreatedBy] AS createdBy,
+      p.[tap_CreateDate] AS createdAt
+    FROM ${TEMP_ORDER_POSITION_TABLE} AS p
+    INNER JOIN ${TEMP_ORDER_TABLE} AS o
+      ON o.[ta_id] = p.[tap_ta_id]
+    WHERE p.[tap_ta_id] = ?
+      AND o.[ta_company_id] = ?
+      ${qualifiedOwnerFilter.whereSql}
+  `, [id, companyId, ...qualifiedOwnerFilter.params]);
+  const storedPackagingById = new Map((storedPackagingRows || []).map((row) => [Number(row.id), row]));
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -1709,7 +1764,20 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
-    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    const storedPosition = storedPackagingById.get(Number(raw?.id));
+    const storedOriginalPackagingType = storedPosition
+      && asText(storedPosition.beNumber) === beNumber
+      && asText(storedPosition.warehouseId) === warehouseId
+      ? asText(storedPosition.originalPackagingType)
+      : '';
+    const originalPackagingType = storedOriginalPackagingType
+      || await loadPackagingType(sourceDatabase, beNumber);
+    if (!originalPackagingType) {
+      throw createHttpError(400, 'Original packaging type is missing for position.', {
+        code: 'INVALID_TEMP_ORDER_PAYLOAD',
+        beNumber,
+      });
+    }
     const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
@@ -1730,7 +1798,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzId,
       wpzOriginal,
       wpzComment,
+      originalPackagingType,
       packagingTypeChanged,
+      createdBy: asText(storedPosition?.createdBy) || userShortCode,
+      createdAt: storedPosition?.createdAt || null,
       productContext,
       sourceDatabase,
     });
@@ -1820,59 +1891,75 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     updateParams.push(attachment.buffer, attachment.fileName, attachment.mimeType);
   }
   updateParams.push(id, companyId, ...ownerFilter.params);
-  await runSQLQuerySqlServer(config.sql.database, updateSql, updateParams);
-
-  await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
-    WHERE [tap_ta_id] = ?
-      AND EXISTS (
-        SELECT 1 FROM ${TEMP_ORDER_TABLE}
-        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
-      )
-  `, [id, id]);
-
   const nowIso = new Date().toISOString();
-  for (let i = 0; i < normalizedPositions.length; i += 1) {
-    const pos = normalizedPositions[i];
-    const posCtx = pos.productContext || await loadProductContext(pos.sourceDatabase, pos.beNumber, pos.warehouseId);
-    const posInsertColumns = [
-      '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
-      '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
-      ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
-      '[tap_about]', '[tap_mfi]',
-      '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart_Gewechselt]',
-      '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
-    ];
-    const posSql = `
-      INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
-        ${posInsertColumns.join(', ')}
-      )
-      VALUES (${posInsertColumns.map(() => '?').join(', ')})
-    `;
-    await runSQLQuerySqlServer(config.sql.database, posSql, [
-      id,
-      i + 1,
-      pos.beNumber,
-      posCtx.article,
-      pos.amountInKg,
-      pos.warehouseId,
-      pos.salePricePerKg,
-      pos.costPricePerKg,
-      pos.reservationInKg,
-      pos.reservationDate,
-      ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
-      posCtx.about || null,
-      posCtx.mfi || '',
-      pos.wpzOriginal,
-      pos.wpzComment,
-      pos.wpzId,
-      pos.packagingTypeChanged,
-      userShortCode,
-      nowIso,
-      userShortCode,
-      nowIso,
-    ]);
-  }
+  await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const lockedOrderResult = await query(`
+      SELECT TOP 1 [ta_completed] AS completed, [ta_Status] AS orderStatus
+      FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
+      WHERE [ta_id] = ? AND [ta_company_id] = ?
+        ${ownerFilter.whereSql}
+    `, [id, companyId, ...ownerFilter.params]);
+    const lockedOrder = lockedOrderResult.rows[0] || null;
+    if (!lockedOrder) {
+      throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+    }
+    if (!isTempOrderEditableStatus(lockedOrder.orderStatus, lockedOrder.completed)) {
+      throw createHttpError(409, 'Finalized temp order cannot be edited.', { code: 'TEMP_ORDER_FINALIZED', id });
+    }
+
+    const updateResult = await query(updateSql, updateParams);
+    if (!Number(updateResult.rowsAffected[0] || 0)) {
+      throw createHttpError(409, 'Temp order could not be updated.', { code: 'TEMP_ORDER_STATUS_LOCKED', id });
+    }
+
+    await query(`
+      DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
+      WHERE [tap_ta_id] = ?
+    `, [id]);
+
+    for (let i = 0; i < normalizedPositions.length; i += 1) {
+      const pos = normalizedPositions[i];
+      const posCtx = pos.productContext;
+      const posInsertColumns = [
+        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+        '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
+        ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+        '[tap_about]', '[tap_mfi]',
+        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_Gewechselt]',
+        '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
+      ];
+      const posSql = `
+        INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
+          ${posInsertColumns.join(', ')}
+        )
+        VALUES (${posInsertColumns.map(() => '?').join(', ')})
+      `;
+      await query(posSql, [
+        id,
+        i + 1,
+        pos.beNumber,
+        posCtx.article,
+        pos.amountInKg,
+        pos.warehouseId,
+        pos.salePricePerKg,
+        pos.costPricePerKg,
+        pos.reservationInKg,
+        pos.reservationDate,
+        ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
+        posCtx.about || null,
+        posCtx.mfi || '',
+        pos.wpzOriginal,
+        pos.wpzComment,
+        pos.wpzId,
+        pos.originalPackagingType,
+        pos.packagingTypeChanged,
+        pos.createdBy,
+        pos.createdAt || nowIso,
+        userShortCode,
+        nowIso,
+      ]);
+    }
+  });
 
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
@@ -1962,3 +2049,5 @@ module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
 module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;
 module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
+module.exports.normalizePackagingType = normalizePackagingType;
+module.exports.packagingTypesEqual = packagingTypesEqual;

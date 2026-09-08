@@ -10,6 +10,8 @@ const {
   isTempOrderEditableStatus,
   isTempOrderFinalizedStatus,
   normalizeTempOrderCompanyId,
+  normalizePackagingType,
+  packagingTypesEqual,
 } = require('../src/routes/temp-orders.routes');
 
 test('normalizes temp-order list filters to supported values', () => {
@@ -80,4 +82,12 @@ test('accepts test mandant company id 0 while rejecting missing or invalid ids',
   assert.equal(normalizeTempOrderCompanyId(-1), null);
   assert.equal(normalizeTempOrderCompanyId('1.5'), null);
   assert.equal(normalizeTempOrderCompanyId('not-a-number'), null);
+});
+
+test('compares translated packaging aliases without treating big bags as sackware', () => {
+  assert.equal(normalizePackagingType(' Bags '), 'sackware');
+  assert.equal(packagingTypesEqual('Sackware', 'Bags'), true);
+  assert.equal(packagingTypesEqual('Siloware', 'Silo/bulk'), true);
+  assert.equal(packagingTypesEqual('Big Bags', 'Sackware'), false);
+  assert.equal(packagingTypesEqual('Octa', 'Octabins'), true);
 });

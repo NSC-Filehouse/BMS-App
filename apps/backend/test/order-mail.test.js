@@ -173,6 +173,8 @@ test('mail body contains the complete structured order data', () => {
       price: 120,
       costPrice: 80,
       deliveryDate: '2026-09-01T00:00:00.000Z',
+      originalPackagingType: 'Sackware',
+      packagingTypeChanged: true,
       reservationInKg: 500,
       reservationDate: '2026-09-10T00:00:00.000Z',
       mfi: '12',
@@ -192,6 +194,8 @@ test('mail body contains the complete structured order data', () => {
     'BE-Nummer: BE-1',
     'VK: 120,00 EUR/kg',
     'EP: 80,00 EUR/kg',
+    'Ursprüngliche Verpackungsart: Sackware',
+    'Verpackungsart gewechselt: Ja',
     'WPZ-ID: 77',
     'Anhang: auftrag.pdf',
   ]) {
