@@ -28,6 +28,12 @@ function tomorrow() {
   return d.toISOString().slice(0, 10);
 }
 
+function getAvailableAmount(product) {
+  const backendAvailable = Number(product?.availableAmount);
+  if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
+  return Math.max(Number(product?.amount || 0) - Number(product?.reserved || 0), 0);
+}
+
 export default function OrderCreate() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,10 +73,8 @@ export default function OrderCreate() {
   }, [location.state]);
 
   const availableAmount = React.useMemo(() => {
-    const total = Number(selectedProduct?.amount ?? 0);
-    const reserved = Number(selectedProduct?.reserved ?? 0);
-    if (!Number.isFinite(total) || !Number.isFinite(reserved)) return null;
-    return Math.max(total - reserved, 0);
+    if (!selectedProduct) return null;
+    return getAvailableAmount(selectedProduct);
   }, [selectedProduct]);
 
   React.useEffect(() => {

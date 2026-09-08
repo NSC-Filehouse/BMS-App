@@ -39,6 +39,12 @@ function formatPrice(value) {
   return `${value} EUR`;
 }
 
+function getAvailableAmount(item) {
+  const backendAvailable = Number(item?.availableAmount);
+  if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
+  return Math.max(Number(item?.amount || 0) - Number(item?.reserved || 0), 0);
+}
+
 function ProductCard({ item, onClick, onAddToCart, t }) {
   return (
     <Card
@@ -175,7 +181,7 @@ export default function ProductsList() {
 
   const openAddDialog = React.useCallback((product) => {
     setAddItem(product);
-    const available = Math.max(Number(product?.amount || 0) - Number(product?.reserved || 0), 0);
+    const available = getAvailableAmount(product);
     setAddQty(Number.isFinite(available) ? String(available) : '');
     setAddError('');
     setAddDialogOpen(true);
@@ -468,7 +474,7 @@ export default function ProductsList() {
             value={addQty}
             onChange={(e) => setAddQty(e.target.value)}
             inputProps={{ min: 1, step: 'any' }}
-            helperText={addItem ? `${t('product_available_now')}: ${Math.max(Number(addItem.amount || 0) - Number(addItem.reserved || 0), 0)} ${addItem.unit || ''}` : ''}
+            helperText={addItem ? `${t('product_available_now')}: ${getAvailableAmount(addItem)} ${addItem.unit || ''}` : ''}
           />
         </DialogContent>
         <DialogActions>
@@ -477,7 +483,7 @@ export default function ProductsList() {
             variant="contained"
             onClick={() => {
               const qty = Number(addQty);
-              const available = Math.max(Number(addItem?.amount || 0) - Number(addItem?.reserved || 0), 0);
+              const available = getAvailableAmount(addItem);
               if (!Number.isFinite(qty) || qty <= 0) {
                 setAddError(t('validation_cart_quantity_positive'));
                 return;

@@ -2,13 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  ACTIVE_TEMP_ORDER_STATUSES,
   buildTempOrderPlanningQuery,
   getTempOrderPlanningEntry,
   mapTempOrderPlanningRows,
   normalizePlanningKeys,
 } = require('../src/db/temp-order-planning');
 
-test('temp planning query only includes active temp-order statuses and requested positions', () => {
+test('temp planning only includes status 0 and 1, not already booked status 2', () => {
   const query = buildTempOrderPlanningQuery({
     companyId: 7,
     excludeOrderId: 42,
@@ -19,7 +20,10 @@ test('temp planning query only includes active temp-order statuses and requested
     ],
   });
 
+  assert.deepEqual(ACTIVE_TEMP_ORDER_STATUSES, [0, 1]);
+  assert.equal(ACTIVE_TEMP_ORDER_STATUSES.includes(2), false);
   assert.match(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1\)/);
+  assert.doesNotMatch(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1, 2\)/);
   assert.match(query.sql, /o\.\[ta_id\] <> \?/);
   assert.match(query.sql, /FROM \(VALUES \(\?, \?\), \(\?, \?\)\)/);
   assert.deepEqual(query.params, [7, 42, 'BE-1', 'L-1', 'BE-2', 'L-2']);

@@ -38,7 +38,7 @@ function buildTempOrderPlanningQuery({ companyId, keys = [], excludeOrderId = nu
   const params = [companyId];
   const clauses = [
     'o.[ta_company_id] = ?',
-    'COALESCE(o.[ta_Status], 0) IN (0, 1)',
+    `COALESCE(o.[ta_Status], 0) IN (${ACTIVE_TEMP_ORDER_STATUSES.join(', ')})`,
   ];
 
   if (excludeOrderId !== null && excludeOrderId !== undefined && asText(excludeOrderId)) {
