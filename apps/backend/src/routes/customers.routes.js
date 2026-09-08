@@ -733,7 +733,7 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
     meta: {
       mandant: req.mandant,
       databaseName: req.database?.databaseName || null,
-      idField: 'kdL_Lieferanschrift_Nr',
+      idField: 'kdL_ID',
       id,
       count: data.length,
     },

@@ -98,7 +98,7 @@ die idempotente Migration
 `apps/backend/sql/add_temp_order_delivery_address_id.sql` auf der zentralen
 `BMS`-Datenbank ausgeführt werden. Bei einer manuellen Lieferadresse bleibt
 `ta_delivery_address_id` leer; bei einer Auswahl aus `tblKun_LiefAdress` wird
-`kdL_Lieferanschrift_Nr` gespeichert.
+der technische Primärschlüssel `kdL_ID` des Lieferadress-Datensatzes gespeichert.
 
 Das Backend benötigt folgende Werte in `apps/backend/.env`:
 

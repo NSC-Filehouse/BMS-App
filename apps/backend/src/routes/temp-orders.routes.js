@@ -269,7 +269,7 @@ function parseDeliveryAddressId(value) {
   }
   const text = asText(value);
   const id = Number(text);
-  if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id > 32767) {
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id > 2147483647) {
     throw createHttpError(400, 'Invalid delivery address id.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   return { provided: true, id };

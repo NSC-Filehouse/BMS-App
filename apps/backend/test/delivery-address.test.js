@@ -8,6 +8,7 @@ const { parseDeliveryAddressId } = require('../src/routes/temp-orders.routes');
 test('formats delivery addresses consistently for selection and persistence', () => {
   const row = {
     kdL_KdNR: '38201',
+    kdL_ID: 117,
     kdL_Lieferanschrift_Nr: 0,
     kdL_Name1: 'Karl Schoengen KG',
     kdL_Name2: 'Werk',
@@ -22,7 +23,8 @@ test('formats delivery addresses consistently for selection and persistence', ()
     'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, D',
   );
   assert.deepEqual(mapDeliveryAddressRow(row), {
-    id: '0',
+    id: '117',
+    addressNo: '0',
     customerId: '38201',
     text: 'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, D',
     short: '',
@@ -37,5 +39,6 @@ test('accepts delivery address id zero and rejects invalid ids', () => {
   assert.deepEqual(parseDeliveryAddressId(''), { provided: false, id: null });
   assert.throws(() => parseDeliveryAddressId('-1'), /Invalid delivery address id/);
   assert.throws(() => parseDeliveryAddressId('1.5'), /Invalid delivery address id/);
-  assert.throws(() => parseDeliveryAddressId('40000'), /Invalid delivery address id/);
+  assert.deepEqual(parseDeliveryAddressId('40000'), { provided: true, id: 40000 });
+  assert.throws(() => parseDeliveryAddressId('2147483648'), /Invalid delivery address id/);
 });

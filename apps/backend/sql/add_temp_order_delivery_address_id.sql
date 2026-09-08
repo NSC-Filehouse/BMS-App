@@ -14,7 +14,12 @@ BEGIN TRANSACTION;
 IF COL_LENGTH(N'BMSApp.tbl_Temp_Auftrag', N'ta_delivery_address_id') IS NULL
 BEGIN
   ALTER TABLE [BMSApp].[tbl_Temp_Auftrag]
-  ADD [ta_delivery_address_id] SMALLINT NULL;
+  ADD [ta_delivery_address_id] INT NULL;
+END
+ELSE
+BEGIN
+  ALTER TABLE [BMSApp].[tbl_Temp_Auftrag]
+  ALTER COLUMN [ta_delivery_address_id] INT NULL;
 END;
 
 COMMIT TRANSACTION;

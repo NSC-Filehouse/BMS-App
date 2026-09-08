@@ -3,6 +3,7 @@ const { buildDeliveryAddressText } = require('../delivery-address');
 
 const DELIVERY_ADDRESS_COLUMNS = `
   [kdL_KdNR],
+  [kdL_ID],
   [kdL_Lieferanschrift_Nr],
   [kdL_Kurz],
   [kdL_Name1],
@@ -18,7 +19,10 @@ const DELIVERY_ADDRESS_COLUMNS = `
 
 function mapDeliveryAddressRow(row) {
   return {
-    id: row?.kdL_Lieferanschrift_Nr === null || row?.kdL_Lieferanschrift_Nr === undefined
+    id: row?.kdL_ID === null || row?.kdL_ID === undefined
+      ? ''
+      : String(row.kdL_ID).trim(),
+    addressNo: row?.kdL_Lieferanschrift_Nr === null || row?.kdL_Lieferanschrift_Nr === undefined
       ? ''
       : String(row.kdL_Lieferanschrift_Nr).trim(),
     customerId: row?.kdL_KdNR === null || row?.kdL_KdNR === undefined
