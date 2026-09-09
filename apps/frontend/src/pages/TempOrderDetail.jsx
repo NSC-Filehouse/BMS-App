@@ -181,64 +181,6 @@ export default function TempOrderDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, max-content)' },
-                gap: 1,
-                mb: 2,
-                minWidth: 0,
-              }}
-            >
-              {orderIsEditable && (
-                <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
-                  {t('temp_order_send_to_bms')}
-                </Button>
-              )}
-              {orderIsEditable && (
-                <Button
-                  variant="outlined"
-                  sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
-                  onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}
-                >
-                  {t('edit_label')}
-                </Button>
-              )}
-              <Button
-                variant="outlined"
-                sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
-                onClick={() => navigate('/temp-orders/new', {
-                  state: {
-                    copyOrder: {
-                      clientReferenceId: item.clientReferenceId || '',
-                      clientName: item.clientName || '',
-                      clientAddress: item.clientAddress || '',
-                      clientRepresentative: item.clientRepresentative || '',
-                      comment: item.comment || '',
-                      specialPaymentCondition: Boolean(item.specialPaymentCondition),
-                      specialPaymentText: item.specialPaymentText || '',
-                      specialPaymentId: item.specialPaymentId ?? '',
-                      deliveryTypeId: item.deliveryTypeId ?? '',
-                      deliveryType: item.deliveryType || '',
-                      packagingType: item.packagingType || '',
-                      deliveryDate: item.deliveryDate || '',
-                      deliveryAddress: item.deliveryAddress || '',
-                      deliveryAddressId: item.deliveryAddressId ?? '',
-                      deliveryAddressChanged: Boolean(item.deliveryAddressChanged),
-                      positions: Array.isArray(item.positions) ? item.positions : [],
-                    },
-                  },
-                })}
-              >
-                {t('copy_label')}
-              </Button>
-              {orderIsEditable && (
-                <Button variant="outlined" color="error" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={deleteOrder}>
-                  {t('delete_label')}
-                </Button>
-              )}
-            </Box>
-
             <InfoRow label={t('order_customer')} value={item.clientName} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
@@ -326,6 +268,64 @@ export default function TempOrderDetail() {
                   )}
                 </Box>
               ))}
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, max-content)' },
+                gap: 1,
+                mt: 2,
+                minWidth: 0,
+              }}
+            >
+              {orderIsEditable && (
+                <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
+                  {t('temp_order_send_to_bms')}
+                </Button>
+              )}
+              {orderIsEditable && (
+                <Button
+                  variant="outlined"
+                  sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
+                  onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}
+                >
+                  {t('edit_label')}
+                </Button>
+              )}
+              <Button
+                variant="outlined"
+                sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
+                onClick={() => navigate('/temp-orders/new', {
+                  state: {
+                    copyOrder: {
+                      clientReferenceId: item.clientReferenceId || '',
+                      clientName: item.clientName || '',
+                      clientAddress: item.clientAddress || '',
+                      clientRepresentative: item.clientRepresentative || '',
+                      comment: item.comment || '',
+                      specialPaymentCondition: Boolean(item.specialPaymentCondition),
+                      specialPaymentText: item.specialPaymentText || '',
+                      specialPaymentId: item.specialPaymentId ?? '',
+                      deliveryTypeId: item.deliveryTypeId ?? '',
+                      deliveryType: item.deliveryType || '',
+                      packagingType: item.packagingType || '',
+                      deliveryDate: item.deliveryDate || '',
+                      deliveryAddress: item.deliveryAddress || '',
+                      deliveryAddressId: item.deliveryAddressId ?? '',
+                      deliveryAddressChanged: Boolean(item.deliveryAddressChanged),
+                      positions: Array.isArray(item.positions) ? item.positions : [],
+                    },
+                  },
+                })}
+              >
+                {t('copy_label')}
+              </Button>
+              {orderIsEditable && (
+                <Button variant="outlined" color="error" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={deleteOrder}>
+                  {t('delete_label')}
+                </Button>
+              )}
             </Box>
           </CardContent>
         </Card>
