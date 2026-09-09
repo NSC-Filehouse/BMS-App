@@ -10,6 +10,7 @@ import {
   IconButton,
   Typography,
 } from '@mui/material';
+import BusinessIcon from '@mui/icons-material/Business';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EmailIcon from '@mui/icons-material/Email';
 import PersonIcon from '@mui/icons-material/Person';
@@ -20,6 +21,12 @@ import { useI18n } from '../utils/i18n.jsx';
 
 function text(value) {
   return value === null || value === undefined ? '' : String(value).trim();
+}
+
+function formatMandant(mandant) {
+  const shortCode = text(mandant?.shortCode);
+  const name = text(mandant?.name);
+  return [shortCode, name].filter(Boolean).join(' – ') || text(mandant?.id);
 }
 
 function DetailRow({ icon, label, value, link }) {
@@ -102,6 +109,8 @@ export default function EmployeeDetail() {
   const phone = text(employee?.phone);
   const displayName = [givenName, surname].filter(Boolean).join(' ') || shortCode || '-';
   const roles = Array.isArray(employee?.roles) ? employee.roles : [];
+  const mandants = Array.isArray(employee?.mandants) ? employee.mandants : [];
+  const mandantText = mandants.map(formatMandant).filter(Boolean).join(', ');
   const roleLabel = roles.map((role) => (
     role === 'innendienst' ? t('inside_sales_label') : t('sales_rep_label')
   )).join(' / ');
@@ -156,6 +165,13 @@ export default function EmployeeDetail() {
             <DetailRow icon={<PersonIcon fontSize="small" />} label={t('employee_last_name_label')} value={surname} />
             <DetailRow icon={<EmailIcon fontSize="small" />} label={t('employee_email_label')} value={email} link={email ? `mailto:${email}` : undefined} />
             <DetailRow icon={<PhoneIcon fontSize="small" />} label={t('employee_phone_label')} value={phone} link={phone ? `tel:${phone}` : undefined} />
+            {customerId && mandantText && (
+              <DetailRow
+                icon={<BusinessIcon fontSize="small" />}
+                label={t('employee_customer_mandants_label')}
+                value={mandantText}
+              />
+            )}
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
               <Button

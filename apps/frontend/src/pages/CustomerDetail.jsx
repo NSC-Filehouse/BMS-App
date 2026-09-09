@@ -73,6 +73,25 @@ function buildAddress(row) {
   return [line1, line2, line3, line4].filter(Boolean).join('\n');
 }
 
+function normalizeSalesRepresentatives(item) {
+  const fromApi = Array.isArray(item?.salesRepresentatives) ? item.salesRepresentatives : [];
+  const normalizedApi = fromApi
+    .map((representative, index) => ({
+      key: `${String(representative?.shortCode || '').trim().toLowerCase()}-${index}`,
+      shortCode: String(representative?.shortCode || '').trim().toUpperCase(),
+      primary: Boolean(representative?.primary),
+    }))
+    .filter((representative) => representative.shortCode)
+    .sort((left, right) => Number(right.primary) - Number(left.primary));
+
+  if (normalizedApi.length) return normalizedApi;
+
+  const legacyPrimary = String(item?.kd_Aussendienst || '').trim().toUpperCase();
+  return legacyPrimary
+    ? [{ key: `legacy-${legacyPrimary.toLowerCase()}`, shortCode: legacyPrimary, primary: true }]
+    : [];
+}
+
 function normalizeRepresentatives(item) {
   const fromApi = Array.isArray(item?.representatives) ? item.representatives : [];
   const normalizedApi = fromApi
@@ -428,14 +447,7 @@ export default function CustomerDetail() {
     ? (/^https?:\/\//i.test(homepageRaw) ? homepageRaw : `https://${homepageRaw}`)
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
-  const insideSalesRep = item?.kd_Innendienst ? String(item.kd_Innendienst).trim() : '';
-  const customerEmployeeAssignments = [
-    { code: salesRep, role: 'aussendienst' },
-    { code: insideSalesRep, role: 'innendienst' },
-  ].filter((assignment, index, assignments) => (
-    assignment.code
-    && assignments.findIndex((candidate) => candidate.code.toLowerCase() === assignment.code.toLowerCase()) === index
-  ));
+  const salesRepresentatives = normalizeSalesRepresentatives(item);
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const creditLimit = item?.creditLimit || null;
   const creditLimitText = creditLimit?.status === 'expired'
@@ -876,32 +888,28 @@ export default function CustomerDetail() {
           <ArrowBackIcon />
         </IconButton>
         <Box sx={{ minWidth: 0 }}>
-          {!loading && !error && item && customerEmployeeAssignments.length > 0 && (
+          {!loading && !error && item && salesRepresentatives.length > 0 && (
             <Box
               sx={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                display: 'flex',
                 alignItems: 'center',
-                columnGap: 2,
+                gap: 1,
                 minWidth: 0,
                 py: 0.75,
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', minWidth: 0 }}>
-                <PersonIcon fontSize="small" />
-                <Typography variant="body2" color="text.secondary">
-                  {t('sales_rep_label')}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: 0.35, minWidth: 0 }}>
-                {customerEmployeeAssignments.map((assignment, index) => (
-                  <React.Fragment key={`${assignment.role}-${assignment.code}`}>
-                    {index > 0 && <Typography component="span" variant="body2">,</Typography>}
+              <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
+                {t('sales_rep_short_label')}
+              </Typography>
+              <Box sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                {salesRepresentatives.map((assignment, index) => (
+                  <React.Fragment key={assignment.key}>
+                    {index > 0 && <Box component="span">, </Box>}
                     <Box
                       component="button"
                       type="button"
-                      onClick={() => openEmployeeDetail(assignment.code)}
-                      aria-label={`${t('employee_detail_title')}: ${assignment.code}`}
+                      onClick={() => openEmployeeDetail(assignment.shortCode)}
+                      aria-label={`${t('employee_detail_title')}: ${assignment.shortCode}`}
                       sx={{
                         p: 0,
                         border: 0,
@@ -909,10 +917,12 @@ export default function CustomerDetail() {
                         color: 'primary.main',
                         cursor: 'pointer',
                         font: 'inherit',
+                        fontWeight: assignment.primary ? 700 : 400,
+                        display: 'inline',
                         textDecoration: 'underline',
                       }}
                     >
-                      {assignment.code}
+                      {assignment.shortCode}
                     </Box>
                   </React.Fragment>
                 ))}

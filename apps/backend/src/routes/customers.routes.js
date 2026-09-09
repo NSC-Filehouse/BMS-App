@@ -18,6 +18,7 @@ const {
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
+const { loadCustomerSalesRepresentatives } = require('../db/customer-sales-representatives');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -582,6 +583,11 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   `;
   const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
   const representatives = mapRepresentatives(repsRows);
+  const salesRepresentatives = await loadCustomerSalesRepresentatives(
+    req.database,
+    id,
+    item.kd_Aussendienst,
+  );
 
   const reminderRows = await runSQLQueryAccess(req.database, `
     SELECT [re_MahnTextID] AS reminderTextId, [re_MahnTextIDneu] AS reminderTextIdNew
@@ -602,6 +608,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     ...item,
     creditLimit,
     representatives,
+    salesRepresentatives,
     reminderInvoicesCount,
     activities,
   };
@@ -623,10 +630,18 @@ router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHan
   const id = toText(req.params.id);
   const shortCode = toText(req.params.shortCode);
   const customer = await requireVisibleCustomer(req, id);
+  const salesRepresentatives = await loadCustomerSalesRepresentatives(
+    req.database,
+    id,
+    customer.kd_Aussendienst,
+  );
   const normalizedCode = shortCode.toLowerCase();
   const roles = [];
+  const assignedSalesRepresentative = salesRepresentatives.find((representative) => (
+    representative.shortCode.toLowerCase() === normalizedCode
+  ));
 
-  if (toText(customer.kd_Aussendienst).toLowerCase() === normalizedCode) {
+  if (assignedSalesRepresentative) {
     roles.push('aussendienst');
   }
   if (toText(customer.kd_Innendienst).toLowerCase() === normalizedCode) {
@@ -657,6 +672,7 @@ router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHan
       surname: identity.surname || null,
       email: identity.email || null,
       phone: identity.phone || null,
+      mandants: assignedSalesRepresentative?.mandants || [],
     },
     meta: { mandant: req.mandant, customerId: id, shortCode },
     error: null,
@@ -682,6 +698,7 @@ router.get('/employees/:shortCode', requireMandant, asyncHandler(async (req, res
       surname: identity.surname || null,
       email: identity.email || null,
       phone: identity.phone || null,
+      mandants: [],
     },
     meta: { mandant: req.mandant, shortCode },
     error: null,
