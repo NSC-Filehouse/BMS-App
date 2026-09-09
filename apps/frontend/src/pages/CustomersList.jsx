@@ -328,7 +328,17 @@ export default function CustomersList() {
             />
           </RadioGroup>
           {!reminderOnly && (
-            <Box sx={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+            <Box
+              sx={{
+                width: '100%',
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: 'repeat(2, minmax(0, 1fr))',
+                  md: 'repeat(4, minmax(0, 1fr))',
+                },
+                alignItems: 'center',
+              }}
+            >
               <FormControlLabel
                 control={(
                   <Switch
@@ -339,7 +349,9 @@ export default function CustomersList() {
                 )}
                 label={t('customers_sort_order_quantity')}
                 sx={{
-                  mr: 2,
+                  m: 0,
+                  justifySelf: 'start',
+                  minWidth: 0,
                   '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />
@@ -353,7 +365,9 @@ export default function CustomersList() {
                 )}
                 label={t('customers_show_inactive')}
                 sx={{
-                  mr: 0,
+                  m: 0,
+                  justifySelf: 'start',
+                  minWidth: 0,
                   '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />

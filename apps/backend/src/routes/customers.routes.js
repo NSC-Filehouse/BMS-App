@@ -57,6 +57,13 @@ function resolveSortField(sort, fallback = 'kd_Name1') {
   return map[String(sort || '').trim()] || map[fallback] || map.kd_Name1;
 }
 
+function buildCustomerOrderBy(sortField, dir) {
+  const clauses = [`${sortField.sql} ${dir}`];
+  if (sortField.key !== 'kd_Name1') clauses.push('[k].[kd_Name1] ASC');
+  if (sortField.key !== 'kd_KdNR') clauses.push('[k].[kd_KdNR] ASC');
+  return clauses.join(', ');
+}
+
 function resolveSearchField(searchField) {
   const key = String(searchField || '').trim().toLowerCase();
   if (key === 'plz') return 'plz';
@@ -514,7 +521,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     LEFT JOIN [order_counts] [oc]
       ON COALESCE([k].[kd_KdNR], '') = [oc].[customerId]
     ${whereSql}
-    ORDER BY ${safeSort.sql} ${safeDir}, [k].[kd_Name1] ASC, [k].[kd_KdNR] ASC
+    ORDER BY ${buildCustomerOrderBy(safeSort, safeDir)}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(req.database, dataSql, [...queryParams, offset, pageSize]);
