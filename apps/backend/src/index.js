@@ -61,12 +61,7 @@ app.get(`${config.apiBasePath}/me`, async (req, res) => {
   const publicBase = { ...base };
   delete publicBase.principalHeader;
   delete publicBase.forwardedUser;
-  const hasIdentityHeader = [
-    base?.mail,
-    base?.principalHeader,
-    base?.samAccountName,
-    base?.forwardedUser,
-  ].some(Boolean);
+  const hasIdentityHeader = Boolean(base?.samAccountName);
   if (!hasIdentityHeader) {
     res.json({ ...publicBase, identityResolved: false });
     return;

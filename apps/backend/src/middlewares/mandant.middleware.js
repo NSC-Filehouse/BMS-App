@@ -13,7 +13,10 @@ const requireMandant = asyncHandler(async (req, res, next) => {
   }
 
   const database = await getDatabaseConnectionForIdentity(identity, mandant);
-  req.userEmail = identity.email || identity.userId || user.email || null;
+  // Keep the historic field for app-owned tables. Authentication itself has
+  // already been completed by SAM account name and never uses this fallback.
+  req.userEmail = identity.email || identity.userId || null;
+  req.userId = identity.userId || null;
   req.userIdentity = identity;
   req.userContext = user;
   req.mandant = database.name;

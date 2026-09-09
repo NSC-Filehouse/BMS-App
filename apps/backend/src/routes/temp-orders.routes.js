@@ -4,9 +4,8 @@ const config = require('../config');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
-const { getDatabaseConnectionForUserById } = require('../db/databases');
+const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
-const { getUserIdentityByEmail } = require('../db/users');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { sendPushNotificationsForTimelineEntries } = require('../db/push');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
@@ -127,7 +126,7 @@ async function resolvePositionDatabase(req, beNumber) {
   if (sourceMandantId === null || Number(req.database?.firmaId) === sourceMandantId) {
     return req.database;
   }
-  return getDatabaseConnectionForUserById(req.userEmail, sourceMandantId);
+  return getDatabaseConnectionForIdentityById(req.userIdentity, sourceMandantId);
 }
 
 function assertPositionsBelongToActiveMandant(req, positions) {
@@ -158,7 +157,7 @@ async function requireVisibleCustomer(req, customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
 
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const customer = await loadVisibleCustomer(req.database, id, accessScope);
   if (!customer) {
     throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
@@ -935,8 +934,8 @@ router.get('/temp-orders/incoterms', requireMandant, asyncHandler(async (req, re
 }));
 
 router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1073,8 +1072,8 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1112,8 +1111,8 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 }));
 
 router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1148,7 +1147,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
 }));
 
 router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1393,8 +1392,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 }));
 
 router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1715,8 +1714,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 }));
 
 router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -2033,8 +2032,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 }));
 
 router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });

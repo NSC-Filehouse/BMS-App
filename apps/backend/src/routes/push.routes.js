@@ -18,7 +18,7 @@ function asText(value) {
 }
 
 function getUserEmail(req) {
-  return asText(req.userEmail);
+  return asText(req.userEmail || req.userIdentity?.userId);
 }
 
 router.get('/push/settings', asyncHandler(async (req, res) => {
@@ -27,7 +27,7 @@ router.get('/push/settings', asyncHandler(async (req, res) => {
     throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
-  const data = await getPushSettingsForUser(email);
+  const data = await getPushSettingsForUser(req.userIdentity);
   sendEnvelope(res, {
     status: 200,
     data,
@@ -49,7 +49,7 @@ router.post('/push/subscribe', asyncHandler(async (req, res) => {
     language: req.body?.language || req.header('x-lang') || 'de',
   });
 
-  const data = await getPushSettingsForUser(email);
+  const data = await getPushSettingsForUser(req.userIdentity);
   sendEnvelope(res, {
     status: 200,
     data,
@@ -70,7 +70,7 @@ router.delete('/push/subscribe', asyncHandler(async (req, res) => {
   }
 
   await deactivatePushSubscription(endpoint);
-  const data = await getPushSettingsForUser(email);
+  const data = await getPushSettingsForUser(req.userIdentity);
   sendEnvelope(res, {
     status: 200,
     data,
@@ -85,7 +85,7 @@ router.put('/push/settings', asyncHandler(async (req, res) => {
     throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
-  const data = await savePushSettingsForUser(email, req.body?.settings);
+  const data = await savePushSettingsForUser(req.userIdentity, req.body?.settings);
   sendEnvelope(res, {
     status: 200,
     data,

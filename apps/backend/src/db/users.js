@@ -19,22 +19,16 @@ function normalizeUserId(userId) {
   return String(userId || '').trim().toLowerCase();
 }
 
+function normalizeActiveFlag(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string') {
+    return !['0', 'false', 'no', 'nein'].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+}
+
 function looksLikeEmail(value) {
   return /^[^\s@]+@[^\s@]+$/.test(String(value || '').trim());
-}
-
-function getEmailLocalPart(value) {
-  const text = String(value || '').trim();
-  const at = text.indexOf('@');
-  return at > 0 ? text.slice(0, at) : text;
-}
-
-function uniqueNormalized(values, normalizer) {
-  return [...new Set(
-    values
-      .map((value) => normalizer(value))
-      .filter(Boolean),
-  )];
 }
 
 function getCachedByEmail(email) {
@@ -110,6 +104,7 @@ function mapIdentityRow(row) {
   const shortCode = String(row.shortCode || row['ma_K\u00FCrzel'] || '').trim() || null;
   const mainCompanyIdRaw = row.mainCompanyId ?? row.ma_FirmaID ?? null;
   const mainCompanyId = Number(mainCompanyIdRaw);
+  const active = normalizeActiveFlag(row.active ?? row.ma_Aktiv);
 
   return {
     personNumber: numeric,
@@ -121,6 +116,7 @@ function mapIdentityRow(row) {
     email,
     phone,
     mainCompanyId: Number.isFinite(mainCompanyId) ? mainCompanyId : null,
+    active,
   };
 }
 
@@ -137,7 +133,8 @@ function buildIdentitySelectSql(whereClause, { top = true } = {}) {
       [ma_Handy] AS mobile,
       [ma_Durchwahl] AS extension,
       [ma_FirmaID] AS mainCompanyId,
-      [ma_K\u00FCrzel] AS shortCode
+      [ma_K\u00FCrzel] AS shortCode,
+      [ma_Aktiv] AS active
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     ${whereClause}
   `;
@@ -170,149 +167,61 @@ function createUserNotFoundError(identifier) {
   const normalized = String(identifier || '').trim().toLowerCase();
   return createHttpError(403, `User not found in FX Mitarbeiter view: ${normalized}`, {
     code: 'USER_NOT_FOUND_IN_FX',
-    email: normalized,
+    identifier: normalized,
   });
 }
 
-function getRequestIdentityCandidates(context = {}) {
-  const mailCandidates = uniqueNormalized([context.mail], normalizeEmail)
-    .filter(looksLikeEmail);
-  const principalEmailCandidates = uniqueNormalized([context.principalHeader], normalizeEmail)
-    .filter(looksLikeEmail);
-  const contextEmailCandidates = uniqueNormalized([context.email], normalizeEmail)
-    .filter(looksLikeEmail);
-  const emailCandidates = uniqueNormalized(
-    [...mailCandidates, ...principalEmailCandidates, ...contextEmailCandidates],
-    normalizeEmail,
-  );
-
-  const userIdCandidates = uniqueNormalized([
-    context.samAccountName,
-    ...principalEmailCandidates.map(getEmailLocalPart),
-    context.principalHeader && !looksLikeEmail(context.principalHeader) ? context.principalHeader : null,
-    context.forwardedUser && !looksLikeEmail(context.forwardedUser) ? context.forwardedUser : null,
-  ], normalizeUserId);
-
-  return {
-    mailCandidates,
-    principalEmailCandidates,
-    emailCandidates,
-    userIdCandidates,
-  };
+function createSamAccountRequiredError() {
+  return createHttpError(401, 'Missing SSO SAM account name.', {
+    code: 'AUTH_SAM_ACCOUNT_REQUIRED',
+  });
 }
 
-async function queryIdentityRowsByCandidates({ emailCandidates = [], userIdCandidates = [] } = {}) {
-  const clauses = [];
-  const params = [];
-
-  if (emailCandidates.length) {
-    clauses.push(`LOWER(LTRIM(RTRIM(COALESCE([ma_eMail], '')))) IN (${emailCandidates.map(() => '?').join(', ')})`);
-    params.push(...emailCandidates);
-  }
-  if (userIdCandidates.length) {
-    clauses.push(`LOWER(LTRIM(RTRIM(COALESCE([ma_UserID], '')))) IN (${userIdCandidates.map(() => '?').join(', ')})`);
-    params.push(...userIdCandidates);
-  }
-  if (!clauses.length) return [];
-
-  const sql = buildIdentitySelectSql(`WHERE (${clauses.join(' OR ')})`, { top: false });
-  return runSQLQueryFx(config.fxSql.databases.mlPlastics, sql, params);
-}
-
-function chooseIdentityFromRows(rows, candidates) {
-  const identitiesByPerson = getIdentityRowsByPerson(rows);
-  const identities = [...identitiesByPerson.values()];
-  const mailMatches = identities.filter((identity) => (
-    candidates.mailCandidates.includes(normalizeEmail(identity.email))
-  ));
-  const principalMatches = identities.filter((identity) => (
-    candidates.principalEmailCandidates.includes(normalizeEmail(identity.email))
-  ));
-  const userIdMatches = identities.filter((identity) => (
-    candidates.userIdCandidates.includes(normalizeUserId(identity.userId))
-  ));
-
-  const userIdPeople = new Set(userIdMatches.map(getIdentityPersonKey));
-  const mailPeople = new Set(mailMatches.map(getIdentityPersonKey));
-  const principalPeople = new Set(principalMatches.map(getIdentityPersonKey));
-
-  if (userIdPeople.size > 1) {
-    throw createIdentityConflictError(['x-ms-client-samaccountname', 'x-ms-client-principal-name'], [...userIdPeople]);
-  }
-
-  let selectedPerson = [...userIdPeople][0] || null;
-  if (!selectedPerson) {
-    if (mailPeople.size > 1) {
-      throw createIdentityConflictError(['x-ms-client-mail'], [...mailPeople]);
-    }
-    if (mailPeople.size === 1) selectedPerson = [...mailPeople][0];
-  }
-  if (!selectedPerson) {
-    if (principalPeople.size > 1) {
-      throw createIdentityConflictError(['x-ms-client-principal-name'], [...principalPeople]);
-    }
-    if (principalPeople.size === 1) selectedPerson = [...principalPeople][0];
-  }
-
-  if (!selectedPerson) return null;
-
-  if (candidates.mailCandidates.length && !mailPeople.has(selectedPerson)) {
-    throw createIdentityConflictError(['x-ms-client-mail', 'x-ms-client-samaccountname'], [selectedPerson, ...userIdPeople]);
-  }
-  if (principalPeople.size && !principalPeople.has(selectedPerson)) {
-    throw createIdentityConflictError(['x-ms-client-principal-name', 'x-ms-client-samaccountname'], [selectedPerson, ...principalPeople]);
-  }
-
-  return identities
-    .filter((identity) => getIdentityPersonKey(identity) === selectedPerson)
-    .sort((left, right) => {
-      const leftScore = (candidates.userIdCandidates.includes(normalizeUserId(left.userId)) ? 4 : 0)
-        + (candidates.mailCandidates.includes(normalizeEmail(left.email)) ? 2 : 0)
-        + (candidates.principalEmailCandidates.includes(normalizeEmail(left.email)) ? 1 : 0);
-      const rightScore = (candidates.userIdCandidates.includes(normalizeUserId(right.userId)) ? 4 : 0)
-        + (candidates.mailCandidates.includes(normalizeEmail(right.email)) ? 2 : 0)
-        + (candidates.principalEmailCandidates.includes(normalizeEmail(right.email)) ? 1 : 0);
-      return rightScore - leftScore;
-    })[0] || null;
+function createSamAccountAmbiguousError(userId, personNumbers) {
+  return createHttpError(403, `SSO SAM account name is not unique in FX Mitarbeiter view: ${userId}`, {
+    code: 'AUTH_SAM_ACCOUNT_AMBIGUOUS',
+    userId,
+    personNumbers,
+  });
 }
 
 function resolveIdentityFromRows(rows, context = {}) {
-  const candidates = getRequestIdentityCandidates(context);
-  const identity = chooseIdentityFromRows(rows, candidates);
-  if (!identity) {
-    throw createUserNotFoundError(
-      context.mail || context.principalHeader || context.samAccountName || context.forwardedUser || context.email,
+  const userId = normalizeUserId(context.samAccountName);
+  if (!userId) throw createSamAccountRequiredError();
+
+  const identities = [...getIdentityRowsByPerson(rows).values()]
+    .filter((identity) => normalizeUserId(identity.userId) === userId);
+  if (!identities.length) throw createUserNotFoundError(userId);
+  if (identities.length > 1) {
+    throw createSamAccountAmbiguousError(
+      userId,
+      identities.map(getIdentityPersonKey),
     );
   }
-  return identity;
+
+  // Mail and principal name are deliberately not compared here. The proxy's
+  // SAM account name is the canonical identity; the other headers are useful
+  // diagnostics only because aliases and historic mail addresses can differ.
+  return identities[0];
 }
 
 async function getUserIdentityFromRequestContext(context = {}) {
-  const candidates = getRequestIdentityCandidates(context);
-  const fallbackIdentifier = context.mail
-    || context.principalHeader
-    || context.samAccountName
-    || context.forwardedUser
-    || context.email;
+  return getUserIdentityByUserId(context.samAccountName);
+}
 
-  if (!candidates.emailCandidates.length && !candidates.userIdCandidates.length) {
-    throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
-  }
+async function getUserIdentityByUserId(userId) {
+  const normalized = normalizeUserId(userId);
+  if (!normalized) throw createSamAccountRequiredError();
 
-  // Only use a cache when there is no second identifier that still needs to
-  // be checked for consistency. Header conflicts must always be evaluated.
-  if (!candidates.mailCandidates.length && candidates.userIdCandidates.length === 1) {
-    const cached = getCachedByUserId(candidates.userIdCandidates[0]);
-    if (cached) return cached;
-  }
-  if (!candidates.userIdCandidates.length && candidates.emailCandidates.length === 1) {
-    const cached = getCachedByEmail(candidates.emailCandidates[0]);
-    if (cached) return cached;
-  }
+  const cached = getCachedByUserId(normalized);
+  if (cached?.active === true) return cached;
 
-  const rows = await queryIdentityRowsByCandidates(candidates);
-  const identity = chooseIdentityFromRows(rows, candidates);
-  if (!identity) throw createUserNotFoundError(fallbackIdentifier);
+  const sql = buildIdentitySelectSql(`
+    WHERE COALESCE([ma_Aktiv], 0) = 1
+      AND LOWER(LTRIM(RTRIM(COALESCE([ma_UserID], '')))) = ?
+  `, { top: false });
+  const rows = await runSQLQueryFx(config.fxSql.databases.mlPlastics, sql, [normalized]);
+  const identity = resolveIdentityFromRows(rows, { samAccountName: normalized });
 
   setCached(identity);
   return identity;
@@ -520,6 +429,7 @@ async function getUserShortCodeByPersonNumber(personNumber) {
 
 module.exports = {
   getUserIdentityByEmail,
+  getUserIdentityByUserId,
   getUserIdentityFromRequestContext,
   resolveIdentityFromRows,
   getUserIdentityByShortCode,

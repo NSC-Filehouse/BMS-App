@@ -136,8 +136,12 @@ async function loadTargetUserGroup(personNumber, companyId) {
   };
 }
 
-function getScopeCacheKey(email, activeCompanyId, mainCompanyId, personNumber) {
-  return [normalizeEmail(email), activeCompanyId, mainCompanyId, personNumber].join('|');
+function getScopeCacheKey(identity, activeCompanyId, mainCompanyId, personNumber) {
+  const personKey = Number.isFinite(Number(personNumber)) ? `person:${personNumber}` : '';
+  const userIdKey = toText(identity?.userId).toLowerCase();
+  const emailKey = normalizeEmail(identity?.email);
+  const identityKey = personKey || (userIdKey ? `user:${userIdKey}` : `email:${emailKey}`);
+  return [identityKey, activeCompanyId, mainCompanyId].join('|');
 }
 
 function getCachedScope(key) {
@@ -157,10 +161,12 @@ function setCachedScope(key, value) {
   });
 }
 
-async function getCustomerAccessScope(email, database) {
-  const userIdentity = await getUserIdentityByEmail(email);
+async function getCustomerAccessScope(identityOrEmail, database) {
+  const userIdentity = identityOrEmail && typeof identityOrEmail === 'object'
+    ? identityOrEmail
+    : await getUserIdentityByEmail(identityOrEmail);
   const activeCompanyId = Number(database?.firmaId);
-  const resolvedMainCompanyId = isFilehouseEmail(email)
+  const resolvedMainCompanyId = isFilehouseEmail(userIdentity?.email)
     ? FILEHOUSE_TEST_MAIN_COMPANY_ID
     : userIdentity?.mainCompanyId;
   const mainCompanyId = Number(resolvedMainCompanyId);
@@ -187,7 +193,7 @@ async function getCustomerAccessScope(email, database) {
     };
   }
 
-  const cacheKey = getScopeCacheKey(email, activeCompanyId, mainCompanyId, personNumber);
+  const cacheKey = getScopeCacheKey(userIdentity, activeCompanyId, mainCompanyId, personNumber);
   const cached = getCachedScope(cacheKey);
   if (cached) return cached;
 

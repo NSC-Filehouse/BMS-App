@@ -193,13 +193,13 @@ async function getMandantsForUser(email) {
 }
 
 function getIdentityMandantsCacheKey(identity) {
-  const email = normalizeEmail(identity?.email);
-  if (email) return email;
-
   const personNumber = String(identity?.personNumber || '').trim();
   if (personNumber) return `person:${personNumber}`;
 
-  return `user:${String(identity?.userId || '').trim().toLowerCase()}`;
+  const userId = String(identity?.userId || '').trim().toLowerCase();
+  if (userId) return `user:${userId}`;
+
+  return `email:${normalizeEmail(identity?.email)}`;
 }
 
 async function loadMandantsForIdentity(identity) {
@@ -320,12 +320,17 @@ async function getDatabaseConnectionForMandantMatch(match, requestedMandant) {
 }
 
 async function getDatabaseConnectionForUserById(email, firmaId) {
+  const identity = await getUserIdentityByEmail(email);
+  return getDatabaseConnectionForIdentityById(identity, firmaId);
+}
+
+async function getDatabaseConnectionForIdentityById(identity, firmaId) {
   const selectedId = Number(firmaId);
   if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
     throw createHttpError(400, `Invalid mandant id: ${firmaId}`, { code: 'MANDANT_ID_INVALID' });
   }
 
-  const mandants = await getMandantsForUser(email);
+  const mandants = await getMandantsForIdentity(identity);
   const match = mandants.find((m) => Number(m.firmaId) === selectedId);
   return getDatabaseConnectionForMandantMatch(match, selectedId);
 }
@@ -356,5 +361,6 @@ module.exports = {
   getDatabaseConnectionForUser,
   getDatabaseConnectionForIdentity,
   getDatabaseConnectionForUserById,
+  getDatabaseConnectionForIdentityById,
   getDatabaseConnectionForCompanyId,
 };

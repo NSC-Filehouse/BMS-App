@@ -2,8 +2,7 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getDatabaseConnectionForUserById } = require('../db/databases');
-const { getUserIdentityByEmail } = require('../db/users');
+const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { getCustomerAccessScope } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
@@ -29,7 +28,7 @@ async function resolveSourceDatabase(req, rawMandantId, beNumber = '') {
     throw createHttpError(400, `Invalid mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
   }
   if (Number(req.database?.firmaId) === sourceMandantId) return req.database;
-  return getDatabaseConnectionForUserById(req.userEmail, sourceMandantId);
+  return getDatabaseConnectionForIdentityById(req.userIdentity, sourceMandantId);
 }
 
 function normalizeDir(dir) {
@@ -82,7 +81,7 @@ function buildReservationOwnerFilter(userShortCode, isFullAccess) {
 }
 
 router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -168,7 +167,7 @@ router.get('/orders', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -180,7 +179,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
   const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
-  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, sourceDatabase);
 
   const sql = `
     SELECT TOP 1
@@ -245,7 +244,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -257,7 +256,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
   const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
-  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, sourceDatabase);
 
   const amount = Number(req.body?.amount);
   const reservationEndDateRaw = req.body?.reservationEndDate;
@@ -347,7 +346,7 @@ router.put('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = String(userIdentity.shortCode || '').trim();
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -359,7 +358,7 @@ router.delete('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     throw createHttpError(400, `Invalid reservation id: ${id}`, { code: 'INVALID_RESERVATION_ID', id });
   }
   const sourceDatabase = await resolveSourceDatabase(req, req.query?.sourceMandantId, parsedId.beNumber);
-  const accessScope = await getCustomerAccessScope(req.userEmail, sourceDatabase);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, sourceDatabase);
 
   const ownerFilter = buildReservationOwnerFilter(userShortCode, accessScope.isFullAccess);
 

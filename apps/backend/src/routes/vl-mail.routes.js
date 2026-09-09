@@ -11,7 +11,7 @@ const router = express.Router();
 router.use(requireMandant);
 
 function getUserEmail(req) {
-  return String(req.userEmail || '').trim();
+  return String(req.userEmail || req.userIdentity?.userId || '').trim();
 }
 
 router.get('/vl-mail/settings', asyncHandler(async (req, res) => {

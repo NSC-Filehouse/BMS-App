@@ -11,6 +11,14 @@ const errorTexts = {
     de: 'Fehlende Benutzeridentitaet.',
     en: 'Missing user identity.',
   },
+  AUTH_SAM_ACCOUNT_REQUIRED: {
+    de: 'Der vom SSO gelieferte SAM-Accountname fehlt.',
+    en: 'The SAM account name supplied by SSO is missing.',
+  },
+  AUTH_SAM_ACCOUNT_AMBIGUOUS: {
+    de: 'Der vom SSO gelieferte SAM-Accountname ist in der FX-Mitarbeiterquelle nicht eindeutig.',
+    en: 'The SAM account name supplied by SSO is not unique in the FX employee source.',
+  },
   AUTH_IDENTITY_CONFLICT: {
     de: 'Die vom SSO gelieferten Benutzerkennungen widersprechen sich.',
     en: 'The user identifiers supplied by SSO conflict.',

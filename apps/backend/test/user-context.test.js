@@ -26,13 +26,23 @@ test('keeps a normal principal name when no mail header is available', () => {
   assert.equal(result.principalName, 'n.schroeder@filehouse.net');
 });
 
-test('uses the forwarded identity as a final fallback', () => {
+test('does not treat a non-email forwarded identity as an email', () => {
   const result = getUserContextFromRequest(request({
     'x-forwarded-user': 'filehouse',
   }));
 
-  assert.equal(result.email, 'filehouse');
+  assert.equal(result.email, null);
   assert.equal(result.principalName, 'filehouse');
+});
+
+test('does not treat the SAM account name as an email', () => {
+  const result = getUserContextFromRequest(request({
+    'x-ms-client-samaccountname': 'rehder',
+  }));
+
+  assert.equal(result.email, null);
+  assert.equal(result.samAccountName, 'rehder');
+  assert.equal(result.principalName, 'rehder');
 });
 
 test('keeps the mail and SAM account name separately when SSO sends both', () => {

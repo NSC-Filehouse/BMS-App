@@ -3,7 +3,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
 const { appTableName, appTableSql } = require('./app-tables');
-const { getMandantsForUser } = require('./databases');
+const { getMandantsForUser, getMandantsForIdentity } = require('./databases');
 const { getUserIdentityByEmail } = require('./users');
 
 const PUSH_SUBSCRIPTION_TABLE = appTableSql('pushSubscription');
@@ -44,15 +44,20 @@ function isFrupackMandant(mandant) {
   return name.includes('frupack') || shortName.includes('frupack');
 }
 
-async function getPushEligibleMandantsForUser(email) {
-  const normalizedEmail = normalizeEmail(email);
-  const [mandants, identity] = await Promise.all([
-    getMandantsForUser(normalizedEmail),
-    getUserIdentityByEmail(normalizedEmail).catch(() => null),
-  ]);
+async function getPushEligibleMandantsForUser(identityOrEmail) {
+  const isIdentity = identityOrEmail && typeof identityOrEmail === 'object';
+  const normalizedEmail = normalizeEmail(isIdentity
+    ? identityOrEmail.email || identityOrEmail.userId
+    : identityOrEmail);
+  const identity = isIdentity
+    ? identityOrEmail
+    : await getUserIdentityByEmail(normalizedEmail).catch(() => null);
+  const mandants = isIdentity
+    ? await getMandantsForIdentity(identity)
+    : await getMandantsForUser(normalizedEmail);
 
   const mainCompanyId = asCompanyId(identity?.mainCompanyId);
-  const isFilehouseUser = isFilehouseEmail(normalizedEmail);
+  const isFilehouseUser = isFilehouseEmail(identity?.email || normalizedEmail);
 
   if (!mainCompanyId) {
     if (!isFilehouseUser) return mandants;
@@ -202,9 +207,11 @@ async function deactivatePushSubscription(endpoint) {
   `, [new Date().toISOString(), value]);
 }
 
-async function getPushSettingsForUser(email) {
-  const normalizedEmail = normalizeEmail(email);
-  const mandants = await getPushEligibleMandantsForUser(normalizedEmail);
+async function getPushSettingsForUser(identityOrEmail) {
+  const normalizedEmail = normalizeEmail(identityOrEmail && typeof identityOrEmail === 'object'
+    ? identityOrEmail.email || identityOrEmail.userId
+    : identityOrEmail);
+  const mandants = await getPushEligibleMandantsForUser(identityOrEmail);
   const companyIds = mandants
     .map((item) => asCompanyId(item.firmaId))
     .filter(Boolean);
@@ -244,9 +251,11 @@ async function getPushSettingsForUser(email) {
   };
 }
 
-async function savePushSettingsForUser(email, settings) {
-  const normalizedEmail = normalizeEmail(email);
-  const mandants = await getPushEligibleMandantsForUser(normalizedEmail);
+async function savePushSettingsForUser(identityOrEmail, settings) {
+  const normalizedEmail = normalizeEmail(identityOrEmail && typeof identityOrEmail === 'object'
+    ? identityOrEmail.email || identityOrEmail.userId
+    : identityOrEmail);
+  const mandants = await getPushEligibleMandantsForUser(identityOrEmail);
   const allowedByCompanyId = new Map(
     mandants
       .map((item) => ({
@@ -298,7 +307,7 @@ async function savePushSettingsForUser(email, settings) {
     `, [normalizedEmail, companyId, mandant.name, asBoolBit(enabled), nowIso, nowIso]);
   }
 
-  return getPushSettingsForUser(normalizedEmail);
+  return getPushSettingsForUser(identityOrEmail);
 }
 
 async function sendPushNotificationsForTimelineEntries(entries) {

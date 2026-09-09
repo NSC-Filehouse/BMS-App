@@ -20,11 +20,10 @@ function getUserContextFromRequest(req) {
   const samAccountName = firstHeader(req, ['x-ms-client-samaccountname']);
   const forwardedUser = firstHeader(req, ['x-forwarded-user']);
   const emailCandidates = [mail, principalHeader, forwardedUser].filter(Boolean);
-  const email = emailCandidates.find(looksLikeEmail)
-    || samAccountName
-    || principalHeader
-    || forwardedUser
-    || null;
+  // The SAM account name is the only authenticated identifier.  Keep the
+  // other headers as metadata, but never present a non-email value as an
+  // email fallback (for example "filehouse" or "rehder").
+  const email = emailCandidates.find(looksLikeEmail) || null;
   const principalName = principalHeader || email || forwardedUser || samAccountName || null;
 
   const normalizedEmail = String(email || '').trim() || null;

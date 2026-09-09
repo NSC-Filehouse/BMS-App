@@ -1,7 +1,7 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
-const { getMandantsForUser } = require('../db/databases');
+const { getMandantsForIdentity } = require('../db/databases');
 const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const config = require('../config');
@@ -27,12 +27,12 @@ function isMissingTimelineTableError(error) {
 }
 
 router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
-  const email = asText(req.userEmail);
-  if (!email) {
+  const identity = req.userIdentity;
+  if (!identity) {
     throw createHttpError(401, 'Missing user identity.', { code: 'AUTH_MISSING_IDENTITY' });
   }
 
-  const mandants = await getMandantsForUser(email);
+  const mandants = await getMandantsForIdentity(identity);
   const names = mandants.map((x) => asText(x.name)).filter(Boolean);
   const companyIds = mandants.map((x) => Number(x.firmaId)).filter((x) => Number.isFinite(x) && x > 0);
   if (!names.length && !companyIds.length) {

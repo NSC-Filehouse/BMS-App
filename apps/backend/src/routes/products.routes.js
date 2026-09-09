@@ -2,8 +2,7 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getDatabaseConnectionForUserById } = require('../db/databases');
-const { getUserIdentityByEmail } = require('../db/users');
+const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
 const {
@@ -40,7 +39,7 @@ async function resolveVlDatabase(req, rawMandantId) {
     throw createHttpError(400, `Invalid VL mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
   }
   if (Number(req.database?.firmaId) === selectedId) return req.database;
-  return getDatabaseConnectionForUserById(req.userEmail, selectedId);
+  return getDatabaseConnectionForIdentityById(req.userIdentity, selectedId);
 }
 
 function buildVlMeta(req, database) {
@@ -153,7 +152,7 @@ function applyTempOrderPlanning(item, planning) {
 
 async function resolveCurrentUserShortCode(req) {
   try {
-    const identity = await getUserIdentityByEmail(req.userEmail);
+    const identity = req.userIdentity;
     return asText(identity?.shortCode);
   } catch {
     return '';
@@ -496,7 +495,7 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
 }));
 
 router.post('/products/reserve', requireMandant, asyncHandler(async (req, res) => {
-  const userIdentity = await getUserIdentityByEmail(req.userEmail);
+  const userIdentity = req.userIdentity;
   const userShortCode = String(userIdentity.shortCode || '').trim();
   const amount = Number(req.body?.amount);
   const reservationEndDateRaw = req.body?.reservationEndDate;

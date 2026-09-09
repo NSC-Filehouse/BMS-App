@@ -11,7 +11,6 @@ const { productAvailabilitySource } = require('../db/product-availability');
 const { calculateAvailableCredit } = require('../credit-limit');
 const { resolveProductGroup: resolvePurchasedArticleGroup } = require('../product-grouping');
 const {
-  getUserIdentityByEmail,
   getUserIdentityByShortCode,
 } = require('../db/users');
 const {
@@ -178,7 +177,7 @@ async function requireVisibleCustomer(req, customerId, accessScope = null) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
 
-  const scope = accessScope || await getCustomerAccessScope(req.userEmail, req.database);
+  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database);
   const customer = await loadVisibleCustomer(req.database, id, scope);
   if (!customer) {
     throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
@@ -461,7 +460,7 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const includeInactive = String(req.query.includeInactive || '').trim() === '1';
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
@@ -542,7 +541,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const { whereSql, params } = buildWhereClause('', 'name', {
     customerAccess: accessScope.customerAccess,
     customerAlias: 'k',
@@ -570,7 +569,7 @@ router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (r
 // DETAIL (all columns from dbo.tblKunden)
 router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const id = toText(req.params.id);
-  const accessScope = await getCustomerAccessScope(req.userEmail, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const item = await requireVisibleCustomer(req, id, accessScope);
 
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
@@ -1102,7 +1101,7 @@ router.get('/customers/:id/purchased-articles', requireMandant, asyncHandler(asy
     }
   }
 
-  const currentUserIdentity = await getUserIdentityByEmail(req.userEmail).catch(() => null);
+  const currentUserIdentity = req.userIdentity || null;
   const tempPlanning = await loadTempOrderPlanning({
     companyId: req.database?.firmaId,
     currentOwnerShortCode: currentUserIdentity?.shortCode || '',
