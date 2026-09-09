@@ -185,3 +185,11 @@ SELECT TOP (10) [Bestell-Pos], [Menge], [EPtest], [EP], [Lagerort], [beP_VL] FRO
 8.9.2026, 11:34:38 [DEBUG] Query: SELECT [om_Status] AS mailStatus,COUNT_BIG(*) AS total FROM [BMSApp][OrderMailOutbox] GROUP BY [om_Status] ORDER BY [om_Status]
 8.9.2026, 11:34:38 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Invalid object name 'BMSApp'."}
 8.9.2026, 11:34:38 [DEBUG] Params: []
+9.9.2026, 20:56:46 [ERROR] SQL Server query failed - Incorrect syntax near ','.
+9.9.2026, 20:56:46 [DEBUG] Params: []
+9.9.2026, 20:56:46 [DEBUG] Query: SELECT [vmo_OrderID] AS orderId,[vmo_EventKey] AS eventKey,COUNT_BIG(*) AS rowsCount,STRING_AGG([vmo_Status],N",") WITHIN GROUP (ORDER BY [vmo_Status]) AS statuses,MIN([vmo_CreateDate]) AS firstCreated,MAX([vmo_CreateDate]) AS lastCreated,MIN([vmo_SentAt]) AS firstSent,MAX([vmo_SentAt]) AS lastSent FROM [BMSApp].[VlMailOutbox] GROUP BY [vmo_OrderID],[vmo_EventKey] ORDER BY [vmo_OrderID],[vmo_EventKey]
+9.9.2026, 20:56:46 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Incorrect syntax near ','."}
+9.9.2026, 21:01:52 [ERROR] SQL Server query failed - Incorrect syntax near the keyword 'lineNo'.
+9.9.2026, 21:01:52 [DEBUG] Query: SELECT [tap_line_no] AS lineNo,[tap_be_number] AS beNumber,[tap_warehouse] AS warehouse,[tap_amount_in_kg] AS amountInKg,[tap_price] AS salePrice,[tap_article] AS article FROM [BMSApp].[tbl_Temp_Auf_Position] WHERE [tap_ta_id]=70 ORDER BY [tap_line_no],[tap_id]
+9.9.2026, 21:01:52 [DEBUG] Params: []
+9.9.2026, 21:01:52 [DEBUG] SQL details: {"code":null,"number":null,"state":null,"class":null,"message":"Incorrect syntax near the keyword 'lineNo'."}

@@ -17,10 +17,12 @@ const {
 const { MailServiceClientError } = require('@filehouse/mailservice-client');
 const {
   VL_COMPLETION_MAIL_SUBJECT,
-  formatMargin,
   formatVlCompletionMailBody,
 } = require('../src/mail/vl-completion-mail');
-const { getVlMailRecipients } = require('../src/db/vl-completion-mail');
+const {
+  eventKeyForOrder,
+  getVlMailRecipients,
+} = require('../src/db/vl-completion-mail');
 const {
   compareMfiValues,
   formatMfiValue,
@@ -160,7 +162,7 @@ test('BMS sends the mail-service request with the shared contract', async () => 
   }
 });
 
-test('VL completion mail uses HTML and shows one margin per sold position', async () => {
+test('VL completion mail uses the compact sale layout without margin', async () => {
   const body = formatVlCompletionMailBody({
     mandantName: 'Test',
     mandantShortName: 'TES',
@@ -210,18 +212,34 @@ test('VL completion mail uses HTML and shows one margin per sold position', asyn
     ],
   });
 
-  assert.equal(VL_COMPLETION_MAIL_SUBJECT, 'BMS-App Verkauf');
-  assert.equal(formatMargin({ price: 1234, costPrice: 1035 }), '19.23 %');
-  assert.match(body, /<strong>Customer:<\/strong>/);
-  assert.match(body, /<strong>Delivery address ID:<\/strong> 3/);
-  assert.match(body, /19\.23 %/);
+  assert.equal(VL_COMPLETION_MAIL_SUBJECT, '@BMS-App Verkauf');
+  assert.match(body, /Sold to Muster &amp; Söhne &lt;Kunde&gt;/);
+  assert.match(body, /at 1\.234 \(buying price 1\.035\)/);
   assert.match(body, /font-weight:700/);
-  assert.match(body, /color:#d32f2f/);
-  assert.match(body, /Aktuelle VL \(klassische Ansicht\)/);
-  assert.match(body, /Übernahme des Verkaufs in BMS/);
+  assert.match(body, /color:#ff0000/);
+  assert.match(body, /background:#000000;color:#ffffff/);
+  assert.match(body, /Verfügbare Mengen Neu/);
+  assert.match(body, /padding:0 0 0 9px/);
+  assert.doesNotMatch(body, /margin \d/);
   assert.doesNotMatch(body, /Übernahme des Verkaufs in das ERP/);
-  assert.match(body, /Muster &amp; Söhne &lt;Kunde&gt;/);
   assert.ok(body.indexOf('VL 2') < body.indexOf('VL 10'));
+});
+
+test('VL completion header pairs each distinct VK price with its incoterm', () => {
+  const body = formatVlCompletionMailBody({
+    order: {
+      clientName: 'Rotpunkt',
+      deliveryType: 'DDP / FCA',
+    },
+    positions: [
+      { price: 1250, costPrice: 1175, amountInKg: 1000, article: 'Position 1' },
+      { price: 1210, costPrice: 1175, amountInKg: 2000, article: 'Position 2' },
+    ],
+    vlItems: [],
+  });
+
+  assert.match(body, /Sold to Rotpunkt at 1\.250 DDP \/ 1\.210 FCA \(buying price 1\.175\)/);
+  assert.doesNotMatch(body, /margin \d/);
 });
 
 test('BMS can send an HTML VL completion body through MailService', async () => {
@@ -265,6 +283,17 @@ test('test mandant VL mail recipient list contains only MFR and NSC', async () =
     { address: 'm.frank@filehouse.net', source: 'test_mandant_override_mfr' },
     { address: 'n.schroeder@filehouse.net', source: 'test_mandant_override_nsc' },
   ]);
+});
+
+test('status-2 VL mail event stays stable when the order is modified later', () => {
+  assert.equal(
+    eventKeyForOrder({ id: 70, lastModifiedDate: '2026-09-08T13:54:47.000Z' }),
+    '70:status2',
+  );
+  assert.equal(
+    eventKeyForOrder({ id: 70, lastModifiedDate: '2026-09-09T12:19:06.000Z' }),
+    '70:status2',
+  );
 });
 
 test('EWS fallback is restricted to transient MailService failures', () => {

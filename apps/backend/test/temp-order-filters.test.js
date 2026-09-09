@@ -9,6 +9,7 @@ const {
   normalizeStoredTempOrderStatus,
   isTempOrderEditableStatus,
   isTempOrderFinalizedStatus,
+  shouldRetryExistingOrderMail,
   normalizeTempOrderCompanyId,
   normalizePackagingType,
   packagingTypesEqual,
@@ -71,6 +72,13 @@ test('temp-order workflow status controls edit and finalization permissions', ()
   assert.equal(isTempOrderFinalizedStatus(1), true);
   assert.equal(isTempOrderFinalizedStatus(2), true);
   assert.equal(isTempOrderFinalizedStatus(3), false);
+});
+
+test('normal order mail is not requeued after a returned order is finalized again', () => {
+  assert.equal(shouldRetryExistingOrderMail({ status: 'sent' }), false);
+  assert.equal(shouldRetryExistingOrderMail({ status: 'failed' }), true);
+  assert.equal(shouldRetryExistingOrderMail({ status: 'pending' }), true);
+  assert.equal(shouldRetryExistingOrderMail(null), false);
 });
 
 test('accepts test mandant company id 0 while rejecting missing or invalid ids', () => {

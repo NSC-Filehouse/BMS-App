@@ -90,7 +90,6 @@ function mapOrderRow(row) {
     completedBy: row.completedBy ?? row.ta_CompletedBy,
     closingDate: row.closingDate ?? row.ta_closing_date,
     lastModifiedDate: row.lastModifiedDate ?? row.ta_LastModifiedDate,
-    erpOrderIndex: row.erpOrderIndex ?? row.ta_Auftragsindex,
   };
 }
 
@@ -128,34 +127,9 @@ function mapAvailabilityRow(row) {
 
 function eventKeyForOrder(order) {
   const id = asText(order?.id);
-  const lastModified = normalizeDateValue(order?.lastModifiedDate);
-  return `${id}:${lastModified || 'status2'}`;
-}
-
-function numbersEqual(left, right) {
-  const a = asNumber(left);
-  const b = asNumber(right);
-  if (a === null || b === null) return a === b;
-  return Math.abs(a - b) <= 0.005;
-}
-
-function textsEqual(left, right) {
-  return asText(left).toLowerCase() === asText(right).toLowerCase();
-}
-
-function erpPositionsMatch(expectedPositions, actualPositions) {
-  const remaining = [...(Array.isArray(actualPositions) ? actualPositions : [])];
-  for (const expected of (Array.isArray(expectedPositions) ? expectedPositions : [])) {
-    const index = remaining.findIndex((actual) => (
-      textsEqual(actual.beNumber, expected.beNumber)
-      && textsEqual(actual.warehouse, expected.warehouse)
-      && numbersEqual(actual.amount, expected.amountInKg)
-      && numbersEqual(actual.salePrice, expected.price)
-    ));
-    if (index < 0) return false;
-    remaining.splice(index, 1);
-  }
-  return true;
+  // Status 2 is the business event. Changes to ta_LastModifiedDate after the
+  // order reached status 2 must never create another sale-mail event.
+  return `${id}:status2`;
 }
 
 async function loadStatus2Candidates(limit = MAX_SCAN_COUNT) {
@@ -163,11 +137,7 @@ async function loadStatus2Candidates(limit = MAX_SCAN_COUNT) {
   return runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP ${safeLimit}
       [o].[ta_id] AS orderId,
-      [o].[ta_company_id] AS companyId,
-      [o].[ta_Status] AS orderStatus,
-      [o].[ta_LastModifiedDate] AS lastModifiedDate,
-      [s].[vmos_LastStatus] AS lastSeenStatus,
-      [s].[vmos_LastModifiedDate] AS lastSeenModifiedDate
+      [o].[ta_company_id] AS companyId
     FROM ${TEMP_ORDER_TABLE} AS o
     LEFT JOIN ${VL_MAIL_ORDER_STATE_TABLE} AS s
       ON [s].[vmos_OrderID] = [o].[ta_id]
@@ -175,11 +145,8 @@ async function loadStatus2Candidates(limit = MAX_SCAN_COUNT) {
       AND (
         [s].[vmos_OrderID] IS NULL
         OR COALESCE([s].[vmos_LastStatus], -1) <> 2
-        OR [s].[vmos_LastModifiedDate] <> [o].[ta_LastModifiedDate]
-        OR ([s].[vmos_LastModifiedDate] IS NULL AND [o].[ta_LastModifiedDate] IS NOT NULL)
-        OR ([s].[vmos_LastModifiedDate] IS NOT NULL AND [o].[ta_LastModifiedDate] IS NULL)
       )
-    ORDER BY [o].[ta_LastModifiedDate] ASC, [o].[ta_id] ASC
+    ORDER BY [o].[ta_id] ASC
   `, []);
 }
 
@@ -202,7 +169,6 @@ async function loadOrder(orderId) {
       [ta_CompletedBy] AS completedBy,
       [ta_closing_date] AS closingDate,
       [ta_LastModifiedDate] AS lastModifiedDate,
-      [ta_Auftragsindex] AS erpOrderIndex,
       [ta_Status] AS orderStatus
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_Status] = 2
@@ -225,24 +191,6 @@ async function loadOrderPositions(orderId) {
     ORDER BY [tap_line_no] ASC, [tap_id] ASC
   `, [orderId]);
   return (Array.isArray(rows) ? rows : []).map(mapTempPosition);
-}
-
-async function loadErpPositions(database, erpOrderIndex) {
-  const rows = await runSQLQueryAccess(database, `
-    SELECT
-      [auP_BEposID] AS beNumber,
-      [auP_LagerID] AS warehouse,
-      [auP_Anzahl] AS amount,
-      [auP_VK_EU] AS salePrice
-    FROM [dbo].[tblAuf_Position]
-    WHERE [auP_Auftragsindex] = ?
-  `, [erpOrderIndex]);
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    beNumber: asText(row.beNumber),
-    warehouse: asText(row.warehouse),
-    amount: asNumber(row.amount),
-    salePrice: asNumber(row.salePrice),
-  }));
 }
 
 async function loadCurrentVl(database) {
@@ -373,7 +321,7 @@ async function queueVlMail({ order, eventKey, recipient, body }) {
     WHERE NOT EXISTS (
       SELECT 1
       FROM ${VL_MAIL_OUTBOX_TABLE}
-      WHERE [vmo_OrderID] = ? AND [vmo_EventKey] = ? AND [vmo_Recipient] = ?
+      WHERE [vmo_OrderID] = ? AND [vmo_Recipient] = ?
     )
   `, [
     Number(order.id),
@@ -386,7 +334,6 @@ async function queueVlMail({ order, eventKey, recipient, body }) {
     nowIso,
     nowIso,
     Number(order.id),
-    eventKey,
     recipient.address,
   ]);
 }
@@ -396,18 +343,7 @@ async function processStatus2Order(candidate) {
   if (!order) return { status: 'gone' };
 
   const positions = await loadOrderPositions(order.id);
-  const erpOrderIndex = asText(order.erpOrderIndex);
-  if (!erpOrderIndex || !positions.length) {
-    logger.warn(`VL-Mail fuer Auftrag ${order.id} wartet auf vollstaendige ERP-Uebernahme.`);
-    return { status: 'deferred', reason: 'missing_erp_index_or_positions' };
-  }
-
   const database = await getDatabaseConnectionForCompanyId(order.companyId);
-  const erpPositions = await loadErpPositions(database, order.erpOrderIndex);
-  if (!erpPositionsMatch(positions, erpPositions)) {
-    logger.warn(`VL-Mail fuer Auftrag ${order.id} wartet auf passende ERP-Auftragspositionen.`);
-    return { status: 'deferred', reason: 'erp_positions_not_synchronized' };
-  }
 
   const recipients = await getVlMailRecipients(order.companyId);
   const eventKey = eventKeyForOrder(order);
@@ -611,4 +547,5 @@ module.exports = {
   processVlMailOutboxById,
   saveVlMailSettingsForUser,
   startVlCompletionMailWorker,
+  eventKeyForOrder,
 };

@@ -193,6 +193,11 @@ function isTempOrderFinalizedStatus(value, legacyCompleted = false) {
   return status === TEMP_ORDER_STATUS.APP_FINALIZED || status === TEMP_ORDER_STATUS.CS_ACCEPTED;
 }
 
+function shouldRetryExistingOrderMail(existingOutbox) {
+  return Boolean(existingOutbox)
+    && asText(existingOutbox.status).toLowerCase() !== 'sent';
+}
+
 function buildTempOrderOwnerFilter(userShortCode, isFullAccess, column = '[ta_CreatedBy]', requestedScope = 'all') {
   const scope = isFullAccess ? normalizeTempOrderOwnerScope(requestedScope) : 'mine';
   if (scope === 'all') {
@@ -1557,8 +1562,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       `, [nowIso, userShortCode, userShortCode, nowIso, id, companyId, ...ownerFilter.params]);
 
       let outboxId;
-      const shouldRequeueExistingMail = orderStatus === TEMP_ORDER_STATUS.NEEDS_REWORK;
-      if (existingOutbox && (asText(existingOutbox.status).toLowerCase() !== 'sent' || shouldRequeueExistingMail)) {
+      // The normal order mail belongs to the first hand-off of this order only.
+      // A later status-3 return must not send it again. Non-sent rows are still
+      // requeued so a failed first delivery can be retried.
+      if (shouldRetryExistingOrderMail(existingOutbox)) {
         const requeuedOutboxResult = await query(`
           UPDATE ${ORDER_MAIL_OUTBOX_TABLE}
           SET [om_CompanyID] = ?,
@@ -2099,6 +2106,7 @@ module.exports.normalizeTempOrderStatus = normalizeTempOrderStatus;
 module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
 module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;
+module.exports.shouldRetryExistingOrderMail = shouldRetryExistingOrderMail;
 module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
 module.exports.parseDeliveryAddressId = parseDeliveryAddressId;
 module.exports.normalizePackagingType = normalizePackagingType;
