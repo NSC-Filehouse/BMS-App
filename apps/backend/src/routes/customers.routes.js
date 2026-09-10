@@ -71,6 +71,7 @@ function resolveSearchField(searchField) {
   if (key === 'plz') return 'plz';
   if (key === 'region') return 'region';
   if (key === 'sales') return 'sales';
+  if (key === 'article') return 'article';
   return 'name';
 }
 
@@ -166,6 +167,21 @@ function buildWhereClause(q, searchField, options = {}) {
 
   const like = `%${text}%`;
   const mode = resolveSearchField(searchField);
+  if (mode === 'article') {
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM [dbo].[tblRech_Position] [rp]
+      INNER JOIN [dbo].[tblRechnung] [r]
+        ON COALESCE([r].[re_RgNummer], '') = COALESCE([rp].[reP_Rgnummer], '')
+      WHERE COALESCE([r].[re_KdNr], '') = COALESCE(${col('[kd_KdNR]')}, '')
+        AND COALESCE([rp].[reP_Artikel], '') <> ''
+        AND [rp].[reP_Artikel] LIKE ?
+    )`);
+    return {
+      whereSql: `WHERE ${clauses.join(' AND ')}`,
+      params: [...params, like],
+    };
+  }
   const fields = mode === 'plz'
     ? [col('[kd_PLZ]')]
     : mode === 'region'

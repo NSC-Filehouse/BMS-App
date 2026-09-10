@@ -269,7 +269,7 @@ export default function CustomersList() {
           <TextField
             fullWidth
             size="small"
-            placeholder={t('customers_search')}
+            placeholder={searchField === 'article' ? t('customers_search_articles') : t('customers_search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
@@ -296,7 +296,7 @@ export default function CustomersList() {
               gap: 0,
               justifyContent: 'space-between',
               '& .MuiFormControlLabel-root': {
-                flex: { xs: '1 1 50%', md: '1 1 25%' },
+                flex: { xs: '1 1 50%', md: '1 1 20%' },
                 margin: 0,
                 minWidth: 0,
               },
@@ -325,6 +325,11 @@ export default function CustomersList() {
               value="sales"
               control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
               label={t('customers_search_mode_sales')}
+            />
+            <FormControlLabel
+              value="article"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_article')}
             />
           </RadioGroup>
           {!reminderOnly && (
