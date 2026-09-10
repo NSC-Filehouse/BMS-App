@@ -62,9 +62,18 @@ function buildCartPayload(item, quantityKg, existing = null) {
   const id = String(item?.id || '');
   const availableAmount = getAvailableAmount(item, existing);
   const wpzId = item?.wpzId !== undefined ? item.wpzId : (existing?.wpzId ?? null);
+  const existingArticleChanged = Boolean(existing?.articleChanged);
+  const article = existingArticleChanged
+    ? (existing?.article || '')
+    : (item?.article || existing?.article || '');
+  const articleOriginal = existingArticleChanged
+    ? (existing?.articleOriginal || existing?.article || '')
+    : (item?.articleOriginal || null);
   return {
     id,
-    article: item?.article || existing?.article || '',
+    article,
+    articleOriginal,
+    articleChanged: existingArticleChanged || Boolean(item?.articleChanged),
     beNumber: item?.beNumber || existing?.beNumber || '',
     warehouse: item?.warehouse || existing?.warehouse || '',
     warehouseId: item?.storageId || item?.warehouseId || existing?.warehouseId || '',
@@ -133,6 +142,23 @@ export function updateOrderCartDeliveryDate(productId, deliveryDate) {
       ? { ...x, deliveryDate: String(deliveryDate || '').trim() }
       : x
   ));
+  write(next);
+  return next;
+}
+
+export function updateOrderCartArticle(productId, article) {
+  const nextArticle = String(article || '').trim();
+  const next = read().map((x) => {
+    if (String(x.id || '') !== String(productId || '')) return x;
+    const originalArticle = String(x.articleOriginal || x.article || '').trim();
+    const changed = Boolean(originalArticle) && nextArticle !== originalArticle;
+    return {
+      ...x,
+      article: nextArticle,
+      articleOriginal: changed ? originalArticle : null,
+      articleChanged: changed,
+    };
+  });
   write(next);
   return next;
 }

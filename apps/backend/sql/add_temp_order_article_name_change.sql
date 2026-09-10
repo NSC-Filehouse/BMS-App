@@ -30,8 +30,11 @@ END;
 
 COMMIT TRANSACTION;
 
+DECLARE @verificationSql nvarchar(max) = N'
 SELECT
     COUNT_BIG(*) AS [Positionen],
     SUM(CASE WHEN [tap_Artikelname_Original] IS NULL THEN 1 ELSE 0 END) AS [OhneOriginalname],
     SUM(CASE WHEN [tap_Artikelname_Gewechselt] = 1 THEN 1 ELSE 0 END) AS [NameGeaendert]
-FROM [BMSApp].[tbl_Temp_Auf_Position];
+FROM [BMSApp].[tbl_Temp_Auf_Position];';
+
+EXEC sys.sp_executesql @verificationSql;

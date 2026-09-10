@@ -5,6 +5,7 @@ import {
   getOrderCartItems,
   updateOrderCartQuantity,
   updateOrderCartSalePrice,
+  updateOrderCartArticle,
   updateOrderCartItem,
 } from '../src/utils/orderCart.js';
 
@@ -97,6 +98,42 @@ test('temporarily empty cart inputs are persisted instead of restoring stale val
   const [item] = getOrderCartItems();
   assert.equal(item.quantityKg, '');
   assert.equal(item.salePrice, '');
+});
+
+test('edited cart article names persist and survive a product refresh', () => {
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'ERP-Artikelname',
+    availableAmount: 100,
+  }]);
+  updateOrderCartArticle('product-1', 'Eigener Warenkorbname');
+
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'ERP-Artikelname aktualisiert',
+    availableAmount: 90,
+  }]);
+
+  const [item] = getOrderCartItems();
+  assert.equal(item.article, 'Eigener Warenkorbname');
+  assert.equal(item.articleOriginal, 'ERP-Artikelname');
+  assert.equal(item.articleChanged, true);
+  assert.equal(item.availableAmount, 90);
+});
+
+test('returning the cart article name to its original value clears the marker', () => {
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'ERP-Artikelname',
+    availableAmount: 100,
+  }]);
+  updateOrderCartArticle('product-1', 'Eigener Warenkorbname');
+  updateOrderCartArticle('product-1', 'ERP-Artikelname');
+
+  const [item] = getOrderCartItems();
+  assert.equal(item.article, 'ERP-Artikelname');
+  assert.equal(item.articleOriginal, null);
+  assert.equal(item.articleChanged, false);
 });
 
 test('multiple new positions are stored with their individual maxima', () => {

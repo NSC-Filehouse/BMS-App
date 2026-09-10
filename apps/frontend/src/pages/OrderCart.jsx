@@ -11,6 +11,9 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -22,6 +25,7 @@ import {
   updateOrderCartQuantity,
   updateOrderCartDeliveryDate,
   updateOrderCartSalePrice,
+  updateOrderCartArticle,
   updateOrderCartItem,
 } from '../utils/orderCart.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
@@ -46,6 +50,8 @@ export default function OrderCart() {
   const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
   const [pendingSourceItems, setPendingSourceItems] = React.useState(null);
   const [mandants, setMandants] = React.useState([]);
+  const [editingArticleId, setEditingArticleId] = React.useState('');
+  const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const activeMandant = getMandant();
 
   React.useEffect(() => {
@@ -94,6 +100,31 @@ export default function OrderCart() {
   const onDeliveryDateChange = (id, value) => {
     setItems(updateOrderCartDeliveryDate(id, value));
   };
+
+  const beginArticleEdit = React.useCallback((row, event) => {
+    event?.stopPropagation();
+    setEditingArticleId(String(row?.id || ''));
+    setEditingArticleValue(String(row?.article || '').trim());
+  }, []);
+
+  const cancelArticleEdit = React.useCallback((event) => {
+    event?.stopPropagation();
+    setEditingArticleId('');
+    setEditingArticleValue('');
+  }, []);
+
+  const saveArticleEdit = React.useCallback((row, event) => {
+    event?.stopPropagation();
+    const nextArticle = String(editingArticleValue || '').trim();
+    if (!nextArticle) {
+      setError(t('validation_article_name_required'));
+      return;
+    }
+    setItems(updateOrderCartArticle(row.id, nextArticle));
+    setError('');
+    setEditingArticleId('');
+    setEditingArticleValue('');
+  }, [editingArticleValue, t]);
 
   const validate = () => {
     const messages = [];
@@ -163,17 +194,79 @@ export default function OrderCart() {
 
       {items.length > 0 && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}>
-          {items.map((row) => (
+          {items.map((row) => {
+            const foreignMandant = findForeignMandantName(row.beNumber, mandants, activeMandant);
+            const isEditingArticle = String(editingArticleId) === String(row.id);
+            return (
             <Card key={row.id} sx={{ width: '100%', minWidth: 0 }}>
               <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                      {row.article || row.beNumber}
-                    </Typography>
-                    {findForeignMandantName(row.beNumber, mandants, activeMandant) && (
+                    {isEditingArticle ? (
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <TextField
+                          autoFocus
+                          size="small"
+                          value={editingArticleValue}
+                          onChange={(event) => setEditingArticleValue(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              saveArticleEdit(row, event);
+                            }
+                            if (event.key === 'Escape') cancelArticleEdit(event);
+                          }}
+                          onBlur={(event) => saveArticleEdit(row, event)}
+                          inputProps={{ 'aria-label': t('article_name_edit') }}
+                          sx={{
+                            flex: 1,
+                            minWidth: 0,
+                            '& .MuiInputBase-input': {
+                              fontSize: '1rem',
+                            },
+                          }}
+                        />
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          aria-label={t('article_name_save')}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={(event) => saveArticleEdit(row, event)}
+                        >
+                          <CheckIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          aria-label={t('article_name_cancel')}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={cancelArticleEdit}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+                        <Typography variant="subtitle1" sx={{ minWidth: 0, flex: 1, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {row.article || row.beNumber}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          aria-label={t('article_name_edit')}
+                          title={t('article_name_edit')}
+                          disabled={Boolean(foreignMandant)}
+                          onClick={(event) => beginArticleEdit(row, event)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    )}
+                    {foreignMandant && (
                       <Typography variant="caption" sx={{ display: 'block', color: '#C56A00', overflowWrap: 'anywhere' }}>
-                        {t('article_from_mandant_readonly', { name: findForeignMandantName(row.beNumber, mandants, activeMandant) })}
+                        {t('article_from_mandant_readonly', { name: foreignMandant })}
                       </Typography>
                     )}
                   </Box>
@@ -242,7 +335,8 @@ export default function OrderCart() {
             })()}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
 
           {error && <Alert severity="error" sx={{ mb: 0.5 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
