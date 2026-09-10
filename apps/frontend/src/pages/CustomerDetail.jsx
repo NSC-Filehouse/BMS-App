@@ -1322,9 +1322,20 @@ export default function CustomerDetail() {
                                             <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
                                               {position.article || '-'}
                                             </Typography>
-                                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                                              {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'} · ${t('product_be_number')}: ${position.beNumber || '-'}`}
-                                            </Typography>
+                                            <Box sx={{ display: 'grid', minWidth: 0 }}>
+                                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                                                {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'}`}
+                                                {position.acquisitionPrice !== null
+                                                  && position.acquisitionPrice !== undefined
+                                                  && String(position.acquisitionPrice).trim() !== ''
+                                                  && Number.isFinite(Number(position.acquisitionPrice))
+                                                  ? ` · EP: ${formatMoney(position.acquisitionPrice)}`
+                                                  : ''}
+                                              </Typography>
+                                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                                                {`${t('product_be_number')}: ${position.beNumber || '-'}`}
+                                              </Typography>
+                                            </Box>
                                             <TempPlanningHint
                                               item={position}
                                               onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
