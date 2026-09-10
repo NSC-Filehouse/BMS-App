@@ -26,6 +26,9 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -117,6 +120,10 @@ function getPositionWpzPayload(position) {
     return { wpzId: null, wpzOriginal: null, wpzComment: normalizeWpzFields(position).wpzComment || null };
   }
   return { wpzId: position.wpzId, ...normalizeWpzFields(position) };
+}
+
+function getPositionKey(position, index) {
+  return String(position?.id || `${position?.beNumber || 'position'}-${index}`);
 }
 
 function formatDeliveryAddressParts(addr) {
@@ -278,6 +285,8 @@ export default function TempOrderForm() {
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
   const [customerReminderInvoicesCount, setCustomerReminderInvoicesCount] = React.useState(0);
   const [positions, setPositions] = React.useState([]);
+  const [editingArticleKey, setEditingArticleKey] = React.useState('');
+  const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
@@ -541,6 +550,8 @@ export default function TempOrderForm() {
             beNumber: p.beNumber,
             warehouseId: p.warehouse || p.warehouseId,
             article: p.article,
+            articleOriginal: p.articleOriginal || '',
+            articleChanged: Boolean(p.articleChanged),
             amountInKg: p.amountInKg,
             price: p.price,
             costPrice: p.costPrice ?? null,
@@ -597,6 +608,8 @@ export default function TempOrderForm() {
           beNumber: x.beNumber,
           warehouseId: x.warehouseId || x.warehouse,
           article: x.article,
+          articleOriginal: x.articleOriginal || '',
+          articleChanged: Boolean(x.articleChanged),
           amountInKg: x.amountInKg,
           price: x.salePrice ?? x.price,
           costPrice: x.costPrice ?? x.ep ?? null,
@@ -624,6 +637,8 @@ export default function TempOrderForm() {
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
             article: x.article,
+            articleOriginal: x.articleOriginal || '',
+            articleChanged: Boolean(x.articleChanged),
             amountInKg: x.amountInKg,
             price: x.salePrice ?? x.price,
             costPrice: x.costPrice ?? null,
@@ -971,6 +986,36 @@ export default function TempOrderForm() {
     setPositions((prev) => prev.filter((_, i) => i !== idx));
   }, [isEdit, positions]);
 
+  const beginArticleEdit = React.useCallback((position, idx, event) => {
+    event?.stopPropagation();
+    setEditingArticleKey(getPositionKey(position, idx));
+    setEditingArticleValue(String(position?.article || '').trim());
+  }, []);
+
+  const cancelArticleEdit = React.useCallback((event) => {
+    event?.stopPropagation();
+    setEditingArticleKey('');
+    setEditingArticleValue('');
+  }, []);
+
+  const saveArticleEdit = React.useCallback((position, idx, event) => {
+    event?.stopPropagation();
+    const nextArticle = String(editingArticleValue || '').trim();
+    if (!nextArticle) {
+      setValidationMessages([t('validation_article_name_required')]);
+      setValidationOpen(true);
+      return;
+    }
+    const key = getPositionKey(position, idx);
+    setPositions((previous) => previous.map((item, itemIndex) => (
+      getPositionKey(item, itemIndex) === key
+        ? { ...item, article: nextArticle }
+        : item
+    )));
+    setEditingArticleKey('');
+    setEditingArticleValue('');
+  }, [editingArticleValue, t]);
+
   const visibleAttachmentName = attachmentFile
     ? attachmentFile.name
     : (!removeAttachment && attachmentMeta.hasAttachment ? attachmentMeta.fileName : '');
@@ -1008,6 +1053,9 @@ export default function TempOrderForm() {
       const foreignMandant = findForeignMandantName(pos.beNumber, mandants, activeMandant);
       if (foreignMandant) {
         messages.push(`${pos.article || pos.beNumber}: ${t('article_from_mandant_readonly', { name: foreignMandant })}`);
+      }
+      if (!String(pos.article || '').trim()) {
+        messages.push(`${pos.beNumber}: ${t('validation_article_name_required')}`);
       }
       const amount = Number(pos.amountInKg);
       const salePrice = Number(pos.price);
@@ -1064,6 +1112,7 @@ export default function TempOrderForm() {
           id: x.id,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
+          article: String(x.article || '').trim(),
           amountInKg: Number(x.amountInKg),
           salePricePerKg: Number(x.price),
           costPricePerKg: Number(x.costPrice),
@@ -1455,6 +1504,8 @@ export default function TempOrderForm() {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {positions.map((x, idx) => {
                     const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
+                    const positionKey = getPositionKey(x, idx);
+                    const isEditingArticle = editingArticleKey === positionKey;
                     return (
                       <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
                       <AccordionSummary
@@ -1462,9 +1513,62 @@ export default function TempOrderForm() {
                         sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
                       >
                           <Box sx={{ display: 'grid', width: '100%', minWidth: 0, gap: 0.35 }}>
-                            <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                              {x.article || '-'}
-                            </Typography>
+                            {isEditingArticle ? (
+                              <Box
+                                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <TextField
+                                  autoFocus
+                                  size="small"
+                                  value={editingArticleValue}
+                                  onChange={(event) => setEditingArticleValue(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      saveArticleEdit(x, idx, event);
+                                    }
+                                    if (event.key === 'Escape') cancelArticleEdit(event);
+                                  }}
+                                  onBlur={(event) => saveArticleEdit(x, idx, event)}
+                                  inputProps={{ 'aria-label': t('article_name_edit') }}
+                                  sx={{ flex: 1, minWidth: 0 }}
+                                />
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  aria-label={t('article_name_save')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => saveArticleEdit(x, idx, event)}
+                                >
+                                  <CheckIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  aria-label={t('article_name_cancel')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={cancelArticleEdit}
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ minWidth: 0, flex: 1, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                  {x.article || '-'}
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  aria-label={t('article_name_edit')}
+                                  title={t('article_name_edit')}
+                                  disabled={Boolean(foreignMandant)}
+                                  onClick={(event) => beginArticleEdit(x, idx, event)}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            )}
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                             </Typography>

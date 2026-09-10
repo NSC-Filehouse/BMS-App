@@ -13,6 +13,7 @@ const {
   normalizeTempOrderCompanyId,
   normalizePackagingType,
   packagingTypesEqual,
+  resolveArticleName,
 } = require('../src/routes/temp-orders.routes');
 
 test('normalizes temp-order list filters to supported values', () => {
@@ -43,6 +44,64 @@ test('non-full-access users are always restricted to their own temp orders', () 
   assert.equal(result.scope, 'mine');
   assert.deepEqual(result.params, ['dbe']);
   assert.match(result.whereSql, /ta_CreatedBy/);
+});
+
+test('article name changes keep the canonical name as original and the current name for ERP', () => {
+  assert.deepEqual(
+    resolveArticleName({ requestedArticle: 'Benutzername', canonicalArticle: 'Originalname' }),
+    {
+      article: 'Benutzername',
+      articleOriginal: 'Originalname',
+      articleChanged: true,
+    },
+  );
+});
+
+test('returning to the original article name clears the change marker', () => {
+  assert.deepEqual(
+    resolveArticleName({
+      requestedArticle: 'Originalname',
+      canonicalArticle: 'Originalname',
+      storedArticle: 'Benutzername',
+      storedOriginalArticle: 'Originalname',
+    }),
+    {
+      article: 'Originalname',
+      articleOriginal: null,
+      articleChanged: false,
+    },
+  );
+});
+
+test('a second article name change keeps the first original name', () => {
+  assert.deepEqual(
+    resolveArticleName({
+      requestedArticle: 'Zweiter Benutzername',
+      canonicalArticle: 'Originalname',
+      storedArticle: 'Erster Benutzername',
+      storedOriginalArticle: 'Originalname',
+    }),
+    {
+      article: 'Zweiter Benutzername',
+      articleOriginal: 'Originalname',
+      articleChanged: true,
+    },
+  );
+});
+
+test('an existing unchanged position does not become changed when the live product name differs', () => {
+  assert.deepEqual(
+    resolveArticleName({
+      requestedArticle: 'Gespeicherter Auftragsname',
+      canonicalArticle: 'Aktueller ERP-Name',
+      storedArticle: 'Gespeicherter Auftragsname',
+    }),
+    {
+      article: 'Gespeicherter Auftragsname',
+      articleOriginal: null,
+      articleChanged: false,
+    },
+  );
 });
 
 test('temp-order status filter distinguishes drafts and orders sent to BMS', () => {
