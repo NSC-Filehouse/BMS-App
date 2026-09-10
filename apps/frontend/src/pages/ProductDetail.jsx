@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -78,7 +79,7 @@ function InfoRow({ label, value }) {
   );
 }
 
-export default function ProductDetail() {
+export default function ProductDetail({ modal = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -103,7 +104,9 @@ export default function ProductDetail() {
   const [cartAdding, setCartAdding] = React.useState(false);
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
+  const [wpzData, setWpzData] = React.useState(null);
   const [wpzLoading, setWpzLoading] = React.useState(false);
+  const [wpzOpen, setWpzOpen] = React.useState(false);
   const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
   const [pendingCustomerAction, setPendingCustomerAction] = React.useState('');
   const [customerPromptType, setCustomerPromptType] = React.useState('generic');
@@ -219,6 +222,8 @@ export default function ProductDetail() {
         setWpzLoading(true);
         setWpzExists(false);
         setWpzId(null);
+        setWpzData(null);
+        setWpzOpen(false);
         const res = await apiRequest(`/products/${encodeURIComponent(id)}${sourceQuery}`);
         if (!alive) return;
         const baseItem = res?.data || null;
@@ -230,12 +235,14 @@ export default function ProductDetail() {
         try {
           const wpzRes = await apiRequest(`/products/${encodeURIComponent(id)}/wpz${sourceQuery}`);
           if (alive) {
+            setWpzData(wpzRes?.data || null);
             setWpzExists(Boolean(wpzRes?.data?.exists));
             const idNum = Number(wpzRes?.data?.wpzId);
             setWpzId(Number.isFinite(idNum) && idNum > 0 ? idNum : null);
           }
         } catch {
           if (alive) {
+            setWpzData(null);
             setWpzExists(false);
             setWpzId(null);
           }
@@ -292,19 +299,8 @@ export default function ProductDetail() {
     navigate(-1);
   }, [location.state, navigate]);
 
-  return (
-    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <IconButton aria-label="back" onClick={handleBack}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-            {item?.article || id}
-          </Typography>
-        </Box>
-      </Box>
-
+  const detailBody = (
+    <>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -386,20 +382,7 @@ export default function ProductDetail() {
               value={
                 wpzLoading ? t('products_loading_items') : (
                   wpzExists ? (
-                    <Button
-                      size="small"
-                      onClick={() => navigate(`/products/${encodeURIComponent(id)}/wpz`, {
-                        state: {
-                          fromProduct: {
-                            fromProducts: location.state?.fromProducts || null,
-                            fromVl: Boolean(location.state?.fromVl),
-                            vlMandantId,
-                            vlReadOnly: readOnlyVl,
-                            vlReturnState: location.state?.vlReturnState || null,
-                          },
-                        },
-                      })}
-                    >
+                    <Button size="small" onClick={() => setWpzOpen(true)}>
                       {t('wpz_available')}
                     </Button>
                   ) : t('wpz_not_available')
@@ -423,109 +406,191 @@ export default function ProductDetail() {
           </CardContent>
         </Card>
       )}
+    </>
+  );
 
-      <Dialog open={reserveOpen} onClose={() => setReserveOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{t('product_reserve_submit')}</DialogTitle>
-        <DialogContent>
-          {reserveError && <Alert severity="error" sx={{ mb: 1 }}>{reserveError}</Alert>}
-          <TextField
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('product_reserve_amount')}
-            value={reserveAmount}
-            onChange={(e) => setReserveAmount(e.target.value)}
-            inputProps={{ min: 1, step: 'any' }}
-            error={reserveTooMuch}
-            helperText={
-              reserveTooMuch
-                ? t('product_reserve_too_much')
-                : (availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : '')
-            }
-          />
-          <TextField
-            margin="dense"
-            fullWidth
-            type="date"
-            label={t('product_reserve_until')}
-            value={reserveDate}
-            onChange={(e) => setReserveDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            margin="dense"
-            fullWidth
-            multiline
-            minRows={2}
-            label={t('product_reserve_comment')}
-            value={reserveComment}
-            onChange={(e) => setReserveComment(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReserveOpen(false)} disabled={reserveLoading}>
-            {t('back_label')}
-          </Button>
-          <Button
-            variant="contained"
-            disabled={reserveLoading || !reserveAmount || !reserveDate || reserveTooMuch}
-            onClick={async () => {
-              try {
-                setReserveLoading(true);
-                setReserveError('');
-                setReserveSuccess('');
-                setReserveInfo('');
-                await apiRequest('/products/reserve', {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    productId: item?.id,
-                    beNumber: item?.beNumber,
-                    warehouseId: item?.storageId,
-                    amount: Number(reserveAmount),
-                    reservationEndDate: reserveDate,
-                    comment: reserveComment || '',
-                    sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
-                  }),
-                });
+  const reserveDialog = (
+    <Dialog open={reserveOpen} onClose={() => (!reserveLoading ? setReserveOpen(false) : undefined)} fullWidth maxWidth="sm">
+      <DialogTitle>{t('product_reserve_submit')}</DialogTitle>
+      <DialogContent>
+        {reserveError && <Alert severity="error" sx={{ mb: 1 }}>{reserveError}</Alert>}
+        <TextField
+          margin="dense"
+          fullWidth
+          type="number"
+          label={t('product_reserve_amount')}
+          value={reserveAmount}
+          onChange={(e) => setReserveAmount(e.target.value)}
+          inputProps={{ min: 1, step: 'any' }}
+          error={reserveTooMuch}
+          helperText={
+            reserveTooMuch
+              ? t('product_reserve_too_much')
+              : (availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : '')
+          }
+        />
+        <TextField
+          margin="dense"
+          fullWidth
+          type="date"
+          label={t('product_reserve_until')}
+          value={reserveDate}
+          onChange={(e) => setReserveDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          margin="dense"
+          fullWidth
+          multiline
+          minRows={2}
+          label={t('product_reserve_comment')}
+          value={reserveComment}
+          onChange={(e) => setReserveComment(e.target.value)}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setReserveOpen(false)} disabled={reserveLoading}>
+          {t('back_label')}
+        </Button>
+        <Button
+          variant="contained"
+          disabled={reserveLoading || !reserveAmount || !reserveDate || reserveTooMuch}
+          onClick={async () => {
+            try {
+              setReserveLoading(true);
+              setReserveError('');
+              setReserveSuccess('');
+              setReserveInfo('');
+              await apiRequest('/products/reserve', {
+                method: 'POST',
+                body: JSON.stringify({
+                  productId: item?.id,
+                  beNumber: item?.beNumber,
+                  warehouseId: item?.storageId,
+                  amount: Number(reserveAmount),
+                  reservationEndDate: reserveDate,
+                  comment: reserveComment || '',
+                  sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
+                }),
+              });
+              setReserveOpen(false);
+              setReserveSuccess(t('product_reserve_confirmed'));
+              navigate('/orders', {
+                state: {
+                  sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
+                },
+              });
+            } catch (e) {
+              if (e?.code === 'RESERVATION_ALREADY_EXISTS') {
+                const by = String(e?.payload?.error?.details?.reservedBy || '').trim();
                 setReserveOpen(false);
-                setReserveSuccess(t('product_reserve_confirmed'));
-                navigate('/orders', {
-                  state: {
-                    sourceMandantId: item?.sourceMandantId ?? vlMandantId ?? null,
-                  },
-                });
-              } catch (e) {
-                if (e?.code === 'RESERVATION_ALREADY_EXISTS') {
-                  const by = String(e?.payload?.error?.details?.reservedBy || '').trim();
-                  setReserveOpen(false);
-                  setReserveInfo(by ? t('product_already_reserved_by', { by }) : t('product_already_reserved'));
-                } else {
-                  setReserveError(e?.message || t('loading_error'));
-                }
-              } finally {
-                setReserveLoading(false);
+                setReserveInfo(by ? t('product_already_reserved_by', { by }) : t('product_already_reserved'));
+              } else {
+                setReserveError(e?.message || t('loading_error'));
               }
-            }}
-          >
-            {t('product_reserve_submit')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            } finally {
+              setReserveLoading(false);
+            }
+          }}
+        >
+          {t('product_reserve_submit')}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
-      <CustomerRequiredDialog
-        open={customerRequiredOpen}
-        onClose={() => {
-          setCustomerRequiredOpen(false);
-          setCustomerPromptType('generic');
-          setPendingCustomerAction('');
-        }}
-        onChoose={customerPromptType === 'context' ? chooseContextCustomer : chooseCustomer}
-        title={customerPromptType === 'context' ? t('customer_context_required_title') : undefined}
-        message={customerPromptType === 'context'
-          ? t('customer_context_required_message', { name: sourceCustomer?.name || sourceCustomer?.id || '' })
-          : undefined}
-        chooseLabel={customerPromptType === 'context' ? t('customer_context_required_choose') : undefined}
-      />
+  const wpzDialog = (
+    <Dialog open={wpzOpen} onClose={() => setWpzOpen(false)} fullWidth maxWidth="md">
+      <DialogTitle>{t('wpz_title')}</DialogTitle>
+      <DialogContent dividers>
+        {wpzData?.exists ? (
+          <>
+            <InfoRow label={t('product_be_number')} value={wpzData.beNumber || id} />
+            <Divider sx={{ my: 2 }} />
+            {(Array.isArray(wpzData.fields) ? wpzData.fields : []).map((field, idx) => (
+              <InfoRow
+                key={`${field?.key || 'field'}-${idx}`}
+                label={String(field?.key || '-')}
+                value={field?.value === null || field?.value === undefined || field?.value === '' ? '-' : String(field.value)}
+              />
+            ))}
+          </>
+        ) : (
+          <Alert severity="info">{t('wpz_not_available')}</Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setWpzOpen(false)}>{t('back_label')}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  const customerDialog = (
+    <CustomerRequiredDialog
+      open={customerRequiredOpen}
+      onClose={() => {
+        setCustomerRequiredOpen(false);
+        setCustomerPromptType('generic');
+        setPendingCustomerAction('');
+      }}
+      onChoose={customerPromptType === 'context' ? chooseContextCustomer : chooseCustomer}
+      title={customerPromptType === 'context' ? t('customer_context_required_title') : undefined}
+      message={customerPromptType === 'context'
+        ? t('customer_context_required_message', { name: sourceCustomer?.name || sourceCustomer?.id || '' })
+        : undefined}
+      chooseLabel={customerPromptType === 'context' ? t('customer_context_required_choose') : undefined}
+    />
+  );
+
+  const closeModal = () => {
+    if (!reserveLoading) navigate(-1);
+  };
+
+  if (modal) {
+    return (
+      <>
+        <Dialog
+          open
+          fullWidth
+          maxWidth="md"
+          scroll="paper"
+          onClose={closeModal}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            <Typography sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {item?.article || id}
+            </Typography>
+            <IconButton aria-label={t('close_label')} onClick={closeModal} disabled={reserveLoading}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers sx={{ minWidth: 0 }}>
+            {detailBody}
+          </DialogContent>
+        </Dialog>
+        {reserveDialog}
+        {wpzDialog}
+        {customerDialog}
+      </>
+    );
+  }
+
+  return (
+    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <IconButton aria-label="back" onClick={handleBack}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+            {item?.article || id}
+          </Typography>
+        </Box>
+      </Box>
+      {detailBody}
+      {reserveDialog}
+      {wpzDialog}
+      {customerDialog}
     </Box>
   );
 }

@@ -857,6 +857,7 @@ export default function CustomerDetail() {
     if (!productId) return;
     navigate(`/products/${encodeURIComponent(productId)}`, {
       state: {
+        backgroundLocation: location,
         fromCustomer: {
           id,
           name,
@@ -865,7 +866,7 @@ export default function CustomerDetail() {
         },
       },
     });
-  }, [address, id, name, navigate, salesRep]);
+  }, [address, id, location, name, navigate, salesRep]);
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>

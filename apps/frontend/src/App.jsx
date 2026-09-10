@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Layout from './components/Layout.jsx';
 import { LanguageProvider } from './utils/i18n.jsx';
@@ -28,10 +28,13 @@ import TempOrderDetail from './pages/TempOrderDetail.jsx';
 import TempOrderForm from './pages/TempOrderForm.jsx';
 import DatabaseUnavailable from './pages/DatabaseUnavailable.jsx';
 
-export default function App() {
+function AppRoutes() {
+  const location = useLocation();
+  const backgroundLocation = location.state?.backgroundLocation || null;
+
   return (
-    <LanguageProvider>
-      <Routes>
+    <>
+      <Routes location={backgroundLocation || location}>
         <Route element={<Layout />}>
           <Route path="/" element={<Start />} />
           <Route path="/database-unavailable" element={<DatabaseUnavailable />} />
@@ -189,6 +192,26 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      {backgroundLocation && (
+        <Routes>
+          <Route
+            path="/products/:id"
+            element={
+              <MandantGuard>
+                <ProductDetail modal />
+              </MandantGuard>
+            }
+          />
+        </Routes>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppRoutes />
     </LanguageProvider>
   );
 }

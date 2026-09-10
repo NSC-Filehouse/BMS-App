@@ -364,7 +364,10 @@ export default function ProductsList() {
                 t={t}
                 onAddToCart={requestAddToCart}
                 onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
-                  state: { fromProducts: { q } },
+                  state: {
+                    backgroundLocation: location,
+                    fromProducts: { q },
+                  },
                 })}
               />
             ))}
@@ -442,7 +445,10 @@ export default function ProductsList() {
                                       t={t}
                                       onAddToCart={requestAddToCart}
                                       onClick={() => navigate(`/products/${encodeURIComponent(item.id)}`, {
-                                        state: { fromProducts: { q } },
+                                        state: {
+                                          backgroundLocation: location,
+                                          fromProducts: { q },
+                                        },
                                       })}
                                     />
                                   ))}

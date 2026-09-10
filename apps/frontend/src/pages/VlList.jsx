@@ -800,13 +800,25 @@ export default function VlList() {
     else requestProductAction(action, item);
   }, [requestProductAction, toggleSelection]);
 
+  const openProductDetail = React.useCallback((itemId) => {
+    navigate(`/products/${encodeURIComponent(itemId)}`, {
+      state: {
+        backgroundLocation: location,
+        fromVl: true,
+        vlMandantId,
+        vlReadOnly: isForeignVl,
+        vlReturnState: getVlReturnState(),
+      },
+    });
+  }, [getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
+
   const handleRowTap = React.useCallback((itemId) => {
     if (revealedRow.id && String(revealedRow.id) === String(itemId)) {
       setRevealedRow({ id: '', side: '' });
       return;
     }
-    navigate(`/products/${encodeURIComponent(itemId)}`, { state: { fromVl: true, vlMandantId, vlReadOnly: isForeignVl, vlReturnState: getVlReturnState() } });
-  }, [getVlReturnState, isForeignVl, navigate, revealedRow, vlMandantId]);
+    openProductDetail(itemId);
+  }, [openProductDetail, revealedRow]);
 
   const toggleGroup = React.useCallback((groupKey) => {
     setExpandedGroups((previous) => ({ ...previous, [groupKey]: previous[groupKey] !== true }));
@@ -913,7 +925,7 @@ export default function VlList() {
                 onToggleSelection={toggleSelection}
                 onTap={handleRowTap}
                 onAction={handleAction}
-                onDetails={(id) => navigate(`/products/${encodeURIComponent(id)}`, { state: { fromVl: true, vlMandantId, vlReadOnly: isForeignVl, vlReturnState: getVlReturnState() } })}
+                onDetails={openProductDetail}
                 onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
                 inCart={!isForeignVl && cartIds.has(getItemId(item))}
                 readOnly={isForeignVl}
@@ -945,7 +957,7 @@ export default function VlList() {
           onToggleSelection={toggleSelection}
           onTap={handleRowTap}
           onAction={handleAction}
-          onDetails={(id) => navigate(`/products/${encodeURIComponent(id)}`, { state: { fromVl: true, vlMandantId, vlReadOnly: isForeignVl, vlReturnState: getVlReturnState() } })}
+          onDetails={openProductDetail}
           onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
           inCart={!isForeignVl && cartIds.has(getItemId(item))}
           readOnly={isForeignVl}
