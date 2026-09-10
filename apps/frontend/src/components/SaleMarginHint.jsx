@@ -41,7 +41,7 @@ export default function SaleMarginHint({ salePrice, costPrice, sx }) {
   return (
     <>
       {margin !== null && (
-        <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.75, ...sx }}>
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.25, ...sx }}>
           {t('sale_margin_hint_label')}{' '}
           <Box component="span" sx={{ color: marginAmountColor }}>
             {formattedMarginAmount} EUR
@@ -49,7 +49,7 @@ export default function SaleMarginHint({ salePrice, costPrice, sx }) {
           ({formattedMarginPercent} %)
         </Typography>
       )}
-      <Typography variant="caption" sx={{ color: 'text.secondary', mt: margin === null ? -0.75 : -0.25 }}>
+      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.25 }}>
         {t('sale_price_hint', { price: `${formattedCostPrice} EUR` })}
       </Typography>
     </>

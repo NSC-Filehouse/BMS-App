@@ -532,7 +532,6 @@ export default function ProductDetail() {
           <SaleMarginHint
             salePrice={cartSalePrice}
             costPrice={item?.acquisitionPrice}
-            sx={{ mt: -0.5 }}
           />
           <WpzCommentField
             wpzId={wpzExists ? wpzId : null}
