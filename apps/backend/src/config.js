@@ -26,6 +26,13 @@ const config = {
 
   apiBasePath: process.env.API_BASE_PATH || '/api',
 
+  documents: {
+    // Prefer the UNC path for server processes; the mapped drive remains a
+    // workstation fallback when the server path is not configured.
+    baseFilePathServer: String(process.env.BMS_BASE_FILE_PATH_SERVER || '').trim(),
+    baseFilePath: String(process.env.BMS_BASE_FILE_PATH || '').trim(),
+  },
+
   push: {
     vapidSubject: String(process.env.PUSH_VAPID_SUBJECT || 'mailto:bmsapp@mlholding.de').trim(),
     vapidPublicKey: String(process.env.PUSH_VAPID_PUBLIC_KEY || '').trim(),

@@ -25,7 +25,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -36,6 +35,7 @@ import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import { clearOrderCart } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
@@ -1419,7 +1419,7 @@ export default function TempOrderForm() {
                     return (
                       <Accordion key={`${x.id || x.beNumber || idx}-${idx}`} disableGutters>
                       <AccordionSummary
-                        expandIcon={<ExpandMoreIcon />}
+                        expandIcon={<ExpandCollapseIndicator accordion />}
                         sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
                       >
                           <Box sx={{ display: 'grid', width: '100%', minWidth: 0, gap: 0.35 }}>

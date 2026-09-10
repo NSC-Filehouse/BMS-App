@@ -23,8 +23,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import MapIcon from '@mui/icons-material/Map';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -33,7 +31,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import {
   CUSTOMER_SELECTION_CHANGED,
@@ -43,6 +41,7 @@ import {
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
+import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import {
   MAP_PROVIDER_APPLE,
   MAP_PROVIDER_GOOGLE,
@@ -249,7 +248,7 @@ function DocumentScopeControls({
 function DocumentAccordionSummary({ title, controls }) {
   return (
     <AccordionSummary
-      expandIcon={<ExpandMoreIcon />}
+      expandIcon={<ExpandCollapseIndicator accordion />}
       sx={{
         alignItems: 'flex-start',
         '& .MuiAccordionSummary-content': {
@@ -391,6 +390,8 @@ export default function CustomerDetail() {
   const [batchCartError, setBatchCartError] = React.useState('');
   const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
   const [batchCartAdding, setBatchCartAdding] = React.useState(false);
+  const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
+  const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -615,6 +616,44 @@ export default function CustomerDetail() {
       loadDocSection(section, endpoint);
     }
   }, [docs, loadDocSection]);
+
+  const openOrderPdf = React.useCallback(async (event, order) => {
+    event.preventDefault();
+    const orderIndex = String(order?.id || '').trim();
+    if (!orderIndex) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [orderIndex]: t('order_pdf_popup_blocked'),
+      }));
+      return;
+    }
+
+    setOrderPdfLoadingId(orderIndex);
+    setOrderPdfErrors((previous) => {
+      const next = { ...previous };
+      delete next[orderIndex];
+      return next;
+    });
+    try {
+      const blob = await apiRequestBlob(
+        `/customers/${encodeURIComponent(id)}/orders/${encodeURIComponent(orderIndex)}/pdf`,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [orderIndex]: e?.message || t('order_pdf_unavailable'),
+      }));
+    } finally {
+      setOrderPdfLoadingId('');
+    }
+  }, [id, t]);
 
   const handleBack = React.useCallback(() => {
     const fromCustomers = location.state?.fromCustomers;
@@ -1017,6 +1056,33 @@ export default function CustomerDetail() {
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.map((order, idx) => (
                   <Card key={`${order.id || idx}-order`} variant="outlined">
                     <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        {t('order_number_label')}: {' '}
+                        <Box
+                          component="button"
+                          type="button"
+                          onClick={(event) => openOrderPdf(event, order)}
+                          disabled={orderPdfLoadingId === String(order.id || '')}
+                          aria-label={t('open_order_pdf')}
+                          sx={{
+                            p: 0,
+                            border: 0,
+                            bgcolor: 'transparent',
+                            color: 'primary.main',
+                            textDecoration: 'underline',
+                            cursor: orderPdfLoadingId === String(order.id || '') ? 'wait' : 'pointer',
+                            font: 'inherit',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {order.orderNumber || order.id || '-'}
+                        </Box>
+                      </Typography>
+                      {orderPdfErrors[String(order.id || '')] && (
+                        <Typography variant="caption" sx={{ color: 'error.main' }}>
+                          {orderPdfErrors[String(order.id || '')]}
+                        </Typography>
+                      )}
                       <Typography variant="caption">{t('contact_label')}: {order.contact || '-'}</Typography>
                       <Typography variant="caption">{t('order_date_label')}: {formatDateOnly(order.orderDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
@@ -1086,7 +1152,7 @@ export default function CustomerDetail() {
             </Accordion>
 
             <Accordion expanded={docs.purchasedArticles.expanded} onChange={onToggleSection('purchasedArticles', purchasedArticlesEndpoint)}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
                   <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
                     {t('customer_docs_purchased_articles')}
@@ -1174,13 +1240,7 @@ export default function CustomerDetail() {
                             }}
                             sx={{ p: 0.25, color: 'text.secondary' }}
                           >
-                            <ChevronRightIcon
-                              fontSize="small"
-                              sx={{
-                                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                transition: 'transform 160ms ease',
-                              }}
-                            />
+                            <ExpandCollapseIndicator expanded={isExpanded} direction="right" />
                           </IconButton>
                           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
                             <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>
@@ -1314,13 +1374,7 @@ export default function CustomerDetail() {
                                       togglePurchasedHistoryGroup(groupKey);
                                     }}
                                   >
-                                    <ChevronRightIcon
-                                      fontSize="small"
-                                      sx={{
-                                        transform: isHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                        transition: 'transform 160ms ease',
-                                      }}
-                                    />
+                                    <ExpandCollapseIndicator expanded={isHistoryExpanded} direction="right" />
                                   </IconButton>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                                     {t('purchased_history_heading')}
@@ -1444,14 +1498,7 @@ export default function CustomerDetail() {
                               ))}
                             </TextField>
                           )}
-                          <ChevronRightIcon
-                            fontSize="small"
-                            sx={{
-                              color: 'text.secondary',
-                              transform: expandedRepresentatives[rep.key] ? 'rotate(270deg)' : 'rotate(90deg)',
-                              transition: 'transform 160ms ease',
-                            }}
-                          />
+                          <ExpandCollapseIndicator expanded={Boolean(expandedRepresentatives[rep.key])} />
                         </Box>
                         {expandedRepresentatives[rep.key] && (
                           <Box sx={{ mt: 1 }}>
@@ -1520,9 +1567,12 @@ export default function CustomerDetail() {
                       onClick={() => toggleActivity(activity.id)}
                     >
                       <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDateOnly(activity.noteDate)}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatDateOnly(activity.noteDate)}
+                          </Typography>
+                          <ExpandCollapseIndicator expanded={isExpanded} />
+                        </Box>
                         <Typography
                           variant="body2"
                           sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', fontSize: '0.85rem' }}

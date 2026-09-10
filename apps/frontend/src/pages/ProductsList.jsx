@@ -15,7 +15,6 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -25,6 +24,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
+import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -384,7 +384,7 @@ export default function ProductsList() {
                   onChange={(e, expanded) => setExpandedPlastics((prev) => ({ ...prev, [plastic]: expanded }))}
                 >
                   <AccordionSummary
-                    expandIcon={<ExpandMoreIcon />}
+                    expandIcon={<ExpandCollapseIndicator accordion />}
                     sx={{ minHeight: 44, minWidth: 0, '& .MuiAccordionSummary-content': { my: 0.5, minWidth: 0 } }}
                   >
                     <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -413,7 +413,7 @@ export default function ProductsList() {
                             }}
                           >
                             <AccordionSummary
-                              expandIcon={<ExpandMoreIcon />}
+                              expandIcon={<ExpandCollapseIndicator accordion />}
                               sx={{ minHeight: 40, minWidth: 0, '& .MuiAccordionSummary-content': { my: 0.5, minWidth: 0 } }}
                             >
                               <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>

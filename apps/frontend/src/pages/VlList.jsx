@@ -24,7 +24,6 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -39,6 +38,7 @@ import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
+import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import { formatMfiValue, sortVlItems, sortVlPositions } from '../utils/mfi.js';
 
 const PAGE_SIZE = 100;
@@ -863,7 +863,7 @@ export default function VlList() {
             }}
             sx={{ p: 0.25, color: 'text.secondary' }}
           >
-            <ChevronRightIcon fontSize="small" sx={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 160ms ease' }} />
+            <ExpandCollapseIndicator expanded={isExpanded} direction="right" />
           </IconButton>
           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
             <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>{group.name || '-'}</Typography>

@@ -47,6 +47,22 @@ const errorTexts = {
     de: 'Kunde nicht gefunden.',
     en: 'Customer not found.',
   },
+  ORDER_NOT_FOUND: {
+    de: 'Auftrag nicht gefunden.',
+    en: 'Order not found.',
+  },
+  INVALID_ORDER_ID: {
+    de: 'Ungueltige Auftrags-ID.',
+    en: 'Invalid order ID.',
+  },
+  ORDER_PDF_NOT_FOUND: {
+    de: 'Auftrags-PDF nicht gefunden.',
+    en: 'Order PDF not found.',
+  },
+  ORDER_PDF_STORAGE_NOT_CONFIGURED: {
+    de: 'Der Auftrags-PDF-Speicher ist nicht konfiguriert.',
+    en: 'The order PDF storage is not configured.',
+  },
   RESERVATION_NOT_FOUND: {
     de: 'Reservierung nicht gefunden.',
     en: 'Reservation not found.',

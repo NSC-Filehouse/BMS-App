@@ -65,3 +65,35 @@ export async function apiRequest(path, options = {}) {
 
   return json;
 }
+
+export async function apiRequestBlob(path, options = {}) {
+  const mandant = getMandant();
+  const headers = new Headers(options.headers || {});
+  if (mandant) headers.set('x-mandant', mandant);
+  const lang = getStoredLanguage();
+  if (lang) headers.set('x-lang', lang);
+
+  const url = `${API_BASE_URL}${path}`;
+  const res = await fetch(url, { ...options, headers });
+
+  if (isAuthInterruptionResponse(res)) {
+    redirectToAppStart();
+    const err = new Error('Authentication required. Please sign in again.');
+    err.status = res.status || 401;
+    err.code = 'AUTH_REQUIRED';
+    throw err;
+  }
+
+  if (!res.ok) {
+    const json = await parseJsonSafe(res);
+    const code = json?.error?.code || null;
+    const msg = json?.error?.message || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.code = code;
+    err.payload = json;
+    throw err;
+  }
+
+  return res.blob();
+}

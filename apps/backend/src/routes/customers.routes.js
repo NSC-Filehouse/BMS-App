@@ -20,6 +20,7 @@ const {
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { loadCustomerSalesRepresentatives } = require('../db/customer-sales-representatives');
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
+const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -817,6 +818,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   const sql = `
     SELECT
       [au_Auftragsindex] AS orderIndex,
+      [au_Auftragsnummer] AS orderNumber,
       [au_KontaktpersonAU] AS contact,
       [au_Zahltext] AS paymentTextId,
       [au_RGfaellig] AS dueDate,
@@ -870,9 +872,11 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
 
   const data = orders.map((row) => {
     const idx = toText(row.orderIndex);
+    const orderNumber = toText(row.orderNumber) || idx;
     const paymentId = Number(row.paymentTextId);
     return {
       id: idx || null,
+      orderNumber: orderNumber || null,
       contact: toText(row.contact),
       orderDate: row.orderDate || null,
       dueDate: row.dueDate || null,
@@ -893,6 +897,62 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
       year: dateFilter.year,
     },
     error: null,
+  });
+}));
+
+router.get('/customers/:id/orders/:orderIndex/pdf', requireMandant, asyncHandler(async (req, res, next) => {
+  const customerId = toText(req.params.id);
+  const orderIndex = toText(req.params.orderIndex);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  if (!orderIndex) {
+    throw createHttpError(400, 'Missing order id.', { code: 'INVALID_ORDER_ID' });
+  }
+
+  await requireVisibleCustomer(req, customerId);
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT TOP 1
+      [au_Auftragsindex] AS orderIndex,
+      [au_Auftragsnummer] AS orderNumber
+    FROM [dbo].[tblAuftrag]
+    WHERE COALESCE([au_KdNr], '') = ?
+      AND COALESCE([au_Auftragsindex], '') = ?
+  `, [customerId, orderIndex]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row) {
+    throw createHttpError(404, `Order not found: ${orderIndex}`, {
+      code: 'ORDER_NOT_FOUND',
+      id: orderIndex,
+    });
+  }
+
+  const orderNumber = toText(row.orderNumber) || toText(row.orderIndex) || orderIndex;
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Order PDF storage is not configured.', {
+      code: 'ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const pdf = await resolveLatestOrderPdf({
+    companyName: req.database?.name,
+    orderNumber,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
+      code: 'ORDER_PDF_NOT_FOUND',
+      orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
   });
 }));
 

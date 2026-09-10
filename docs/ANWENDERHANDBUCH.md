@@ -209,6 +209,7 @@ Der aufklappbare Bereich „Aufträge“ kann zwischen folgenden Umfängen wechs
 
 Pro Auftrag werden angezeigt:
 
+- Auftragsnummer; anklickbar zum Öffnen der neuesten verfügbaren AB-PDF;
 - Ansprechpartner;
 - Bestelldatum;
 - Fälligkeitsdatum;
