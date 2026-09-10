@@ -1532,7 +1532,14 @@ export default function TempOrderForm() {
                                   }}
                                   onBlur={(event) => saveArticleEdit(x, idx, event)}
                                   inputProps={{ 'aria-label': t('article_name_edit') }}
-                                  sx={{ flex: 1, minWidth: 0 }}
+                                  sx={{
+                                    flex: 1,
+                                    minWidth: 0,
+                                    '& .MuiInputBase-input': {
+                                      fontSize: '0.875rem',
+                                      fontWeight: 700,
+                                    },
+                                  }}
                                 />
                                 <IconButton
                                   size="small"
