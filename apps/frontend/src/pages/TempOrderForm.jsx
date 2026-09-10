@@ -379,7 +379,7 @@ export default function TempOrderForm() {
     const hit = paymentTextOptions.find((x) => Number(x.id) === idNum);
     return hit ? { id: idNum, text: String(hit.text || '') } : null;
   }, [paymentTextOptions]);
-  const loadCustomerPaymentDefault = React.useCallback(async (clientReferenceId, customer = null) => {
+  const loadCustomerPaymentDefault = React.useCallback(async (clientReferenceId, customer = null, fallback = null) => {
     const id = String(clientReferenceId || '').trim();
     if (!id) {
       setCustomerPaymentDefaultId('');
@@ -387,6 +387,8 @@ export default function TempOrderForm() {
       return { id: '', text: '' };
     }
 
+    const fallbackId = parsePaymentTextId(fallback?.id);
+    const fallbackText = String(fallback?.text || '').trim();
     let paymentTextId = parsePaymentTextId(customer?.kd_Zahltext);
     if (!paymentTextId) {
       try {
@@ -397,9 +399,13 @@ export default function TempOrderForm() {
         // refresh is temporarily unavailable. The payment list is retried below.
       }
     }
+    if (!paymentTextId) paymentTextId = fallbackId;
 
     const resolved = paymentTextId ? resolvePaymentTextById(paymentTextId) : null;
-    const next = { id: paymentTextId, text: resolved?.text || '' };
+    const next = {
+      id: paymentTextId,
+      text: resolved?.text || (paymentTextId === fallbackId ? fallbackText : ''),
+    };
     setCustomerPaymentDefaultId(next.id);
     setCustomerPaymentDefaultText(next.text);
     return next;
@@ -520,7 +526,13 @@ export default function TempOrderForm() {
             deliveryAddressId: d.deliveryAddressId === null || d.deliveryAddressId === undefined ? '' : String(d.deliveryAddressId),
             deliveryAddressManual: Boolean(d.deliveryAddressChanged),
           });
-          await loadCustomerPaymentDefault(d.clientReferenceId || '');
+          await loadCustomerPaymentDefault(
+            d.clientReferenceId || '',
+            null,
+            d.specialPaymentCondition
+              ? null
+              : { id: d.specialPaymentId, text: d.specialPaymentText },
+          );
           await loadDeliveryAddresses(d.clientReferenceId || '');
           await loadCustomerRepresentatives(d.clientReferenceId || '', d.clientRepresentative || '');
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
@@ -571,7 +583,13 @@ export default function TempOrderForm() {
             : String(copyOrder.deliveryAddressId),
           deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged),
         }));
-        await loadCustomerPaymentDefault(copyOrder?.clientReferenceId || '');
+        await loadCustomerPaymentDefault(
+          copyOrder?.clientReferenceId || '',
+          null,
+          copyOrder?.specialPaymentCondition
+            ? null
+            : { id: copyOrder?.specialPaymentId, text: copyOrder?.specialPaymentText },
+        );
         await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
         await loadCustomerRepresentatives(copyOrder?.clientReferenceId || '');
         setPositions(copyPositions.map((x, idx) => ({
@@ -718,6 +736,16 @@ export default function TempOrderForm() {
     paymentTextOptions,
     resolvePaymentTextById,
   ]);
+
+  const paymentTextOptionsWithSelection = React.useMemo(() => {
+    const options = Array.isArray(paymentTextOptions) ? paymentTextOptions : [];
+    const selectedId = parsePaymentTextId(form.specialPaymentId);
+    const selectedText = String(form.specialPaymentText || '').trim();
+    if (!selectedId || !selectedText || options.some((option) => Number(option?.id) === selectedId)) {
+      return options;
+    }
+    return [{ id: selectedId, text: selectedText }, ...options];
+  }, [form.specialPaymentId, form.specialPaymentText, paymentTextOptions]);
 
   React.useEffect(() => {
     let alive = true;
@@ -1366,7 +1394,7 @@ export default function TempOrderForm() {
                 value={form.specialPaymentId ?? ''}
                 onChange={(e) => {
                   const selectedId = Number(e.target.value);
-                  const selected = paymentTextOptions.find((z) => Number(z.id) === selectedId);
+                  const selected = paymentTextOptionsWithSelection.find((z) => Number(z.id) === selectedId);
                   setForm((p) => ({
                     ...p,
                     specialPaymentId: Number.isFinite(selectedId) ? selectedId : '',
@@ -1374,9 +1402,20 @@ export default function TempOrderForm() {
                   }));
                 }}
                 fullWidth
+                SelectProps={{
+                  onOpen: () => {
+                    if (paymentTextOptions.length > 0) return;
+                    void apiRequest('/temp-orders/payment-texts')
+                      .then((res) => {
+                        const options = Array.isArray(res?.data) ? res.data : [];
+                        if (options.length > 0) setPaymentTextOptions(options);
+                      })
+                      .catch(() => {});
+                  },
+                }}
               >
                 <MenuItem value="" disabled>{t('payment_select_placeholder')}</MenuItem>
-                {paymentTextOptions.map((z) => (
+                {paymentTextOptionsWithSelection.map((z) => (
                   <MenuItem key={z.id} value={z.id}>{z.text}</MenuItem>
                 ))}
               </TextField>

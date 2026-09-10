@@ -1478,6 +1478,7 @@ export default function CustomerDetail() {
                               select
                               size="small"
                               label={t('contact_ranking_label')}
+                              InputLabelProps={{ shrink: true }}
                               value={rep.ranking ?? ''}
                               disabled={contactRankingSavingId !== null}
                               onClick={(event) => event.stopPropagation()}
