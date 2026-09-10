@@ -827,6 +827,20 @@ export default function CustomerDetail() {
       setBatchCartAdding(true);
       setBatchCartError('');
       setBatchCartSuccess('');
+
+      // The customer detail is already the customer's context. Once an
+      // article is actually added to the cart, make that context official so
+      // the order flow uses the same customer as the purchased-article view.
+      const currentSelectedCustomer = getSelectedCustomer();
+      if (!currentSelectedCustomer || String(currentSelectedCustomer.id) !== String(id)) {
+        setSelectedCustomer({
+          id,
+          name,
+          address,
+          representative: salesRep,
+        });
+      }
+
       await addProductsToOrderCart(selectedPurchasedPositions.map((position) => ({
         ...position,
         id: position.productId || position.id,
@@ -844,7 +858,7 @@ export default function CustomerDetail() {
     } finally {
       setBatchCartAdding(false);
     }
-  }, [selectedPurchasedPositions, t]);
+  }, [address, id, name, salesRep, selectedPurchasedPositions, t]);
 
   React.useEffect(() => {
     setExpandedPurchasedArticleGroups({});
