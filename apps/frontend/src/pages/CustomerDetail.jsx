@@ -74,11 +74,21 @@ function buildAddress(row) {
 function normalizeSalesRepresentatives(item) {
   const fromApi = Array.isArray(item?.salesRepresentatives) ? item.salesRepresentatives : [];
   const normalizedApi = fromApi
-    .map((representative, index) => ({
-      key: `${String(representative?.shortCode || '').trim().toLowerCase()}-${index}`,
-      shortCode: String(representative?.shortCode || '').trim().toUpperCase(),
-      primary: Boolean(representative?.primary),
-    }))
+    .map((representative, index) => {
+      const mandants = Array.isArray(representative?.mandants)
+        ? representative.mandants
+          .map((mandant) => String(mandant?.shortCode || '').trim().toUpperCase())
+          .filter(Boolean)
+          .filter((shortCode, mandantIndex, shortCodes) => shortCodes.indexOf(shortCode) === mandantIndex)
+        : [];
+      const shortCode = String(representative?.shortCode || '').trim().toUpperCase();
+      return {
+        key: `${shortCode.toLowerCase()}-${index}`,
+        shortCode,
+        primary: Boolean(representative?.primary),
+        mandants,
+      };
+    })
     .filter((representative) => representative.shortCode)
     .sort((left, right) => Number(right.primary) - Number(left.primary));
 
@@ -86,8 +96,13 @@ function normalizeSalesRepresentatives(item) {
 
   const legacyPrimary = String(item?.kd_Aussendienst || '').trim().toUpperCase();
   return legacyPrimary
-    ? [{ key: `legacy-${legacyPrimary.toLowerCase()}`, shortCode: legacyPrimary, primary: true }]
+    ? [{ key: `legacy-${legacyPrimary.toLowerCase()}`, shortCode: legacyPrimary, primary: true, mandants: [] }]
     : [];
+}
+
+function formatSalesRepresentative(assignment) {
+  const mandants = Array.isArray(assignment?.mandants) ? assignment.mandants : [];
+  return `${assignment.shortCode}${mandants.length ? `(${mandants.join('/')})` : ''}`;
 }
 
 function normalizeRepresentatives(item) {
@@ -910,7 +925,7 @@ export default function CustomerDetail() {
                       component="button"
                       type="button"
                       onClick={() => openEmployeeDetail(assignment.shortCode)}
-                      aria-label={`${t('employee_detail_title')}: ${assignment.shortCode}`}
+                      aria-label={`${t('employee_detail_title')}: ${formatSalesRepresentative(assignment)}`}
                       sx={{
                         p: 0,
                         border: 0,
@@ -923,7 +938,7 @@ export default function CustomerDetail() {
                         textDecoration: 'underline',
                       }}
                     >
-                      {assignment.shortCode}
+                      {formatSalesRepresentative(assignment)}
                     </Box>
                   </React.Fragment>
                 ))}
