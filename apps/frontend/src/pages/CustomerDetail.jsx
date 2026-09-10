@@ -72,6 +72,14 @@ function buildAddress(row) {
   return [line1, line2, line3, line4].filter(Boolean).join('\n');
 }
 
+const HIDDEN_CUSTOMER_DETAIL_EMPLOYEE_SHORT_CODES = new Set(['AKI']);
+
+function isHiddenCustomerDetailEmployee(value) {
+  return HIDDEN_CUSTOMER_DETAIL_EMPLOYEE_SHORT_CODES.has(
+    String(value || '').trim().toUpperCase(),
+  );
+}
+
 function normalizeSalesRepresentatives(item) {
   const fromApi = Array.isArray(item?.salesRepresentatives) ? item.salesRepresentatives : [];
   const normalizedApi = fromApi
@@ -90,13 +98,17 @@ function normalizeSalesRepresentatives(item) {
         mandants,
       };
     })
-    .filter((representative) => representative.shortCode && representative.mandants.length > 0)
+    .filter((representative) => (
+      representative.shortCode
+      && !isHiddenCustomerDetailEmployee(representative.shortCode)
+      && representative.mandants.length > 0
+    ))
     .sort((left, right) => Number(right.primary) - Number(left.primary));
 
   if (normalizedApi.length) return normalizedApi;
 
   const legacyPrimary = String(item?.kd_Aussendienst || '').trim().toUpperCase();
-  return legacyPrimary
+  return legacyPrimary && !isHiddenCustomerDetailEmployee(legacyPrimary)
     ? [{ key: `legacy-${legacyPrimary.toLowerCase()}`, shortCode: legacyPrimary, primary: true, mandants: [] }]
     : [];
 }
@@ -914,7 +926,7 @@ export default function CustomerDetail() {
           <ArrowBackIcon />
         </IconButton>
         <Box sx={{ minWidth: 0 }}>
-          {!loading && !error && item && salesRepresentatives.length > 0 && (
+          {!loading && !error && item && (
             <Box
               sx={{
                 display: 'flex',
@@ -928,7 +940,7 @@ export default function CustomerDetail() {
                 {t('sales_rep_short_label')}
               </Typography>
               <Box sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.5 }}>
-                {salesRepresentatives.map((assignment, index) => (
+                {salesRepresentatives.length > 0 ? salesRepresentatives.map((assignment, index) => (
                   <React.Fragment key={assignment.key}>
                     {index > 0 && <Box component="span">, </Box>}
                     <Box
@@ -951,7 +963,11 @@ export default function CustomerDetail() {
                       {formatSalesRepresentative(assignment)}
                     </Box>
                   </React.Fragment>
-                ))}
+                )) : (
+                  <Box component="span" color="text.secondary">
+                    {t('sales_rep_none')}
+                  </Box>
+                )}
               </Box>
             </Box>
           )}
