@@ -66,6 +66,7 @@ function buildCartPayload(item, quantityKg, existing = null) {
     id,
     article: item?.article || existing?.article || '',
     beNumber: item?.beNumber || existing?.beNumber || '',
+    warehouse: item?.warehouse || existing?.warehouse || '',
     warehouseId: item?.storageId || item?.warehouseId || existing?.warehouseId || '',
     unit: item?.unit || existing?.unit || 'kg',
     availableAmount,

@@ -37,6 +37,7 @@ test('new positions use the available maximum and empty per-position inputs', ()
     id: 'product-1',
     article: 'Artikel 1',
     beNumber: 'BE-1',
+    warehouse: 'Lager Nord',
     storageId: 'L1',
     unit: 'kg',
     amount: 1200,
@@ -48,6 +49,8 @@ test('new positions use the available maximum and empty per-position inputs', ()
 
   const [item] = getOrderCartItems();
   assert.equal(item.quantityKg, 850);
+  assert.equal(item.warehouse, 'Lager Nord');
+  assert.equal(item.warehouseId, 'L1');
   assert.equal(item.salePrice, null);
   assert.equal(item.deliveryDate, tomorrow());
   assert.equal(item.wpzId, 17);

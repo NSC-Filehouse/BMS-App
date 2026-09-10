@@ -186,7 +186,7 @@ export default function OrderCart() {
                   </IconButton>
                 </Box>
                 <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                  {t('product_be_number')}: {row.beNumber || '-'} | {t('product_storage_id')}: {row.warehouseId || '-'}
+                  {t('product_be_number')}: {row.beNumber || '-'} | {t('product_warehouse')}: {row.warehouse || row.warehouseId || '-'}
                 </Typography>
                 <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_available_now')}: {row.availableAmount ?? '-'} {row.unit || 'kg'} | {t('product_price')}: {formatPrice(row.acquisitionPrice)}
