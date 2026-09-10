@@ -42,3 +42,23 @@ test('ignores blank TVF codes and handles an empty primary code', () => {
     { shortCode: 'DME', primary: false, mandants: [] },
   ]);
 });
+
+test('hides Elbpolymer and Just4Today from responsible mandants', () => {
+  assert.deepEqual(buildSalesRepresentativeList(' EPO ', [
+    { MandantID: 17, MandantKuerzel: 'J4T', MandantName: 'Just4Today', Aussendienst: 'EPO' },
+    { MandantID: 18, MandantKuerzel: 'EPO', MandantName: 'Elbpolymer', Aussendienst: 'TLA' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'EPO' },
+    { MandantID: 6, MandantKuerzel: 'CON', MandantName: 'MLConnect', Aussendienst: 'TLA' },
+  ], { MandantID: 18, MandantKuerzel: 'EPO', MandantName: 'Elbpolymer' }), [
+    {
+      shortCode: 'EPO',
+      primary: true,
+      mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
+    },
+    {
+      shortCode: 'TLA',
+      primary: false,
+      mandants: [{ id: 6, shortCode: 'CON', name: 'MLConnect' }],
+    },
+  ]);
+});

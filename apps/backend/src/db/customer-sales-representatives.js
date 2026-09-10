@@ -1,6 +1,10 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('./access');
 
+// These mandants must not appear as responsible mandants on the employee
+// detail reached from a customer. The AD assignment itself remains visible.
+const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([17, 18]);
+
 function normalizeShortCode(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -37,7 +41,7 @@ function buildSalesRepresentativeList(primaryShortCode, rows, primaryMandant = n
     }
 
     const normalizedMandant = normalizeMandant(mandant);
-    if (!normalizedMandant) return;
+    if (!normalizedMandant || HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(normalizedMandant.id)) return;
     const mandantKey = [
       normalizedMandant.id ?? '',
       normalizedMandant.shortCode.toLowerCase(),
