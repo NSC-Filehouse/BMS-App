@@ -5,12 +5,17 @@ import {
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import CallSplitOutlinedIcon from '@mui/icons-material/CallSplitOutlined';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
@@ -22,12 +27,14 @@ import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
   getOrderCartItems,
   removeOrderCartItem,
+  splitOrderCartItem,
   updateOrderCartQuantity,
   updateOrderCartDeliveryDate,
   updateOrderCartSalePrice,
   updateOrderCartArticle,
   updateOrderCartItem,
 } from '../utils/orderCart.js';
+import { calculatePositionSplit } from '../utils/positionSplit.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
@@ -42,6 +49,10 @@ function formatPrice(value) {
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 }
 
+function getCartLineId(item) {
+  return String(item?.lineId || item?.id || '');
+}
+
 export default function OrderCart() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,7 +65,12 @@ export default function OrderCart() {
   const [mandants, setMandants] = React.useState([]);
   const [editingArticleId, setEditingArticleId] = React.useState('');
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
+  const [splitLineId, setSplitLineId] = React.useState('');
+  const [splitKeptQuantity, setSplitKeptQuantity] = React.useState('');
+  const [splitError, setSplitError] = React.useState('');
   const activeMandant = getMandant();
+  const splitItem = items.find((item) => getCartLineId(item) === splitLineId) || null;
+  const splitPreview = calculatePositionSplit(splitItem?.quantityKg, splitKeptQuantity);
 
   React.useEffect(() => {
     let alive = true;
@@ -105,7 +121,7 @@ export default function OrderCart() {
 
   const beginArticleEdit = React.useCallback((row, event) => {
     event?.stopPropagation();
-    setEditingArticleId(String(row?.id || ''));
+    setEditingArticleId(getCartLineId(row));
     setEditingArticleValue(String(row?.article || '').trim());
   }, []);
 
@@ -122,11 +138,33 @@ export default function OrderCart() {
       setError(t('validation_article_name_required'));
       return;
     }
-    setItems(updateOrderCartArticle(row.id, nextArticle));
+    setItems(updateOrderCartArticle(getCartLineId(row), nextArticle));
     setError('');
     setEditingArticleId('');
     setEditingArticleValue('');
   }, [editingArticleValue, t]);
+
+  const openSplitDialog = React.useCallback((row) => {
+    setSplitLineId(getCartLineId(row));
+    setSplitKeptQuantity('');
+    setSplitError('');
+  }, []);
+
+  const closeSplitDialog = React.useCallback(() => {
+    setSplitLineId('');
+    setSplitKeptQuantity('');
+    setSplitError('');
+  }, []);
+
+  const confirmSplit = React.useCallback(() => {
+    const split = calculatePositionSplit(splitItem?.quantityKg, splitKeptQuantity);
+    if (!split.ok) {
+      setSplitError(t('position_split_minimum'));
+      return;
+    }
+    setItems(splitOrderCartItem(splitLineId, split.kept));
+    closeSplitDialog();
+  }, [closeSplitDialog, splitItem, splitKeptQuantity, splitLineId, t]);
 
   const validate = () => {
     const messages = [];
@@ -144,27 +182,49 @@ export default function OrderCart() {
       const qty = Number(x.quantityKg);
       if (!Number.isFinite(qty) || qty <= 0) {
         messages.push(t('validation_cart_quantity_positive'));
-        pushFieldError(x.id, 'quantityKg');
+        pushFieldError(getCartLineId(x), 'quantityKg');
         continue;
       }
-      const available = Number(x.availableAmount);
+      const hasAvailable = x.availableAmount !== null && x.availableAmount !== undefined && x.availableAmount !== '';
+      const available = hasAvailable ? Number(x.availableAmount) : Number.NaN;
       if (Number.isFinite(available) && qty > available) {
         messages.push(t('validation_cart_quantity_not_above_available'));
-        pushFieldError(x.id, 'quantityKg');
+        pushFieldError(getCartLineId(x), 'quantityKg');
       }
       const salePrice = Number(x.salePrice);
       if (!Number.isFinite(salePrice) || salePrice <= 0) {
         messages.push(t('validation_sale_price_positive'));
-        pushFieldError(x.id, 'salePrice');
+        pushFieldError(getCartLineId(x), 'salePrice');
       }
       if (!String(x.deliveryDate || '').trim()) {
         messages.push(t('validation_delivery_date_required'));
-        pushFieldError(x.id, 'deliveryDate');
+        pushFieldError(getCartLineId(x), 'deliveryDate');
       }
       const wpz = normalizeWpzFields(x);
       if (!String(wpz.wpzComment || '').trim()) {
         messages.push(t('validation_wpz_individual_required'));
-        pushFieldError(x.id, 'wpzComment');
+        pushFieldError(getCartLineId(x), 'wpzComment');
+      }
+    }
+
+    const totalsBySource = new Map();
+    for (const x of items) {
+      const sourceKey = `${String(x.beNumber || x.productId || x.id || '')}\u001f${String(x.warehouseId || '')}`;
+      const current = totalsBySource.get(sourceKey) || { items: [], total: 0, available: null };
+      const quantity = Number(x.quantityKg);
+      const hasAvailable = x.availableAmount !== null && x.availableAmount !== undefined && x.availableAmount !== '';
+      const available = hasAvailable ? Number(x.availableAmount) : Number.NaN;
+      current.items.push(x);
+      if (Number.isFinite(quantity)) current.total += quantity;
+      if (Number.isFinite(available)) {
+        current.available = current.available === null ? available : Math.min(current.available, available);
+      }
+      totalsBySource.set(sourceKey, current);
+    }
+    for (const group of totalsBySource.values()) {
+      if (group.available !== null && group.total > group.available) {
+        messages.push(t('validation_cart_quantity_not_above_available'));
+        group.items.forEach((item) => pushFieldError(getCartLineId(item), 'quantityKg'));
       }
     }
     return { messages, nextFieldErrors };
@@ -198,9 +258,10 @@ export default function OrderCart() {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}>
           {items.map((row) => {
             const foreignMandant = findForeignMandantName(row.beNumber, mandants, activeMandant);
-            const isEditingArticle = String(editingArticleId) === String(row.id);
+            const lineId = getCartLineId(row);
+            const isEditingArticle = String(editingArticleId) === lineId;
             return (
-            <Card key={row.id} sx={{ width: '100%', minWidth: 0 }}>
+            <Card key={lineId} sx={{ width: '100%', minWidth: 0 }}>
               <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -272,13 +333,23 @@ export default function OrderCart() {
                       </Typography>
                     )}
                   </Box>
-                  <IconButton
-                    aria-label={t('cart_remove')}
-                    color="error"
-                    onClick={() => setItems(removeOrderCartItem(row.id))}
-                  >
-                    <DeleteOutlineIcon />
-                  </IconButton>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                    <IconButton
+                      aria-label={t('position_split_title')}
+                      title={t('position_split_title')}
+                      disabled={Boolean(foreignMandant) || !calculatePositionSplit(row.quantityKg, 1).ok}
+                      onClick={() => openSplitDialog(row)}
+                    >
+                      <CallSplitOutlinedIcon />
+                    </IconButton>
+                    <IconButton
+                      aria-label={t('cart_remove')}
+                      color="error"
+                      onClick={() => setItems(removeOrderCartItem(lineId))}
+                    >
+                      <DeleteOutlineIcon />
+                    </IconButton>
+                  </Box>
                 </Box>
                 <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_be_number')}: {row.beNumber || '-'} | {t('product_warehouse')}: {row.warehouse || row.warehouseId || '-'}
@@ -287,14 +358,14 @@ export default function OrderCart() {
                   {t('product_available_now')}: {row.availableAmount ?? '-'} {row.unit || 'kg'} | {t('product_price')}: {formatPrice(row.acquisitionPrice)}
                 </Typography>
             {(() => {
-              const rowErr = fieldErrors[String(row.id || '')] || {};
+              const rowErr = fieldErrors[lineId] || {};
               return (
                 <>
                 <TextField
                   type="number"
                   label={t('cart_quantity')}
                   value={row.quantityKg}
-                  onChange={(e) => onQtyChange(row.id, e.target.value)}
+                  onChange={(e) => onQtyChange(lineId, e.target.value)}
                   inputProps={{ min: 1, max: Number.isFinite(Number(row.availableAmount)) ? Number(row.availableAmount) : undefined, step: 'any' }}
                   size="small"
                   required
@@ -305,7 +376,7 @@ export default function OrderCart() {
                   type="number"
                   label={t('order_sale_price')}
                   value={row.salePrice ?? ''}
-                  onChange={(e) => onSalePriceChange(row.id, e.target.value)}
+                  onChange={(e) => onSalePriceChange(lineId, e.target.value)}
                   inputProps={{ min: 0.01, step: 'any' }}
                   size="small"
                   required
@@ -318,7 +389,7 @@ export default function OrderCart() {
                     type="date"
                     label={t('delivery_date')}
                     value={row.deliveryDate || ''}
-                    onChange={(e) => onDeliveryDateChange(row.id, e.target.value)}
+                    onChange={(e) => onDeliveryDateChange(lineId, e.target.value)}
                     InputLabelProps={{ shrink: true }}
                     size="small"
                     required
@@ -331,7 +402,7 @@ export default function OrderCart() {
                   wpzId={row.wpzId}
                   wpzOriginal={row.wpzOriginal}
                   wpzComment={row.wpzComment}
-                  onChange={(patch) => setItems(updateOrderCartItem(row.id, patch))}
+                  onChange={(patch) => setItems(updateOrderCartItem(lineId, patch))}
                   error={Boolean(rowErr.wpzComment)}
                   helperText={t('validation_wpz_individual_required')}
                 />
@@ -359,7 +430,8 @@ export default function OrderCart() {
                 const sourceItems = items.map((x) => {
                   const wpz = normalizeWpzFields(x);
                   return {
-                    id: x.id,
+                    productId: x.productId || x.id,
+                    clientKey: x.lineId,
                     article: x.article,
                     beNumber: x.beNumber,
                     warehouseId: x.warehouseId,
@@ -397,6 +469,41 @@ export default function OrderCart() {
         onClose={() => setCustomerRequiredOpen(false)}
         onChoose={chooseCustomer}
       />
+      <Dialog open={Boolean(splitItem)} onClose={closeSplitDialog} fullWidth maxWidth="xs">
+        <DialogTitle>{t('position_split_title')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            fullWidth
+            type="number"
+            label={t('position_split_keep_amount')}
+            value={splitKeptQuantity}
+            onChange={(event) => {
+              setSplitKeptQuantity(event.target.value);
+              setSplitError('');
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                confirmSplit();
+              }
+            }}
+            inputProps={{ min: 1, max: Math.max(Number(splitItem?.quantityKg || 0) - 1, 1), step: 'any' }}
+            error={Boolean(splitError)}
+            helperText={splitError || t('position_split_minimum')}
+          />
+          {splitPreview.ok && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              {t('position_split_new_amount', { amount: splitPreview.remainder })}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeSplitDialog}>{t('back_label')}</Button>
+          <Button variant="contained" onClick={confirmSplit}>{t('position_split_action')}</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

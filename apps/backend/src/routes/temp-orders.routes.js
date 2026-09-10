@@ -1869,17 +1869,22 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       && asText(storedPositionCandidate.warehouseId) === warehouseId
       ? storedPositionCandidate
       : null;
+    const splitSourceCandidate = !storedPosition
+      ? storedPositionsById.get(Number(raw?.splitFromPositionId))
+      : null;
+    const splitSourcePosition = splitSourceCandidate
+      && asText(splitSourceCandidate.beNumber) === beNumber
+      && asText(splitSourceCandidate.warehouseId) === warehouseId
+      ? splitSourceCandidate
+      : null;
+    const snapshotPosition = storedPosition || splitSourcePosition;
     const articleName = resolveArticleName({
       requestedArticle: raw?.article,
       canonicalArticle: productContext.article,
-      storedArticle: storedPosition?.article,
-      storedOriginalArticle: storedPosition?.articleOriginal,
+      storedArticle: snapshotPosition?.article,
+      storedOriginalArticle: snapshotPosition?.articleOriginal,
     });
-    const storedOriginalPackagingType = storedPosition
-      && asText(storedPosition.beNumber) === beNumber
-      && asText(storedPosition.warehouseId) === warehouseId
-      ? asText(storedPosition.originalPackagingType)
-      : '';
+    const storedOriginalPackagingType = asText(snapshotPosition?.originalPackagingType);
     const originalPackagingType = storedOriginalPackagingType
       || await loadPackagingType(sourceDatabase, beNumber);
     if (!originalPackagingType) {
@@ -1915,8 +1920,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       packagingTypeChanged,
       createdBy: asText(storedPosition?.createdBy) || userShortCode,
       createdAt: storedPosition?.createdAt || null,
-      about: storedPosition ? asText(storedPosition.about) : asText(productContext.about),
-      mfi: storedPosition ? asText(storedPosition.mfi) : asText(productContext.mfi),
+      about: snapshotPosition ? asText(snapshotPosition.about) : asText(productContext.about),
+      mfi: snapshotPosition ? asText(snapshotPosition.mfi) : asText(productContext.mfi),
       productContext,
       sourceDatabase,
     });

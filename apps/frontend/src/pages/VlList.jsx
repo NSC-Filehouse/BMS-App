@@ -32,7 +32,7 @@ import { getSelectableMandants } from '../utils/mandantOptions.js';
 import {
   getOrderCartItems,
   ORDER_CART_CHANGED,
-  removeOrderCartItem,
+  removeOrderCartProduct,
 } from '../utils/orderCart.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
@@ -732,7 +732,7 @@ export default function VlList() {
     const vlReturnState = getVlReturnState();
     const itemId = getItemId(item);
     if (action === 'cart' && cartIds.has(itemId)) {
-      removeOrderCartItem(itemId);
+      removeOrderCartProduct(itemId);
       setCartItems(getOrderCartItems());
       setSelectedItems((previous) => previous.filter((entry) => getItemId(entry) !== itemId));
       setBatchCartSuccess('');

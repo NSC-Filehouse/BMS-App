@@ -1,5 +1,6 @@
 import { getMandant } from './mandant.js';
 import { nextWeekday } from './deliveryDate.js';
+import { splitPositionValues } from './positionSplit.js';
 
 export const ORDER_CART_CHANGED = 'bms-order-cart-changed';
 
@@ -12,7 +13,17 @@ function read() {
   try {
     const raw = localStorage.getItem(cartKey());
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map((item, index) => {
+      const productId = String(item?.productId || item?.id || '');
+      const lineId = String(item?.lineId || item?.id || `${productId || 'cart-line'}-${index}`);
+      return {
+        ...item,
+        id: productId,
+        productId,
+        lineId,
+      };
+    });
   } catch {
     return [];
   }
@@ -35,6 +46,19 @@ function normalizeDraftNumber(value) {
   return Number.isFinite(number) ? number : value;
 }
 
+function getProductId(item) {
+  return String(item?.productId || item?.id || '');
+}
+
+function matchesLine(item, lineId) {
+  return String(item?.lineId || item?.id || '') === String(lineId || '');
+}
+
+function createSplitLineId(productId) {
+  if (globalThis.crypto?.randomUUID) return `${productId || 'cart-line'}--split--${globalThis.crypto.randomUUID()}`;
+  return `${productId || 'cart-line'}--split--${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function getAvailableAmount(item, existing = null) {
   const hasBackendAvailableAmount = item?.availableAmount !== null
     && item?.availableAmount !== undefined
@@ -54,7 +78,7 @@ function getAvailableAmount(item, existing = null) {
 }
 
 function buildCartPayload(item, quantityKg, existing = null) {
-  const id = String(item?.id || '');
+  const id = getProductId(item) || getProductId(existing);
   const availableAmount = getAvailableAmount(item, existing);
   const wpzId = item?.wpzId !== undefined ? item.wpzId : (existing?.wpzId ?? null);
   const existingArticleChanged = Boolean(existing?.articleChanged);
@@ -74,6 +98,8 @@ function buildCartPayload(item, quantityKg, existing = null) {
       : !incomingDeliveryDate && !existingDeliveryDate;
   return {
     id,
+    productId: id,
+    lineId: String(item?.lineId || existing?.lineId || id),
     article,
     articleOriginal,
     articleChanged: existingArticleChanged || Boolean(item?.articleChanged),
@@ -112,16 +138,28 @@ export function clearOrderCart() {
   write([]);
 }
 
-export function removeOrderCartItem(productId) {
-  const next = read().filter((x) => String(x.id || '') !== String(productId || ''));
+export function removeOrderCartItem(lineId) {
+  const identifier = String(lineId || '');
+  const current = read();
+  const hasExactLine = current.some((item) => matchesLine(item, identifier));
+  const next = hasExactLine
+    ? current.filter((item) => !matchesLine(item, identifier))
+    : current.filter((item) => getProductId(item) !== identifier);
   write(next);
   return next;
 }
 
-export function updateOrderCartQuantity(productId, quantityKg) {
+export function removeOrderCartProduct(productId) {
+  const identifier = String(productId || '');
+  const next = read().filter((item) => getProductId(item) !== identifier);
+  write(next);
+  return next;
+}
+
+export function updateOrderCartQuantity(lineId, quantityKg) {
   const qty = normalizeDraftNumber(quantityKg);
   const next = read().map((x) => (
-    String(x.id || '') === String(productId || '')
+    matchesLine(x, lineId)
       ? { ...x, quantityKg: qty }
       : x
   ));
@@ -129,10 +167,10 @@ export function updateOrderCartQuantity(productId, quantityKg) {
   return next;
 }
 
-export function updateOrderCartSalePrice(productId, salePrice) {
+export function updateOrderCartSalePrice(lineId, salePrice) {
   const price = normalizeDraftNumber(salePrice);
   const next = read().map((x) => (
-    String(x.id || '') === String(productId || '')
+    matchesLine(x, lineId)
       ? { ...x, salePrice: price }
       : x
   ));
@@ -140,9 +178,9 @@ export function updateOrderCartSalePrice(productId, salePrice) {
   return next;
 }
 
-export function updateOrderCartDeliveryDate(productId, deliveryDate) {
+export function updateOrderCartDeliveryDate(lineId, deliveryDate) {
   const next = read().map((x) => (
-    String(x.id || '') === String(productId || '')
+    matchesLine(x, lineId)
       ? { ...x, deliveryDate: String(deliveryDate || '').trim(), deliveryDateAuto: false }
       : x
   ));
@@ -150,10 +188,10 @@ export function updateOrderCartDeliveryDate(productId, deliveryDate) {
   return next;
 }
 
-export function updateOrderCartArticle(productId, article) {
+export function updateOrderCartArticle(lineId, article) {
   const nextArticle = String(article || '').trim();
   const next = read().map((x) => {
-    if (String(x.id || '') !== String(productId || '')) return x;
+    if (!matchesLine(x, lineId)) return x;
     const originalArticle = String(x.articleOriginal || x.article || '').trim();
     const changed = Boolean(originalArticle) && nextArticle !== originalArticle;
     return {
@@ -167,13 +205,13 @@ export function updateOrderCartArticle(productId, article) {
   return next;
 }
 
-export function updateOrderCartItem(productId, patch) {
+export function updateOrderCartItem(lineId, patch) {
   const nextPatch = patch && Object.prototype.hasOwnProperty.call(patch, 'deliveryDate')
     && !Object.prototype.hasOwnProperty.call(patch, 'deliveryDateAuto')
     ? { ...patch, deliveryDateAuto: false }
     : patch;
   const next = read().map((x) => (
-    String(x.id || '') === String(productId || '')
+    matchesLine(x, lineId)
       ? { ...x, ...(nextPatch || {}) }
       : x
   ));
@@ -181,12 +219,32 @@ export function updateOrderCartItem(productId, patch) {
   return next;
 }
 
+export function splitOrderCartItem(lineId, keptQuantityKg) {
+  const current = read();
+  const index = current.findIndex((item) => matchesLine(item, lineId));
+  if (index < 0) return current;
+
+  const split = splitPositionValues(current[index], keptQuantityKg, 'quantityKg');
+  if (!split) return current;
+
+  const productId = getProductId(current[index]);
+  const remainderPosition = {
+    ...split.remainderPosition,
+    id: productId,
+    productId,
+    lineId: createSplitLineId(productId),
+  };
+  current.splice(index, 1, split.keptPosition, remainderPosition);
+  write(current);
+  return current;
+}
+
 export function addOrderCartItem(item, quantityKg) {
   const qty = Number(quantityKg);
   if (!item || !Number.isFinite(qty) || qty <= 0) return read();
   const current = read();
-  const id = String(item.id || '');
-  const idx = current.findIndex((x) => String(x.id || '') === id);
+  const id = getProductId(item);
+  const idx = current.findIndex((x) => getProductId(x) === id);
   const existing = idx >= 0 ? current[idx] : null;
   const payload = buildCartPayload(item, qty, existing);
   if (idx >= 0) {
@@ -201,29 +259,32 @@ export function addOrderCartItem(item, quantityKg) {
 
 export function addOrderCartItemsWithDefaults(items) {
   const current = read();
-  const indexById = new Map(current.map((item, index) => [String(item.id || ''), index]));
 
   for (const item of Array.isArray(items) ? items : []) {
-    const id = String(item?.id || '');
+    const id = getProductId(item);
     if (!id) continue;
-    const existingIndex = indexById.get(id);
-    if (existingIndex !== undefined) {
-      const existing = current[existingIndex];
-      current[existingIndex] = buildCartPayload({
-        ...item,
-        salePrice: existing.salePrice,
-        deliveryDate: existing.deliveryDate,
-        wpzId: item.wpzId !== undefined ? item.wpzId : (existing.wpzId ?? null),
-        wpzOriginal: existing.wpzOriginal ?? item.wpzOriginal,
-        wpzComment: existing.wpzComment || item.wpzComment,
-      }, existing.quantityKg, existing);
+    const existingIndexes = current
+      .map((existing, index) => (getProductId(existing) === id ? index : -1))
+      .filter((index) => index >= 0);
+    if (existingIndexes.length) {
+      for (const existingIndex of existingIndexes) {
+        const existing = current[existingIndex];
+        current[existingIndex] = buildCartPayload({
+          ...item,
+          lineId: existing.lineId,
+          salePrice: existing.salePrice,
+          deliveryDate: existing.deliveryDate,
+          wpzId: item.wpzId !== undefined ? item.wpzId : (existing.wpzId ?? null),
+          wpzOriginal: existing.wpzOriginal ?? item.wpzOriginal,
+          wpzComment: existing.wpzComment || item.wpzComment,
+        }, existing.quantityKg, existing);
+      }
       continue;
     }
 
     const availableAmount = getAvailableAmount(item);
     if (!Number.isFinite(availableAmount) || availableAmount <= 0) continue;
     current.push(buildCartPayload(item, availableAmount));
-    indexById.set(id, current.length - 1);
   }
 
   write(current);

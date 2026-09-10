@@ -3,6 +3,10 @@ import { beforeEach, test } from 'node:test';
 import {
   addOrderCartItemsWithDefaults,
   getOrderCartItems,
+  removeOrderCartItem,
+  removeOrderCartProduct,
+  splitOrderCartItem,
+  updateOrderCartDeliveryDate,
   updateOrderCartQuantity,
   updateOrderCartSalePrice,
   updateOrderCartArticle,
@@ -143,4 +147,76 @@ test('multiple new positions are stored with their individual maxima', () => {
     getOrderCartItems().map((item) => [item.id, item.quantityKg]),
     [['product-1', 100], ['product-2', 275]],
   );
+});
+
+test('split cart rows keep their source identity but can be edited independently', () => {
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'Artikel 1',
+    availableAmount: 1500,
+  }]);
+
+  let items = splitOrderCartItem('product-1', 500);
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.quantityKg), [500, 1000]);
+  assert.deepEqual(items.map((item) => item.productId), ['product-1', 'product-1']);
+  assert.notEqual(items[0].lineId, items[1].lineId);
+
+  items = updateOrderCartQuantity(items[1].lineId, 900);
+  assert.deepEqual(items.map((item) => item.quantityKg), [500, 900]);
+
+  items = updateOrderCartDeliveryDate(items[1].lineId, '2030-06-01');
+  assert.notEqual(items[0].deliveryDate, '2030-06-01');
+  assert.equal(items[1].deliveryDate, '2030-06-01');
+});
+
+test('a split remainder can be split repeatedly into three deliveries', () => {
+  addOrderCartItemsWithDefaults([{ id: 'product-1', availableAmount: 1500 }]);
+
+  let items = splitOrderCartItem('product-1', 500);
+  items = splitOrderCartItem(items[1].lineId, 400);
+
+  assert.deepEqual(items.map((item) => item.quantityKg), [500, 400, 600]);
+  assert.equal(new Set(items.map((item) => item.lineId)).size, 3);
+});
+
+test('re-adding a split product refreshes metadata without collapsing its rows', () => {
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'Artikel 1',
+    availableAmount: 1500,
+  }]);
+  splitOrderCartItem('product-1', 500);
+
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'Artikel 1 aktualisiert',
+    availableAmount: 1600,
+  }]);
+
+  const items = getOrderCartItems();
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.quantityKg), [500, 1000]);
+  assert.deepEqual(items.map((item) => item.availableAmount), [1600, 1600]);
+});
+
+test('a split row can be removed alone and the source product can remove all rows', () => {
+  addOrderCartItemsWithDefaults([{ id: 'product-1', availableAmount: 100 }]);
+  let items = splitOrderCartItem('product-1', 40);
+
+  items = removeOrderCartItem(items[1].lineId);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].quantityKg, 40);
+
+  splitOrderCartItem(items[0].lineId, 20);
+  items = removeOrderCartProduct('product-1');
+  assert.equal(items.length, 0);
+});
+
+test('invalid splits leave the cart unchanged', () => {
+  addOrderCartItemsWithDefaults([{ id: 'product-1', availableAmount: 10 }]);
+
+  assert.equal(splitOrderCartItem('product-1', 0).length, 1);
+  assert.equal(splitOrderCartItem('product-1', 10).length, 1);
+  assert.equal(getOrderCartItems()[0].quantityKg, 10);
 });
