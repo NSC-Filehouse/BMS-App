@@ -6,9 +6,9 @@ const { buildSalesRepresentativeList } = require('../src/db/customer-sales-repre
 test('puts the local main outside-sales code first and removes duplicate codes', () => {
   const result = buildSalesRepresentativeList(' bdo ', [
     { MandantID: 7, MandantKuerzel: 'CHG', MandantName: 'CHG', Aussendienst: 'TLA' },
-    { MandantID: 16, MandantKuerzel: 'CPD', MandantName: 'MLCompound', Aussendienst: 'BDO' },
-    { MandantID: 6, MandantKuerzel: 'CON', MandantName: 'MLConnect', Aussendienst: ' aki ' },
-    { MandantID: 6, MandantKuerzel: 'CON', MandantName: 'MLConnect', Aussendienst: 'AKI' },
+    { MandantID: 9, MandantKuerzel: 'FNO', MandantName: 'FrupackNordic', Aussendienst: 'BDO' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: ' aki ' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'AKI' },
     { Aussendienst: null },
   ], { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics' });
 
@@ -18,7 +18,7 @@ test('puts the local main outside-sales code first and removes duplicate codes',
       primary: true,
       mandants: [
         { id: 2, shortCode: 'PLA', name: 'MLPlastics' },
-        { id: 16, shortCode: 'CPD', name: 'MLCompound' },
+        { id: 9, shortCode: 'FNO', name: 'FrupackNordic' },
       ],
     },
     {
@@ -29,18 +29,16 @@ test('puts the local main outside-sales code first and removes duplicate codes',
     {
       shortCode: 'AKI',
       primary: false,
-      mandants: [{ id: 6, shortCode: 'CON', name: 'MLConnect' }],
+      mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
     },
   ]);
 });
 
-test('ignores blank TVF codes and handles an empty primary code', () => {
+test('ignores blank TVF codes and drops representatives without visible mandants', () => {
   assert.deepEqual(buildSalesRepresentativeList('', [
     { Aussendienst: ' ' },
     { aussendienst: 'DME' },
-  ]), [
-    { shortCode: 'DME', primary: false, mandants: [] },
-  ]);
+  ]), []);
 });
 
 test('hides Elbpolymer and Just4Today from responsible mandants', () => {
@@ -48,7 +46,7 @@ test('hides Elbpolymer and Just4Today from responsible mandants', () => {
     { MandantID: 17, MandantKuerzel: 'J4T', MandantName: 'Just4Today', Aussendienst: 'EPO' },
     { MandantID: 18, MandantKuerzel: 'EPO', MandantName: 'Elbpolymer', Aussendienst: 'TLA' },
     { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'EPO' },
-    { MandantID: 6, MandantKuerzel: 'CON', MandantName: 'MLConnect', Aussendienst: 'TLA' },
+    { MandantID: 7, MandantKuerzel: 'CHG', MandantName: 'CHG', Aussendienst: 'TLA' },
   ], { MandantID: 18, MandantKuerzel: 'EPO', MandantName: 'Elbpolymer' }), [
     {
       shortCode: 'EPO',
@@ -58,7 +56,7 @@ test('hides Elbpolymer and Just4Today from responsible mandants', () => {
     {
       shortCode: 'TLA',
       primary: false,
-      mandants: [{ id: 6, shortCode: 'CON', name: 'MLConnect' }],
+      mandants: [{ id: 7, shortCode: 'CHG', name: 'CHG' }],
     },
   ]);
 });
@@ -88,4 +86,18 @@ test('hides Test for other viewers but keeps it for MFR and NSC', () => {
       ],
     }]);
   }
+});
+
+test('hides every mandant from the configured customer-detail exclusion list', () => {
+  const rows = [0, 1, 6, 8, 13, 14, 15, 16, 17, 18].map((id) => ({
+    MandantID: id,
+    MandantKuerzel: `M${id}`,
+    MandantName: `Mandant ${id}`,
+    Aussendienst: 'EPO',
+  }));
+
+  assert.deepEqual(
+    buildSalesRepresentativeList('EPO', rows, rows[rows.length - 1], { shortCode: 'AKI' }),
+    [],
+  );
 });

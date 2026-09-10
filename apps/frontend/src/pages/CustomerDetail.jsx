@@ -90,7 +90,7 @@ function normalizeSalesRepresentatives(item) {
         mandants,
       };
     })
-    .filter((representative) => representative.shortCode)
+    .filter((representative) => representative.shortCode && representative.mandants.length > 0)
     .sort((left, right) => Number(right.primary) - Number(left.primary));
 
   if (normalizedApi.length) return normalizedApi;

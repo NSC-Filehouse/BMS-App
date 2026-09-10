@@ -1,9 +1,9 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('./access');
 
-// These mandants must not appear as responsible mandants on the employee
-// detail reached from a customer. The AD assignment itself remains visible.
-const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([17, 18]);
+// Keep this aligned with the current frontend mandant exclusion list. These
+// mandants must not appear in the customer-linked AD views.
+const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([0, 1, 6, 8, 13, 14, 15, 16, 17, 18]);
 const TEST_MANDANT_ID = 0;
 const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['MFR', 'NSC']);
 
@@ -30,8 +30,8 @@ function canViewTestMandant(identity) {
 }
 
 function isHiddenMandant(mandant, viewerIdentity) {
-  if (HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(mandant.id)) return true;
-  return mandant.id === TEST_MANDANT_ID && !canViewTestMandant(viewerIdentity);
+  if (mandant.id === TEST_MANDANT_ID) return !canViewTestMandant(viewerIdentity);
+  return HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(mandant.id);
 }
 
 function buildSalesRepresentativeList(
@@ -80,7 +80,7 @@ function buildSalesRepresentativeList(
     );
   }
 
-  return result;
+  return result.filter((representative) => representative.mandants.length > 0);
 }
 
 async function loadCustomerSalesRepresentatives(database, customerId, primaryShortCode, viewerIdentity = null) {
