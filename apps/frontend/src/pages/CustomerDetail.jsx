@@ -38,6 +38,7 @@ import {
   getSelectedCustomer,
   setSelectedCustomer,
 } from '../utils/customerSelection.js';
+import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
@@ -435,7 +436,16 @@ export default function CustomerDetail() {
         setContactRankingError('');
         const res = await apiRequest(`/customers/${encodeURIComponent(id)}?includeActivities=0`);
         if (!alive) return;
-        setItem(res?.data || null);
+        const customer = res?.data || null;
+        setItem(customer);
+        if (customer) {
+          recordRecentCustomer({
+            id: customer.kd_KdNR || id,
+            name: getCustomerName(customer),
+            address: buildAddress(customer),
+            representative: customer.kd_Aussendienst || '',
+          });
+        }
       } catch (e) {
         if (!alive) return;
         setError(e?.message || t('loading_error'));

@@ -23,7 +23,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
+import {
+  CUSTOMER_SELECTION_CHANGED,
+  getSelectedCustomer,
+  setSelectedCustomer,
+} from '../utils/customerSelection.js';
+import {
+  getRecentCustomers,
+  RECENT_CUSTOMERS_CHANGED,
+} from '../utils/recentCustomers.js';
 
 function getCustomerName(row) {
   const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
@@ -42,6 +50,15 @@ function buildAddress(row) {
   const ort = row?.kd_Ort ? String(row.kd_Ort).trim() : '';
   const lk = row?.kd_LK ? String(row.kd_LK).trim() : '';
   return [street, [plz, ort].filter(Boolean).join(' '), lk].filter(Boolean).join(', ');
+}
+
+function recentCustomerToRow(customer) {
+  return {
+    kd_KdNR: customer.id,
+    kd_Name1: customer.name,
+    kd_Strasse: customer.address,
+    kd_Aussendienst: customer.representative,
+  };
 }
 
 export default function CustomersList() {
@@ -98,6 +115,7 @@ export default function CustomersList() {
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
+  const isRecentMode = searchField === 'recent';
 
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
@@ -108,6 +126,10 @@ export default function CustomersList() {
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? true;
     const includeInactiveVal = opts.includeInactive ?? includeInactiveRef.current ?? false;
+    const recentMode = searchFieldVal === 'recent';
+    const recentRows = recentMode
+      ? getRecentCustomers().map(recentCustomerToRow)
+      : null;
     const useOrderQuantity = !reminderOnlyVal && orderQuantityVal;
     const sortVal = useOrderQuantity ? 'orderCountLast2Years' : 'kd_Name1';
     const dirVal = useOrderQuantity ? 'DESC' : 'ASC';
@@ -116,7 +138,12 @@ export default function CustomersList() {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
+        recentMode
+          ? Promise.resolve({
+            data: recentRows,
+            meta: { page: 1, pageSize, total: recentRows.length },
+          })
+          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
@@ -138,6 +165,26 @@ export default function CustomersList() {
       setLoading(false);
     }
   }, []);
+
+  React.useEffect(() => {
+    const syncSelectedCustomer = () => setSelectedCustomerState(getSelectedCustomer());
+    const syncRecentCustomers = () => {
+      if (searchFieldRef.current === 'recent') {
+        load({ page: 1, q: '', searchField: 'recent', reminderOnly: false, orderQuantity: false, includeInactive: false });
+      }
+    };
+
+    window.addEventListener(CUSTOMER_SELECTION_CHANGED, syncSelectedCustomer);
+    window.addEventListener(RECENT_CUSTOMERS_CHANGED, syncRecentCustomers);
+    window.addEventListener('storage', syncSelectedCustomer);
+    window.addEventListener('storage', syncRecentCustomers);
+    return () => {
+      window.removeEventListener(CUSTOMER_SELECTION_CHANGED, syncSelectedCustomer);
+      window.removeEventListener(RECENT_CUSTOMERS_CHANGED, syncRecentCustomers);
+      window.removeEventListener('storage', syncSelectedCustomer);
+      window.removeEventListener('storage', syncRecentCustomers);
+    };
+  }, [load]);
 
   React.useEffect(() => {
     const focusSelected = Boolean(location.state?.focusSelected);
@@ -214,7 +261,7 @@ export default function CustomersList() {
         skipSearchReloadRef.current = false;
         return;
       }
-      if (qVal.length === 0 || qVal.length >= SEARCH_MIN) {
+      if (searchField === 'recent' || qVal.length === 0 || qVal.length >= SEARCH_MIN) {
         load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, includeInactive });
       }
     }, 300);
@@ -232,8 +279,19 @@ export default function CustomersList() {
     const afterSelect = location.state?.afterSelect;
     if (afterSelect?.to) {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
+      return;
     }
-  }, [location.state, navigate]);
+
+    load({
+      page: searchFieldRef.current === 'recent' ? 1 : (metaRef.current.page || 1),
+      q: searchFieldRef.current === 'recent' ? '' : qRef.current,
+      searchField: searchFieldRef.current,
+      reminderOnly: searchFieldRef.current === 'recent' ? false : reminderOnlyRef.current,
+      orderQuantity: orderQuantityRef.current,
+      includeInactive: includeInactiveRef.current,
+      focusCustomerId: next?.id,
+    });
+  }, [load, location.state, navigate]);
 
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -241,27 +299,29 @@ export default function CustomersList() {
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {reminderOnly ? t('customers_reminders_title') : t('customers_title')}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <IconButton
-            aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, includeInactive })}
-            disabled={(meta.page || 1) <= 1}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
-            {t('page_label')} {meta.page || 1}/{totalPages || '?'}
-          </Typography>
-          <IconButton
-            aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, includeInactive })}
-            disabled={meta.total !== null && meta.total !== undefined
-              ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
-              : false}
-          >
-            <ArrowForwardIcon />
-          </IconButton>
-        </Box>
+        {!isRecentMode && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              aria-label="zurueck"
+              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, includeInactive })}
+              disabled={(meta.page || 1) <= 1}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>
+              {t('page_label')} {meta.page || 1}/{totalPages || '?'}
+            </Typography>
+            <IconButton
+              aria-label="weiter"
+              onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, includeInactive })}
+              disabled={meta.total !== null && meta.total !== undefined
+                ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
+                : false}
+            >
+              <ArrowForwardIcon />
+            </IconButton>
+          </Box>
+        )}
       </Box>
 
       <Card sx={{ mb: 2 }}>
@@ -269,8 +329,11 @@ export default function CustomersList() {
           <TextField
             fullWidth
             size="small"
-            placeholder={searchField === 'article' ? t('customers_search_articles') : t('customers_search')}
+            placeholder={isRecentMode
+              ? t('customers_search_mode_recent')
+              : searchField === 'article' ? t('customers_search_articles') : t('customers_search')}
             value={q}
+            disabled={isRecentMode}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
               startAdornment: (
@@ -286,6 +349,10 @@ export default function CustomersList() {
             onChange={(e) => {
               const nextField = e.target.value;
               setSearchField(nextField);
+              if (nextField === 'recent') {
+                setQ('');
+                setReminderOnly(false);
+              }
               if (nextField === 'sales' && ownShortCode) {
                 setQ(ownShortCode);
               }
@@ -296,7 +363,7 @@ export default function CustomersList() {
               gap: 0,
               justifyContent: 'space-between',
               '& .MuiFormControlLabel-root': {
-                flex: { xs: '1 1 50%', md: '1 1 20%' },
+                flex: { xs: '1 1 50%', md: '1 1 16.6667%' },
                 margin: 0,
                 minWidth: 0,
               },
@@ -331,8 +398,13 @@ export default function CustomersList() {
               control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
               label={t('customers_search_mode_article')}
             />
+            <FormControlLabel
+              value="recent"
+              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+              label={t('customers_search_mode_recent')}
+            />
           </RadioGroup>
-          {!reminderOnly && (
+          {!reminderOnly && !isRecentMode && (
             <Box
               sx={{
                 width: '100%',
@@ -391,7 +463,9 @@ export default function CustomersList() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {!loading && !error && items.length === 0 && (
-        <Typography sx={{ opacity: 0.7 }}>{t('customers_empty')}</Typography>
+        <Typography sx={{ opacity: 0.7 }}>
+          {isRecentMode ? t('customers_recent_empty') : t('customers_empty')}
+        </Typography>
       )}
 
       {!loading && !error && items.length > 0 && (
