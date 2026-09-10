@@ -2,8 +2,10 @@ const config = require('../config');
 const { runSQLQuerySqlServer } = require('./access');
 
 // Keep this aligned with the current frontend mandant exclusion list. These
-// mandants must not appear in the customer-linked AD views.
+// mandants and employee codes must not appear in the customer-linked
+// employee views.
 const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([0, 1, 6, 8, 13, 14, 15, 16, 17, 18]);
+const HIDDEN_CUSTOMER_DETAIL_EMPLOYEE_SHORT_CODES = new Set(['AKI']);
 const TEST_MANDANT_ID = 0;
 const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['MFR', 'NSC']);
 
@@ -29,6 +31,10 @@ function canViewTestMandant(identity) {
   return TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode);
 }
 
+function isHiddenCustomerDetailEmployee(value) {
+  return HIDDEN_CUSTOMER_DETAIL_EMPLOYEE_SHORT_CODES.has(normalizeShortCode(value));
+}
+
 function isHiddenMandant(mandant, viewerIdentity) {
   if (mandant.id === TEST_MANDANT_ID) return !canViewTestMandant(viewerIdentity);
   return HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(mandant.id);
@@ -46,7 +52,7 @@ function buildSalesRepresentativeList(
   const add = (value, primary = false, mandant = null) => {
     const shortCode = normalizeShortCode(value);
     const key = shortCode.toLowerCase();
-    if (!key) return;
+    if (!key || isHiddenCustomerDetailEmployee(shortCode)) return;
 
     let representative = byShortCode.get(key);
     if (!representative) {
@@ -113,6 +119,7 @@ async function loadCustomerSalesRepresentatives(database, customerId, primarySho
 
 module.exports = {
   buildSalesRepresentativeList,
+  isHiddenCustomerDetailEmployee,
   loadCustomerSalesRepresentatives,
   normalizeShortCode,
 };

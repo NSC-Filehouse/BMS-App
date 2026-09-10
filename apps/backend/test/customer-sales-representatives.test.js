@@ -1,14 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildSalesRepresentativeList } = require('../src/db/customer-sales-representatives');
+const {
+  buildSalesRepresentativeList,
+  isHiddenCustomerDetailEmployee,
+} = require('../src/db/customer-sales-representatives');
 
 test('puts the local main outside-sales code first and removes duplicate codes', () => {
   const result = buildSalesRepresentativeList(' bdo ', [
     { MandantID: 7, MandantKuerzel: 'CHG', MandantName: 'CHG', Aussendienst: 'TLA' },
     { MandantID: 9, MandantKuerzel: 'FNO', MandantName: 'FrupackNordic', Aussendienst: 'BDO' },
-    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: ' aki ' },
-    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'AKI' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: ' DME ' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'DME' },
     { Aussendienst: null },
   ], { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics' });
 
@@ -27,7 +30,7 @@ test('puts the local main outside-sales code first and removes duplicate codes',
       mandants: [{ id: 7, shortCode: 'CHG', name: 'CHG' }],
     },
     {
-      shortCode: 'AKI',
+      shortCode: 'DME',
       primary: false,
       mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
     },
@@ -100,4 +103,20 @@ test('hides every mandant from the configured customer-detail exclusion list', (
     buildSalesRepresentativeList('EPO', rows, rows[rows.length - 1], { shortCode: 'AKI' }),
     [],
   );
+});
+
+test('never lists AKI as a customer-detail employee', () => {
+  assert.equal(isHiddenCustomerDetailEmployee('aki'), true);
+  assert.equal(isHiddenCustomerDetailEmployee(' AKI '), true);
+
+  assert.deepEqual(buildSalesRepresentativeList('AKI', [
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'AKI' },
+    { MandantID: 7, MandantKuerzel: 'CHG', MandantName: 'CHG', Aussendienst: 'DME' },
+  ], { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics' }), [
+    {
+      shortCode: 'DME',
+      primary: false,
+      mandants: [{ id: 7, shortCode: 'CHG', name: 'CHG' }],
+    },
+  ]);
 });

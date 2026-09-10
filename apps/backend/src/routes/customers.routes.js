@@ -18,7 +18,10 @@ const {
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
-const { loadCustomerSalesRepresentatives } = require('../db/customer-sales-representatives');
+const {
+  isHiddenCustomerDetailEmployee,
+  loadCustomerSalesRepresentatives,
+} = require('../db/customer-sales-representatives');
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
 
@@ -691,13 +694,21 @@ router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHan
   const id = toText(req.params.id);
   const shortCode = toText(req.params.shortCode);
   const customer = await requireVisibleCustomer(req, id);
+  const normalizedCode = shortCode.toLowerCase();
+  if (isHiddenCustomerDetailEmployee(shortCode)) {
+    throw createHttpError(404, `Representative not assigned to customer: ${shortCode}`, {
+      code: 'REPRESENTATIVE_NOT_ASSIGNED',
+      id,
+      shortCode,
+    });
+  }
+
   const salesRepresentatives = await loadCustomerSalesRepresentatives(
     req.database,
     id,
     customer.kd_Aussendienst,
     req.userIdentity,
   );
-  const normalizedCode = shortCode.toLowerCase();
   const roles = [];
   const assignedSalesRepresentative = salesRepresentatives.find((representative) => (
     representative.shortCode.toLowerCase() === normalizedCode
