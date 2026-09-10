@@ -34,6 +34,58 @@ function write(items) {
   }
 }
 
+function normalizeDraftNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return '';
+  const number = Number(value);
+  return Number.isFinite(number) ? number : value;
+}
+
+function getAvailableAmount(item, existing = null) {
+  const hasBackendAvailableAmount = item?.availableAmount !== null
+    && item?.availableAmount !== undefined
+    && item?.availableAmount !== '';
+  const backendAvailableAmount = hasBackendAvailableAmount ? Number(item.availableAmount) : Number.NaN;
+  const hasAmount = item?.amount !== null && item?.amount !== undefined && item?.amount !== '';
+  const calculatedAvailableAmount = hasAmount
+    ? Number(item.amount) - Number(item.reserved || 0)
+    : Number.NaN;
+  if (Number.isFinite(backendAvailableAmount)) return Math.max(backendAvailableAmount, 0);
+  if (Number.isFinite(calculatedAvailableAmount)) return Math.max(calculatedAvailableAmount, 0);
+  const hasExistingAvailableAmount = existing?.availableAmount !== null
+    && existing?.availableAmount !== undefined
+    && existing?.availableAmount !== '';
+  const existingAvailableAmount = hasExistingAvailableAmount ? Number(existing.availableAmount) : Number.NaN;
+  return Number.isFinite(existingAvailableAmount) ? Math.max(existingAvailableAmount, 0) : null;
+}
+
+function buildCartPayload(item, quantityKg, existing = null) {
+  const id = String(item?.id || '');
+  const availableAmount = getAvailableAmount(item, existing);
+  const wpzId = item?.wpzId !== undefined ? item.wpzId : (existing?.wpzId ?? null);
+  return {
+    id,
+    article: item?.article || existing?.article || '',
+    beNumber: item?.beNumber || existing?.beNumber || '',
+    warehouseId: item?.storageId || item?.warehouseId || existing?.warehouseId || '',
+    unit: item?.unit || existing?.unit || 'kg',
+    availableAmount,
+    amountTotal: item?.amount ?? existing?.amountTotal ?? null,
+    acquisitionPrice: item?.acquisitionPrice ?? existing?.acquisitionPrice ?? null,
+    // A sales price must be entered explicitly; never use the acquisition price as VK.
+    salePrice: item?.salePrice ?? existing?.salePrice ?? null,
+    deliveryDate: item?.deliveryDate || existing?.deliveryDate || tomorrow(),
+    quantityKg,
+    wpzId,
+    wpzOriginal: item?.wpzOriginal !== undefined
+      ? item.wpzOriginal
+      : (existing?.wpzOriginal ?? (wpzId ? true : null)),
+    wpzComment: item?.wpzComment !== undefined
+      ? item.wpzComment
+      : (existing?.wpzComment || 'Original verwenden'),
+    originalPackagingType: item?.originalPackagingType ?? existing?.originalPackagingType ?? '',
+  };
+}
+
 export function getOrderCartItems() {
   return read();
 }
@@ -53,10 +105,10 @@ export function removeOrderCartItem(productId) {
 }
 
 export function updateOrderCartQuantity(productId, quantityKg) {
-  const qty = Number(quantityKg);
+  const qty = normalizeDraftNumber(quantityKg);
   const next = read().map((x) => (
     String(x.id || '') === String(productId || '')
-      ? { ...x, quantityKg: Number.isFinite(qty) ? qty : x.quantityKg }
+      ? { ...x, quantityKg: qty }
       : x
   ));
   write(next);
@@ -64,10 +116,10 @@ export function updateOrderCartQuantity(productId, quantityKg) {
 }
 
 export function updateOrderCartSalePrice(productId, salePrice) {
-  const price = Number(salePrice);
+  const price = normalizeDraftNumber(salePrice);
   const next = read().map((x) => (
     String(x.id || '') === String(productId || '')
-      ? { ...x, salePrice: Number.isFinite(price) ? price : x.salePrice }
+      ? { ...x, salePrice: price }
       : x
   ));
   write(next);
@@ -101,34 +153,7 @@ export function addOrderCartItem(item, quantityKg) {
   const id = String(item.id || '');
   const idx = current.findIndex((x) => String(x.id || '') === id);
   const existing = idx >= 0 ? current[idx] : null;
-  const hasBackendAvailableAmount = item.availableAmount !== null && item.availableAmount !== undefined && item.availableAmount !== '';
-  const backendAvailableAmount = hasBackendAvailableAmount ? Number(item.availableAmount) : Number.NaN;
-  const hasAmount = item.amount !== null && item.amount !== undefined && item.amount !== '';
-  const calculatedAvailableAmount = hasAmount
-    ? Number(item.amount) - Number(item.reserved || 0)
-    : Number.NaN;
-  const payload = {
-    id,
-    article: item.article || existing?.article || '',
-    beNumber: item.beNumber || existing?.beNumber || '',
-    warehouseId: item.storageId || item.warehouseId || existing?.warehouseId || '',
-    unit: item.unit || existing?.unit || 'kg',
-    availableAmount: Number.isFinite(backendAvailableAmount)
-      ? Math.max(backendAvailableAmount, 0)
-      : (Number.isFinite(calculatedAvailableAmount)
-        ? Math.max(calculatedAvailableAmount, 0)
-        : (existing?.availableAmount ?? null)),
-    amountTotal: item.amount ?? existing?.amountTotal ?? null,
-    acquisitionPrice: item.acquisitionPrice ?? existing?.acquisitionPrice ?? null,
-    // A sales price must be entered explicitly; never use the acquisition price as VK.
-    salePrice: item.salePrice ?? existing?.salePrice ?? null,
-    deliveryDate: item.deliveryDate || existing?.deliveryDate || tomorrow(),
-    quantityKg: qty,
-    wpzId: item.wpzId !== undefined ? item.wpzId : (existing?.wpzId ?? null),
-    wpzOriginal: item.wpzOriginal !== undefined ? item.wpzOriginal : (existing?.wpzOriginal ?? null),
-    wpzComment: item.wpzComment !== undefined ? item.wpzComment : (existing?.wpzComment || ''),
-    originalPackagingType: item.originalPackagingType ?? existing?.originalPackagingType ?? '',
-  };
+  const payload = buildCartPayload(item, qty, existing);
   if (idx >= 0) {
     current[idx] = payload;
     write(current);
@@ -137,4 +162,35 @@ export function addOrderCartItem(item, quantityKg) {
   const next = [...current, payload];
   write(next);
   return next;
+}
+
+export function addOrderCartItemsWithDefaults(items) {
+  const current = read();
+  const indexById = new Map(current.map((item, index) => [String(item.id || ''), index]));
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const id = String(item?.id || '');
+    if (!id) continue;
+    const existingIndex = indexById.get(id);
+    if (existingIndex !== undefined) {
+      const existing = current[existingIndex];
+      current[existingIndex] = buildCartPayload({
+        ...item,
+        salePrice: existing.salePrice,
+        deliveryDate: existing.deliveryDate,
+        wpzId: item.wpzId !== undefined ? item.wpzId : (existing.wpzId ?? null),
+        wpzOriginal: existing.wpzOriginal ?? item.wpzOriginal,
+        wpzComment: existing.wpzComment || item.wpzComment,
+      }, existing.quantityKg, existing);
+      continue;
+    }
+
+    const availableAmount = getAvailableAmount(item);
+    if (!Number.isFinite(availableAmount) || availableAmount <= 0) continue;
+    current.push(buildCartPayload(item, availableAmount));
+    indexById.set(id, current.length - 1);
+  }
+
+  write(current);
+  return current;
 }

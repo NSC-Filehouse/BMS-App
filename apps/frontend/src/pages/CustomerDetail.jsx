@@ -40,9 +40,7 @@ import {
   getSelectedCustomer,
   setSelectedCustomer,
 } from '../utils/customerSelection.js';
-import { addOrderCartItem } from '../utils/orderCart.js';
-import WpzCommentField from '../components/WpzCommentField.jsx';
-import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import {
   MAP_PROVIDER_APPLE,
@@ -143,12 +141,6 @@ function getAvailableAmount(position) {
 
 function getPositionLabel(count, t) {
   return Number(count) === 1 ? t('position_singular') : t('position_plural');
-}
-
-function tomorrow() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 function formatEuro(value) {
@@ -389,16 +381,9 @@ export default function CustomerDetail() {
   const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
   const [expandedPurchasedHistoryGroups, setExpandedPurchasedHistoryGroups] = React.useState({});
   const [selectedPurchasedPositionIds, setSelectedPurchasedPositionIds] = React.useState([]);
-  const [batchCartOpen, setBatchCartOpen] = React.useState(false);
   const [batchCartError, setBatchCartError] = React.useState('');
   const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
-  const [batchCartSalePrice, setBatchCartSalePrice] = React.useState('');
-  const [batchCartDeliveryDate, setBatchCartDeliveryDate] = React.useState(tomorrow);
-  const [batchCartQuantities, setBatchCartQuantities] = React.useState({});
-  const [batchCartWpzIds, setBatchCartWpzIds] = React.useState({});
-  const [batchCartWpzLoading, setBatchCartWpzLoading] = React.useState(false);
-  const [batchCartWpzOriginal, setBatchCartWpzOriginal] = React.useState(true);
-  const [batchCartWpzComment, setBatchCartWpzComment] = React.useState('Original verwenden');
+  const [batchCartAdding, setBatchCartAdding] = React.useState(false);
   const [docs, setDocs] = React.useState({
     offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
     orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
@@ -769,96 +754,31 @@ export default function CustomerDetail() {
     setBatchCartSuccess('');
   }, []);
 
-  const openBatchCartDialog = React.useCallback(async () => {
+  const addSelectedPositionsToCart = React.useCallback(async () => {
     if (!selectedPurchasedPositions.length) return;
-
-    const quantities = {};
-    selectedPurchasedPositions.forEach((position) => {
-      const available = getAvailableAmount(position);
-      quantities[position.id || position.productId] = available;
-    });
-    setBatchCartQuantities(quantities);
-    setBatchCartSalePrice('');
-    setBatchCartDeliveryDate(tomorrow());
-    setBatchCartWpzOriginal(true);
-    setBatchCartWpzComment('Original verwenden');
-    setBatchCartError('');
-    setBatchCartSuccess('');
-    setBatchCartWpzIds({});
-    setBatchCartOpen(true);
-    setBatchCartWpzLoading(true);
-
-    const wpzEntries = await Promise.all(selectedPurchasedPositions.map(async (position) => {
-      const key = position.id || position.productId;
-      try {
-        const response = await apiRequest(`/products/${encodeURIComponent(position.productId || position.id)}/wpz`);
-        const wpzId = Number(response?.data?.wpzId);
-        return [key, Number.isFinite(wpzId) && wpzId > 0 ? wpzId : null];
-      } catch {
-        return [key, null];
-      }
-    }));
-    setBatchCartWpzIds(Object.fromEntries(wpzEntries));
-    setBatchCartWpzLoading(false);
-  }, [selectedPurchasedPositions]);
-
-  const addSelectedPositionsToCart = React.useCallback(() => {
-    if (!selectedPurchasedPositions.length) return;
-
-    const salePrice = Number(batchCartSalePrice);
-    if (!Number.isFinite(salePrice) || salePrice <= 0) {
-      setBatchCartError(t('validation_sale_price_positive'));
-      return;
-    }
-    if (!String(batchCartDeliveryDate || '').trim()) {
-      setBatchCartError(t('validation_delivery_date_required'));
-      return;
-    }
-    if (batchCartWpzLoading) {
-      setBatchCartError(t('purchased_batch_waiting_for_wpz'));
-      return;
-    }
-
-    for (const position of selectedPurchasedPositions) {
-      const key = position.id || position.productId;
-      const quantity = Number(batchCartQuantities[key]);
-      const available = getAvailableAmount(position);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        setBatchCartError(`${position.article || position.beNumber}: ${t('validation_cart_quantity_positive')}`);
-        return;
-      }
-      if (quantity > available) {
-        setBatchCartError(`${position.article || position.beNumber}: ${t('validation_cart_quantity_not_above_available')}`);
-        return;
-      }
-    }
-
     const selectedCount = selectedPurchasedPositions.length;
-    selectedPurchasedPositions.forEach((position) => {
-      const key = position.id || position.productId;
-      const wpzId = batchCartWpzIds[key] || null;
-      addOrderCartItem({
+    try {
+      setBatchCartAdding(true);
+      setBatchCartError('');
+      setBatchCartSuccess('');
+      await addProductsToOrderCart(selectedPurchasedPositions.map((position) => ({
         ...position,
         id: position.productId || position.id,
         storageId: position.warehouseId,
-        salePrice,
-        deliveryDate: batchCartDeliveryDate,
-        wpzId,
-        wpzOriginal: wpzId ? batchCartWpzOriginal : null,
-        wpzComment: batchCartWpzComment || '',
-      }, Number(batchCartQuantities[key]));
-    });
-
-    setSelectedPurchasedPositionIds((previous) => previous.filter(
-      (idValue) => !selectedPurchasedPositions.some((position) => (position.id || position.productId) === idValue),
-    ));
-    setBatchCartOpen(false);
-    setBatchCartError('');
-    setBatchCartSuccess(t('purchased_batch_success', {
-      count: selectedCount,
-      positionLabel: getPositionLabel(selectedCount, t),
-    }));
-  }, [batchCartDeliveryDate, batchCartQuantities, batchCartSalePrice, batchCartWpzComment, batchCartWpzIds, batchCartWpzLoading, batchCartWpzOriginal, selectedPurchasedPositions, t]);
+      })));
+      setSelectedPurchasedPositionIds((previous) => previous.filter(
+        (idValue) => !selectedPurchasedPositions.some((position) => (position.id || position.productId) === idValue),
+      ));
+      setBatchCartSuccess(t('purchased_batch_success', {
+        count: selectedCount,
+        positionLabel: getPositionLabel(selectedCount, t),
+      }));
+    } catch (e) {
+      setBatchCartError(e?.message || t('loading_error'));
+    } finally {
+      setBatchCartAdding(false);
+    }
+  }, [selectedPurchasedPositions, t]);
 
   React.useEffect(() => {
     setExpandedPurchasedArticleGroups({});
@@ -1159,6 +1079,7 @@ export default function CustomerDetail() {
                     {batchCartSuccess}
                   </Typography>
                 )}
+                {batchCartError && <Alert severity="error">{batchCartError}</Alert>}
                 {selectedPurchasedPositionCount > 0 && (
                   <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
@@ -1279,10 +1200,10 @@ export default function CustomerDetail() {
                                       color="primary"
                                       aria-label={t('purchased_batch_add_selected')}
                                       title={t('purchased_batch_add_selected')}
-                                      disabled={selectedPurchasedPositionCount === 0}
+                                      disabled={selectedPurchasedPositionCount === 0 || batchCartAdding}
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        openBatchCartDialog();
+                                        void addSelectedPositionsToCart();
                                       }}
                                     >
                                       <ShoppingCartIcon fontSize="small" />
@@ -1559,96 +1480,6 @@ export default function CustomerDetail() {
           </CardContent>
         </Card>
       )}
-
-      <Dialog open={batchCartOpen} onClose={() => setBatchCartOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>
-          {t('purchased_batch_title', {
-            count: selectedPurchasedPositionCount,
-            positionLabel: getPositionLabel(selectedPurchasedPositionCount, t),
-          })}
-        </DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
-          {batchCartError && <Alert severity="error">{batchCartError}</Alert>}
-          <TextField
-            type="number"
-            label={t('purchased_batch_global_price')}
-            value={batchCartSalePrice}
-            onChange={(event) => setBatchCartSalePrice(event.target.value)}
-            inputProps={{ min: 0.01, step: 'any' }}
-            fullWidth
-            required
-          />
-          <TextField
-            type="date"
-            label={t('purchased_batch_global_date')}
-            value={batchCartDeliveryDate}
-            onChange={(event) => setBatchCartDeliveryDate(event.target.value)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
-            required
-          />
-          {batchCartWpzLoading && <CircularProgress size={20} />}
-          {!batchCartWpzLoading && Object.values(batchCartWpzIds).some(Boolean) && (
-            <WpzCommentField
-              wpzId={Object.values(batchCartWpzIds).find(Boolean) || null}
-              wpzOriginal={batchCartWpzOriginal}
-              wpzComment={batchCartWpzComment}
-              onChange={({ wpzOriginal, wpzComment }) => {
-                setBatchCartWpzOriginal(wpzOriginal);
-                setBatchCartWpzComment(wpzComment);
-              }}
-            />
-          )}
-          {!batchCartWpzLoading && !Object.values(batchCartWpzIds).some(Boolean) && (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {t('purchased_batch_wpz_none')}
-            </Typography>
-          )}
-          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.25 }}>
-            {t('purchased_batch_quantity_hint')}
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 0.75 }}>
-            {selectedPurchasedPositions.map((position) => {
-              const positionId = position.id || position.productId;
-              const availableAmount = getAvailableAmount(position);
-              return (
-                <Card key={positionId} variant="outlined">
-                  <CardContent sx={{ display: 'grid', gap: 0.75, py: '8px !important', px: '10px !important' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
-                      {position.article || '-'}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                      {`${position.warehouse || position.warehouseId || '-'} · ${t('product_be_number')}: ${position.beNumber || '-'} · ${t('product_available_now')}: ${formatQuantity(availableAmount)} ${position.unit || 'kg'}`}
-                    </Typography>
-                    <TextField
-                      type="number"
-                      label={t('purchased_batch_quantity')}
-                      value={batchCartQuantities[positionId] ?? ''}
-                      onChange={(event) => setBatchCartQuantities((previous) => ({
-                        ...previous,
-                        [positionId]: event.target.value,
-                      }))}
-                      inputProps={{ min: 1, max: availableAmount, step: 'any' }}
-                      size="small"
-                      fullWidth
-                    />
-                    <SaleMarginHint
-                      salePrice={batchCartSalePrice}
-                      costPrice={position.acquisitionPrice}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBatchCartOpen(false)}>{t('back_label')}</Button>
-          <Button variant="contained" onClick={addSelectedPositionsToCart} disabled={batchCartWpzLoading}>
-            {t('purchased_batch_add_selected')}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={mapChoiceOpen} onClose={() => setMapChoiceOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>{t('navigation_choose_title')}</DialogTitle>

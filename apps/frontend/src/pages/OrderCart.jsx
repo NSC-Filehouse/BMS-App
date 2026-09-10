@@ -84,25 +84,11 @@ export default function OrderCart() {
   }, [location.state, navigate, pendingSourceItems]);
 
   const onQtyChange = (id, value) => {
-    const qty = Number(value);
-    if (Number.isFinite(qty) && qty > 0) {
-      setItems(updateOrderCartQuantity(id, qty));
-    } else {
-      setItems((prev) => prev.map((x) => (
-        String(x.id) === String(id) ? { ...x, quantityKg: value } : x
-      )));
-    }
+    setItems(updateOrderCartQuantity(id, value));
   };
 
   const onSalePriceChange = (id, value) => {
-    const price = Number(value);
-    if (Number.isFinite(price) && price > 0) {
-      setItems(updateOrderCartSalePrice(id, price));
-    } else {
-      setItems((prev) => prev.map((x) => (
-        String(x.id) === String(id) ? { ...x, salePrice: value } : x
-      )));
-    }
+    setItems(updateOrderCartSalePrice(id, value));
   };
 
   const onDeliveryDateChange = (id, value) => {
@@ -214,7 +200,7 @@ export default function OrderCart() {
                   label={t('cart_quantity')}
                   value={row.quantityKg}
                   onChange={(e) => onQtyChange(row.id, e.target.value)}
-                  inputProps={{ min: 1, step: 'any' }}
+                  inputProps={{ min: 1, max: Number.isFinite(Number(row.availableAmount)) ? Number(row.availableAmount) : undefined, step: 'any' }}
                   size="small"
                   required
                   error={Boolean(rowErr.quantityKg)}

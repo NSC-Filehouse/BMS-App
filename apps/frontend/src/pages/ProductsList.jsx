@@ -9,10 +9,6 @@ import {
   Card,
   CardContent,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   InputAdornment,
   TextField,
@@ -26,7 +22,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem } from '../utils/orderCart.js';
+import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
@@ -168,9 +164,6 @@ export default function ProductsList() {
   const [searchResults, setSearchResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
-  const [addDialogOpen, setAddDialogOpen] = React.useState(false);
-  const [addItem, setAddItem] = React.useState(null);
-  const [addQty, setAddQty] = React.useState('');
   const [addError, setAddError] = React.useState('');
   const [addSuccess, setAddSuccess] = React.useState('');
   const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
@@ -179,13 +172,19 @@ export default function ProductsList() {
   const qRef = React.useRef(q);
   React.useEffect(() => { qRef.current = q; }, [q]);
 
-  const openAddDialog = React.useCallback((product) => {
-    setAddItem(product);
-    const available = getAvailableAmount(product);
-    setAddQty(Number.isFinite(available) ? String(available) : '');
-    setAddError('');
-    setAddDialogOpen(true);
-  }, []);
+  const addProductToCart = React.useCallback(async (product) => {
+    if (getAvailableAmount(product) <= 0) {
+      setAddError(t('validation_cart_quantity_positive'));
+      return;
+    }
+    try {
+      setAddError('');
+      await addProductsToOrderCart([product]);
+      setAddSuccess(t('cart_added'));
+    } catch (e) {
+      setAddError(e?.message || t('loading_error'));
+    }
+  }, [t]);
 
   const requestAddToCart = React.useCallback((product) => {
     if (!getSelectedCustomer()?.id) {
@@ -193,8 +192,8 @@ export default function ProductsList() {
       setCustomerRequiredOpen(true);
       return;
     }
-    openAddDialog(product);
-  }, [openAddDialog]);
+    void addProductToCart(product);
+  }, [addProductToCart]);
 
   const chooseCustomer = React.useCallback(() => {
     if (!pendingCustomerAction) return;
@@ -219,8 +218,8 @@ export default function ProductsList() {
       replace: true,
       state: Object.keys(nextState).length ? nextState : null,
     });
-    openAddDialog(pending.product);
-  }, [location.pathname, location.state, navigate, openAddDialog]);
+    void addProductToCart(pending.product);
+  }, [addProductToCart, location.pathname, location.state, navigate]);
 
   const loadCategories = React.useCallback(async (query) => {
     try {
@@ -345,6 +344,7 @@ export default function ProductsList() {
         )}
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {addError && <Alert severity="error" sx={{ mb: 2 }}>{addError}</Alert>}
         {addSuccess && <Alert severity="success" sx={{ mb: 2 }}>{addSuccess}</Alert>}
 
         {!loading && !error && q.trim().length === 0 && categories.length === 0 && (
@@ -460,48 +460,6 @@ export default function ProductsList() {
           </Box>
         )}
       </Box>
-
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{t('cart_add')}</DialogTitle>
-        <DialogContent>
-          {addError && <Alert severity="error" sx={{ mb: 1 }}>{addError}</Alert>}
-          <Typography variant="body2" sx={{ mb: 1 }}>{addItem?.article || '-'}</Typography>
-          <TextField
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('cart_quantity')}
-            value={addQty}
-            onChange={(e) => setAddQty(e.target.value)}
-            inputProps={{ min: 1, step: 'any' }}
-            helperText={addItem ? `${t('product_available_now')}: ${getAvailableAmount(addItem)} ${addItem.unit || ''}` : ''}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setAddError(''); setAddDialogOpen(false); }}>{t('back_label')}</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              const qty = Number(addQty);
-              const available = getAvailableAmount(addItem);
-              if (!Number.isFinite(qty) || qty <= 0) {
-                setAddError(t('validation_cart_quantity_positive'));
-                return;
-              }
-              if (qty > available) {
-                setAddError(t('validation_cart_quantity_not_above_available'));
-                return;
-              }
-              setAddError('');
-              addOrderCartItem(addItem, qty);
-              setAddDialogOpen(false);
-              setAddSuccess(t('cart_added'));
-            }}
-          >
-            {t('cart_add')}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <CustomerRequiredDialog
         open={customerRequiredOpen}

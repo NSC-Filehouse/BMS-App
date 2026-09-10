@@ -20,11 +20,9 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { addOrderCartItem } from '../utils/orderCart.js';
+import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
-import WpzCommentField from '../components/WpzCommentField.jsx';
-import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 
 function formatPrice(value) {
@@ -100,14 +98,9 @@ export default function ProductDetail() {
   const [reserveSuccess, setReserveSuccess] = React.useState('');
   const [reserveInfo, setReserveInfo] = React.useState('');
   const [reserveError, setReserveError] = React.useState('');
-  const [cartOpen, setCartOpen] = React.useState(false);
   const [cartError, setCartError] = React.useState('');
-  const [cartWpzError, setCartWpzError] = React.useState(false);
-  const [cartQty, setCartQty] = React.useState('');
-  const [cartSalePrice, setCartSalePrice] = React.useState('');
-  const [cartWpzOriginal, setCartWpzOriginal] = React.useState(true);
-  const [cartWpzComment, setCartWpzComment] = React.useState('Original verwenden');
   const [cartSuccess, setCartSuccess] = React.useState('');
+  const [cartAdding, setCartAdding] = React.useState(false);
   const [wpzExists, setWpzExists] = React.useState(false);
   const [wpzId, setWpzId] = React.useState(null);
   const [wpzLoading, setWpzLoading] = React.useState(false);
@@ -149,16 +142,27 @@ export default function ProductDetail() {
     setReserveOpen(true);
   }, [isAlreadyReserved, reservedBy, t]);
 
-  const openCartDialog = React.useCallback(() => {
-    setError('');
-    setCartQty(availableAmount !== null ? String(availableAmount) : '');
-    setCartSalePrice('');
-    setCartWpzOriginal(true);
-    setCartWpzComment('Original verwenden');
-    setCartError('');
-    setCartWpzError(false);
-    setCartOpen(true);
-  }, [availableAmount]);
+  const addProductToCart = React.useCallback(async () => {
+    if (!item || !Number.isFinite(availableAmount) || availableAmount <= 0) {
+      setCartError(t('validation_cart_quantity_positive'));
+      return;
+    }
+    try {
+      setCartAdding(true);
+      setCartError('');
+      await addProductsToOrderCart([{
+        ...item,
+        wpzId,
+        wpzOriginal: wpzId ? true : null,
+        wpzComment: 'Original verwenden',
+      }], { vlMandantId });
+      setCartSuccess(t('cart_added'));
+    } catch (e) {
+      setCartError(e?.message || t('loading_error'));
+    } finally {
+      setCartAdding(false);
+    }
+  }, [availableAmount, item, t, vlMandantId, wpzId]);
 
   const requestProductAction = React.useCallback((action) => {
     if (!getSelectedCustomer()?.id) {
@@ -170,9 +174,9 @@ export default function ProductDetail() {
     if (action === 'reserve') {
       openReserveDialog();
     } else if (action === 'cart') {
-      openCartDialog();
+      void addProductToCart();
     }
-  }, [openCartDialog, openReserveDialog, sourceCustomer]);
+  }, [addProductToCart, openReserveDialog, sourceCustomer]);
 
   const chooseContextCustomer = React.useCallback(() => {
     const selected = setSelectedCustomer(sourceCustomer);
@@ -184,9 +188,9 @@ export default function ProductDetail() {
     if (action === 'reserve') {
       openReserveDialog();
     } else if (action === 'cart') {
-      openCartDialog();
+      void addProductToCart();
     }
-  }, [openCartDialog, openReserveDialog, pendingCustomerAction, sourceCustomer]);
+  }, [addProductToCart, openReserveDialog, pendingCustomerAction, sourceCustomer]);
 
   const chooseCustomer = React.useCallback(() => {
     if (!pendingCustomerAction) return;
@@ -265,9 +269,9 @@ export default function ProductDetail() {
     if (action === 'reserve') {
       openReserveDialog();
     } else if (action === 'cart') {
-      openCartDialog();
+      void addProductToCart();
     }
-  }, [item, location.pathname, location.state, navigate, openCartDialog, openReserveDialog]);
+  }, [addProductToCart, item, location.pathname, location.state, navigate, openReserveDialog]);
 
   const handleBack = React.useCallback(() => {
     const fromVl = Boolean(location.state?.fromVl);
@@ -307,7 +311,8 @@ export default function ProductDetail() {
         </Box>
       )}
 
-      {error && !cartOpen && <Alert severity="error">{error}</Alert>}
+      {error && <Alert severity="error">{error}</Alert>}
+      {cartError && <Alert severity="error" sx={{ mb: 2 }}>{cartError}</Alert>}
       {reserveInfo && <Alert severity="warning" sx={{ mb: 2 }}>{reserveInfo}</Alert>}
       {reserveSuccess && <Alert severity="success" sx={{ mb: 2 }}>{reserveSuccess}</Alert>}
       {cartSuccess && <Alert severity="success" sx={{ mb: 2 }}>{cartSuccess}</Alert>}
@@ -349,6 +354,7 @@ export default function ProductDetail() {
                   fullWidth
                   startIcon={<ShoppingCartIcon />}
                   sx={{ mb: 2 }}
+                  disabled={cartAdding || !Number.isFinite(availableAmount) || availableAmount <= 0}
                   onClick={() => requestProductAction('cart')}
                 >
                   {t('cart_add')}
@@ -502,88 +508,6 @@ export default function ProductDetail() {
             }}
           >
             {t('product_reserve_submit')}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={cartOpen} onClose={() => setCartOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{t('cart_add')}</DialogTitle>
-        <DialogContent>
-          {cartError && <Alert severity="error" sx={{ mb: 1 }}>{cartError}</Alert>}
-          <TextField
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('cart_quantity')}
-            value={cartQty}
-            onChange={(e) => setCartQty(e.target.value)}
-            inputProps={{ min: 1, step: 'any' }}
-            helperText={availableAmount !== null ? `${t('product_available_now')}: ${availableAmount} ${item?.unit || ''}` : ''}
-          />
-          <TextField
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('order_sale_price')}
-            value={cartSalePrice}
-            onChange={(e) => setCartSalePrice(e.target.value)}
-            inputProps={{ min: 0.01, step: 'any' }}
-          />
-          <SaleMarginHint
-            salePrice={cartSalePrice}
-            costPrice={item?.acquisitionPrice}
-          />
-          <WpzCommentField
-            wpzId={wpzExists ? wpzId : null}
-            wpzOriginal={cartWpzOriginal}
-            wpzComment={cartWpzComment}
-            onChange={({ wpzOriginal, wpzComment }) => {
-              setCartWpzOriginal(wpzOriginal);
-              setCartWpzComment(wpzComment);
-              setCartWpzError(false);
-            }}
-            error={cartWpzError}
-            helperText={t('validation_wpz_individual_required')}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCartOpen(false)}>{t('back_label')}</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              const qty = Number(cartQty);
-              const salePrice = Number(cartSalePrice);
-              setCartWpzError(false);
-              if (!Number.isFinite(qty) || qty <= 0) {
-                setCartError(t('validation_cart_quantity_positive'));
-                return;
-              }
-              if (availableAmount !== null && qty > availableAmount) {
-                setCartError(t('validation_cart_quantity_not_above_available'));
-                return;
-              }
-              if (!Number.isFinite(salePrice) || salePrice <= 0) {
-                setCartError(t('validation_sale_price_positive'));
-                return;
-              }
-              if (wpzExists && !String(cartWpzComment || '').trim()) {
-                setCartWpzError(true);
-                setCartError(t('validation_wpz_individual_required'));
-                return;
-              }
-              setCartError('');
-              addOrderCartItem({
-                ...item,
-                salePrice,
-                wpzId,
-                wpzOriginal: wpzExists ? cartWpzOriginal : null,
-                wpzComment: cartWpzComment || '',
-              }, qty);
-              setCartOpen(false);
-              setCartSuccess(t('cart_added'));
-            }}
-          >
-            {t('cart_add')}
           </Button>
         </DialogActions>
       </Dialog>
