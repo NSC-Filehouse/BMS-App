@@ -3,8 +3,10 @@ function ensureNoTrailingSlash(p) {
   return p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
-export const APP_BASE_PATH = ensureNoTrailingSlash(import.meta.env.VITE_APP_BASE_PATH || '/bms-app');
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${APP_BASE_PATH}/api`;
+const runtimeEnv = import.meta.env || {};
+
+export const APP_BASE_PATH = ensureNoTrailingSlash(runtimeEnv.VITE_APP_BASE_PATH || '/bms-app');
+export const API_BASE_URL = runtimeEnv.VITE_API_BASE_URL || `${APP_BASE_PATH}/api`;
 
 function parseIntegerList(value) {
   return new Set(
@@ -17,7 +19,7 @@ function parseIntegerList(value) {
   );
 }
 
-export const MANDANT_EXCLUDE_IDS = parseIntegerList(import.meta.env.VITE_MANDANT_EXCLUDE_IDS);
+export const MANDANT_EXCLUDE_IDS = parseIntegerList(runtimeEnv.VITE_MANDANT_EXCLUDE_IDS);
 
 export const RESOURCES = {
   customers: { key: 'customers', label: 'Kunden', pk: 'kd_KdNR' },

@@ -27,9 +27,9 @@ export function getSelectableMandants(items, user = null) {
 
   return (Array.isArray(items) ? items : [])
     .map(normalizeMandantOption)
-    .filter((item) => item.name && (
-      item.id === null
-      || !MANDANT_EXCLUDE_IDS.has(item.id)
-      || (item.id === TEST_MANDANT_ID && canSelectTestMandant)
-    ));
+    .filter((item) => {
+      if (!item.name) return false;
+      if (item.id === TEST_MANDANT_ID) return canSelectTestMandant;
+      return item.id === null || !MANDANT_EXCLUDE_IDS.has(item.id);
+    });
 }

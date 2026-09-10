@@ -62,3 +62,30 @@ test('hides Elbpolymer and Just4Today from responsible mandants', () => {
     },
   ]);
 });
+
+test('hides Test for other viewers but keeps it for MFR and NSC', () => {
+  const rows = [
+    { MandantID: 0, MandantKuerzel: 'TES', MandantName: 'Test', Aussendienst: 'EPO' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'EPO' },
+  ];
+  const primaryMandant = { MandantID: 0, MandantKuerzel: 'TES', MandantName: 'Test' };
+
+  const hiddenForOtherViewer = buildSalesRepresentativeList('EPO', rows, primaryMandant, { shortCode: 'AKI' });
+  assert.deepEqual(hiddenForOtherViewer, [{
+    shortCode: 'EPO',
+    primary: true,
+    mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
+  }]);
+
+  for (const shortCode of ['MFR', 'NSC']) {
+    const visibleForException = buildSalesRepresentativeList('EPO', rows, primaryMandant, { shortCode });
+    assert.deepEqual(visibleForException, [{
+      shortCode: 'EPO',
+      primary: true,
+      mandants: [
+        { id: 0, shortCode: 'TES', name: 'Test' },
+        { id: 2, shortCode: 'PLA', name: 'MLPlastics' },
+      ],
+    }]);
+  }
+});

@@ -4,6 +4,8 @@ const { runSQLQuerySqlServer } = require('./access');
 // These mandants must not appear as responsible mandants on the employee
 // detail reached from a customer. The AD assignment itself remains visible.
 const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([17, 18]);
+const TEST_MANDANT_ID = 0;
+const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['MFR', 'NSC']);
 
 function normalizeShortCode(value) {
   return String(value || '').trim().toUpperCase();
@@ -22,7 +24,22 @@ function normalizeMandant(row) {
   };
 }
 
-function buildSalesRepresentativeList(primaryShortCode, rows, primaryMandant = null) {
+function canViewTestMandant(identity) {
+  const shortCode = normalizeShortCode(identity?.shortCode ?? identity);
+  return TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode);
+}
+
+function isHiddenMandant(mandant, viewerIdentity) {
+  if (HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(mandant.id)) return true;
+  return mandant.id === TEST_MANDANT_ID && !canViewTestMandant(viewerIdentity);
+}
+
+function buildSalesRepresentativeList(
+  primaryShortCode,
+  rows,
+  primaryMandant = null,
+  viewerIdentity = null,
+) {
   const result = [];
   const byShortCode = new Map();
 
@@ -41,7 +58,7 @@ function buildSalesRepresentativeList(primaryShortCode, rows, primaryMandant = n
     }
 
     const normalizedMandant = normalizeMandant(mandant);
-    if (!normalizedMandant || HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(normalizedMandant.id)) return;
+    if (!normalizedMandant || isHiddenMandant(normalizedMandant, viewerIdentity)) return;
     const mandantKey = [
       normalizedMandant.id ?? '',
       normalizedMandant.shortCode.toLowerCase(),
@@ -66,7 +83,7 @@ function buildSalesRepresentativeList(primaryShortCode, rows, primaryMandant = n
   return result;
 }
 
-async function loadCustomerSalesRepresentatives(database, customerId, primaryShortCode) {
+async function loadCustomerSalesRepresentatives(database, customerId, primaryShortCode, viewerIdentity = null) {
   const activeMandantId = Number(database?.firmaId);
   const excludeMandant = Number.isInteger(activeMandantId) && activeMandantId >= 0
     ? activeMandantId
@@ -82,11 +99,16 @@ async function loadCustomerSalesRepresentatives(database, customerId, primarySho
     ORDER BY [MandantKuerzel] ASC, [Aussendienst] ASC
   `, [String(customerId || '').trim(), excludeMandant]);
 
-  return buildSalesRepresentativeList(primaryShortCode, rows, {
-    MandantID: database?.firmaId,
-    MandantKuerzel: database?.shortName,
-    MandantName: database?.name,
-  });
+  return buildSalesRepresentativeList(
+    primaryShortCode,
+    rows,
+    {
+      MandantID: database?.firmaId,
+      MandantKuerzel: database?.shortName,
+      MandantName: database?.name,
+    },
+    viewerIdentity,
+  );
 }
 
 module.exports = {

@@ -617,6 +617,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     req.database,
     id,
     item.kd_Aussendienst,
+    req.userIdentity,
   );
 
   const reminderRows = await runSQLQueryAccess(req.database, `
@@ -694,6 +695,7 @@ router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHan
     req.database,
     id,
     customer.kd_Aussendienst,
+    req.userIdentity,
   );
   const normalizedCode = shortCode.toLowerCase();
   const roles = [];
