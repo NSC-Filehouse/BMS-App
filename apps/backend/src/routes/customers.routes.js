@@ -19,6 +19,7 @@ const {
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { loadCustomerSalesRepresentatives } = require('../db/customer-sales-representatives');
+const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -368,9 +369,14 @@ function mapRepresentatives(rows) {
       const phone = toText(row.kdA_Telefon) || toText(row.kdA_PrivatTel) || toText(row.kdA_Handy);
       const email = toText(row.kdA_eMail);
       const position = toText(row.kdA_Position);
-      const id = null;
+      const parsedId = Number(row.kdA_lfdNR);
+      const parsedRanking = Number(row.kdA_Ranking);
+      const id = Number.isInteger(parsedId) && parsedId > 0 ? parsedId : null;
+      const ranking = Number.isInteger(parsedRanking) && parsedRanking >= 1 && parsedRanking <= 3
+        ? parsedRanking
+        : null;
 
-      return { id, name, phone, email, position, salutation };
+      return { id, name, phone, email, position, salutation, ranking };
     })
     .filter((rep) => rep.name || rep.phone || rep.email);
 }
@@ -583,10 +589,10 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
 
   const repsSql = `
-    SELECT [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail]
+    SELECT [kdA_lfdNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail], [kdA_Ranking]
     FROM [dbo].[tblKun_Ansprech]
     WHERE [kdA_KdNR] = ?
-    ORDER BY [kdA_Name] ASC, [kdA_Vorname] ASC
+    ORDER BY ISNULL([kdA_Ranking], 9), [kdA_Name] ASC, [kdA_Vorname] ASC
   `;
   const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
   const representatives = mapRepresentatives(repsRows);
@@ -629,6 +635,36 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
       idField: 'kd_KdNR',
       id,
     },
+    error: null,
+  });
+}));
+
+router.put('/customers/:id/contacts/:contactId/ranking', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const contactId = Number(req.params.contactId);
+  const rawRanking = req.body?.ranking;
+  const ranking = rawRanking === null ? null : Number(rawRanking);
+
+  if (!customerId) {
+    throw createHttpError(400, 'Invalid customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    throw createHttpError(400, 'Invalid contact id.', { code: 'INVALID_CONTACT_ID' });
+  }
+  if (rawRanking !== null && (!Number.isInteger(ranking) || ranking < 1 || ranking > 3)) {
+    throw createHttpError(400, 'Ranking must be 1, 2, 3 or null.', { code: 'INVALID_CONTACT_RANKING' });
+  }
+
+  await requireVisibleCustomer(req, customerId);
+  const result = await setCustomerContactRanking(req.database, customerId, contactId, ranking);
+  if (result.message) {
+    throw createHttpError(409, result.message, { code: 'CONTACT_RANKING_REJECTED' });
+  }
+
+  sendEnvelope(res, {
+    status: 200,
+    data: { customerId, contactId, ranking },
+    meta: { mandant: req.mandant },
     error: null,
   });
 }));

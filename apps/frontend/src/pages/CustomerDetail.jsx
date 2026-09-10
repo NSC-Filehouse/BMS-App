@@ -41,6 +41,7 @@ import {
   setSelectedCustomer,
 } from '../utils/customerSelection.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
+import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import {
   MAP_PROVIDER_APPLE,
@@ -97,8 +98,12 @@ function normalizeRepresentatives(item) {
       const name = rep?.name ? String(rep.name).trim() : '';
       const phone = rep?.phone ? String(rep.phone).trim() : '';
       const email = rep?.email ? String(rep.email).trim() : '';
-      const key = rep?.id ?? `${name}-${idx}`;
-      return { key, name, phone, email };
+      const position = rep?.position ? String(rep.position).trim() : '';
+      const parsedId = Number(rep?.id);
+      const id = Number.isInteger(parsedId) && parsedId > 0 ? parsedId : null;
+      const key = id ?? `${name}-${idx}`;
+      const ranking = normalizeContactRanking(rep?.ranking);
+      return { id, key, name, phone, email, position, ranking };
     })
     .filter((rep) => rep.name || rep.phone || rep.email);
 
@@ -108,7 +113,7 @@ function normalizeRepresentatives(item) {
   const legacyPhone = item?.kd_Telefon ? String(item.kd_Telefon).trim() : '';
   const legacyEmail = item?.kd_eMail ? String(item.kd_eMail).trim() : '';
   if (legacyName || legacyPhone || legacyEmail) {
-    return [{ key: 'legacy', name: legacyName, phone: legacyPhone, email: legacyEmail }];
+    return [{ id: null, key: 'legacy', name: legacyName, phone: legacyPhone, email: legacyEmail, position: '', ranking: null }];
   }
 
   return [];
@@ -378,6 +383,8 @@ export default function CustomerDetail() {
   const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
+  const [contactRankingSavingId, setContactRankingSavingId] = React.useState(null);
+  const [contactRankingError, setContactRankingError] = React.useState('');
   const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
   const [expandedPurchasedHistoryGroups, setExpandedPurchasedHistoryGroups] = React.useState({});
   const [selectedPurchasedPositionIds, setSelectedPurchasedPositionIds] = React.useState([]);
@@ -409,6 +416,7 @@ export default function CustomerDetail() {
       try {
         setLoading(true);
         setError('');
+        setContactRankingError('');
         const res = await apiRequest(`/customers/${encodeURIComponent(id)}?includeActivities=0`);
         if (!alive) return;
         setItem(res?.data || null);
@@ -450,6 +458,7 @@ export default function CustomerDetail() {
       ? 'error.main'
       : 'text.secondary';
   const representatives = normalizeRepresentatives(item);
+  const selectableContactRankings = getSelectableContactRankings(representatives);
   const isSelectedCustomer = Boolean(
     selectedCustomer?.id && String(selectedCustomer.id) === String(id),
   );
@@ -485,6 +494,24 @@ export default function CustomerDetail() {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
     }
   }, [address, id, location.state, name, navigate, salesRep]);
+  const handleContactRankingChange = React.useCallback(async (contact, value) => {
+    if (!contact?.id) return;
+    const ranking = value === '' ? null : Number(value);
+    try {
+      setContactRankingSavingId(contact.id);
+      setContactRankingError('');
+      await apiRequest(`/customers/${encodeURIComponent(id)}/contacts/${encodeURIComponent(contact.id)}/ranking`, {
+        method: 'PUT',
+        body: JSON.stringify({ ranking }),
+      });
+      const response = await apiRequest(`/customers/${encodeURIComponent(id)}?includeActivities=0`);
+      setItem(response?.data || null);
+    } catch (error) {
+      setContactRankingError(error?.message || t('loading_error'));
+    } finally {
+      setContactRankingSavingId(null);
+    }
+  }, [id, t]);
   const openEmployeeDetail = React.useCallback((shortCode) => {
     const code = String(shortCode || '').trim();
     if (!code) return;
@@ -1373,6 +1400,11 @@ export default function CustomerDetail() {
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.75 }}>
                   {t('contact_label')}
                 </Typography>
+                {contactRankingError && (
+                  <Typography variant="body2" sx={{ color: 'error.main', mb: 0.75 }}>
+                    {contactRankingError}
+                  </Typography>
+                )}
                 {representatives.map((rep, index) => (
                   <React.Fragment key={rep.key}>
                     <Card
@@ -1386,6 +1418,32 @@ export default function CustomerDetail() {
                           <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500 }}>
                             {rep.name || '-'}
                           </Typography>
+                          {rep.id && (
+                            <TextField
+                              select
+                              size="small"
+                              label={t('contact_ranking_label')}
+                              value={rep.ranking ?? ''}
+                              disabled={contactRankingSavingId !== null}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                void handleContactRankingChange(rep, event.target.value);
+                              }}
+                              sx={{
+                                width: 112,
+                                flexShrink: 0,
+                                '& .MuiInputBase-root': { fontSize: '0.75rem' },
+                              }}
+                            >
+                              <MenuItem value="">{t('contact_rank_none')}</MenuItem>
+                              {selectableContactRankings.map((ranking) => (
+                                <MenuItem key={ranking} value={ranking}>
+                                  {t('contact_rank_value', { rank: ranking })}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          )}
                           <ChevronRightIcon
                             fontSize="small"
                             sx={{

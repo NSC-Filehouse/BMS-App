@@ -30,6 +30,7 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getDefaultContactName, normalizeContactRanking } from '../utils/contactRanking.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import { clearOrderCart } from '../utils/orderCart.js';
@@ -54,14 +55,16 @@ function buildAddress(row) {
 function normalizeRepresentativeOptions(representatives, preferredName = '') {
   const options = (Array.isArray(representatives) ? representatives : [])
     .map((representative) => ({
+      id: representative?.id ?? null,
       name: String(representative?.name || '').trim(),
       position: String(representative?.position || '').trim(),
       email: String(representative?.email || '').trim(),
+      ranking: normalizeContactRanking(representative?.ranking),
     }))
     .filter((representative) => representative.name);
   const preferred = String(preferredName || '').trim();
   if (preferred && !options.some((representative) => representative.name === preferred)) {
-    options.unshift({ name: preferred, position: '', email: '' });
+    options.unshift({ id: null, name: preferred, position: '', email: '', ranking: null });
   }
   return options;
 }
@@ -467,7 +470,7 @@ export default function TempOrderForm() {
       setCustomerReminderInvoicesCount(Number(detail?.data?.reminderInvoicesCount) || 0);
       setForm((prev) => ({
         ...prev,
-        clientRepresentative: preferred || (options.length === 1 ? options[0].name : ''),
+        clientRepresentative: preferred || getDefaultContactName(options),
       }));
       return options;
     } catch {
@@ -570,7 +573,7 @@ export default function TempOrderForm() {
         }));
         await loadCustomerPaymentDefault(copyOrder?.clientReferenceId || '');
         await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
-        await loadCustomerRepresentatives(copyOrder?.clientReferenceId || '', copyOrder?.clientRepresentative || '');
+        await loadCustomerRepresentatives(copyOrder?.clientReferenceId || '');
         setPositions(copyPositions.map((x, idx) => ({
           id: x.id || `${x.beNumber || 'pos'}-${idx}`,
           beNumber: x.beNumber,
@@ -1191,14 +1194,18 @@ export default function TempOrderForm() {
               )}
               {representativeOptions.map((representative, index) => (
                 <MenuItem
-                  key={`${representative.name}-${representative.email}-${index}`}
+                  key={representative.id ?? `${representative.name}-${representative.email}-${index}`}
                   value={representative.name}
                 >
                   <Box sx={{ display: 'grid' }}>
                     <Typography variant="body2">{representative.name}</Typography>
-                    {(representative.position || representative.email) && (
+                    {(representative.ranking || representative.position || representative.email) && (
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {[representative.position, representative.email].filter(Boolean).join(' · ')}
+                        {[
+                          representative.ranking ? t('contact_rank_value', { rank: representative.ranking }) : '',
+                          representative.position,
+                          representative.email,
+                        ].filter(Boolean).join(' · ')}
                       </Typography>
                     )}
                   </Box>
