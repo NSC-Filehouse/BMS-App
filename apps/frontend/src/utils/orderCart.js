@@ -1,12 +1,7 @@
 import { getMandant } from './mandant.js';
+import { nextWeekday } from './deliveryDate.js';
 
 export const ORDER_CART_CHANGED = 'bms-order-cart-changed';
-
-function tomorrow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
 
 function cartKey() {
   const mandant = getMandant() || 'default';
@@ -69,6 +64,14 @@ function buildCartPayload(item, quantityKg, existing = null) {
   const articleOriginal = existingArticleChanged
     ? (existing?.articleOriginal || existing?.article || '')
     : (item?.articleOriginal || null);
+  const incomingDeliveryDate = String(item?.deliveryDate || '').trim();
+  const existingDeliveryDate = String(existing?.deliveryDate || '').trim();
+  const deliveryDate = incomingDeliveryDate || existingDeliveryDate || nextWeekday();
+  const deliveryDateAuto = item?.deliveryDateAuto !== undefined
+    ? Boolean(item.deliveryDateAuto)
+    : existing?.deliveryDateAuto !== undefined
+      ? Boolean(existing.deliveryDateAuto)
+      : !incomingDeliveryDate && !existingDeliveryDate;
   return {
     id,
     article,
@@ -83,7 +86,8 @@ function buildCartPayload(item, quantityKg, existing = null) {
     acquisitionPrice: item?.acquisitionPrice ?? existing?.acquisitionPrice ?? null,
     // A sales price must be entered explicitly; never use the acquisition price as VK.
     salePrice: item?.salePrice ?? existing?.salePrice ?? null,
-    deliveryDate: item?.deliveryDate || existing?.deliveryDate || tomorrow(),
+    deliveryDate,
+    deliveryDateAuto,
     quantityKg,
     wpzId,
     wpzOriginal: item?.wpzOriginal !== undefined
@@ -139,7 +143,7 @@ export function updateOrderCartSalePrice(productId, salePrice) {
 export function updateOrderCartDeliveryDate(productId, deliveryDate) {
   const next = read().map((x) => (
     String(x.id || '') === String(productId || '')
-      ? { ...x, deliveryDate: String(deliveryDate || '').trim() }
+      ? { ...x, deliveryDate: String(deliveryDate || '').trim(), deliveryDateAuto: false }
       : x
   ));
   write(next);
@@ -164,9 +168,13 @@ export function updateOrderCartArticle(productId, article) {
 }
 
 export function updateOrderCartItem(productId, patch) {
+  const nextPatch = patch && Object.prototype.hasOwnProperty.call(patch, 'deliveryDate')
+    && !Object.prototype.hasOwnProperty.call(patch, 'deliveryDateAuto')
+    ? { ...patch, deliveryDateAuto: false }
+    : patch;
   const next = read().map((x) => (
     String(x.id || '') === String(productId || '')
-      ? { ...x, ...(patch || {}) }
+      ? { ...x, ...(nextPatch || {}) }
       : x
   ));
   write(next);

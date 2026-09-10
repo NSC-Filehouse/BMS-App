@@ -1,6 +1,11 @@
 const { runSQLQueryAccess } = require('./access');
 const { buildDeliveryAddressText } = require('../delivery-address');
 
+function asText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
 const DELIVERY_ADDRESS_COLUMNS = `
   [kdL_KdNR],
   [kdL_ID],
@@ -32,6 +37,8 @@ function mapDeliveryAddressRow(row) {
     short: row?.kdL_Kurz === null || row?.kdL_Kurz === undefined ? '' : String(row.kdL_Kurz).trim(),
     name1: row?.kdL_Name1 === null || row?.kdL_Name1 === undefined ? '' : String(row.kdL_Name1).trim(),
     name2: row?.kdL_Name2 === null || row?.kdL_Name2 === undefined ? '' : String(row.kdL_Name2).trim(),
+    countryCode: asText(row?.kdL_LK),
+    region: asText(row?.kdL_Region),
   };
 }
 

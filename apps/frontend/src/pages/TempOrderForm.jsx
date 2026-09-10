@@ -39,7 +39,9 @@ import { clearOrderCart } from '../utils/orderCart.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
+import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
+import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
   getSelectedCustomer as getStoredSelectedCustomer,
@@ -85,9 +87,7 @@ function parsePaymentTextId(value) {
 }
 
 function tomorrow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return nextWeekday();
 }
 
 function formatPrice(value) {
@@ -108,6 +108,7 @@ function inSevenDays() {
 function createPositionDefaults(overrides = {}) {
   return {
     deliveryDate: tomorrow(),
+    deliveryDateAuto: true,
     wpzId: null,
     wpzOriginal: true,
     wpzComment: 'Original verwenden',
@@ -276,6 +277,7 @@ export default function TempOrderForm() {
   const [removeAttachment, setRemoveAttachment] = React.useState(false);
   const attachmentInputRef = React.useRef(null);
   const deliveryAddressRequestRef = React.useRef(0);
+  const deliveryDateCheckRequestRef = React.useRef(0);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
@@ -289,6 +291,7 @@ export default function TempOrderForm() {
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
+  const [deliveryDateStatuses, setDeliveryDateStatuses] = React.useState({});
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [incotermOptions, setIncotermOptions] = React.useState([]);
   const [addPosOpen, setAddPosOpen] = React.useState(false);
@@ -298,6 +301,7 @@ export default function TempOrderForm() {
   const [addPosQty, setAddPosQty] = React.useState('');
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
   const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
+  const [addPosDeliveryDateAuto, setAddPosDeliveryDateAuto] = React.useState(true);
   const [addPosError, setAddPosError] = React.useState('');
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
@@ -317,6 +321,13 @@ export default function TempOrderForm() {
     if (!Number.isFinite(reserved)) return total;
     return Math.max(total - reserved, 0);
   }, [addPosProduct]);
+
+  const deliveryDateSignature = React.useMemo(() => (
+    [
+      ...(Array.isArray(positions) ? positions.map((position) => String(position?.deliveryDate || '').trim()) : []),
+      addPosOpen ? String(addPosDeliveryDate || '').trim() : '',
+    ].filter(Boolean).filter((date, index, values) => values.indexOf(date) === index).join('|')
+  ), [addPosDeliveryDate, addPosOpen, positions]);
 
   const [form, setForm] = React.useState({
     clientReferenceId: '',
@@ -468,6 +479,68 @@ export default function TempOrderForm() {
     });
   }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressManual]);
 
+  React.useEffect(() => {
+    const dates = deliveryDateSignature ? deliveryDateSignature.split('|') : [];
+    const requestId = deliveryDateCheckRequestRef.current + 1;
+    deliveryDateCheckRequestRef.current = requestId;
+    const fallback = Object.fromEntries(dates.map((date) => [date, getWeekendStatus(date, { showHint: false })]));
+    if (!dates.length) {
+      setDeliveryDateStatuses({});
+      return undefined;
+    }
+
+    const customerId = String(form.clientReferenceId || '').trim();
+    const deliveryAddressId = String(form.deliveryAddressId || '').trim();
+    if (!customerId || form.deliveryAddressManual || !deliveryAddressId) {
+      setDeliveryDateStatuses(fallback);
+      return undefined;
+    }
+
+    let alive = true;
+    apiRequest('/delivery-calendar/check', {
+      method: 'POST',
+      body: JSON.stringify({
+        customerId,
+        deliveryAddressId,
+        dates,
+      }),
+    }).then((response) => {
+      if (!alive || deliveryDateCheckRequestRef.current !== requestId) return;
+      const statuses = Array.isArray(response?.data) ? response.data : [];
+      const statusByDate = new Map(statuses.map((status) => [String(status?.date || '').slice(0, 10), status]));
+      const merged = Object.fromEntries(dates.map((date) => [date, statusByDate.get(date) || getWeekendStatus(date, { showHint: false })]));
+      setDeliveryDateStatuses(merged);
+
+      setPositions((previous) => {
+        let changed = false;
+        const next = previous.map((position) => {
+          const currentDate = String(position?.deliveryDate || '').slice(0, 10);
+          const status = statusByDate.get(currentDate);
+          if (!position?.deliveryDateAuto || !status?.suggestedDate || (!status.isWeekend && !status.isHoliday)) {
+            return position;
+          }
+          changed = true;
+          return { ...position, deliveryDate: status.suggestedDate };
+        });
+        return changed ? next : previous;
+      });
+
+      if (addPosOpen && addPosDeliveryDateAuto) {
+        const addStatus = statusByDate.get(String(addPosDeliveryDate || '').slice(0, 10));
+        if (addStatus?.suggestedDate && (addStatus.isWeekend || addStatus.isHoliday)) {
+          setAddPosDeliveryDate(addStatus.suggestedDate);
+        }
+      }
+    }).catch(() => {
+      if (!alive || deliveryDateCheckRequestRef.current !== requestId) return;
+      // A calendar lookup must never block the order flow. If the scope or
+      // central calendar cannot be confirmed, keep the warning suppressed.
+      setDeliveryDateStatuses(fallback);
+    });
+
+    return () => { alive = false; };
+  }, [addPosDeliveryDate, addPosDeliveryDateAuto, addPosOpen, deliveryDateSignature, form.clientReferenceId, form.deliveryAddressId, form.deliveryAddressManual]);
+
   const loadCustomerRepresentatives = React.useCallback(async (clientReferenceId, preferredName = '') => {
     const customerId = String(clientReferenceId || '').trim();
     const preferred = String(preferredName || '').trim();
@@ -561,6 +634,7 @@ export default function TempOrderForm() {
             reservationDate: p.reservationDate,
             ...createPositionDefaults({
               deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : (d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow()),
+              deliveryDateAuto: !(p.deliveryDate || d.deliveryDate),
               wpzId: p.wpzId ?? null,
               wpzOriginal: p.wpzOriginal ?? true,
               wpzComment: p.wpzComment || 'Original verwenden',
@@ -619,6 +693,9 @@ export default function TempOrderForm() {
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
             deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow()),
+            deliveryDateAuto: x.deliveryDateAuto !== undefined
+              ? Boolean(x.deliveryDateAuto)
+              : !(x.deliveryDate || copyOrder?.deliveryDate),
             wpzId: x.wpzId ?? null,
             wpzOriginal: x.wpzOriginal ?? true,
             wpzComment: x.wpzComment || 'Original verwenden',
@@ -648,6 +725,7 @@ export default function TempOrderForm() {
             reservationDate: null,
             ...createPositionDefaults({
               deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
+              deliveryDateAuto: x.deliveryDateAuto !== undefined ? Boolean(x.deliveryDateAuto) : !x.deliveryDate,
               wpzId: x.wpzId ?? null,
               wpzOriginal: x.wpzOriginal ?? true,
               wpzComment: x.wpzComment || 'Original verwenden',
@@ -1490,6 +1568,7 @@ export default function TempOrderForm() {
                         setAddPosQty('');
                         setAddPosSalePrice('');
                         setAddPosDeliveryDate(tomorrow());
+                        setAddPosDeliveryDateAuto(true);
                         setAddPosWpzId(null);
                         setAddPosWpzOriginal(true);
                         setAddPosWpzComment('Original verwenden');
@@ -1591,14 +1670,21 @@ export default function TempOrderForm() {
                         </AccordionSummary>
                         <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
                           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-                            <TextField
-                              type="date"
-                              label={t('delivery_date')}
-                              value={x.deliveryDate || ''}
-                              onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, deliveryDate: e.target.value } : p)))}
-                              InputLabelProps={{ shrink: true }}
-                              size="small"
-                            />
+                            <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
+                              <TextField
+                                type="date"
+                                label={t('delivery_date')}
+                                value={x.deliveryDate || ''}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? {
+                                  ...p,
+                                  deliveryDate: e.target.value,
+                                  deliveryDateAuto: false,
+                                } : p)))}
+                                InputLabelProps={{ shrink: true }}
+                                size="small"
+                              />
+                              <DeliveryDateHint status={deliveryDateStatuses[String(x.deliveryDate || '').slice(0, 10)]} t={t} />
+                            </Box>
                             <TextField
                               type="number"
                               label={t('product_amount')}
@@ -1788,14 +1874,20 @@ export default function TempOrderForm() {
               {t('original_packaging_type_label')}: {addPosOriginalPackagingType || '-'}
             </Typography>
           )}
-          <TextField
-            type="date"
-            label={t('delivery_date')}
-            value={addPosDeliveryDate || ''}
-            onChange={(e) => setAddPosDeliveryDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
-          />
+          <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
+            <TextField
+              type="date"
+              label={t('delivery_date')}
+              value={addPosDeliveryDate || ''}
+              onChange={(e) => {
+                setAddPosDeliveryDate(e.target.value);
+                setAddPosDeliveryDateAuto(false);
+              }}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <DeliveryDateHint status={deliveryDateStatuses[String(addPosDeliveryDate || '').slice(0, 10)]} t={t} />
+          </Box>
           {addPosProduct && (
             <WpzCommentField
               wpzId={addPosWpzId}
@@ -1859,6 +1951,7 @@ export default function TempOrderForm() {
                   reservationDate: null,
                   ...createPositionDefaults({
                     deliveryDate: addPosDeliveryDate || tomorrow(),
+                    deliveryDateAuto: addPosDeliveryDateAuto,
                     wpzId: addPosWpzId,
                     wpzOriginal: addPosWpzOriginal,
                     wpzComment: addPosWpzComment || '',

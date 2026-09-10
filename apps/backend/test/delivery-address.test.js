@@ -30,6 +30,8 @@ test('formats delivery addresses consistently for selection and persistence', ()
     short: '',
     name1: 'Karl Schoengen KG',
     name2: 'Werk',
+    countryCode: 'D',
+    region: '',
   });
 });
 

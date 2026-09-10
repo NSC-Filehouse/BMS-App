@@ -8,6 +8,7 @@ import {
   updateOrderCartArticle,
   updateOrderCartItem,
 } from '../src/utils/orderCart.js';
+import { nextWeekday } from '../src/utils/deliveryDate.js';
 
 const values = new Map();
 global.localStorage = {
@@ -21,12 +22,6 @@ global.localStorage = {
     values.delete(key);
   },
 };
-
-function tomorrow() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().slice(0, 10);
-}
 
 beforeEach(() => {
   values.clear();
@@ -53,7 +48,8 @@ test('new positions use the available maximum and empty per-position inputs', ()
   assert.equal(item.warehouse, 'Lager Nord');
   assert.equal(item.warehouseId, 'L1');
   assert.equal(item.salePrice, null);
-  assert.equal(item.deliveryDate, tomorrow());
+  assert.equal(item.deliveryDate, nextWeekday());
+  assert.equal(item.deliveryDateAuto, true);
   assert.equal(item.wpzId, 17);
   assert.equal(item.wpzOriginal, true);
   assert.equal(item.wpzComment, 'Original verwenden');
@@ -85,6 +81,7 @@ test('adding an existing position keeps every user-edited cart value', () => {
   assert.equal(item.quantityKg, 400);
   assert.equal(item.salePrice, 1.25);
   assert.equal(item.deliveryDate, '2030-05-17');
+  assert.equal(item.deliveryDateAuto, false);
   assert.equal(item.wpzOriginal, false);
   assert.equal(item.wpzComment, 'Kundenetikett verwenden');
   assert.equal(item.availableAmount, 900);

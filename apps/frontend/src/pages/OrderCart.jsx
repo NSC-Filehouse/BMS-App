@@ -32,7 +32,9 @@ import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
+import { getWeekendStatus } from '../utils/deliveryDate.js';
 
 function formatPrice(value) {
   const n = Number(value);
@@ -311,17 +313,20 @@ export default function OrderCart() {
                   helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
                 <SaleMarginHint salePrice={row.salePrice} costPrice={row.acquisitionPrice} />
-                <TextField
-                  type="date"
-                  label={t('delivery_date')}
-                  value={row.deliveryDate || ''}
-                  onChange={(e) => onDeliveryDateChange(row.id, e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  size="small"
-                  required
-                  error={Boolean(rowErr.deliveryDate)}
-                  helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
-                />
+                <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
+                  <TextField
+                    type="date"
+                    label={t('delivery_date')}
+                    value={row.deliveryDate || ''}
+                    onChange={(e) => onDeliveryDateChange(row.id, e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                    required
+                    error={Boolean(rowErr.deliveryDate)}
+                    helperText={rowErr.deliveryDate ? t('validation_delivery_date_required') : ''}
+                  />
+                  <DeliveryDateHint status={getWeekendStatus(row.deliveryDate)} t={t} />
+                </Box>
                 <WpzCommentField
                   wpzId={row.wpzId}
                   wpzOriginal={row.wpzOriginal}
@@ -362,6 +367,7 @@ export default function OrderCart() {
                     salePrice: Number(x.salePrice),
                     costPrice: Number(x.acquisitionPrice),
                     deliveryDate: x.deliveryDate || null,
+                    deliveryDateAuto: x.deliveryDateAuto === true,
                     originalPackagingType: x.originalPackagingType || '',
                     wpzId: x.wpzId ?? null,
                     wpzOriginal: x.wpzId ? wpz.wpzOriginal : null,
