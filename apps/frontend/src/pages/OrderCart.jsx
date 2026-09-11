@@ -45,6 +45,12 @@ function formatPrice(value) {
   return `${n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 }
 
+function formatQuantity(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
 function getCartLineId(item) {
   return String(item?.lineId || item?.id || '');
 }
@@ -332,19 +338,29 @@ export default function OrderCart() {
                     required
                     error={Boolean(rowErr.quantityKg)}
                     helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
-                    sx={{ flex: 1, minWidth: 0 }}
+                    sx={{
+                      flex: splitRemainder !== null && !foreignMandant ? '0 0 50%' : 1,
+                      minWidth: 0,
+                    }}
                   />
                   {splitRemainder !== null && !foreignMandant && (
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      aria-label={t('position_add_remainder')}
-                      title={t('position_add_remainder')}
-                      onClick={() => setItems(addOrderCartRemainder(lineId))}
-                      sx={{ mt: 0.25 }}
-                    >
-                      <AddCircleOutlineIcon />
-                    </IconButton>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: 0.25 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {t('position_remainder', { amount: formatQuantity(splitRemainder) })}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        aria-label={t('position_add_remainder')}
+                        title={t('position_add_remainder')}
+                        onClick={() => setItems(addOrderCartRemainder(lineId))}
+                      >
+                        <AddCircleOutlineIcon />
+                      </IconButton>
+                    </Box>
                   )}
                 </Box>
                 <TextField
