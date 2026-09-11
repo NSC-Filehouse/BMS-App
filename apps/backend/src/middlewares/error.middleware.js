@@ -47,6 +47,22 @@ const errorTexts = {
     de: 'Kunde nicht gefunden.',
     en: 'Customer not found.',
   },
+  DELIVERY_ADDRESS_REQUIRED: {
+    de: 'Bitte Straße, PLZ, Ort und Land der Lieferadresse ausfüllen.',
+    en: 'Please provide the delivery address street, postal code, city, and country.',
+  },
+  DELIVERY_ADDRESS_COUNTRY_CODE_INVALID: {
+    de: 'Das Lieferland muss als zweistelliger ISO-Alpha-2-Code angegeben werden.',
+    en: 'The delivery country must be a two-letter ISO Alpha-2 code.',
+  },
+  DELIVERY_ADDRESS_FIELD_TOO_LONG: {
+    de: (d) => `Das Feld ${d?.field || ''} darf höchstens ${d?.maxLength || 0} Zeichen enthalten.`.trim(),
+    en: (d) => `The ${d?.field || 'field'} field may contain at most ${d?.maxLength || 0} characters.`.trim(),
+  },
+  DELIVERY_ADDRESS_NUMBER_EXHAUSTED: {
+    de: 'Für diesen Kunden ist keine weitere Lieferanschrift-Nummer verfügbar.',
+    en: 'No further delivery address number is available for this customer.',
+  },
   ORDER_NOT_FOUND: {
     de: 'Auftrag nicht gefunden.',
     en: 'Order not found.',

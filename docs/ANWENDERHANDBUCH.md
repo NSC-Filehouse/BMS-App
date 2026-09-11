@@ -649,7 +649,7 @@ Beim Ändern oder Kopieren kann die Suchauswahl „Kunde wählen“ zunächst le
 | Kommentar | Freier Auftragskommentar. |
 | Incoterm | Pflichtauswahl aus den verfügbaren Incoterms. |
 | Verpackungsart | Pflichtauswahl. Die Bezeichnungen werden passend zur gewählten Sprache angezeigt. |
-| Lieferadresse | Pflichtauswahl aus den beim Kunden vorhandenen Lieferadressen. |
+| Lieferadresse | Pflichtauswahl aus den beim Kunden vorhandenen Lieferadressen; neue Lieferadressen können über das Plus-Symbol angelegt werden. |
 | Abweichende Zahlungsbedingung | Aktiviert eine vom Kundenstandard abweichende Auswahl. |
 | Zahltext | Pflichtauswahl aus den verfügbaren Zahltexten. |
 
@@ -675,11 +675,13 @@ Verpackungsarten in englischer Sprache:
 - NEUTRAL Bags;
 - NEUTRAL Octas.
 
-#### Lieferadresse auswählen oder manuell erfassen
+#### Lieferadresse auswählen oder neu anlegen
 
 Standardmäßig ist die Lieferadresse eine Auswahlliste. Die Einträge zeigen Empfängername und Adresszusatz in zwei Zeilen.
 
-Das Plus-Symbol neben der Lieferadresse schaltet auf eine manuelle Texteingabe um und leert die bisherige Auswahl. Im manuellen Modus zeigt das Symbol ein Minus; damit wird wieder auf die Auswahlliste zurückgeschaltet und die manuelle Eingabe geleert.
+Das Plus-Symbol neben der Lieferadresse öffnet den Dialog „Neue Lieferadresse“. Der Kundenname wird aus `kd_Name1` angezeigt. Erfasst werden Straße und Hausnummer, PLZ, Ort, das zweistellige Länderkennzeichen nach ISO Alpha-2, Abholzeiten und ein Ansprechpartner. Der Ansprechpartner wird in der bestehenden Spalte `kdL_Kontrakt` gespeichert, die Abholzeiten in `kdL_Abhol`; ein Bemerkungsfeld wird nicht angelegt.
+
+Existiert für den Kunden noch keine Lieferadresse, werden Straße, PLZ, Ort und Land aus der bisherigen Geschäftsadresse vorbelegt. Diese Werte können geändert werden. Gibt es bereits eine Lieferadresse, startet der Dialog mit leeren Adressfeldern. Beim Speichern wird die nächste freie Lieferanschrift-Nummer vergeben und die technische Lieferadress-ID in den Auftrag übernommen.
 
 #### Zahlungsbedingung
 
@@ -742,7 +744,7 @@ Vor dem Speichern prüft die App:
 - Kundenadresse ist nicht leer;
 - Incoterm ist gewählt;
 - Verpackungsart ist gewählt;
-- Lieferadresse ist ausgewählt oder manuell eingetragen;
+- Lieferadresse ist ausgewählt oder neu angelegt;
 - Zahltext ist gewählt;
 - jede Position besitzt ein Lieferdatum;
 - Menge jeder Position ist größer als null;
@@ -871,7 +873,7 @@ Bei einem unerwarteten allgemeinen App-Fehler erscheint ein eigener Fehler-Scree
 4. Warenkorb öffnen.
 5. Menge, Verkaufspreis, Lieferdatum und WPZ-Angaben jeder Position prüfen.
 6. „Auftrag erstellen“ wählen.
-7. Incoterm, Verpackungsart, Lieferadresse und Zahltext ergänzen.
+7. Incoterm, Verpackungsart, Lieferadresse (bei Bedarf über das Plus-Symbol neu anlegen) und Zahltext ergänzen.
 8. Positionen und gegebenenfalls Anhang prüfen.
 9. „Speichern“ wählen.
 

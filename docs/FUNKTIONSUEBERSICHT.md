@@ -199,7 +199,7 @@ Stand: 20. Juli 2026
 - Verpackungsart auswählen
 - Deutsche oder englische Verpackungsbezeichnungen verwenden
 - Lieferadresse des Kunden auswählen
-- Lieferadresse manuell eingeben
+- neue Lieferadresse mit Adressdaten, Abholzeiten und Ansprechpartner anlegen
 - Standard-Zahltext des Kunden übernehmen
 - Abweichende Zahlungsbedingung aktivieren
 - Abweichenden Zahltext auswählen

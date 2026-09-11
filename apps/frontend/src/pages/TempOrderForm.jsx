@@ -25,7 +25,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
@@ -298,6 +297,18 @@ export default function TempOrderForm() {
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
+  const [newDeliveryAddressOpen, setNewDeliveryAddressOpen] = React.useState(false);
+  const [newDeliveryAddressSaving, setNewDeliveryAddressSaving] = React.useState(false);
+  const [newDeliveryAddressError, setNewDeliveryAddressError] = React.useState('');
+  const [newDeliveryAddressCustomer, setNewDeliveryAddressCustomer] = React.useState(null);
+  const [newDeliveryAddressDraft, setNewDeliveryAddressDraft] = React.useState({
+    street: '',
+    postalCode: '',
+    city: '',
+    countryCode: '',
+    pickupTimes: '',
+    contact: '',
+  });
   const [deliveryDateStatuses, setDeliveryDateStatuses] = React.useState({});
   const [paymentTextOptions, setPaymentTextOptions] = React.useState([]);
   const [incotermOptions, setIncotermOptions] = React.useState([]);
@@ -437,7 +448,7 @@ export default function TempOrderForm() {
     setCustomerPaymentDefaultText(next.text);
     return next;
   }, [resolvePaymentTextById]);
-  const loadDeliveryAddresses = React.useCallback(async (clientReferenceId) => {
+  const loadDeliveryAddresses = React.useCallback(async (clientReferenceId, options = {}) => {
     const requestId = deliveryAddressRequestRef.current + 1;
     deliveryAddressRequestRef.current = requestId;
     const id = String(clientReferenceId || '').trim();
@@ -450,11 +461,109 @@ export default function TempOrderForm() {
       const list = Array.isArray(res?.data) ? res.data : [];
       if (deliveryAddressRequestRef.current === requestId) setDeliveryAddressOptions(list);
       return list;
-    } catch {
+    } catch (error) {
       if (deliveryAddressRequestRef.current === requestId) setDeliveryAddressOptions([]);
+      if (options.throwOnError) throw error;
       return [];
     }
   }, []);
+
+  const openNewDeliveryAddressDialog = React.useCallback(async () => {
+    const customerId = String(form.clientReferenceId || '').trim();
+    if (!customerId) {
+      setError(t('validation_customer_required'));
+      return;
+    }
+
+    setNewDeliveryAddressError('');
+    setNewDeliveryAddressSaving(false);
+    try {
+      const customerPromise = selectedCustomer && String(selectedCustomer?.kd_KdNR || '').trim() === customerId
+        ? Promise.resolve(selectedCustomer)
+        : apiRequest(`/customers/${encodeURIComponent(customerId)}`).then((response) => response?.data || null);
+      const [addresses, customer] = await Promise.all([
+        loadDeliveryAddresses(customerId, { throwOnError: true }),
+        customerPromise,
+      ]);
+      const resolvedCustomer = customer || selectedCustomer || {};
+      setNewDeliveryAddressCustomer(resolvedCustomer);
+      setNewDeliveryAddressDraft({
+        street: addresses.length ? '' : String(resolvedCustomer?.kd_Strasse || ''),
+        postalCode: addresses.length ? '' : String(resolvedCustomer?.kd_PLZ || ''),
+        city: addresses.length ? '' : String(resolvedCustomer?.kd_Ort || ''),
+        countryCode: addresses.length ? '' : String(resolvedCustomer?.kd_LK || '').trim().toUpperCase(),
+        pickupTimes: '',
+        contact: '',
+      });
+      setNewDeliveryAddressOpen(true);
+    } catch (error) {
+      setNewDeliveryAddressError(error?.message || t('delivery_address_load_error'));
+    }
+  }, [form.clientReferenceId, loadDeliveryAddresses, selectedCustomer, t]);
+
+  const closeNewDeliveryAddressDialog = React.useCallback(() => {
+    if (newDeliveryAddressSaving) return;
+    setNewDeliveryAddressOpen(false);
+    setNewDeliveryAddressError('');
+  }, [newDeliveryAddressSaving]);
+
+  const saveNewDeliveryAddress = React.useCallback(async () => {
+    const customerId = String(form.clientReferenceId || '').trim();
+    const draft = {
+      street: String(newDeliveryAddressDraft.street || '').trim(),
+      postalCode: String(newDeliveryAddressDraft.postalCode || '').trim(),
+      city: String(newDeliveryAddressDraft.city || '').trim(),
+      countryCode: String(newDeliveryAddressDraft.countryCode || '').trim().toUpperCase(),
+      pickupTimes: String(newDeliveryAddressDraft.pickupTimes || '').trim(),
+      contact: String(newDeliveryAddressDraft.contact || '').trim(),
+    };
+    const missing = [draft.street, draft.postalCode, draft.city, draft.countryCode].some((value) => !value);
+    if (missing) {
+      setNewDeliveryAddressError(t('delivery_address_required_fields'));
+      return;
+    }
+    if (!/^[A-Z]{2}$/.test(draft.countryCode)) {
+      setNewDeliveryAddressError(t('delivery_address_country_invalid'));
+      return;
+    }
+
+    try {
+      setNewDeliveryAddressSaving(true);
+      setNewDeliveryAddressError('');
+      const response = await apiRequest(`/customers/${encodeURIComponent(customerId)}/delivery-addresses`, {
+        method: 'POST',
+        body: JSON.stringify(draft),
+      });
+      const created = response?.data || null;
+      if (!created?.id || !created?.text) {
+        throw new Error(t('delivery_address_create_failed'));
+      }
+
+      let refreshed = [];
+      try {
+        refreshed = await loadDeliveryAddresses(customerId, { throwOnError: true });
+      } catch {
+        setDeliveryAddressOptions((previous) => (
+          previous.some((address) => String(address?.id || '') === String(created.id))
+            ? previous
+            : [...previous, created]
+        ));
+      }
+      const selected = refreshed.find((address) => String(address?.id || '') === String(created.id)) || created;
+      setForm((previous) => ({
+        ...previous,
+        deliveryAddress: selected.text,
+        deliveryAddressId: String(selected.id),
+        deliveryAddressManual: false,
+      }));
+      setNewDeliveryAddressOpen(false);
+      setNewDeliveryAddressError('');
+    } catch (error) {
+      setNewDeliveryAddressError(error?.message || t('delivery_address_create_failed'));
+    } finally {
+      setNewDeliveryAddressSaving(false);
+    }
+  }, [form.clientReferenceId, loadDeliveryAddresses, newDeliveryAddressDraft, t]);
 
   React.useEffect(() => {
     if (form.deliveryAddressManual || !String(form.deliveryAddress || '').trim()) {
@@ -1479,14 +1588,12 @@ export default function TempOrderForm() {
               )}
               <IconButton
                 size="small"
-                onClick={() => setForm((p) => ({
-                  ...p,
-                  deliveryAddress: '',
-                  deliveryAddressId: '',
-                  deliveryAddressManual: !p.deliveryAddressManual,
-                }))}
+                color="primary"
+                aria-label={t('delivery_address_add')}
+                title={t('delivery_address_add')}
+                onClick={() => { void openNewDeliveryAddressDialog(); }}
               >
-                {form.deliveryAddressManual ? <RemoveCircleOutlineIcon fontSize="small" /> : <AddCircleOutlineIcon fontSize="small" />}
+                <AddCircleOutlineIcon fontSize="small" />
               </IconButton>
             </Box>
             <Typography variant="caption" sx={{ color: 'text.secondary', pl: 0.5, mt: -0.35, overflowWrap: 'anywhere' }}>
@@ -1781,6 +1888,77 @@ export default function TempOrderForm() {
           <Button onClick={() => setDeleteLastConfirmOpen(false)} disabled={deletingOrder}>{t('back_label')}</Button>
           <Button color="error" variant="contained" onClick={deleteOrder} disabled={deletingOrder}>
             {t('delete_label')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={newDeliveryAddressOpen} onClose={closeNewDeliveryAddressDialog} fullWidth maxWidth="sm">
+        <DialogTitle>{t('delivery_address_new_title')}</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 1.25 }}>
+          {newDeliveryAddressError && <Alert severity="error">{newDeliveryAddressError}</Alert>}
+          <TextField
+            label={t('order_customer')}
+            value={String(newDeliveryAddressCustomer?.kd_Name1 || form.clientName || '')}
+            InputProps={{ readOnly: true }}
+            fullWidth
+          />
+          <TextField
+            label={t('delivery_address_street')}
+            value={newDeliveryAddressDraft.street}
+            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, street: event.target.value }))}
+            disabled={newDeliveryAddressSaving}
+            required
+            fullWidth
+          />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(120px, 0.7fr) minmax(0, 1.3fr)' }, gap: 1 }}>
+            <TextField
+              label={t('delivery_address_postal_code')}
+              value={newDeliveryAddressDraft.postalCode}
+              onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, postalCode: event.target.value }))}
+              disabled={newDeliveryAddressSaving}
+              required
+              fullWidth
+            />
+            <TextField
+              label={t('delivery_address_city')}
+              value={newDeliveryAddressDraft.city}
+              onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, city: event.target.value }))}
+              disabled={newDeliveryAddressSaving}
+              required
+              fullWidth
+            />
+          </Box>
+          <TextField
+            label={t('delivery_address_country_code')}
+            value={newDeliveryAddressDraft.countryCode}
+            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, countryCode: event.target.value.toUpperCase() }))}
+            inputProps={{ maxLength: 2, style: { textTransform: 'uppercase' } }}
+            helperText={t('delivery_address_country_code_hint')}
+            disabled={newDeliveryAddressSaving}
+            required
+            fullWidth
+          />
+          <TextField
+            label={t('delivery_address_pickup_times')}
+            value={newDeliveryAddressDraft.pickupTimes}
+            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, pickupTimes: event.target.value }))}
+            disabled={newDeliveryAddressSaving}
+            multiline
+            minRows={2}
+            fullWidth
+          />
+          <TextField
+            label={t('delivery_address_contact')}
+            value={newDeliveryAddressDraft.contact}
+            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, contact: event.target.value }))}
+            disabled={newDeliveryAddressSaving}
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeNewDeliveryAddressDialog} disabled={newDeliveryAddressSaving}>{t('back_label')}</Button>
+          <Button variant="contained" onClick={() => { void saveNewDeliveryAddress(); }} disabled={newDeliveryAddressSaving}>
+            {newDeliveryAddressSaving ? <CircularProgress size={18} color="inherit" /> : t('save_label')}
           </Button>
         </DialogActions>
       </Dialog>

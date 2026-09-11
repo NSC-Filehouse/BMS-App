@@ -17,7 +17,10 @@ const {
   getTempOrderPlanningEntry,
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
-const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
+const {
+  createCustomerDeliveryAddress,
+  loadCustomerDeliveryAddresses,
+} = require('../db/delivery-addresses');
 const {
   isHiddenCustomerDetailEmployee,
   loadCustomerSalesRepresentatives,
@@ -861,6 +864,27 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
       idField: 'kdL_ID',
       id,
       count: data.length,
+    },
+    error: null,
+  });
+}));
+
+router.post('/customers/:id/delivery-addresses', requireMandant, asyncHandler(async (req, res) => {
+  const id = toText(req.params.id);
+  if (!id) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  const customer = await requireVisibleCustomer(req, id);
+  const data = await createCustomerDeliveryAddress(req.database, customer, req.body, id);
+
+  sendEnvelope(res, {
+    status: 201,
+    data,
+    meta: {
+      mandant: req.mandant,
+      databaseName: req.database?.databaseName || null,
+      idField: 'kdL_ID',
+      id,
     },
     error: null,
   });
