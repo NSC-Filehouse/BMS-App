@@ -244,10 +244,36 @@ function cleanEwsText(value) {
 
 function normalizeRecipients(recipient, recipients) {
   const values = Array.isArray(recipients) ? recipients : [recipient];
-  return [...new Set(values.map((value) => asText(value)).filter(Boolean))];
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const address = asText(value);
+    const key = address.toLowerCase();
+    if (!address || seen.has(key)) continue;
+    seen.add(key);
+    result.push(address);
+  }
+  return result;
 }
 
-async function sendOrderMailViaEws({ orderMailConfig, recipient, recipients, subject, body, attachment, isBodyHtml = false }) {
+function excludeRecipients(recipients, excluded) {
+  const excludedKeys = new Set((excluded || []).map((address) => asText(address).toLowerCase()).filter(Boolean));
+  return normalizeRecipients(null, (recipients || []).filter((address) => !excludedKeys.has(asText(address).toLowerCase())));
+}
+
+async function sendOrderMailViaEws({
+  orderMailConfig,
+  recipient,
+  recipients,
+  ccRecipient,
+  ccRecipients,
+  bccRecipient,
+  bccRecipients,
+  subject,
+  body,
+  attachment,
+  isBodyHtml = false,
+}) {
   const validation = validateEwsConfig(orderMailConfig);
   if (!validation.ok) {
     throw new Error(validation.missing?.length
@@ -271,8 +297,20 @@ async function sendOrderMailViaEws({ orderMailConfig, recipient, recipients, sub
     isBodyHtml ? EWS.BodyType.HTML : EWS.BodyType.Text,
     isBodyHtml ? String(body || '') : cleanEwsText(body),
   );
-  for (const address of normalizeRecipients(recipient, recipients)) {
+  const targetRecipients = normalizeRecipients(recipient, recipients);
+  const targetCcRecipients = excludeRecipients(normalizeRecipients(ccRecipient, ccRecipients), targetRecipients);
+  const targetBccRecipients = excludeRecipients(
+    normalizeRecipients(bccRecipient, bccRecipients),
+    [...targetRecipients, ...targetCcRecipients],
+  );
+  for (const address of targetRecipients) {
     message.ToRecipients.Add(new EWS.EmailAddress(cleanEwsText(address)));
+  }
+  for (const address of targetCcRecipients) {
+    message.CcRecipients.Add(new EWS.EmailAddress(cleanEwsText(address)));
+  }
+  for (const address of targetBccRecipients) {
+    message.BccRecipients.Add(new EWS.EmailAddress(cleanEwsText(address)));
   }
 
   if (attachment?.buffer && attachment?.fileName) {
@@ -299,6 +337,10 @@ async function sendOrderMail({
   mailServiceConfig,
   recipient,
   recipients,
+  ccRecipient,
+  ccRecipients,
+  bccRecipient,
+  bccRecipients,
   subject,
   body,
   attachment,
@@ -313,6 +355,11 @@ async function sendOrderMail({
   if (!targetRecipients.length) {
     throw new Error('Kein E-Mail-Empfänger angegeben.');
   }
+  const targetCcRecipients = excludeRecipients(normalizeRecipients(ccRecipient, ccRecipients), targetRecipients);
+  const targetBccRecipients = excludeRecipients(
+    normalizeRecipients(bccRecipient, bccRecipients),
+    [...targetRecipients, ...targetCcRecipients],
+  );
 
   const mailServiceValidation = validateMailServiceConfig(mailServiceConfig);
   const ewsValidation = validateEwsConfig(orderMailConfig);
@@ -332,6 +379,12 @@ async function sendOrderMail({
         body,
         isBodyHtml: Boolean(isBodyHtml),
         to: targetRecipients.map((address) => ({ address })),
+        ...(targetCcRecipients.length
+          ? { cc: targetCcRecipients.map((address) => ({ address })) }
+          : {}),
+        ...(targetBccRecipients.length
+          ? { bcc: targetBccRecipients.map((address) => ({ address })) }
+          : {}),
         attachments: attachment?.buffer && attachment?.fileName
           ? [{
               fileName: attachment.fileName,
@@ -353,7 +406,16 @@ async function sendOrderMail({
   }
 
   if (orderMailConfig.ewsFallback && ewsValidation.ok) {
-    await sendOrderMailViaEws({ orderMailConfig, recipient, recipients: targetRecipients, subject, body, attachment, isBodyHtml });
+    await sendOrderMailViaEws({
+      orderMailConfig,
+      recipients: targetRecipients,
+      ccRecipients: targetCcRecipients,
+      bccRecipients: targetBccRecipients,
+      subject,
+      body,
+      attachment,
+      isBodyHtml,
+    });
     return {
       transport: 'ews',
       accepted: true,
@@ -378,6 +440,7 @@ module.exports = {
   resolveOrderMailRecipient,
   sendOrderMail,
   sendOrderMailViaEws,
+  normalizeRecipients,
   shouldUseEwsFallback,
   validateMailServiceConfig,
   validateOrderMailConfig,

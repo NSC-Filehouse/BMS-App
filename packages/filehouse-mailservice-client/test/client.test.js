@@ -24,6 +24,8 @@ test('maps a Node mail request to the Filehouse contract', () => {
     subject: 'Test',
     body: '<p>Hallo</p>',
     to: [{ address: 'kunde@example.com', displayName: 'Kunde' }],
+    cc: [{ address: 'kopie@example.com' }],
+    bcc: [{ address: 'blindkopie@example.com' }],
     attachments: [{ fileName: 'test.pdf', contentType: 'application/pdf', content: Buffer.from('pdf') }],
   });
 
@@ -33,6 +35,8 @@ test('maps a Node mail request to the Filehouse contract', () => {
     Body: '<p>Hallo</p>',
     IsBodyHtml: true,
     To: [{ Address: 'kunde@example.com', DisplayName: 'Kunde' }],
+    Cc: [{ Address: 'kopie@example.com' }],
+    Bcc: [{ Address: 'blindkopie@example.com' }],
     Attachments: [{ FileName: 'test.pdf', ContentType: 'application/pdf', Content: 'cGRm' }],
   });
 });

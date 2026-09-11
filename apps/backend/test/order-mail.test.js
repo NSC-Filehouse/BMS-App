@@ -179,6 +179,8 @@ test('BMS sends the mail-service request with the shared contract', async () => 
         timeoutMs: 1000,
       },
       recipient: 'user@example.com',
+      ccRecipients: ['copy@example.com'],
+      bccRecipients: ['blind-copy@example.com'],
       subject: 'Test subject',
       body: 'Test body',
       clientMessageId: 'bms-app:test:1',
@@ -191,6 +193,8 @@ test('BMS sends the mail-service request with the shared contract', async () => 
     const requestBody = JSON.parse(requests[0].options.body);
     assert.equal(requestBody.ClientMessageId, 'bms-app:test:1');
     assert.equal(requestBody.To[0].Address, 'user@example.com');
+    assert.deepEqual(requestBody.Cc, [{ Address: 'copy@example.com' }]);
+    assert.deepEqual(requestBody.Bcc, [{ Address: 'blind-copy@example.com' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

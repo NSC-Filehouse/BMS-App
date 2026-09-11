@@ -114,6 +114,10 @@ EWS_EXCHANGE_VERSION=7
 EWS_URL_EXTERN=
 INVOICE_ROUTER_ADDRESS_MAP=
 EWS_SHARED_MAILBOXES=
+BMS_CREDIT_LIMIT_MAIL_ENABLED=true
+BMS_CREDIT_LIMIT_MAIL_COOLDOWN_MONTHS=6
+BMS_CREDIT_LIMIT_MAIL_RETRY_INTERVAL_SECONDS=60
+BMS_CREDIT_LIMIT_MAIL_MAX_ATTEMPTS=10
 ```
 
 `BMS_MANDANT_MAIL_DISTRIBUTORS` ordnet Verkaufsmails nach BMS-Status 2 einem
@@ -163,6 +167,24 @@ Wert geleert werden; danach gilt Customer Service aus
 `INVOICE_ROUTER_ADDRESS_MAP` mit `EWS_SHARED_MAILBOXES` als Buchhaltungs-Fallback.
 Der Testmandant mit der ID `0` ist davon ausgenommen und sendet Auftragsmails
 an `m.frank@filehouse.net`.
+
+### Kreditlimit-Anfrage bei Limit 0
+
+Vor dem ersten Einsatz muss zusätzlich die idempotente Migration
+`apps/backend/sql/add_credit_limit_request.sql` mit einem DDL-berechtigten
+SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden. Beim Klick auf
+„An BMS senden“ wird bei einem exakt auf `0` gesetzten Kreditlimit eine eigene
+Kreditlimit-Mail über dieselbe BMS-App-Mailstrecke erzeugt. Die Mail geht an
+Kimaz und Petschler, mit Meyer sowie den aus SanctionChecker übernommenen
+mandantabhängigen GF-Empfängern in CC.
+
+Die Merktabelle führt je Mandant und Kunde den letzten Anfragezeitpunkt und
+die letzte beantragte Summe. Dadurch wird eine erneute Anfrage innerhalb des
+konfigurierten Zeitfensters (standardmäßig sechs Monate) unterdrückt; mehrere
+Aufträge werden nach Ablauf des Fensters mit der dann aktuellen Auftragssumme
+neu bewertet. Der Betrag wird in 50-, 500-, 5.000- oder 50.000-EUR-Schritten
+aufgerundet. Fehlen Bankdaten, wird zusätzlich der Haupt-Außendienst des
+Kunden einmal pro Cooldown-Zeitraum per Mail zur Stammdatenpflege aufgefordert.
 
 ## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
 

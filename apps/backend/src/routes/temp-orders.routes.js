@@ -5,10 +5,22 @@ const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { getDatabaseConnectionForIdentityById } = require('../db/databases');
+const { getUserIdentityByShortCode } = require('../db/users');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { sendPushNotificationsForTimelineEntries } = require('../db/push');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
+const {
+  loadOpenTempOrderRows,
+  processCreditLimitMailOutboxById,
+  queueCreditLimitMails,
+} = require('../db/credit-limit-request-outbox');
+const {
+  calculateTempOrderValue,
+  hasBankDetails,
+  loadCustomerCreditContext,
+} = require('../credit-limit');
+const { getEmailsForUserCodes, getGfsForMandant } = require('../config/geschaeftsfuehrer');
 const {
   ORDER_MAIL_SUBJECT,
   formatOrderMailBody,
@@ -1458,6 +1470,50 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const qualifiedOwnerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, 'o.[ta_CreatedBy]');
 
   const nowIso = new Date().toISOString();
+  let creditLimitContext = null;
+  let primaryAdEmail = '';
+  let creditLimitLookupStatus = 'not_applicable';
+  if (config.creditLimitMail.enabled) {
+    try {
+      const customerRows = await runSQLQuerySqlServer(config.sql.database, `
+        SELECT TOP 1 [ta_ClientReferenceId] AS customerId
+        FROM ${TEMP_ORDER_TABLE}
+        WHERE [ta_id] = ? AND [ta_company_id] = ?
+          ${ownerFilter.whereSql}
+      `, [id, companyId, ...ownerFilter.params]);
+      const customerId = asText(customerRows?.[0]?.customerId);
+      if (customerId) {
+        creditLimitContext = await loadCustomerCreditContext(req.database, customerId);
+        if (!creditLimitContext) {
+          creditLimitLookupStatus = 'customer_not_found';
+        } else if (creditLimitContext.credit.amount !== 0) {
+          creditLimitLookupStatus = 'not_required';
+        } else {
+          creditLimitLookupStatus = 'eligible';
+          if (!hasBankDetails(creditLimitContext.customer)) {
+            try {
+              const primaryAd = await getUserIdentityByShortCode(
+                creditLimitContext.customer.mainSalesRepresentative,
+                companyId,
+              );
+              primaryAdEmail = asText(primaryAd?.email);
+            } catch (error) {
+              logger.warn(`Haupt-AD fuer Kreditlimit-Bankdaten-Mail von Temp-Auftrag ${id} konnte nicht ermittelt werden.`);
+            }
+          }
+        }
+      } else {
+        creditLimitLookupStatus = 'customer_not_assigned';
+      }
+    } catch (error) {
+      creditLimitLookupStatus = 'lookup_failed';
+      logger.error(`Kreditlimit-Kontext fuer Temp-Auftrag ${id} konnte nicht geladen werden`, error);
+      // The order hand-off remains available if the optional credit-limit
+      // enrichment cannot read the customer or FX employee data.
+      creditLimitContext = null;
+    }
+  }
+
   const missingPackagingRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT p.[tap_id] AS id, p.[tap_be_number] AS beNumber
     FROM ${TEMP_ORDER_POSITION_TABLE} AS p
@@ -1502,6 +1558,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         return {
           alreadyFinalized: true,
           outboxId: existingOutbox ? Number(existingOutbox.id) : null,
+          creditNotifications: { outboxIds: [] },
           timelineEntries: [],
         };
       }
@@ -1654,6 +1711,39 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         outboxId = Number(outboxResult.rows[0]?.id);
       }
 
+      let creditNotifications = { outboxIds: [] };
+      if (creditLimitContext?.credit?.amount === 0) {
+        const openTempOrders = await loadOpenTempOrderRows(query, {
+          tableSql: TEMP_ORDER_TABLE,
+          positionTableSql: TEMP_ORDER_POSITION_TABLE,
+          companyId,
+          customerId: mappedOrder.clientReferenceId,
+          excludeOrderId: id,
+        });
+        creditNotifications = await queueCreditLimitMails({
+          query,
+          companyId,
+          customerId: mappedOrder.clientReferenceId,
+          orderId: id,
+          currentOrderAmount: calculateTempOrderValue(positions),
+          openTempOrders,
+          creditContext: {
+            ...creditLimitContext,
+            customer: creditLimitContext.customer,
+          },
+          primaryAdEmail,
+          mandantName: req.mandant,
+          mandantShortName: req.database?.shortName || null,
+          nowIso,
+          creditTo: config.creditLimitMail.to,
+          creditCc: [
+            ...config.creditLimitMail.cc,
+            ...getEmailsForUserCodes(getGfsForMandant(companyId)),
+          ],
+          testRecipient: config.orderMail.testRecipient,
+        });
+      }
+
       const timelineExistsResult = await query(`
         SELECT TOP 1 1 AS ok
         FROM ${TIMELINE_TABLE}
@@ -1710,12 +1800,12 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         }
       }
 
-      return { alreadyFinalized: false, outboxId, timelineEntries };
+      return { alreadyFinalized: false, outboxId, creditNotifications, timelineEntries };
     });
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
     if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status') || message.includes('ta_return_comment') || message.includes('tap_verpackungsart'))
-      || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
+      || message.includes('invalid object name') && (message.includes('ordermailoutbox') || message.includes('creditlimitrequeststate') || message.includes('creditlimitmailoutbox'))) {
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }
     throw error;
@@ -1732,6 +1822,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const mailResult = finalized.outboxId
     ? await processOrderMailOutboxById(finalized.outboxId)
     : { processed: false, status: 'not_available' };
+  const creditMailResults = [];
+  for (const outboxId of finalized.creditNotifications?.outboxIds || []) {
+    creditMailResults.push(await processCreditLimitMailOutboxById(outboxId));
+  }
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 *
     FROM ${TEMP_ORDER_TABLE}
@@ -1751,6 +1845,9 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       id,
       alreadyFinalized: finalized.alreadyFinalized,
       mailStatus: mailResult.status,
+      creditLimitLookupStatus,
+      creditLimitMail: finalized.creditNotifications || { outboxIds: [] },
+      creditLimitMailStatuses: creditMailResults.map((result) => result.status),
     },
     error: null,
   });
