@@ -174,7 +174,7 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
 <html>
   <body style="margin:0;padding:8px;background:#ffffff;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.35;">
     <div style="width:100%;">
-      <div style="margin:0 0 8px;">Sold to ${escapeHtml(customer)} at ${escapeHtml(saleDescription)} (buying price ${escapeHtml(costDescription)})</div>
+      <div style="margin:0 0 8px;"><span style="color:#ff0000;font-weight:700;">Sold</span> to <span style="color:#ff0000;font-weight:700;">${escapeHtml(customer)}</span> at ${escapeHtml(saleDescription)} (buying price ${escapeHtml(costDescription)})</div>
       <div style="margin:0 0 14px;">${renderSaleRows(list)}</div>
 
       <div style="margin:0 0 8px;padding:2px 4px;background:#000000;color:#ffffff;">${escapeHtml(safeMandant)} - Verfügbare Mengen Neu</div>
