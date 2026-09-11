@@ -312,6 +312,48 @@ function DocumentAccordionSummary({ title, controls }) {
   );
 }
 
+function SupplierPurchasedArticleGroups({ groups, t }) {
+  return (Array.isArray(groups) ? groups : []).map((group, groupIndex) => {
+    const articles = Array.isArray(group?.articles) ? group.articles : [];
+    const groupKey = group?.id || group?.key || `${group?.name || 'group'}-${groupIndex}`;
+    return (
+      <Box key={groupKey} sx={{ display: 'grid', gap: 0.45, mt: groupIndex ? 0.45 : 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
+          <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>
+            {group?.name || '-'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {articles.length} {articles.length === 1 ? t('article_singular') : t('article_plural')}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'grid', gap: 0.5, pl: 1 }}>
+          {articles.map((article, articleIndex) => (
+            <Card key={article.id || `${article.article}-${articleIndex}`} variant="outlined">
+              <CardContent sx={{ py: '6px !important', px: '10px !important', display: 'grid', gap: 0.2 }}>
+                <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
+                  {article.article || '-'}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                  {article.amount !== null && article.amount !== undefined
+                    ? `${formatQuantity(article.amount)} ${article.unit || ''}`.trim()
+                    : ''}
+                  {article.mfi !== null && article.mfi !== undefined ? ` · MFI ${article.mfi}` : ''}
+                  {article.purchasePricePerTonne !== null && article.purchasePricePerTonne !== undefined
+                    ? ` · ${t('purchase_price_per_tonne')}: ${formatMoney(article.purchasePricePerTonne)}`
+                    : ''}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                  {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
+                </Typography>
+              </CardContent>
+            </Card>
+          ))}
+        </Box>
+      </Box>
+    );
+  });
+}
+
 function InfoRow({ icon, label, value, link, onClick, forceRight = false }) {
   const content = link ? (
     <Box
@@ -470,6 +512,7 @@ export default function CustomerDetail() {
   }, [id, t]);
 
   const name = getCustomerName(item);
+  const isSupplier = Boolean(item?.isSupplier);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
   const addressForMap = address ? String(address).replace(/\n/g, ', ') : '';
@@ -520,6 +563,7 @@ export default function CustomerDetail() {
     openAddressWithProvider(next);
   }, [openAddressWithProvider]);
   const handleSelectCustomer = React.useCallback(() => {
+    if (isSupplier) return;
     const selected = setSelectedCustomer({
       id,
       name,
@@ -531,7 +575,7 @@ export default function CustomerDetail() {
     if (afterSelect?.to) {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
     }
-  }, [address, id, location.state, name, navigate, salesRep]);
+  }, [address, id, isSupplier, location.state, name, navigate, salesRep]);
   const handleContactRankingChange = React.useCallback(async (contact, value) => {
     if (!contact?.id) return;
     const ranking = value === '' ? null : Number(value);
@@ -563,10 +607,25 @@ export default function CustomerDetail() {
     });
   }, [id, location.state, navigate]);
   const offerEndpoint = `/customers/${encodeURIComponent(id)}/offers?scope=${encodeURIComponent(offerScope)}&year=${encodeURIComponent(offerYear)}`;
-  const orderEndpoint = `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
-  const invoiceEndpoint = `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
+  const orderEndpoint = isSupplier
+    ? `/customers/${encodeURIComponent(id)}/purchase-orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`
+    : `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
+  const invoiceEndpoint = isSupplier
+    ? `/customers/${encodeURIComponent(id)}/supplier-invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`
+    : `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
   const activitiesEndpoint = `/customers/${encodeURIComponent(id)}/activities?scope=${encodeURIComponent(activityScope)}&year=${encodeURIComponent(activityYear)}`;
-  const purchasedArticlesEndpoint = `/customers/${encodeURIComponent(id)}/purchased-articles`;
+  const purchasedArticlesEndpoint = isSupplier
+    ? `/customers/${encodeURIComponent(id)}/procured-articles`
+    : `/customers/${encodeURIComponent(id)}/purchased-articles`;
+
+  React.useEffect(() => {
+    setDocs({
+      offers: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+      orders: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+      invoices: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+      purchasedArticles: { expanded: false, loaded: false, loading: false, error: '', items: [] },
+    });
+  }, [id, isSupplier]);
 
   React.useEffect(() => {
     let alive = true;
@@ -676,7 +735,7 @@ export default function CustomerDetail() {
     });
     try {
       const blob = await apiRequestBlob(
-        `/customers/${encodeURIComponent(id)}/orders/${encodeURIComponent(orderIndex)}/pdf`,
+        `/customers/${encodeURIComponent(id)}/${isSupplier ? 'purchase-orders' : 'orders'}/${encodeURIComponent(orderIndex)}/pdf`,
       );
       const objectUrl = URL.createObjectURL(blob);
       popup.location.href = objectUrl;
@@ -690,7 +749,7 @@ export default function CustomerDetail() {
     } finally {
       setOrderPdfLoadingId('');
     }
-  }, [id, t]);
+  }, [id, isSupplier, t]);
 
   const handleBack = React.useCallback(() => {
     const fromCustomers = location.state?.fromCustomers;
@@ -707,28 +766,28 @@ export default function CustomerDetail() {
       : 'open';
     setInvoiceScope(nextScope);
     if (docs.invoices.expanded) {
-      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(invoiceYear)}`);
+      loadDocSection('invoices', `${isSupplier ? '/customers/' + encodeURIComponent(id) + '/supplier-invoices' : '/customers/' + encodeURIComponent(id) + '/invoices'}?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(invoiceYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
         invoices: { ...prev.invoices, loaded: false, items: [], error: '' },
       }));
     }
-  }, [docs.invoices.expanded, id, invoiceYear, loadDocSection]);
+  }, [docs.invoices.expanded, id, invoiceYear, isSupplier, loadDocSection]);
 
   const handleInvoiceYearChange = React.useCallback((event) => {
     const nextYear = Number(event.target.value) || CURRENT_YEAR;
     setInvoiceYear(nextYear);
     setInvoiceScope('year');
     if (docs.invoices.expanded) {
-      loadDocSection('invoices', `/customers/${encodeURIComponent(id)}/invoices?scope=year&year=${encodeURIComponent(nextYear)}`);
+      loadDocSection('invoices', `${isSupplier ? '/customers/' + encodeURIComponent(id) + '/supplier-invoices' : '/customers/' + encodeURIComponent(id) + '/invoices'}?scope=year&year=${encodeURIComponent(nextYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
         invoices: { ...prev.invoices, loaded: false, items: [], error: '' },
       }));
     }
-  }, [docs.invoices.expanded, id, loadDocSection]);
+  }, [docs.invoices.expanded, id, isSupplier, loadDocSection]);
 
   const handleOfferScopeChange = React.useCallback((event) => {
     const nextScope = ['3m', '6m', 'year'].includes(event.target.value)
@@ -765,28 +824,28 @@ export default function CustomerDetail() {
       : 'open';
     setOrderScope(nextScope);
     if (docs.orders.expanded) {
-      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(orderYear)}`);
+      loadDocSection('orders', `${isSupplier ? '/customers/' + encodeURIComponent(id) + '/purchase-orders' : '/customers/' + encodeURIComponent(id) + '/orders'}?scope=${encodeURIComponent(nextScope)}&year=${encodeURIComponent(orderYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
         orders: { ...prev.orders, loaded: false, items: [], error: '' },
       }));
     }
-  }, [docs.orders.expanded, id, loadDocSection, orderYear]);
+  }, [docs.orders.expanded, id, isSupplier, loadDocSection, orderYear]);
 
   const handleOrderYearChange = React.useCallback((event) => {
     const nextYear = Number(event.target.value) || CURRENT_YEAR;
     setOrderYear(nextYear);
     setOrderScope('year');
     if (docs.orders.expanded) {
-      loadDocSection('orders', `/customers/${encodeURIComponent(id)}/orders?scope=year&year=${encodeURIComponent(nextYear)}`);
+      loadDocSection('orders', `${isSupplier ? '/customers/' + encodeURIComponent(id) + '/purchase-orders' : '/customers/' + encodeURIComponent(id) + '/orders'}?scope=year&year=${encodeURIComponent(nextYear)}`);
     } else {
       setDocs((prev) => ({
         ...prev,
         orders: { ...prev.orders, loaded: false, items: [], error: '' },
       }));
     }
-  }, [docs.orders.expanded, id, loadDocSection]);
+  }, [docs.orders.expanded, id, isSupplier, loadDocSection]);
 
   const handleActivityScopeChange = React.useCallback((event) => {
     const nextScope = ['3m', '6m', 'year'].includes(event.target.value)
@@ -975,16 +1034,23 @@ export default function CustomerDetail() {
             <Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {name || String(id)}
             </Typography>
-            <Button
-              variant={isSelectedCustomer ? 'outlined' : 'contained'}
-              size="small"
-              sx={{ flexShrink: 0 }}
-              disabled={!item || isSelectedCustomer}
-              onClick={handleSelectCustomer}
-            >
-              {isSelectedCustomer ? t('selected_label') : t('select_label')}
-            </Button>
+            {!isSupplier && (
+              <Button
+                variant={isSelectedCustomer ? 'outlined' : 'contained'}
+                size="small"
+                sx={{ flexShrink: 0 }}
+                disabled={!item || isSelectedCustomer}
+                onClick={handleSelectCustomer}
+              >
+                {isSelectedCustomer ? t('selected_label') : t('select_label')}
+              </Button>
+            )}
           </Box>
+          {isSupplier && (
+            <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.04em', mt: 0.25 }}>
+              {t('supplier_badge')}
+            </Typography>
+          )}
         </Box>
       </Box>
 
@@ -999,7 +1065,7 @@ export default function CustomerDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
-            <Box sx={{ mb: 1 }}>
+            {!isSupplier && <Box sx={{ mb: 1 }}>
               <Box
                 sx={{
                   display: 'grid',
@@ -1051,9 +1117,9 @@ export default function CustomerDetail() {
                   </Typography>
                 </Box>
               )}
-            </Box>
+            </Box>}
 
-            <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
+            {!isSupplier && <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
               <DocumentAccordionSummary
                 title={t('customer_docs_offers')}
                 controls={docs.offers.expanded && (
@@ -1087,11 +1153,11 @@ export default function CustomerDetail() {
                   </Card>
                 ))}
               </AccordionDetails>
-            </Accordion>
+            </Accordion>}
 
             <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', orderEndpoint)}>
               <DocumentAccordionSummary
-                title={t('customer_docs_orders')}
+                title={isSupplier ? t('customer_docs_purchase_orders') : t('customer_docs_orders')}
                 controls={docs.orders.expanded && (
                   <DocumentScopeControls
                     t={t}
@@ -1107,13 +1173,15 @@ export default function CustomerDetail() {
                 {docs.orders.loading && <CircularProgress size={20} />}
                 {docs.orders.error && <Alert severity="error">{docs.orders.error}</Alert>}
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.length === 0 && (
-                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_orders')}</Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                    {t(isSupplier ? 'customer_docs_empty_purchase_orders' : 'customer_docs_empty_orders')}
+                  </Typography>
                 )}
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.map((order, idx) => (
                   <Card key={`${order.id || idx}-order`} variant="outlined">
                     <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                        {t('order_number_label')}: {' '}
+                        {t(isSupplier ? 'purchase_order_number_label' : 'order_number_label')}: {' '}
                         <Box
                           component="button"
                           type="button"
@@ -1139,13 +1207,20 @@ export default function CustomerDetail() {
                           {orderPdfErrors[String(order.id || '')]}
                         </Typography>
                       )}
+                      {isSupplier && order.supplierNumber && (
+                        <Typography variant="caption">{t('supplier_number_label')}: {order.supplierNumber}</Typography>
+                      )}
                       <Typography variant="caption">{t('contact_label')}: {order.contact || '-'}</Typography>
-                      <Typography variant="caption">{t('order_date_label')}: {formatDateOnly(order.orderDate)}</Typography>
-                      <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
+                      <Typography variant="caption">
+                        {t(isSupplier ? 'purchase_order_date_label' : 'order_date_label')}: {formatDateOnly(order.orderDate)}
+                      </Typography>
+                      {!isSupplier && (
+                        <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(order.dueDate)}</Typography>
+                      )}
                       <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
                         <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
-                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatDateOnly(pos.deliveryDate)}; ${t('order_sale_price_per_tonne')}: ${formatMoney(pos.salePricePerTonne)}`}
+                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatDateOnly(pos.deliveryDate)}; ${t(isSupplier ? 'purchase_price_per_tonne' : 'order_sale_price_per_tonne')}: ${formatMoney(isSupplier ? pos.purchasePricePerTonne : pos.salePricePerTonne)}`}
                         </Typography>
                       ))}
                     </CardContent>
@@ -1180,9 +1255,17 @@ export default function CustomerDetail() {
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
                         {t('invoice_number_label')}: {invoice.invoiceNumber || '-'}
                       </Typography>
+                      {isSupplier && invoice.supplierNumber && (
+                        <Typography variant="caption">{t('supplier_number_label')}: {invoice.supplierNumber}</Typography>
+                      )}
                       <Typography variant="caption">{t('invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}</Typography>
                       <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
-                      <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
+                      {!isSupplier && (
+                        <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
+                      )}
+                      {isSupplier && invoice.invoiceType !== null && invoice.invoiceType !== undefined && (
+                        <Typography variant="caption">{t('invoice_type_label')}: {invoice.invoiceType}</Typography>
+                      )}
                       <Typography variant="caption">
                         {t('amount_label')}: {formatMoney(invoice.amount)} (
                         <Box
@@ -1193,7 +1276,7 @@ export default function CustomerDetail() {
                         </Box>
                         )
                       </Typography>
-                      {invoice.reminderStageText && (
+                      {!isSupplier && invoice.reminderStageText && (
                         <Typography
                           variant="caption"
                           sx={{ color: 'error.main', fontWeight: 600 }}
@@ -1211,7 +1294,7 @@ export default function CustomerDetail() {
               <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
                   <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
-                    {t('customer_docs_purchased_articles')}
+                    {t(isSupplier ? 'customer_docs_procured_articles' : 'customer_docs_purchased_articles')}
                   </Typography>
                 </Box>
               </AccordionSummary>
@@ -1221,15 +1304,15 @@ export default function CustomerDetail() {
                   size="small"
                   value={purchasedArticlesQuery}
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
-                  placeholder={t('customer_docs_purchased_articles_search')}
+                  placeholder={t(isSupplier ? 'customer_docs_procured_articles_search' : 'customer_docs_purchased_articles_search')}
                 />
-                {batchCartSuccess && (
+                {!isSupplier && batchCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {batchCartSuccess}
                   </Typography>
                 )}
-                {batchCartError && <Alert severity="error">{batchCartError}</Alert>}
-                {selectedPurchasedPositionCount > 0 && (
+                {!isSupplier && batchCartError && <Alert severity="error">{batchCartError}</Alert>}
+                {!isSupplier && selectedPurchasedPositionCount > 0 && (
                   <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
                       {t('purchased_batch_selected', {
@@ -1242,9 +1325,17 @@ export default function CustomerDetail() {
                 {docs.purchasedArticles.loading && <CircularProgress size={20} />}
                 {docs.purchasedArticles.error && <Alert severity="error">{docs.purchasedArticles.error}</Alert>}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.length === 0 && (
-                  <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_purchased_articles')}</Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                    {t(isSupplier ? 'customer_docs_empty_procured_articles' : 'customer_docs_empty_purchased_articles')}
+                  </Typography>
                 )}
-                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && filteredPurchasedArticleGroups.map((group, groupIdx) => (
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && isSupplier && (
+                  <SupplierPurchasedArticleGroups
+                    groups={filteredPurchasedArticleGroups}
+                    t={t}
+                  />
+                )}
+                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && !isSupplier && filteredPurchasedArticleGroups.map((group, groupIdx) => (
                   (() => {
                     const groupKey = group.id || group.key || `${group.name}-${groupIdx}`;
                     const articles = Array.isArray(group.articles) ? group.articles : [];
@@ -1482,7 +1573,7 @@ export default function CustomerDetail() {
 
             <Divider sx={{ my: 3 }} />
 
-            {reminderInvoicesCount > 0 && (
+            {!isSupplier && reminderInvoicesCount > 0 && (
               <>
                 <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
                   {t('customer_reminder_warning', { count: reminderInvoicesCount })}

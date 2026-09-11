@@ -18,7 +18,7 @@ function normalizePathSegment(value, fieldName) {
   return segment;
 }
 
-function buildOrderPdfDirectory({ baseFilePath, companyName, orderNumber }) {
+function buildDocumentPdfDirectory({ baseFilePath, companyName, orderNumber, documentFolder }) {
   let base = String(baseFilePath || '').trim();
   // dotenv values such as `N:` are valid mapped-drive roots in the existing
   // deployment configuration but are drive-relative to Node's win32 path API.
@@ -27,14 +27,24 @@ function buildOrderPdfDirectory({ baseFilePath, companyName, orderNumber }) {
 
   const safeCompanyName = normalizePathSegment(companyName, 'company name');
   const safeOrderNumber = normalizePathSegment(orderNumber, 'order number');
+  const safeDocumentFolder = normalizePathSegment(documentFolder, 'document folder');
   return path.win32.join(
     base,
     'Datenbanken',
     safeCompanyName,
     'BMS_Dokumente',
-    '03 Auftrag',
+    safeDocumentFolder,
     safeOrderNumber,
   );
+}
+
+function buildOrderPdfDirectory({ baseFilePath, companyName, orderNumber }) {
+  return buildDocumentPdfDirectory({
+    baseFilePath,
+    companyName,
+    orderNumber,
+    documentFolder: '03 Auftrag',
+  });
 }
 
 function escapeRegExp(value) {
@@ -79,9 +89,41 @@ async function resolveLatestOrderPdf({ companyName, orderNumber, baseFilePath = 
     : null;
 }
 
+async function resolveLatestPurchaseOrderPdf({ companyName, orderNumber, baseFilePath = getConfiguredBaseFilePath() } = {}) {
+  const directory = buildDocumentPdfDirectory({
+    baseFilePath,
+    companyName,
+    orderNumber,
+    documentFolder: '02 Bestellung',
+  });
+  if (!directory) return null;
+
+  let entries;
+  try {
+    entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return null;
+    throw error;
+  }
+
+  const prefix = `${String(orderNumber).trim()}-`;
+  const candidates = entries
+    .filter((entry) => (
+      entry && entry.isFile() && entry.name.toLowerCase().endsWith('.pdf')
+      && entry.name.toLowerCase().startsWith(prefix.toLowerCase())
+    ))
+    .sort((left, right) => left.name.localeCompare(right.name, 'de'));
+  const match = candidates[0] || null;
+  return match
+    ? { fileName: match.name, filePath: path.win32.join(directory, match.name) }
+    : null;
+}
+
 module.exports = {
+  buildDocumentPdfDirectory,
   buildOrderPdfDirectory,
   findTimestampedAbFile,
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
+  resolveLatestPurchaseOrderPdf,
 };

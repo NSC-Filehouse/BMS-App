@@ -23,7 +23,11 @@ const {
   loadCustomerSalesRepresentatives,
 } = require('../db/customer-sales-representatives');
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
-const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
+const {
+  getConfiguredBaseFilePath,
+  resolveLatestOrderPdf,
+  resolveLatestPurchaseOrderPdf,
+} = require('../order-pdf');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -362,6 +366,32 @@ async function loadCustomerCreditLimit(database, customerId) {
   };
 }
 
+async function loadSupplierContext(database, customerId) {
+  const rows = await runSQLQueryAccess(database, `
+    SELECT [kdLi_Lieferanten_Nr] AS supplierNumber
+    FROM [dbo].[tblKun_Lieferanten]
+    WHERE COALESCE([kdLi_Kunden_Nr], '') = ?
+  `, [customerId]);
+  const supplierNumbers = [];
+  const seen = new Set();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const value = toText(row.supplierNumber);
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    supplierNumbers.push(value);
+  }
+  return {
+    isSupplier: Array.isArray(rows) && rows.length > 0,
+    supplierNumbers,
+    supplierMappingIncomplete: Array.isArray(rows) && rows.length > 0 && supplierNumbers.length === 0,
+  };
+}
+
+function buildParameterList(values) {
+  return values.map(() => '?').join(', ');
+}
+
 function buildProductIdFromViewRow(row) {
   return [
     toText(row?.article),
@@ -605,6 +635,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const id = toText(req.params.id);
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const item = await requireVisibleCustomer(req, id, accessScope);
+  const supplierContext = await loadSupplierContext(req.database, id);
 
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
 
@@ -640,6 +671,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const detail = {
     ...item,
+    ...supplierContext,
     creditLimit,
     representatives,
     salesRepresentatives,
@@ -929,6 +961,116 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   });
 }));
 
+router.get('/customers/:id/purchase-orders', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const lang = resolveLang(req);
+  const scope = resolveOrderScope(req.query.scope);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  await requireVisibleCustomer(req, customerId);
+  const supplierContext = await loadSupplierContext(req.database, customerId);
+  if (!supplierContext.supplierNumbers.length) {
+    sendEnvelope(res, {
+      status: 200,
+      data: [],
+      meta: {
+        mandant: req.mandant,
+        count: 0,
+        id: customerId,
+        scope,
+        year: null,
+        supplierMappingIncomplete: supplierContext.supplierMappingIncomplete,
+      },
+      error: null,
+    });
+    return;
+  }
+
+  const supplierPlaceholders = buildParameterList(supplierContext.supplierNumbers);
+  const scopeFilterSql = scope === 'open'
+    ? 'AND COALESCE([b].[be_Abgeschlossen], 0) <> 1'
+    : '';
+  const dateFilter = buildDocumentDateFilter('[b].[be_Bestelldatum]', scope, req.query.year);
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT
+      [b].[be_Bestellindex] AS orderIndex,
+      [b].[be_Bestellindex] AS orderNumber,
+      [b].[be_KontaktpersonBE] AS contact,
+      [b].[be_ZahlText] AS paymentTextId,
+      [b].[be_Bestelldatum] AS orderDate,
+      [b].[be_KdNr] AS supplierNumber
+    FROM [dbo].[tblBestellung] [b]
+    WHERE COALESCE([b].[be_KdNr], '') IN (${supplierPlaceholders})
+      ${scopeFilterSql}
+      ${dateFilter.sql}
+    ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC
+  `, [...supplierContext.supplierNumbers, ...dateFilter.params]);
+  const orders = Array.isArray(rows) ? rows : [];
+  const indices = orders.map((row) => toText(row.orderIndex)).filter(Boolean);
+  const paymentMap = await loadPaymentTextMap(orders.map((row) => row.paymentTextId), lang);
+  const posMap = new Map();
+  if (indices.length) {
+    const positionPlaceholders = buildParameterList(indices);
+    const positionRows = await runSQLQueryAccess(req.database, `
+      SELECT
+        [p].[beP_Bestellindex] AS orderIndex,
+        [p].[beP_Artikel] AS article,
+        [p].[beP_Anzahl] AS amount,
+        [p].[beP_Einheit] AS unit,
+        [p].[beP_Lieferdatum] AS deliveryDate,
+        [p].[beP_EK_EU] AS purchasePricePerTonneEu,
+        [p].[beP_EK_DM] AS purchasePricePerTonneDm
+      FROM [dbo].[tblBest_Position] [p]
+      WHERE [p].[beP_Bestellindex] IN (${positionPlaceholders})
+      ORDER BY [p].[beP_Bestellindex] ASC, [p].[beP_PosNr] ASC
+    `, indices);
+    for (const row of (Array.isArray(positionRows) ? positionRows : [])) {
+      const key = toText(row.orderIndex);
+      if (!key) continue;
+      if (!posMap.has(key)) posMap.set(key, []);
+      const eu = Number(row.purchasePricePerTonneEu);
+      const dm = Number(row.purchasePricePerTonneDm);
+      posMap.get(key).push({
+        article: toText(row.article),
+        amount: row.amount,
+        unit: toText(row.unit),
+        deliveryDate: row.deliveryDate || null,
+        purchasePricePerTonne: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
+      });
+    }
+  }
+
+  const data = orders.map((row) => {
+    const index = toText(row.orderIndex);
+    const paymentId = Number(row.paymentTextId);
+    return {
+      id: index || null,
+      orderNumber: toText(row.orderNumber) || index || null,
+      supplierNumber: toText(row.supplierNumber),
+      contact: toText(row.contact),
+      orderDate: row.orderDate || null,
+      paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
+      paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
+      positions: posMap.get(index) || [],
+    };
+  });
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      id: customerId,
+      scope,
+      year: dateFilter.year,
+      supplierNumbers: supplierContext.supplierNumbers,
+    },
+    error: null,
+  });
+}));
+
 router.get('/customers/:id/orders/:orderIndex/pdf', requireMandant, asyncHandler(async (req, res, next) => {
   const customerId = toText(req.params.id);
   const orderIndex = toText(req.params.orderIndex);
@@ -970,6 +1112,66 @@ router.get('/customers/:id/orders/:orderIndex/pdf', requireMandant, asyncHandler
     throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
       code: 'ORDER_PDF_NOT_FOUND',
       orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
+  });
+}));
+
+router.get('/customers/:id/purchase-orders/:orderIndex/pdf', requireMandant, asyncHandler(async (req, res, next) => {
+  const customerId = toText(req.params.id);
+  const orderIndex = toText(req.params.orderIndex);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  if (!orderIndex) {
+    throw createHttpError(400, 'Missing purchase order id.', { code: 'INVALID_PURCHASE_ORDER_ID' });
+  }
+
+  await requireVisibleCustomer(req, customerId);
+  const supplierContext = await loadSupplierContext(req.database, customerId);
+  if (!supplierContext.supplierNumbers.length) {
+    throw createHttpError(404, `Supplier not found: ${customerId}`, {
+      code: 'SUPPLIER_NOT_FOUND',
+      id: customerId,
+    });
+  }
+  const placeholders = buildParameterList(supplierContext.supplierNumbers);
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT TOP 1 [be_Bestellindex] AS orderIndex
+    FROM [dbo].[tblBestellung]
+    WHERE COALESCE([be_KdNr], '') IN (${placeholders})
+      AND COALESCE([be_Bestellindex], '') = ?
+  `, [...supplierContext.supplierNumbers, orderIndex]);
+  if (!Array.isArray(rows) || !rows.length) {
+    throw createHttpError(404, `Purchase order not found: ${orderIndex}`, {
+      code: 'PURCHASE_ORDER_NOT_FOUND',
+      id: orderIndex,
+    });
+  }
+
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Purchase order PDF storage is not configured.', {
+      code: 'PURCHASE_ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const pdf = await resolveLatestPurchaseOrderPdf({
+    companyName: req.database?.name,
+    orderNumber: orderIndex,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `Purchase order PDF not found: ${orderIndex}`, {
+      code: 'PURCHASE_ORDER_PDF_NOT_FOUND',
+      orderNumber: orderIndex,
     });
   }
 
@@ -1070,6 +1272,93 @@ router.get('/customers/:id/offers', requireMandant, asyncHandler(async (req, res
   });
 }));
 
+router.get('/customers/:id/supplier-invoices', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  const scope = resolveInvoiceScope(req.query.scope);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  await requireVisibleCustomer(req, customerId);
+  const supplierContext = await loadSupplierContext(req.database, customerId);
+  if (!supplierContext.supplierNumbers.length) {
+    sendEnvelope(res, {
+      status: 200,
+      data: [],
+      meta: {
+        mandant: req.mandant,
+        count: 0,
+        id: customerId,
+        scope,
+        year: null,
+        supplierMappingIncomplete: supplierContext.supplierMappingIncomplete,
+      },
+      error: null,
+    });
+    return;
+  }
+
+  const supplierPlaceholders = buildParameterList(supplierContext.supplierNumbers);
+  const scopeFilterSql = scope === 'open' ? 'AND [x].[be_Zahlung] IS NULL' : '';
+  const dateFilter = buildDocumentDateFilter('[x].[be_Datum]', scope, req.query.year);
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT
+      [x].[be_LfdNR] AS receiptId,
+      [x].[be_EinAus] AS direction,
+      [x].[be_InvoiceType] AS invoiceType,
+      [x].[be_Firma_KdNR] AS supplierNumber,
+      [x].[be_RgNR] AS invoiceNumber,
+      [x].[be_Datum] AS invoiceDate,
+      [x].[be_FälligBis] AS dueDate,
+      [x].[be_Zahlung] AS paymentDate,
+      [x].[be_Brutto_EU] AS grossEu,
+      [x].[be_Brutto_DM] AS grossDm,
+      [x].[be_RGBrutto_EU] AS rgGrossEu,
+      [x].[be_RGBrutto_DM] AS rgGrossDm
+    FROM [dbo].[tblBelege] [x]
+    WHERE [x].[be_EinAus] = 2
+      AND COALESCE([x].[be_Firma_KdNR], '') IN (${supplierPlaceholders})
+      ${scopeFilterSql}
+      ${dateFilter.sql}
+    ORDER BY [x].[be_Datum] DESC, [x].[be_LfdNR] DESC
+  `, [...supplierContext.supplierNumbers, ...dateFilter.params]);
+
+  const data = (Array.isArray(rows) ? rows : []).map((row, index) => {
+    const rgGrossEu = Number(row.rgGrossEu);
+    const grossEu = Number(row.grossEu);
+    const rgGrossDm = Number(row.rgGrossDm);
+    const grossDm = Number(row.grossDm);
+    return {
+      id: toText(row.receiptId) || `${toText(row.invoiceNumber) || 'supplier-invoice'}-${index + 1}`,
+      invoiceNumber: toText(row.invoiceNumber),
+      invoiceDate: row.invoiceDate || null,
+      dueDate: row.dueDate || null,
+      paymentDate: row.paymentDate || null,
+      isPaid: Boolean(row.paymentDate),
+      invoiceType: Number.isFinite(Number(row.invoiceType)) ? Number(row.invoiceType) : null,
+      supplierNumber: toText(row.supplierNumber),
+      amount: Number.isFinite(rgGrossEu) && rgGrossEu !== 0
+        ? rgGrossEu
+        : (Number.isFinite(grossEu) && grossEu !== 0
+          ? grossEu
+          : (Number.isFinite(rgGrossDm) && rgGrossDm !== 0 ? rgGrossDm : (Number.isFinite(grossDm) ? grossDm : null))),
+    };
+  });
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      id: customerId,
+      scope,
+      year: dateFilter.year,
+      supplierNumbers: supplierContext.supplierNumbers,
+    },
+    error: null,
+  });
+}));
+
 router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   const lang = resolveLang(req);
@@ -1143,6 +1432,157 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       id: customerId,
       scope,
       year: dateFilter.year,
+    },
+    error: null,
+  });
+}));
+
+router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(async (req, res) => {
+  const customerId = toText(req.params.id);
+  if (!customerId) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+  await requireVisibleCustomer(req, customerId);
+  const supplierContext = await loadSupplierContext(req.database, customerId);
+  if (!supplierContext.supplierNumbers.length) {
+    sendEnvelope(res, {
+      status: 200,
+      data: [],
+      meta: {
+        mandant: req.mandant,
+        count: 0,
+        groupCount: 0,
+        id: customerId,
+        supplierMappingIncomplete: supplierContext.supplierMappingIncomplete,
+      },
+      error: null,
+    });
+    return;
+  }
+
+  const supplierPlaceholders = buildParameterList(supplierContext.supplierNumbers);
+  const rows = await runSQLQueryAccess(req.database, `
+    SELECT
+      [p].[beP_Artikelindex] AS articleIndex,
+      [p].[beP_Artikel] AS article,
+      [p].[beP_Anzahl] AS amount,
+      [p].[beP_Einheit] AS unit,
+      [p].[beP_EK_EU] AS purchasePricePerTonneEu,
+      [p].[beP_EK_DM] AS purchasePricePerTonneDm,
+      [p].[beP_Lieferdatum] AS deliveryDate,
+      [b].[be_Bestelldatum] AS orderDate,
+      [b].[be_Bestellindex] AS orderIndex
+    FROM [dbo].[tblBest_Position] [p]
+    INNER JOIN [dbo].[tblBestellung] [b]
+      ON [b].[be_Bestellindex] = [p].[beP_Bestellindex]
+    WHERE COALESCE([b].[be_KdNr], '') IN (${supplierPlaceholders})
+      AND COALESCE([p].[beP_Artikel], '') <> ''
+      AND COALESCE([p].[beP_Storno], 0) <> 1
+    ORDER BY [b].[be_Bestelldatum] DESC, [p].[beP_Artikel] ASC
+  `, supplierContext.supplierNumbers);
+  const purchasedRows = Array.isArray(rows) ? rows : [];
+  const articleIndexes = [...new Set(purchasedRows.map((row) => toText(row.articleIndex)).filter(Boolean))];
+  const articleMetaMap = new Map();
+  if (articleIndexes.length) {
+    const placeholders = buildParameterList(articleIndexes);
+    const metaRows = await runSQLQueryAccess(req.database, `
+      SELECT
+        [a].[agA_Artikelindex] AS articleIndex,
+        [a].[agA_Artikelname] AS masterArticleName,
+        [a].[agA_Artikelgruppe] AS articleGroupId,
+        [g].[ag_Gruppenname] AS articleGroupName,
+        [a].[agA_MFI] AS mfi,
+        [plastic].[art4_Bezeichnung] AS plastic,
+        [plasticSub].[art5_Bezeichnung] AS plasticSubCategory
+      FROM [dbo].[tblArt_Artikel] [a]
+      LEFT JOIN [dbo].[tblArtikelgruppe] [g]
+        ON [g].[ag_Gruppenindex] = [a].[agA_Artikelgruppe]
+      LEFT JOIN [dbo].[tblArt4_Kunststoff] [plastic]
+        ON [plastic].[art4_ID_Kunststoff] = [a].[agA_ID_Kunststoff]
+      LEFT JOIN [dbo].[tblArt5_KunststoffUnter] [plasticSub]
+        ON [plasticSub].[art5_ID_Kunststoff] = [a].[agA_ID_Kunststoff]
+       AND [plasticSub].[art5_ID_KunststoffUnter] = [a].[agA_ID_KunststoffUnter]
+      WHERE [a].[agA_Artikelindex] IN (${placeholders})
+    `, articleIndexes);
+    for (const row of (Array.isArray(metaRows) ? metaRows : [])) {
+      const articleIndex = toText(row.articleIndex);
+      if (articleIndex) articleMetaMap.set(articleIndex, row);
+    }
+  }
+
+  const groups = new Map();
+  for (const row of purchasedRows) {
+    const article = toText(row.article);
+    if (!article) continue;
+    const articleIndex = toText(row.articleIndex);
+    const meta = articleMetaMap.get(articleIndex) || {};
+    const group = resolvePurchasedArticleGroup({
+      article,
+      articleIndex,
+      masterArticleName: meta.masterArticleName,
+      articleGroupId: meta.articleGroupId,
+      articleGroupName: meta.articleGroupName,
+      plastic: meta.plastic,
+      plasticSubCategory: meta.plasticSubCategory,
+    });
+    if (!groups.has(group.key)) {
+      groups.set(group.key, { ...group, articles: [], articleMap: new Map() });
+    }
+    const groupEntry = groups.get(group.key);
+    const childKey = `${articleIndex}\u0000${article}`;
+    const eu = Number(row.purchasePricePerTonneEu);
+    const dm = Number(row.purchasePricePerTonneDm);
+    const purchasePricePerTonne = Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null);
+    const amount = Number(row.amount);
+    const orderDate = row.orderDate || null;
+    const existing = groupEntry.articleMap.get(childKey);
+    if (existing) {
+      if (Number.isFinite(amount)) existing.amount = (Number(existing.amount) || 0) + amount;
+      if (orderDate && (!existing.lastOrderDate || new Date(orderDate) > new Date(existing.lastOrderDate))) {
+        existing.lastOrderDate = orderDate;
+        existing.purchasePricePerTonne = purchasePricePerTonne;
+        existing.orderIndex = toText(row.orderIndex);
+      }
+      continue;
+    }
+    const textMfi = parseMfiFromText(article);
+    const masterMfi = Number(meta.mfi);
+    const mfi = textMfi !== null ? textMfi : (Number.isFinite(masterMfi) ? masterMfi : null);
+    const child = {
+      id: `${customerId}-procured-article-${group.key}-${groupEntry.articles.length + 1}`,
+      article,
+      articleIndex: articleIndex || null,
+      mfi,
+      amount: Number.isFinite(amount) ? amount : null,
+      unit: toText(row.unit),
+      lastOrderDate: orderDate,
+      deliveryDate: row.deliveryDate || null,
+      purchasePricePerTonne,
+      orderIndex: toText(row.orderIndex),
+    };
+    groupEntry.articleMap.set(childKey, child);
+    groupEntry.articles.push(child);
+  }
+
+  const data = Array.from(groups.values()).map(({ articleMap, ...group }) => ({
+    ...group,
+    articles: group.articles.sort((left, right) => {
+      if (left.mfi === null && right.mfi !== null) return 1;
+      if (left.mfi !== null && right.mfi === null) return -1;
+      if (left.mfi !== null && right.mfi !== null && left.mfi !== right.mfi) return left.mfi - right.mfi;
+      return left.article.localeCompare(right.article, 'de');
+    }),
+  })).sort((left, right) => left.name.localeCompare(right.name, 'de'));
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      count: data.reduce((total, group) => total + group.articles.length, 0),
+      groupCount: data.length,
+      id: customerId,
+      supplierNumbers: supplierContext.supplierNumbers,
     },
     error: null,
   });

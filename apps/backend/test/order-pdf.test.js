@@ -5,8 +5,10 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  buildDocumentPdfDirectory,
   buildOrderPdfDirectory,
   findTimestampedAbFile,
+  resolveLatestPurchaseOrderPdf,
   resolveLatestOrderPdf,
 } = require('../src/order-pdf');
 
@@ -38,6 +40,38 @@ test('builds the tenant document path from the exact company name', () => {
     }),
     '\\\\BMS02.DOMKIMAZ.de.local\\BMS\\Datenbanken\\Frupack\\BMS_Dokumente\\03 Auftrag\\3-03-26-00772',
   );
+});
+
+test('builds the supplier purchase-order document path and matches the legacy filename prefix', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bms-purchase-pdf-'));
+  try {
+    const directory = buildDocumentPdfDirectory({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001',
+      documentFolder: '02 Bestellung',
+    });
+    assert.equal(
+      directory,
+      path.win32.join(root, 'Datenbanken', 'Frupack', 'BMS_Dokumente', '02 Bestellung', '3-02-17-00001'),
+    );
+    await fs.promises.mkdir(directory, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(directory, '3-02-17-00001-01 Eingang Siegmeier 06.02.2017 (2017-302).pdf'),
+      'purchase',
+    );
+    await fs.promises.writeFile(path.join(directory, '3-02-17-00001-not-a-pdf.txt'), 'ignore');
+
+    const result = await resolveLatestPurchaseOrderPdf({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001',
+    });
+    assert.equal(result.fileName, '3-02-17-00001-01 Eingang Siegmeier 06.02.2017 (2017-302).pdf');
+    assert.equal(await fs.promises.readFile(result.filePath, 'utf8'), 'purchase');
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('accepts a drive-letter root used by the local fallback configuration', () => {
