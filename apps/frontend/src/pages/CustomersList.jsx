@@ -74,7 +74,7 @@ export default function CustomersList() {
   const [searchField, setSearchField] = React.useState('name');
   const [reminderOnly, setReminderOnly] = React.useState(false);
   const [orderQuantity, setOrderQuantity] = React.useState(true);
-  const [includeInactive, setIncludeInactive] = React.useState(false);
+  const [hideInactive, setHideInactive] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
@@ -82,7 +82,7 @@ export default function CustomersList() {
   const searchFieldRef = React.useRef(searchField);
   const reminderOnlyRef = React.useRef(reminderOnly);
   const orderQuantityRef = React.useRef(orderQuantity);
-  const includeInactiveRef = React.useRef(includeInactive);
+  const hideInactiveRef = React.useRef(hideInactive);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
   const touchRef = React.useRef({ x: 0, y: 0 });
@@ -109,8 +109,8 @@ export default function CustomersList() {
   }, [orderQuantity]);
 
   React.useEffect(() => {
-    includeInactiveRef.current = includeInactive;
-  }, [includeInactive]);
+    hideInactiveRef.current = hideInactive;
+  }, [hideInactive]);
 
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
@@ -125,7 +125,7 @@ export default function CustomersList() {
     const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? true;
-    const includeInactiveVal = opts.includeInactive ?? includeInactiveRef.current ?? false;
+    const hideInactiveVal = opts.hideInactive ?? hideInactiveRef.current ?? false;
     const recentMode = searchFieldVal === 'recent';
     const recentRows = recentMode
       ? getRecentCustomers().map(recentCustomerToRow)
@@ -143,7 +143,7 @@ export default function CustomersList() {
             data: recentRows,
             meta: { page: 1, pageSize, total: recentRows.length },
           })
-          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${includeInactiveVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
+          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&sort=${sortVal}&dir=${dirVal}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
@@ -170,7 +170,7 @@ export default function CustomersList() {
     const syncSelectedCustomer = () => setSelectedCustomerState(getSelectedCustomer());
     const syncRecentCustomers = () => {
       if (searchFieldRef.current === 'recent') {
-        load({ page: 1, q: '', searchField: 'recent', reminderOnly: false, orderQuantity: false, includeInactive: false });
+        load({ page: 1, q: '', searchField: 'recent', reminderOnly: false, orderQuantity: false, hideInactive: false });
       }
     };
 
@@ -190,7 +190,7 @@ export default function CustomersList() {
     const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
     const selectedCustomerId = getSelectedCustomer()?.id;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.includeInactive !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
@@ -198,15 +198,19 @@ export default function CustomersList() {
       const restoredOrderQuantity = listState.orderQuantity !== undefined
         ? Boolean(listState.orderQuantity)
         : true;
-      const restoredIncludeInactive = Boolean(listState.includeInactive);
+      const restoredHideInactive = listState.hideInactive !== undefined
+        ? Boolean(listState.hideInactive)
+        : listState.includeInactive !== undefined
+          ? !Boolean(listState.includeInactive)
+          : false;
       hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setSearchField(restoredSearchField);
       setReminderOnly(restoredReminderOnly);
       setOrderQuantity(restoredOrderQuantity);
-      setIncludeInactive(restoredIncludeInactive);
-      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, includeInactive: restoredIncludeInactive, focusCustomerId: selectedCustomerId });
+      setHideInactive(restoredHideInactive);
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
@@ -219,14 +223,14 @@ export default function CustomersList() {
       setSearchField('name');
       setReminderOnly(false);
       setOrderQuantity(true);
-      setIncludeInactive(false);
+      setHideInactive(false);
       load({
         page: 1,
         q: '',
         searchField: 'name',
         reminderOnly: false,
         orderQuantity: true,
-        includeInactive: false,
+        hideInactive: false,
         focusCustomerId: currentSelectedCustomer?.id,
       });
       navigate(location.pathname, { replace: true, state: null });
@@ -236,7 +240,7 @@ export default function CustomersList() {
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
     skipSearchReloadRef.current = true;
-    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: true, includeInactive: false, focusCustomerId: selectedCustomerId });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: true, hideInactive: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -262,11 +266,11 @@ export default function CustomersList() {
         return;
       }
       if (searchField === 'recent' || qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, includeInactive });
+        load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, hideInactive });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, reminderOnly, orderQuantity, includeInactive, load]);
+  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, load]);
 
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
@@ -288,7 +292,7 @@ export default function CustomersList() {
       searchField: searchFieldRef.current,
       reminderOnly: searchFieldRef.current === 'recent' ? false : reminderOnlyRef.current,
       orderQuantity: orderQuantityRef.current,
-      includeInactive: includeInactiveRef.current,
+      hideInactive: hideInactiveRef.current,
       focusCustomerId: next?.id,
     });
   }, [load, location.state, navigate]);
@@ -303,7 +307,7 @@ export default function CustomersList() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
               aria-label="zurueck"
-              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, includeInactive })}
+              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, hideInactive })}
               disabled={(meta.page || 1) <= 1}
             >
               <ArrowBackIcon />
@@ -313,7 +317,7 @@ export default function CustomersList() {
             </Typography>
             <IconButton
               aria-label="weiter"
-              onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, includeInactive })}
+              onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, hideInactive })}
               disabled={meta.total !== null && meta.total !== undefined
                 ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
                 : false}
@@ -436,11 +440,11 @@ export default function CustomersList() {
                 control={(
                   <Switch
                     size="small"
-                    checked={includeInactive}
-                    onChange={(event) => setIncludeInactive(event.target.checked)}
+                    checked={hideInactive}
+                    onChange={(event) => setHideInactive(event.target.checked)}
                   />
                 )}
-                label={t('customers_show_inactive')}
+                label={t('customers_hide_inactive')}
                 sx={{
                   m: 0,
                   justifySelf: 'start',
@@ -512,7 +516,7 @@ export default function CustomersList() {
                   }
                   navigate(`/customers/${encodeURIComponent(id)}`, {
                     state: {
-                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, includeInactive },
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
                       afterSelect: location.state?.afterSelect || null,
                     },
                   });
