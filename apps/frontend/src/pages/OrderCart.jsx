@@ -383,7 +383,7 @@ export default function OrderCart() {
                   error={Boolean(rowErr.salePrice)}
                   helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
                 />
-                <SaleMarginHint salePrice={row.salePrice} costPrice={row.acquisitionPrice} />
+                <SaleMarginHint amountInKg={row.quantityKg} salePrice={row.salePrice} costPrice={row.acquisitionPrice} />
                 <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
                   <TextField
                     type="date"

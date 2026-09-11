@@ -1778,7 +1778,7 @@ export default function TempOrderForm() {
                                 inputProps={{ min: 0.01, step: 'any' }}
                                 size="small"
                               />
-                              <SaleMarginHint salePrice={x.price} costPrice={x.costPrice} />
+                              <SaleMarginHint amountInKg={x.amountInKg} salePrice={x.price} costPrice={x.costPrice} />
                             </Box>
                             <TextField
                               type="number"
@@ -1939,7 +1939,7 @@ export default function TempOrderForm() {
             inputProps={{ min: 0.01, step: 'any' }}
             fullWidth
           />
-          <SaleMarginHint salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
+          <SaleMarginHint amountInKg={addPosQty} salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
           {addPosProduct && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {t('original_packaging_type_label')}: {addPosOriginalPackagingType || '-'}
