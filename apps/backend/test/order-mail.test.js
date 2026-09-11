@@ -203,6 +203,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
     completedAt: '2026-09-08T12:00:00.000Z',
     order: {
       id: 65,
+      createdBy: 'NS',
       clientName: 'Muster & Söhne <Kunde>',
       clientReferenceId: 'K-65',
       deliveryAddress: 'Werk 2',
@@ -247,7 +248,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
   });
 
   assert.equal(VL_COMPLETION_MAIL_SUBJECT, '@BMS-App Verkauf');
-  assert.match(body, /<span style="color:#ff0000;font-weight:700;">Sold<\/span> to <span style="color:#ff0000;font-weight:700;">Muster &amp; Söhne &lt;Kunde&gt;<\/span>/);
+  assert.match(body, /<span style="color:#000000;font-weight:700;">NS<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Muster &amp; Söhne &lt;Kunde&gt;<\/span>/);
   assert.match(body, /at 1\.234 \(buying price 1\.035\)/);
   assert.match(body, /font-weight:700/);
   assert.match(body, /color:#ff0000/);
@@ -262,6 +263,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
 test('VL completion header pairs each distinct VK price with its incoterm', () => {
   const body = formatVlCompletionMailBody({
     order: {
+      createdBy: 'AKI',
       clientName: 'Rotpunkt',
       deliveryType: 'DDP / FCA',
     },
@@ -272,7 +274,7 @@ test('VL completion header pairs each distinct VK price with its incoterm', () =
     vlItems: [],
   });
 
-  assert.match(body, /<span style="color:#ff0000;font-weight:700;">Sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250 DDP \/ 1\.210 FCA \(buying price 1\.175\)/);
+  assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250 DDP \/ 1\.210 FCA \(buying price 1\.175\)/);
   assert.doesNotMatch(body, /margin \d/);
 });
 
