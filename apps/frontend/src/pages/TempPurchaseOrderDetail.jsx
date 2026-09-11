@@ -3,12 +3,13 @@ import { Alert, Box, Button, Card, CardContent, CircularProgress, Typography } f
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 
 export default function TempPurchaseOrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -38,13 +39,18 @@ export default function TempPurchaseOrderDetail() {
     finally { setWorking(false); }
   };
 
+  const handleBack = React.useCallback(() => {
+    const listState = location.state?.listState;
+    navigate('/temp-purchase-orders', listState ? { state: { listState } } : undefined);
+  }, [location.state, navigate]);
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>;
   if (!item) return <Alert severity="error">{error || 'Bestellung nicht gefunden.'}</Alert>;
   const editable = item.status === 0 || item.status === 3;
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', display: 'grid', gap: 1.25 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/temp-purchase-orders')}>Bestellungen</Button>
+        <Button startIcon={<ArrowBackIcon />} onClick={handleBack}>Bestellungen</Button>
         <Typography variant="h5" sx={{ flex: 1 }}>Bestellung {item.id}</Typography>
         {editable && <Button startIcon={<EditIcon />} onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(id)}/edit`)}>Bearbeiten</Button>}
         {editable && <Button color="error" startIcon={<DeleteOutlineIcon />} onClick={remove} disabled={working}>Löschen</Button>}

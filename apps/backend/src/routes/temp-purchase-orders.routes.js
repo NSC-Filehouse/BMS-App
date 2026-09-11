@@ -176,6 +176,7 @@ async function loadOwnDeliveryContext(database) {
   const candidates = [name, shortName].filter(Boolean);
   let ownCustomerId = '';
   if (candidates.length) {
+    const normalizedCandidates = candidates.map((item) => item.toUpperCase());
     const placeholders = candidates.map(() => '?').join(', ');
     const exactRows = await runSQLQueryAccess(database, `
       SELECT TOP 1 [kd_KdNR] AS customerId
@@ -187,24 +188,29 @@ async function loadOwnDeliveryContext(database) {
       )
       ORDER BY [kd_KdNR]
     `, [
-      ...candidates.map((item) => item.toUpperCase()),
-      ...candidates.map((item) => item.toUpperCase()),
-      ...candidates.map((item) => item.toUpperCase()),
+      ...normalizedCandidates,
+      ...normalizedCandidates,
+      ...normalizedCandidates,
     ]);
     ownCustomerId = asText(exactRows?.[0]?.customerId);
     if (!ownCustomerId) {
-      const likePlaceholders = candidates.map(() => '?').join(', ');
+      // Each LIKE predicate takes exactly one parameter.  A comma-separated
+      // placeholder list (`LIKE ?, ?`) is invalid SQL Server syntax and was
+      // especially visible for the Test tenant, which supplies name + shortName.
+      const name1Like = normalizedCandidates
+        .map(() => `UPPER(LTRIM(RTRIM(COALESCE([kd_Name1], '')))) LIKE ?`)
+        .join(' OR ');
+      const name2Like = normalizedCandidates
+        .map(() => `UPPER(LTRIM(RTRIM(COALESCE([kd_Name2], '')))) LIKE ?`)
+        .join(' OR ');
       const likeRows = await runSQLQueryAccess(database, `
         SELECT TOP 1 [kd_KdNR] AS customerId
         FROM [dbo].[tblKunden]
-        WHERE (
-          UPPER(LTRIM(RTRIM(COALESCE([kd_Name1], '')))) LIKE ${likePlaceholders}
-          OR UPPER(LTRIM(RTRIM(COALESCE([kd_Name2], '')))) LIKE ${likePlaceholders}
-        )
+        WHERE (${name1Like} OR ${name2Like})
         ORDER BY [kd_KdNR]
       `, [
-        ...candidates.map((item) => `%${item.toUpperCase()}%`),
-        ...candidates.map((item) => `%${item.toUpperCase()}%`),
+        ...normalizedCandidates.map((item) => `%${item}%`),
+        ...normalizedCandidates.map((item) => `%${item}%`),
       ]);
       ownCustomerId = asText(likeRows?.[0]?.customerId);
     }
@@ -214,6 +220,33 @@ async function loadOwnDeliveryContext(database) {
     customerId: ownCustomerId,
     addresses: await loadCustomerDeliveryAddresses(database, ownCustomerId),
   };
+}
+
+function normalizePurchaseOwnerScope(value) {
+  return asText(value).toLowerCase() === 'mine' ? 'mine' : 'all';
+}
+
+function normalizePurchaseListStatus(value) {
+  const normalized = asText(value).toLowerCase();
+  return ['draft', 'sent', 'rework'].includes(normalized) ? normalized : 'all';
+}
+
+function buildPurchaseOwnerFilter(userShortCode, isFullAccess, requestedScope) {
+  const scope = isFullAccess ? normalizePurchaseOwnerScope(requestedScope) : 'mine';
+  if (scope === 'all') return { whereSql: '', params: [], scope };
+  return {
+    whereSql: ' AND LOWER(COALESCE([tb_created_by], \'\')) = ?',
+    params: [String(userShortCode || '').toLowerCase()],
+    scope,
+  };
+}
+
+function buildPurchaseStatusFilter(status) {
+  const normalized = normalizePurchaseListStatus(status);
+  if (normalized === 'draft') return { whereSql: ' AND COALESCE([tb_status], 0) = 0', status: normalized };
+  if (normalized === 'rework') return { whereSql: ' AND COALESCE([tb_status], 0) = 3', status: normalized };
+  if (normalized === 'sent') return { whereSql: ' AND COALESCE([tb_status], 0) IN (1, 2)', status: normalized };
+  return { whereSql: '', status: normalized };
 }
 
 async function loadWorkingCalendar(address) {
@@ -417,15 +450,12 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
   const companyId = Number(req.database?.firmaId || 0);
   const { page, pageSize } = parseListParams(req.query, { page: 1, pageSize: 20, sort: 'createdAt', dir: 'DESC' });
   const q = asText(req.query.q);
-  const status = asText(req.query.status);
-  const ownerScope = asText(req.query.ownerScope) || 'mine';
+  const statusFilter = buildPurchaseStatusFilter(req.query.status);
+  const ownerFilter = buildPurchaseOwnerFilter(userShortCode, accessScope.isFullAccess, req.query.ownerScope);
   const clauses = ['[tb_company_id] = ?'];
   const params = [companyId];
-  if (ownerScope !== 'all' || !accessScope.isFullAccess) { clauses.push('[tb_created_by] = ?'); params.push(userShortCode); }
-  if (status && status !== 'all') {
-    const statusMap = { draft: 0, sent: 1, accepted: 2, rework: 3 };
-    if (Object.prototype.hasOwnProperty.call(statusMap, status)) { clauses.push('[tb_status] = ?'); params.push(statusMap[status]); }
-  }
+  if (ownerFilter.whereSql) { clauses.push(ownerFilter.whereSql.replace(/^\s*AND\s+/i, '')); params.push(...ownerFilter.params); }
+  if (statusFilter.whereSql) { clauses.push(statusFilter.whereSql.replace(/^\s*AND\s+/i, '')); }
   if (q) {
     clauses.push(`([tb_supplier_name] LIKE ? OR [tb_supplier_id] LIKE ? OR EXISTS (
       SELECT 1 FROM ${TEMP_PURCHASE_POSITION_TABLE} p
@@ -433,6 +463,8 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
     ))`);
     params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
+  // The status filter contains no parameters; keeping this list explicit
+  // makes count and page queries use exactly the same predicate order.
   const where = clauses.join(' AND ');
   const countRows = await runSQLQuerySqlServer(config.sql.database, `SELECT COUNT(*) AS total FROM ${TEMP_PURCHASE_ORDER_TABLE} WHERE ${where}`, params);
   const total = Number(countRows?.[0]?.total || 0);
@@ -445,7 +477,20 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
   `, [...params, offset, pageSize]);
   const data = [];
   for (const row of (Array.isArray(rows) ? rows : [])) data.push(mapOrder(row, await loadPositions(row.id)));
-  sendEnvelope(res, { status: 200, data, meta: { page, pageSize, total, mandant: req.mandant }, error: null });
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      page,
+      pageSize,
+      total,
+      mandant: req.mandant,
+      status: statusFilter.status,
+      ownerScope: ownerFilter.scope,
+      canViewAll: Boolean(accessScope.isFullAccess),
+    },
+    error: null,
+  });
 }));
 
 router.get('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
