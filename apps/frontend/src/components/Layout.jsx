@@ -219,6 +219,7 @@ export default function Layout() {
           </ListItemButton>
         )}
         <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
+        <NavItem to="/temp-purchase-orders" label={t('temp_purchase_orders_title')} icon={<ShoppingCartIcon />} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
         <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
       </List>

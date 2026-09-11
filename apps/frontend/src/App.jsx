@@ -19,6 +19,7 @@ import Settings from './pages/Settings.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
 import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
+import PurchaseCart from './pages/PurchaseCart.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
@@ -26,6 +27,9 @@ import OrderCreate from './pages/OrderCreate.jsx';
 import TempOrdersList from './pages/TempOrdersList.jsx';
 import TempOrderDetail from './pages/TempOrderDetail.jsx';
 import TempOrderForm from './pages/TempOrderForm.jsx';
+import TempPurchaseOrdersList from './pages/TempPurchaseOrdersList.jsx';
+import TempPurchaseOrderDetail from './pages/TempPurchaseOrderDetail.jsx';
+import TempPurchaseOrderForm from './pages/TempPurchaseOrderForm.jsx';
 import DatabaseUnavailable from './pages/DatabaseUnavailable.jsx';
 
 function AppRoutes() {
@@ -129,6 +133,14 @@ function AppRoutes() {
             </MandantGuard>
           }
         />
+        <Route
+          path="/purchase-cart"
+          element={
+            <MandantGuard>
+              <PurchaseCart />
+            </MandantGuard>
+          }
+        />
 
         <Route
           path="/orders"
@@ -186,6 +198,38 @@ function AppRoutes() {
           element={
             <MandantGuard>
               <TempOrderForm />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-purchase-orders"
+          element={
+            <MandantGuard>
+              <TempPurchaseOrdersList />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-purchase-orders/new"
+          element={
+            <MandantGuard>
+              <PurchaseCart />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-purchase-orders/:id"
+          element={
+            <MandantGuard>
+              <TempPurchaseOrderDetail />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/temp-purchase-orders/:id/edit"
+          element={
+            <MandantGuard>
+              <TempPurchaseOrderForm />
             </MandantGuard>
           }
         />

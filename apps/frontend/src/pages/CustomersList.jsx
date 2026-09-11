@@ -75,6 +75,7 @@ export default function CustomersList() {
   const [reminderOnly, setReminderOnly] = React.useState(false);
   const [orderQuantity, setOrderQuantity] = React.useState(true);
   const [hideInactive, setHideInactive] = React.useState(false);
+  const [supplierOnly, setSupplierOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
@@ -83,6 +84,7 @@ export default function CustomersList() {
   const reminderOnlyRef = React.useRef(reminderOnly);
   const orderQuantityRef = React.useRef(orderQuantity);
   const hideInactiveRef = React.useRef(hideInactive);
+  const supplierOnlyRef = React.useRef(supplierOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
   const touchRef = React.useRef({ x: 0, y: 0 });
@@ -111,6 +113,10 @@ export default function CustomersList() {
   React.useEffect(() => {
     hideInactiveRef.current = hideInactive;
   }, [hideInactive]);
+
+  React.useEffect(() => {
+    supplierOnlyRef.current = supplierOnly;
+  }, [supplierOnly]);
 
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
@@ -143,7 +149,7 @@ export default function CustomersList() {
             data: recentRows,
             meta: { page: 1, pageSize, total: recentRows.length },
           })
-          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&sort=${sortVal}&dir=${dirVal}`),
+          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnlyRef.current ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
@@ -190,7 +196,7 @@ export default function CustomersList() {
     const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
     const selectedCustomerId = getSelectedCustomer()?.id;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined || listState.supplierOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
@@ -203,6 +209,7 @@ export default function CustomersList() {
         : listState.includeInactive !== undefined
           ? !Boolean(listState.includeInactive)
           : false;
+      const restoredSupplierOnly = Boolean(listState.supplierOnly);
       hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
@@ -210,6 +217,8 @@ export default function CustomersList() {
       setReminderOnly(restoredReminderOnly);
       setOrderQuantity(restoredOrderQuantity);
       setHideInactive(restoredHideInactive);
+      setSupplierOnly(restoredSupplierOnly);
+      supplierOnlyRef.current = restoredSupplierOnly;
       load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: null });
       return;
@@ -224,6 +233,7 @@ export default function CustomersList() {
       setReminderOnly(false);
       setOrderQuantity(true);
       setHideInactive(false);
+      setSupplierOnly(false);
       load({
         page: 1,
         q: '',
@@ -270,7 +280,7 @@ export default function CustomersList() {
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, load]);
+  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly, load]);
 
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
@@ -352,6 +362,7 @@ export default function CustomersList() {
             value={searchField}
             onChange={(e) => {
               const nextField = e.target.value;
+              if (supplierOnly && nextField === 'recent') return;
               setSearchField(nextField);
               if (nextField === 'recent') {
                 setQ('');
@@ -452,6 +463,27 @@ export default function CustomersList() {
                   '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />
+              <FormControlLabel
+                control={(
+                  <Switch
+                    size="small"
+                    checked={supplierOnly}
+                    onChange={(event) => {
+                      const next = event.target.checked;
+                      setSupplierOnly(next);
+                      supplierOnlyRef.current = next;
+                      if (next && searchField === 'recent') setSearchField('name');
+                    }}
+                  />
+                )}
+                label={t('customers_filter_suppliers')}
+                sx={{
+                  m: 0,
+                  justifySelf: 'start',
+                  minWidth: 0,
+                  '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
+                }}
+              />
             </Box>
           )}
         </CardContent>
@@ -516,7 +548,7 @@ export default function CustomersList() {
                   }
                   navigate(`/customers/${encodeURIComponent(id)}`, {
                     state: {
-                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly },
                       afterSelect: location.state?.afterSelect || null,
                     },
                   });
@@ -527,6 +559,11 @@ export default function CustomersList() {
                     <Typography variant="body1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {name || String(id ?? '')}
                     </Typography>
+                    {supplierOnly && (
+                      <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {t('supplier_label')}
+                      </Typography>
+                    )}
                     {Number(row?.reminderInvoicesCount) > 0 && (
                       <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         ({Number(row.reminderInvoicesCount)})

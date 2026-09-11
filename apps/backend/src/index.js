@@ -14,6 +14,7 @@ const customersRouter = require('./routes/customers.routes');
 const productsRouter = require('./routes/products.routes');
 const ordersRouter = require('./routes/orders.routes');
 const tempOrdersRouter = require('./routes/temp-orders.routes');
+const tempPurchaseOrdersRouter = require('./routes/temp-purchase-orders.routes');
 const deliveryCalendarRouter = require('./routes/delivery-calendar.routes');
 const timelineRouter = require('./routes/timeline.routes');
 const pushRouter = require('./routes/push.routes');
@@ -26,6 +27,7 @@ const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
 const { startTempOrderReworkPushWorker } = require('./db/temp-order-rework-push');
 const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
+const { startPurchaseOrderMailWorker } = require('./db/purchase-order-mail-outbox');
 
 const { notFound } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
@@ -130,6 +132,7 @@ app.use(config.apiBasePath, customersRouter);
 app.use(config.apiBasePath, productsRouter);
 app.use(config.apiBasePath, ordersRouter);
 app.use(config.apiBasePath, tempOrdersRouter);
+app.use(config.apiBasePath, tempPurchaseOrdersRouter);
 app.use(config.apiBasePath, deliveryCalendarRouter);
 app.use(config.apiBasePath, timelineRouter);
 app.use(config.apiBasePath, pushRouter);
@@ -146,4 +149,5 @@ app.listen(config.port, config.host, () => {
   startUnfinalizedOrderReminderWorker();
   startTempOrderReworkPushWorker();
   startVlCompletionMailWorker();
+  startPurchaseOrderMailWorker();
 });

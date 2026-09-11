@@ -164,6 +164,14 @@ function buildWhereClause(q, searchField, options = {}) {
     params.push(...(Array.isArray(customerAccess.params) ? customerAccess.params : []));
   }
 
+  if (options.supplierOnly) {
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
+      WHERE LTRIM(RTRIM(COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], ''))) = LTRIM(RTRIM(COALESCE(${col('[kd_KdNR]')}, '')))
+    )`);
+  }
+
   if (options.reminderOnly) {
     clauses.push(`COALESCE([rc].[reminderInvoicesCount], 0) > 0`);
   }
@@ -178,15 +186,27 @@ function buildWhereClause(q, searchField, options = {}) {
   const like = `%${text}%`;
   const mode = resolveSearchField(searchField);
   if (mode === 'article') {
-    clauses.push(`EXISTS (
-      SELECT 1
-      FROM [dbo].[tblRech_Position] [rp]
-      INNER JOIN [dbo].[tblRechnung] [r]
-        ON COALESCE([r].[re_RgNummer], '') = COALESCE([rp].[reP_Rgnummer], '')
-      WHERE COALESCE([r].[re_KdNr], '') = COALESCE(${col('[kd_KdNR]')}, '')
-        AND COALESCE([rp].[reP_Artikel], '') <> ''
-        AND [rp].[reP_Artikel] LIKE ?
-    )`);
+    const articleSql = options.supplierOnly
+      ? `EXISTS (
+          SELECT 1
+          FROM [dbo].[tblBest_Position] [bp]
+          INNER JOIN [dbo].[tblBestellung] [b]
+            ON COALESCE([b].[be_Bestellindex], '') = COALESCE([bp].[beP_Bestellindex], '')
+          WHERE COALESCE([b].[be_KdNr], '') = COALESCE(${col('[kd_KdNR]')}, '')
+            AND COALESCE([bp].[beP_Artikel], '') <> ''
+            AND [bp].[beP_Artikel] LIKE ?
+            AND COALESCE([bp].[beP_Storno], 0) <> 1
+        )`
+      : `EXISTS (
+          SELECT 1
+          FROM [dbo].[tblRech_Position] [rp]
+          INNER JOIN [dbo].[tblRechnung] [r]
+            ON COALESCE([r].[re_RgNummer], '') = COALESCE([rp].[reP_Rgnummer], '')
+          WHERE COALESCE([r].[re_KdNr], '') = COALESCE(${col('[kd_KdNR]')}, '')
+            AND COALESCE([rp].[reP_Artikel], '') <> ''
+            AND [rp].[reP_Artikel] LIKE ?
+        )`;
+    clauses.push(articleSql);
     return {
       whereSql: `WHERE ${clauses.join(' AND ')}`,
       params: [...params, like],
@@ -252,14 +272,24 @@ function getOrderCountsCte() {
   `;
 }
 
-async function loadActiveCustomerIds(database) {
+async function loadActiveCustomerIds(database, supplierOnly = false) {
   const databaseName = toText(database?.databaseName || database?.name || database?.database);
-  const cached = activeCustomersCache.get(databaseName);
+  const cacheKey = `${databaseName}:${supplierOnly ? 'suppliers' : 'customers'}`;
+  const cached = activeCustomersCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.promise;
   }
 
-  const promise = runSQLQueryAccess(database, `
+  const promise = runSQLQueryAccess(database, supplierOnly ? `
+    SELECT [purchase].[be_KdNr] AS customerId
+    FROM [dbo].[tblBestellung] [purchase]
+    WHERE [purchase].[be_Bestelldatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+      AND COALESCE([purchase].[be_KdNr], '') <> ''
+    UNION
+    SELECT [supplier_mapping].[kdLi_Lieferanten_Nr] AS customerId
+    FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
+    WHERE COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], '') <> ''
+  ` : `
     SELECT [activity].[kdH_KdNR] AS customerId
     FROM [dbo].[tblKun_Historie] [activity]
     WHERE [activity].[kdH_Datum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
@@ -283,7 +313,7 @@ async function loadActiveCustomerIds(database) {
     .map((row) => toText(row.customerId))
     .filter(Boolean));
 
-  activeCustomersCache.set(databaseName, {
+  activeCustomersCache.set(cacheKey, {
     expiresAt: Date.now() + ACTIVE_CUSTOMERS_TTL_MS,
     promise,
   });
@@ -291,7 +321,7 @@ async function loadActiveCustomerIds(database) {
   try {
     return await promise;
   } catch (error) {
-    activeCustomersCache.delete(databaseName);
+    activeCustomersCache.delete(cacheKey);
     throw error;
   }
 }
@@ -534,6 +564,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const includeInactive = String(req.query.includeInactive || '').trim() === '1';
+  const supplierOnly = String(req.query.supplierOnly || '').trim() === '1';
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -545,7 +576,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
   const activeOnly = !reminderOnly && !includeInactive;
-  const activeCustomerIds = activeOnly ? await loadActiveCustomerIds(req.database) : [];
+  const activeCustomerIds = activeOnly ? await loadActiveCustomerIds(req.database, supplierOnly) : [];
   const activeCustomerIdsJson = activeOnly ? JSON.stringify(activeCustomerIds) : null;
   const activeJoinSql = activeOnly
     ? `INNER JOIN OPENJSON(?) [active_customer] ON [active_customer].[value] = [k].[kd_KdNR]`
@@ -554,6 +585,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     customerAccess: accessScope.customerAccess,
     customerAlias: 'k',
     reminderOnly,
+    supplierOnly,
   });
   const queryParams = activeOnly ? [activeCustomerIdsJson, ...params] : params;
   const offset = (page - 1) * pageSize;
@@ -603,6 +635,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       searchField,
       reminderOnly,
       includeInactive,
+      supplierOnly,
       activityWindowYears: 2,
       sort: safeSort.key,
       dir: safeDir,

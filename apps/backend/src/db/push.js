@@ -127,6 +127,13 @@ function buildPushBody(entry, lang) {
       : `${user} hat Artikel ${product} reserviert.`;
   }
 
+  if (asText(entry.type) === 'purchase_order') {
+    const supplier = asText(entry.supplierName) || asText(entry.payloadJson?.supplierName) || '-';
+    return safeLang === 'en'
+      ? `${user} ordered ${amountText} ${asText(entry.unit) || 'KG'} from supplier ${supplier}.`
+      : `${user} hat ${amountText} ${asText(entry.unit) || 'KG'} bei Lieferant ${supplier} bestellt.`;
+  }
+
   return safeLang === 'en'
     ? `${user} ordered ${amountText} KG of article ${product}.`
     : `${user} hat ${amountText} KG von Artikel ${product} beauftragt.`;

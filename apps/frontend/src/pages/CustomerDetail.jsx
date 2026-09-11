@@ -40,6 +40,7 @@ import {
 } from '../utils/customerSelection.js';
 import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
+import { addPurchaseCartItem } from '../utils/purchaseCart.js';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
@@ -312,7 +313,7 @@ function DocumentAccordionSummary({ title, controls }) {
   );
 }
 
-function SupplierPurchasedArticleGroups({ groups, t }) {
+function SupplierPurchasedArticleGroups({ groups, t, onAdd }) {
   return (Array.isArray(groups) ? groups : []).map((group, groupIndex) => {
     const articles = Array.isArray(group?.articles) ? group.articles : [];
     const groupAvailablePositions = Array.isArray(group?.availablePositions) ? group.availablePositions : [];
@@ -364,6 +365,16 @@ function SupplierPurchasedArticleGroups({ groups, t }) {
                     <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
                       {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
                     </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<ShoppingCartIcon />}
+                      onClick={() => onAdd?.(article)}
+                      disabled={!article.articleIndex}
+                      sx={{ justifySelf: 'start', mt: 0.25 }}
+                    >
+                      {t('purchase_add_to_cart')}
+                    </Button>
                     {articlePositions.length > 0 && (
                       <Box sx={{ display: 'grid', gap: 0.25, mt: 0.2 }}>
                         <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
@@ -508,6 +519,8 @@ export default function CustomerDetail() {
   const [batchCartError, setBatchCartError] = React.useState('');
   const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
   const [batchCartAdding, setBatchCartAdding] = React.useState(false);
+  const [purchaseCartError, setPurchaseCartError] = React.useState('');
+  const [purchaseCartSuccess, setPurchaseCartSuccess] = React.useState('');
   const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
   const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
   const [docs, setDocs] = React.useState({
@@ -570,6 +583,45 @@ export default function CustomerDetail() {
     : '';
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const salesRepresentatives = normalizeSalesRepresentatives(item);
+
+  const addSupplierArticleToPurchaseCart = React.useCallback(async (article) => {
+    try {
+      setPurchaseCartError('');
+      setPurchaseCartSuccess('');
+      const articleIndex = String(article?.articleIndex || '').trim();
+      if (!articleIndex) throw new Error('Für das Material fehlt der Artikelindex.');
+      const response = await apiRequest(`/customers/${encodeURIComponent(id)}/procured-articles/${encodeURIComponent(articleIndex)}/purchase-defaults`);
+      const defaults = response?.data?.defaults || {};
+      const supplier = response?.data?.supplier || { id, name };
+      addPurchaseCartItem({
+        supplierId: supplier.id || id,
+        supplierName: supplier.name || name,
+        supplierAddress: supplier.address || address,
+        articleIndex,
+        article: article.article,
+        amount: defaults.amount || 1,
+        unit: defaults.unit || article.unit || 'kg',
+        purchasePrice: defaults.purchasePrice ?? article.purchasePricePerTonne ?? '',
+        requestedDeliveryDate: defaults.suggestedDate || '',
+        supplierContact: defaults.supplierContact || '',
+        paymentConditionId: defaults.paymentConditionId ?? '',
+        paymentConditionText: defaults.paymentConditionText || '',
+        deliveryTermText: defaults.deliveryTermText || '',
+        packagingType: defaults.packagingType || '',
+        reservedFor: defaults.reservedFor || '',
+        comment: [defaults.comment, defaults.positionComment].filter(Boolean).join('\n'),
+        loadingLocationId: defaults.loadingLocationId ?? '',
+        loadingLocationText: defaults.loadingLocationText || '',
+        loadingCustomerId: response?.data?.loadingCustomerId || '',
+        sourceBestellindex: defaults.sourceBestellindex || '',
+        sourcePositionId: defaults.sourcePositionId || '',
+        sourceOrderDate: defaults.sourceOrderDate || '',
+      });
+      setPurchaseCartSuccess(t('purchase_cart_added'));
+    } catch (e) {
+      setPurchaseCartError(e?.message || t('loading_error'));
+    }
+  }, [address, id, name, t]);
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const creditLimit = item?.creditLimit || null;
   const creditLimitText = creditLimit?.status === 'expired'
@@ -1415,6 +1467,12 @@ export default function CustomerDetail() {
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
                   placeholder={t(isSupplier ? 'customer_docs_procured_articles_search' : 'customer_docs_purchased_articles_search')}
                 />
+                {isSupplier && purchaseCartSuccess && (
+                  <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+                    {purchaseCartSuccess}
+                  </Typography>
+                )}
+                {isSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
                 {!isSupplier && batchCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {batchCartSuccess}
@@ -1442,6 +1500,7 @@ export default function CustomerDetail() {
                   <SupplierPurchasedArticleGroups
                     groups={filteredPurchasedArticleGroups}
                     t={t}
+                    onAdd={addSupplierArticleToPurchaseCart}
                   />
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && !isSupplier && filteredPurchasedArticleGroups.map((group, groupIdx) => (
