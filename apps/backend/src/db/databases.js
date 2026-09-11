@@ -8,6 +8,35 @@ const mandantsCache = new Map();
 const dbAvailabilityCache = new Map();
 let sqlContextLoggedAt = 0;
 
+function normalizeComparisonText(value) {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function isAkiIdentity(identity) {
+  return normalizeComparisonText(identity?.shortCode) === 'AKI'
+    && normalizeComparisonText(identity?.fullName) === 'ALEXANDER KIMAZ';
+}
+
+function getDefaultMandantForIdentity(identity, mandants) {
+  const candidates = Array.isArray(mandants) ? mandants : [];
+
+  if (isAkiIdentity(identity)) {
+    return candidates.find((mandant) => (
+      normalizeComparisonText(mandant?.shortName) === 'FRU'
+      || normalizeComparisonText(mandant?.name) === 'FRUPACK'
+    )) || null;
+  }
+
+  const mainCompanyId = Number(identity?.mainCompanyId);
+  if (!Number.isFinite(mainCompanyId)) return null;
+
+  return candidates.find((mandant) => Number(mandant?.firmaId) === mainCompanyId) || null;
+}
+
 function now() {
   return Date.now();
 }
@@ -357,6 +386,7 @@ async function getDatabaseConnectionForCompanyId(firmaId) {
 module.exports = {
   getMandantsForUser,
   getMandantsForIdentity,
+  getDefaultMandantForIdentity,
   listMandantsForUser,
   getDatabaseConnectionForUser,
   getDatabaseConnectionForIdentity,

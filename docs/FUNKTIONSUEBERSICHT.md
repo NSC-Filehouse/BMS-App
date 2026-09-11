@@ -6,8 +6,8 @@ Stand: 20. Juli 2026
 
 - Angemeldeten Benutzer und E-Mail-Adresse anzeigen
 - Verfügbare Mandanten anzeigen
-- Mandanten auswählen
-- Bei nur einem erlaubten Mandanten automatisch fortfahren
+- Hauptmandanten des Benutzers beim Start automatisch setzen
+- Nur beim bewussten Mandantenwechsel einen Mandanten auswählen
 - Mandanten wechseln
 - Nicht mehr erlaubte Mandantenauswahl automatisch zurücksetzen
 - Fehlende Berechtigung anzeigen

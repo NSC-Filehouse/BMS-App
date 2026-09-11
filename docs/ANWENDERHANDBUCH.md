@@ -109,14 +109,16 @@ Der sichtbare Datenumfang hängt von Anmeldung, Mandantenfreigabe und Mitarbeite
 
 ## 4. Start und Mandantenauswahl
 
-### 4.1 Screen „Mandant auswählen“
+### 4.1 App-Start und Screen „Mandant auswählen“
 
-Beim Start prüft die App die Identität und die freigegebenen Mandanten des Anwenders. Angezeigt werden Name und E-Mail-Adresse des angemeldeten Anwenders.
+Beim Start prüft die App die Identität und die freigegebenen Mandanten des Anwenders. Der Hauptmandant wird automatisch gesetzt und anschließend wird direkt die Kundenliste geöffnet. Bei AKI wird dafür immer Frupack verwendet.
 
-Je nach Berechtigung verhält sich der Screen unterschiedlich:
+Der Screen „Mandant auswählen“ wird im normalen Start nicht angezeigt. Er erscheint nur nach „Mandant wechseln“ oder wenn ein anderer Mandant bewusst ausgewählt werden soll.
 
-- Bei genau einem freigegebenen Mandanten wird dieser automatisch gesetzt und die Kundenliste geöffnet.
-- Bei mehreren freigegebenen Mandanten zeigt die App eine Auswahlliste. Das Antippen eines Mandanten speichert die Auswahl und öffnet unmittelbar die Kundenliste. Ist bereits ein weiterhin erlaubter Mandant markiert, kann alternativ mit „Weiter“ fortgefahren werden.
+Für die Auswahl gilt:
+
+- Die Liste enthält nur für den Anwender freigegebene Mandanten.
+- Das Antippen eines Mandanten speichert die Auswahl und öffnet unmittelbar die Kundenliste. Ist bereits ein weiterhin erlaubter Mandant markiert, kann alternativ mit „Weiter“ fortgefahren werden.
 - Ist ein zuvor gespeicherter Mandant nicht mehr freigegeben, wird die alte Auswahl entfernt.
 - Ohne freigegebenen Mandanten zeigt die App „Keine Berechtigung“ zusammen mit Benutzername und E-Mail-Adresse.
 - Können die Mandanten nicht geladen werden, wird eine Fehlermeldung angezeigt.

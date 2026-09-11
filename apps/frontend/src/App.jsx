@@ -37,6 +37,7 @@ function AppRoutes() {
       <Routes location={backgroundLocation || location}>
         <Route element={<Layout />}>
           <Route path="/" element={<Start />} />
+          <Route path="/mandants/select" element={<Start selectionMode />} />
           <Route path="/database-unavailable" element={<DatabaseUnavailable />} />
 
         <Route

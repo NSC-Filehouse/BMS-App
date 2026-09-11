@@ -16,7 +16,7 @@ import { setMandant, getMandant, clearMandant } from '../utils/mandant.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
 import { useI18n } from '../utils/i18n.jsx';
 
-export default function Start() {
+export default function Start({ selectionMode = false }) {
   const [mandants, setMandants] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -26,7 +26,7 @@ export default function Start() {
   const { t } = useI18n();
   const noPermissionText = t('start_no_permission_text');
 
-  const selected = getMandant();
+  const [selected, setSelected] = React.useState(() => getMandant());
 
   React.useEffect(() => {
     let alive = true;
@@ -56,15 +56,26 @@ export default function Start() {
           return;
         }
 
-        const selectedLower = String(selected || '').toLowerCase();
+        const storedMandant = getMandant();
+        const selectedLower = String(storedMandant || '').toLowerCase();
         const selectedStillAllowed = allowed.find((m) => m.name.toLowerCase() === selectedLower);
-        if (selected && !selectedStillAllowed) {
+        if (storedMandant && !selectedStillAllowed) {
           clearMandant();
+          setSelected('');
+        } else if (selectedStillAllowed) {
+          setSelected(selectedStillAllowed.name);
         }
 
-        if (allowed.length === 1) {
-          setMandant(allowed[0].name);
-          navigate('/customers');
+        if (!selectionMode) {
+          const mainMandant = allowed.find((mandant) => mandant.isMain);
+          if (!mainMandant) {
+            setError(t('start_main_mandant_unavailable'));
+            return;
+          }
+
+          setMandant(mainMandant.name);
+          setSelected(mainMandant.name);
+          navigate('/customers', { replace: true });
         }
       } catch (e) {
         if (!alive) return;
@@ -76,12 +87,12 @@ export default function Start() {
     })();
 
     return () => { alive = false; };
-  }, []);
+  }, [navigate, selectionMode, t]);
 
   return (
     <Box sx={{ maxWidth: 720, width: '100%', minWidth: 0, mx: 'auto' }}>
       <Typography variant="h5" sx={{ mb: 2 }}>
-        {t('start_title')}
+        {selectionMode ? t('start_title') : t('start_loading_title')}
       </Typography>
 
       {loading && (
@@ -116,11 +127,20 @@ export default function Start() {
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {t('start_email')}: <b>{email || '-'}</b>
             </Typography>
+            {!selectionMode && error !== noPermissionText && (
+              <Button
+                variant="outlined"
+                sx={{ mt: 2 }}
+                onClick={() => navigate('/mandants/select')}
+              >
+                {t('switch_mandant')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && selectionMode && (
         <Card>
           <CardContent>
             <Typography variant="body1" sx={{ mb: 2 }}>
@@ -133,8 +153,9 @@ export default function Start() {
                   key={m.id ?? m.name}
                   selected={m.name === selected}
                   onClick={() => {
+                    setSelected(m.name);
                     setMandant(m.name);
-                    navigate('/customers');
+                    navigate('/customers', { replace: true });
                   }}
                 >
                   <ListItemText primary={m.name} />
@@ -146,7 +167,7 @@ export default function Start() {
               <Button
                 variant="contained"
                 disabled={!selected}
-                onClick={() => navigate('/customers')}
+                onClick={() => navigate('/customers', { replace: true })}
               >
                 {t('start_continue')}
               </Button>

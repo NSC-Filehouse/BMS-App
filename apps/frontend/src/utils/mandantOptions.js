@@ -12,12 +12,14 @@ function parseMandantId(value) {
 
 export function normalizeMandantOption(item) {
   if (typeof item === 'string') {
-    return { id: null, name: item.trim() };
+    return { id: null, name: item.trim(), shortName: '', isMain: false };
   }
 
   return {
     id: parseMandantId(item?.id ?? item?.firmaId),
     name: String(item?.name || item?.firma || '').trim(),
+    shortName: String(item?.shortName || item?.firmaKurz || '').trim(),
+    isMain: Boolean(item?.isMain),
   };
 }
 

@@ -80,7 +80,7 @@ export default function Layout() {
   const switchMandant = () => {
     clearSelectedCustomer();
     clearMandant();
-    navigate('/');
+    navigate('/mandants/select', { replace: true });
     closeDrawer();
   };
 

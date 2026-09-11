@@ -1,9 +1,11 @@
 import React from 'react';
 import { Box, Button, Card, CardContent, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { useI18n } from '../utils/i18n.jsx';
 
 export default function DatabaseUnavailable() {
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   return (
     <Box sx={{ maxWidth: 720, width: '100%', minWidth: 0, mx: 'auto' }}>
@@ -15,8 +17,8 @@ export default function DatabaseUnavailable() {
           <Typography variant="body1" sx={{ mb: 2, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             Diese DB ist noch nicht verfuegbar. Bitte waehle einen anderen Mandanten oder versuche es spaeter erneut.
           </Typography>
-          <Button variant="contained" onClick={() => navigate('/')}>
-            Zur Startseite
+          <Button variant="contained" onClick={() => navigate('/mandants/select')}>
+            {t('switch_mandant')}
           </Button>
         </CardContent>
       </Card>

@@ -67,7 +67,9 @@ Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm work
 ---
 
 ## Mandant-Handling
-- Der Mandant wird im Frontend beim Start ausgewählt und in `localStorage` gespeichert.
+- Der Hauptmandant des angemeldeten Benutzers wird beim Start automatisch ermittelt und in `localStorage` gespeichert.
+- Bei AKI wird `Frupack` als Hauptmandant verwendet.
+- Die Mandantenauswahl wird nur über „Mandant wechseln“ geöffnet.
 - Für API Requests wird der Header gesetzt:
   - `x-mandant: MLHolding` (Beispiel)
 - Mandanten-Liste kommt aus:
@@ -236,6 +238,10 @@ den Auftrag direkt; der Rueckgabegrund steht zusaetzlich im Auftragsdetail. Nach
 erneuten Senden an BMS wird der alte Rueckgabegrund geloescht.
 
 ## Mandantenauswahl
+
+Beim normalen Aufruf der App wird der Hauptmandant des Benutzers gesetzt und direkt
+die Kundenliste geöffnet. Eine Auswahl ist nur beim bewussten Mandantenwechsel
+erforderlich.
 
 Die im Frontend angezeigten Mandanten koennen ueber `VITE_MANDANT_EXCLUDE_IDS` als
 kommagetrennte BMS-Mandanten-IDs ausgeblendet werden. Die Einstellung wirkt auf
