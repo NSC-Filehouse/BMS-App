@@ -51,6 +51,7 @@ const config = {
     enabled: toBool(process.env.BMS_ORDER_MAIL_ENABLED, true),
     ewsFallback: toBool(process.env.BMS_ORDER_MAIL_EWS_FALLBACK, true),
     testRecipient: String(process.env.BMS_ORDER_MAIL_TEST_RECIPIENT || '').trim().toLowerCase(),
+    distributorAddressMap: String(process.env.BMS_MANDANT_MAIL_DISTRIBUTORS || '').trim(),
     customerServiceAddressMap: String(process.env.INVOICE_ROUTER_ADDRESS_MAP || '').trim(),
     accountingMailboxMap: String(process.env.EWS_SHARED_MAILBOXES || '').trim(),
     retryIntervalSeconds: toInt(process.env.BMS_ORDER_MAIL_RETRY_INTERVAL_SECONDS, 60),

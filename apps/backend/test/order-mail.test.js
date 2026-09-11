@@ -7,6 +7,7 @@ const {
   formatOrderMailBody,
   formatUnfinalizedOrderReminderBody,
   parseMandantAddressMap,
+  resolveMandantMailDistributor,
   resolveOrderMailRecipient,
   sendOrderMail,
   cleanEwsText,
@@ -15,6 +16,7 @@ const {
   validateOrderMailConfig,
 } = require('../src/mail/order-mail');
 const { MailServiceClientError } = require('@filehouse/mailservice-client');
+const config = require('../src/config');
 const {
   VL_COMPLETION_MAIL_SUBJECT,
   formatVlCompletionMailBody,
@@ -97,6 +99,38 @@ test('quoted InvoiceReader mailbox lists are parsed', () => {
   const parsed = parseMandantAddressMap('"verwaltung@mlholding.org|1,buchhaltung@frupack.de|3"');
   assert.equal(parsed.get(1), 'verwaltung@mlholding.org');
   assert.equal(parsed.get(3), 'buchhaltung@frupack.de');
+});
+
+test('mandant distributor takes precedence when configured', () => {
+  assert.deepEqual(resolveMandantMailDistributor(3, {
+    distributorAddressMap: 'frupack-europe@frupack.de|3',
+  }), {
+    ok: true,
+    address: 'frupack-europe@frupack.de',
+    source: 'mandant_distributor',
+  });
+});
+
+test('configured mandant distributor is the sole VL mail recipient', async () => {
+  const previous = config.orderMail.distributorAddressMap;
+  config.orderMail.distributorAddressMap = 'frupack-europe@frupack.de|3';
+  try {
+    assert.deepEqual(await getVlMailRecipients(3), [{
+      address: 'frupack-europe@frupack.de',
+      source: 'mandant_distributor',
+    }]);
+  } finally {
+    config.orderMail.distributorAddressMap = previous;
+  }
+});
+
+test('missing mandant distributor keeps the legacy recipient path available', () => {
+  assert.deepEqual(resolveMandantMailDistributor(2, {
+    distributorAddressMap: 'frupack-europe@frupack.de|3',
+  }), {
+    ok: false,
+    reason: 'missing_distributor',
+  });
 });
 
 test('EWS text values are XML escaped after removing invalid control characters', () => {

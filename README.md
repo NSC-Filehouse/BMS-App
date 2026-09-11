@@ -107,6 +107,7 @@ BMS_ORDER_MAIL_ENABLED=true
 BMS_ORDER_MAIL_TEST_RECIPIENT=n.schroeder@filehouse.net
 BMS_ORDER_MAIL_RETRY_INTERVAL_SECONDS=60
 BMS_ORDER_MAIL_MAX_ATTEMPTS=10
+BMS_MANDANT_MAIL_DISTRIBUTORS=frupack-europe@frupack.de|3
 EWS_USERNAME=
 EWS_PASSWORD=
 EWS_EXCHANGE_VERSION=7
@@ -114,6 +115,12 @@ EWS_URL_EXTERN=
 INVOICE_ROUTER_ADDRESS_MAP=
 EWS_SHARED_MAILBOXES=
 ```
+
+`BMS_MANDANT_MAIL_DISTRIBUTORS` ordnet Verkaufsmails nach BMS-Status 2 einem
+Mandanten-Mailverteiler zu. Das Format ist eine kommaseparierte Liste aus
+`E-Mail-Adresse|Mandanten-ID`. Für Mandanten ohne Eintrag bleibt der bisherige
+Versand an die aktiven AD-Empfänger bestehen. Der Testmandant mit ID `0` bleibt
+von dieser Zuordnung ausgenommen.
 
 ## Filehouse MailService für den Mailversand
 

@@ -7,6 +7,7 @@ const { getUserIdentitiesByPersonNumbers } = require('./users');
 const { productAvailabilitySource } = require('./product-availability');
 const {
   sendOrderMail,
+  resolveMandantMailDistributor,
   validateOrderMailConfig,
 } = require('../mail/order-mail');
 const {
@@ -237,6 +238,11 @@ async function loadExcelAdRows(companyId) {
 async function getVlMailRecipients(companyId) {
   const numericCompanyId = Number(companyId);
   if (numericCompanyId === TEST_MANDANT_ID) return [...TEST_MANDANT_RECIPIENTS];
+
+  const distributor = resolveMandantMailDistributor(numericCompanyId, config.orderMail);
+  if (distributor.ok) {
+    return [{ address: distributor.address, source: distributor.source }];
+  }
 
   const personNumbers = await loadExcelAdRows(numericCompanyId);
   const identities = await getUserIdentitiesByPersonNumbers(personNumbers);

@@ -45,6 +45,20 @@ function isEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(asText(value));
 }
 
+function resolveMandantMailDistributor(companyId, orderMailConfig) {
+  const mandantId = Number(companyId);
+  const address = parseMandantAddressMap(orderMailConfig?.distributorAddressMap).get(mandantId);
+  if (address && isEmailAddress(address)) {
+    return {
+      ok: true,
+      address,
+      source: 'mandant_distributor',
+    };
+  }
+
+  return { ok: false, reason: 'missing_distributor' };
+}
+
 function resolveOrderMailRecipient(companyId, orderMailConfig) {
   const mandantId = Number(companyId);
   if (mandantId === TEST_MANDANT_ID) {
@@ -360,6 +374,7 @@ module.exports = {
   formatOrderMailBody,
   formatUnfinalizedOrderReminderBody,
   parseMandantAddressMap,
+  resolveMandantMailDistributor,
   resolveOrderMailRecipient,
   sendOrderMail,
   sendOrderMailViaEws,
