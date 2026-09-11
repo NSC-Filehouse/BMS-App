@@ -788,7 +788,7 @@ async function normalizeOrderLevelInput(
   const submittedDeliveryAddress = asText(body?.deliveryAddress);
   let deliveryAddressId = null;
   let deliveryAddress = submittedDeliveryAddress || clientAddress;
-  if (!deliveryAddressChanged) {
+  if (!deliveryAddressChanged || requestedDeliveryAddressId.provided) {
     const deliveryAddresses = await loadCustomerDeliveryAddresses(req.database, body?.clientReferenceId);
     const selectedAddress = requestedDeliveryAddressId.provided
       ? deliveryAddresses.find((address) => Number(address.id) === requestedDeliveryAddressId.id)
