@@ -195,7 +195,7 @@ function buildWhereClause(q, searchField, options = {}) {
       ? [col('[kd_Region]')]
       : mode === 'sales'
         ? [col('[kd_Aussendienst]')]
-        : [col('[kd_Name1]'), col('[kd_Name2]')];
+        : [col('[kd_Name1]'), col('[kd_Name2]'), col('[kd_Kurz]')];
   const searchClauses = fields.map((f) => `${f} LIKE ?`);
   clauses.push(`(${searchClauses.join(' OR ')})`);
   return {
