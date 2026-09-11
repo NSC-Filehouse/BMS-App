@@ -42,7 +42,7 @@ function formatDateDe(value) {
   return date.toLocaleDateString('de-DE');
 }
 
-function InfoRow({ label, value }) {
+function InfoRow({ label, value, valueColor }) {
   return (
     <Box
       sx={{
@@ -64,6 +64,7 @@ function InfoRow({ label, value }) {
       </Typography>
       <Typography
         variant="body2"
+        color={valueColor}
         sx={{
           width: { xs: '100%', md: '40%' },
           maxWidth: { xs: '100%', md: '40%' },
@@ -361,7 +362,11 @@ export default function ProductDetail({ modal = false }) {
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_category')} value={item.category} />
             <InfoRow label={t('product_amount')} value={item.amount} />
-            <InfoRow label={t('product_reserved')} value={item.reserved} />
+            <InfoRow
+              label={t('product_reserved')}
+              value={item.reserved}
+              valueColor={Number(item.reserved) > 0 ? 'error.main' : undefined}
+            />
             <TempPlanningHint
               item={item}
               onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
