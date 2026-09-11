@@ -51,7 +51,7 @@ export async function apiRequest(path, options = {}) {
     const code = json?.error?.code || null;
     if (code === 'DB_NOT_AVAILABLE') {
       if (typeof window !== 'undefined') {
-        window.location.assign(`${APP_BASE_PATH}/database-unavailable`);
+        window.location.assign(`${APP_BASE_PATH}/mandants/select`);
       }
     }
 

@@ -11,7 +11,7 @@ Stand: 20. Juli 2026
 - Mandanten wechseln
 - Nicht mehr erlaubte Mandantenauswahl automatisch zurücksetzen
 - Fehlende Berechtigung anzeigen
-- Nicht verfügbare Mandantendatenbank melden
+- Bei nicht verfügbarer Mandantendatenbank direkt die Mandantenauswahl öffnen
 - Abgelaufene Anmeldung erkennen und zum Start zurückkehren
 - Hauptmenü über das Menüsymbol öffnen und schließen
 - Aktuellen Mandanten in Kopfzeile und Menü anzeigen

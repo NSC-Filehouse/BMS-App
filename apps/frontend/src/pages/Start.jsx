@@ -69,7 +69,7 @@ export default function Start({ selectionMode = false }) {
         if (!selectionMode) {
           const mainMandant = allowed.find((mandant) => mandant.isMain);
           if (!mainMandant) {
-            setError(t('start_main_mandant_unavailable'));
+            navigate('/mandants/select', { replace: true });
             return;
           }
 

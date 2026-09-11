@@ -94,7 +94,7 @@ Wird ein anderer Kunde ausgewählt, wird der Warenkorb des aktuellen Mandanten g
 | Auftragsdetails | Auftragskarte antippen oder Abschluss des Speicherns | Eigener Auftrag |
 | Auftrag ändern | „Ändern“ in den Auftragsdetails | Eigener Auftrag |
 | Einstellungen | Seitenmenü oder Zahnrad in der Timeline | Mandant gewählt |
-| Datenbank nicht verfügbar | Automatisch bei fehlendem Datenbankzugriff | Betroffener Mandant gewählt |
+| Mandantenauswahl | Automatisch bei fehlendem Datenbankzugriff | Betroffener Mandant gewählt |
 
 ### 3.5 Sichtbarkeit und benutzerbezogene Einschränkungen
 
@@ -129,7 +129,7 @@ Die App prüft die Anmeldung erneut, wenn sie aus dem Hintergrund in den Vorderg
 
 ### 4.3 Nicht verfügbare Mandantendatenbank
 
-Ist die Datenbank des gewählten Mandanten nicht verfügbar, erscheint der Screen „Datenbank nicht verfügbar“. Dort kann über „Zur Startseite“ ein anderer Mandant gewählt oder der Zugriff später erneut versucht werden.
+Ist die Datenbank des automatisch gesetzten oder manuell gewählten Mandanten nicht verfügbar, öffnet die App direkt die Mandantenauswahl. Dort kann ein anderer freigegebener Mandant gewählt werden. Der bisherige technische Fehlerbildschirm bleibt nur als Fallback erreichbar.
 
 ## 5. Kunden
 
