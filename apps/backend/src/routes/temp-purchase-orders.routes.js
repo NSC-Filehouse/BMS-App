@@ -222,6 +222,97 @@ async function loadOwnDeliveryContext(database) {
   };
 }
 
+function getHistoricalLoadingLocationId(value) {
+  // Historical `be_AdresseAbhol` values are free text and do not have a
+  // delivery-address primary key.  Use a deterministic negative id for the
+  // UI selection; the persisted order keeps the authoritative text and a
+  // NULL address id.
+  let hash = 0;
+  for (const character of asText(value)) hash = ((hash * 31) + character.charCodeAt(0)) | 0;
+  const positive = Math.abs(hash % 2147483000) || 1;
+  return -positive;
+}
+
+async function loadSupplierLoadingLocations(database, supplierId) {
+  const id = asText(supplierId);
+  if (!id) return [];
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 500
+      [be_AdresseAbhol] AS loadingLocationText,
+      [be_Bestelldatum] AS lastOrderDate
+    FROM [dbo].[tblBestellung]
+    WHERE LTRIM(RTRIM(COALESCE([be_KdNr], ''))) = ?
+      AND LTRIM(RTRIM(COALESCE([be_AdresseAbhol], ''))) <> ''
+    ORDER BY [be_Bestelldatum] DESC, [be_Bestellindex] DESC
+  `, [id]);
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).reduce((result, row) => {
+    const text = asText(row?.loadingLocationText);
+    const key = text.toLocaleLowerCase('de-DE');
+    if (!text || seen.has(key)) return result;
+    seen.add(key);
+    result.push({
+      id: getHistoricalLoadingLocationId(text),
+      text,
+      source: 'supplier_order_history',
+      lastOrderDate: asDate(row?.lastOrderDate),
+      countryCode: '',
+      region: '',
+    });
+    return result;
+  }, []);
+}
+
+async function loadPurchaseLoadingContext(database, supplierId, preferredText = '') {
+  const historical = await loadSupplierLoadingLocations(database, supplierId);
+  const preferred = asText(preferredText);
+  if (historical.length) {
+    const options = [...historical];
+    if (preferred && !options.some((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === preferred.toLocaleLowerCase('de-DE'))) {
+      options.unshift({
+        id: getHistoricalLoadingLocationId(preferred),
+        text: preferred,
+        source: 'supplier_order_history',
+        lastOrderDate: null,
+        countryCode: '',
+        region: '',
+      });
+    }
+    let calendarAddress = null;
+    try {
+      const ownContext = await loadOwnDeliveryContext(database);
+      calendarAddress = ownContext.addresses[0] || null;
+    } catch {
+      // A supplier history remains usable even if the optional local calendar
+      // address cannot be resolved (for example in a sparse Test database).
+    }
+    return {
+      customerId: '',
+      addresses: options,
+      calendarAddress,
+      source: 'supplier_order_history',
+    };
+  }
+  const ownContext = await loadOwnDeliveryContext(database);
+  const options = [...ownContext.addresses];
+  if (preferred && !options.some((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === preferred.toLocaleLowerCase('de-DE'))) {
+    options.unshift({
+      id: getHistoricalLoadingLocationId(preferred),
+      text: preferred,
+      source: 'manual',
+      lastOrderDate: null,
+      countryCode: '',
+      region: '',
+    });
+  }
+  return {
+    customerId: ownContext.customerId,
+    addresses: options,
+    calendarAddress: ownContext.addresses[0] || null,
+    source: 'mandant_delivery_address',
+  };
+}
+
 function normalizePurchaseOwnerScope(value) {
   return asText(value).toLowerCase() === 'mine' ? 'mine' : 'all';
 }
@@ -293,16 +384,20 @@ async function assertSupplier(database, supplierId, accessScope) {
 }
 
 async function resolveLoadingAddress(database, body) {
-  const context = await loadOwnDeliveryContext(database);
-  const id = body?.loadingLocationId === null || body?.loadingLocationId === undefined || asText(body.loadingLocationId) === ''
-    ? null : Number(body.loadingLocationId);
-  let address = null;
-  if (id !== null && Number.isInteger(id)) address = context.addresses.find((item) => Number(item.id) === id) || null;
-  if (id === null) throw createHttpError(400, 'Bitte einen Ladeort aus den Lieferadressen des aktuellen Mandanten auswählen.', { code: 'LOADING_LOCATION_REQUIRED' });
-  if (!address) throw createHttpError(400, 'Der Ladeort gehört nicht zu den Lieferadressen des aktuellen Mandanten.', { code: 'LOADING_LOCATION_NOT_FOUND' });
+  const context = await loadPurchaseLoadingContext(database, body?.supplierId, body?.loadingLocationText);
+  const rawId = asText(body?.loadingLocationId);
+  const requestedText = asText(body?.loadingLocationText);
+  let address = rawId ? context.addresses.find((item) => String(item.id) === rawId) || null : null;
+  if (!address && requestedText) {
+    const normalized = requestedText.toLocaleLowerCase('de-DE');
+    address = context.addresses.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === normalized) || null;
+  }
+  if (!address) throw createHttpError(400, 'Bitte einen Ladeort aus den bisherigen Lieferanten-Bestellungen auswählen.', { code: 'LOADING_LOCATION_REQUIRED' });
   const text = asText(address.text) || asText(body?.loadingLocationText);
   if (!text) throw createHttpError(400, 'Die ausgewählte Lieferadresse hat keinen lesbaren Ladeort.', { code: 'LOADING_LOCATION_REQUIRED' });
-  return { context, address, text, id };
+  const numericId = Number(address.id);
+  const id = Number.isInteger(numericId) && numericId >= 0 ? numericId : null;
+  return { context, address, text, id, source: address.source || context.source };
 }
 
 function normalizePositions(rawPositions) {
@@ -345,11 +440,20 @@ async function loadOrderForUser(id, companyId, userShortCode, isFullAccess, forU
 }
 
 router.get('/purchase-order-loading-locations', requireMandant, asyncHandler(async (req, res) => {
-  const context = await loadOwnDeliveryContext(req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const supplierId = asText(req.query?.supplierId);
+  if (supplierId) await assertSupplier(req.database, supplierId, accessScope);
+  const context = await loadPurchaseLoadingContext(req.database, supplierId, req.query?.preferredText);
   sendEnvelope(res, {
     status: 200,
     data: context.addresses,
-    meta: { mandant: req.mandant, ownCustomerId: context.customerId, count: context.addresses.length },
+    meta: {
+      mandant: req.mandant,
+      ownCustomerId: context.customerId,
+      count: context.addresses.length,
+      source: context.source,
+      calendarCustomerId: context.customerId || null,
+    },
     error: null,
   });
 }));
@@ -396,8 +500,8 @@ router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defa
     `, [Number(source.paymentConditionId), String(req.header('x-lang') || 'de').toLowerCase() === 'en' ? 'en' : 'de']);
     paymentConditionText = asText(paymentRows?.[0]?.text);
   }
-  const context = await loadOwnDeliveryContext(req.database);
-  const { profile, holidays } = await loadWorkingCalendar(context.addresses[0] || null);
+  const context = await loadPurchaseLoadingContext(req.database, supplierId, source?.loadingLocationText);
+  const { profile, holidays } = await loadWorkingCalendar(context.calendarAddress || null);
   let suggestedDate = asDate(source?.requestedDeliveryDate);
   const sourceOrderDate = asDate(source?.sourceOrderDate);
   if (sourceOrderDate && suggestedDate) {
@@ -432,7 +536,7 @@ router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defa
         ...source,
         paymentConditionText,
         suggestedDate,
-        loadingLocationId: preferred ? preferred.id : null,
+        loadingLocationId: preferred ? preferred.id : (loadingText ? getHistoricalLoadingLocationId(loadingText) : null),
         loadingLocationText: preferred?.text || loadingText,
         purchasePrice: asNumber(source.purchasePrice, 0),
       } : { suggestedDate, loadingLocationId: null, loadingLocationText: '' },
@@ -527,7 +631,7 @@ router.post('/temp-purchase-orders', requireMandant, asyncHandler(async (req, re
     `, [companyId, clientRequestId, supplierId, supplierName, supplierAddress, asText(req.body?.supplierContact) || null,
       req.body?.paymentConditionChanged ? 1 : 0, asNumber(req.body?.paymentConditionId), asText(req.body?.paymentConditionText) || null,
       asNumber(req.body?.deliveryTermId), asText(req.body?.deliveryTermText) || null, asText(req.body?.packagingType) || null,
-      'mandant_delivery_address', loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0,
+      loading.source, loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0,
       asText(req.body?.comment) || null, userShortCode, now, userShortCode, now]);
     const order = result.rows?.[0];
     for (let i = 0; i < positions.length; i += 1) {
@@ -560,7 +664,7 @@ router.put('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req,
   await validateWorkingDates(positions, loading.address || null);
   const now = new Date().toISOString();
   await withSqlTransaction(config.sql.database, async ({ query }) => {
-    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_id]=?, [tb_supplier_name]=?, [tb_supplier_address]=?, [tb_supplier_contact]=?, [tb_payment_condition_changed]=?, [tb_payment_condition_id]=?, [tb_payment_condition_text]=?, [tb_delivery_term_id]=?, [tb_delivery_term_text]=?, [tb_packaging_type]=?, [tb_loading_location_source]=?, [tb_loading_location_id]=?, [tb_loading_location_text]=?, [tb_loading_location_changed]=?, [tb_comment]=?, [tb_last_modified_by]=?, [tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierId || existing.supplierId), asText(supplier.kd_Name1 || supplier.kd_Name2), [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null, req.body?.paymentConditionChanged ? 1 : 0, asNumber(req.body?.paymentConditionId), asText(req.body?.paymentConditionText) || null, asNumber(req.body?.deliveryTermId), asText(req.body?.deliveryTermText) || null, asText(req.body?.packagingType) || null, 'mandant_delivery_address', loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0, asText(req.body?.comment) || null, userShortCode, now, id, companyId]);
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_id]=?, [tb_supplier_name]=?, [tb_supplier_address]=?, [tb_supplier_contact]=?, [tb_payment_condition_changed]=?, [tb_payment_condition_id]=?, [tb_payment_condition_text]=?, [tb_delivery_term_id]=?, [tb_delivery_term_text]=?, [tb_packaging_type]=?, [tb_loading_location_source]=?, [tb_loading_location_id]=?, [tb_loading_location_text]=?, [tb_loading_location_changed]=?, [tb_comment]=?, [tb_last_modified_by]=?, [tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierId || existing.supplierId), asText(supplier.kd_Name1 || supplier.kd_Name2), [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null, req.body?.paymentConditionChanged ? 1 : 0, asNumber(req.body?.paymentConditionId), asText(req.body?.paymentConditionText) || null, asNumber(req.body?.deliveryTermId), asText(req.body?.deliveryTermText) || null, asText(req.body?.packagingType) || null, loading.source, loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0, asText(req.body?.comment) || null, userShortCode, now, id, companyId]);
     await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id] = ?`, [id]);
     for (let i = 0; i < positions.length; i += 1) {
       const p = positions[i];

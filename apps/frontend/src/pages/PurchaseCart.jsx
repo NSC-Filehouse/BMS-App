@@ -22,7 +22,6 @@ import {
   clearPurchaseCart,
   updatePurchaseCartItem,
 } from '../utils/purchaseCart.js';
-import { nextWeekday } from '../utils/deliveryDate.js';
 
 export default function PurchaseCart() {
   const navigate = useNavigate();
@@ -46,17 +45,35 @@ export default function PurchaseCart() {
   });
 
   const supplier = items[0] || null;
+  const missingFields = React.useMemo(() => {
+    const missing = [];
+    if (!String(header.loadingLocationId ?? '').trim() && !String(header.loadingLocationText || '').trim()) missing.push('Ladeort');
+    items.forEach((item, index) => {
+      if (!(Number(item.amount) > 0)) missing.push(`Menge Position ${index + 1}`);
+      if (!(Number(item.purchasePrice) >= 0 && Number.isFinite(Number(item.purchasePrice)))) missing.push(`EK Position ${index + 1}`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(item.requestedDeliveryDate || '').slice(0, 10))) missing.push(`Liefertermin Position ${index + 1}`);
+    });
+    return missing;
+  }, [header.loadingLocationId, items]);
   const dateSignature = items.map((item) => String(item.requestedDeliveryDate || '').slice(0, 10)).join('|');
 
   React.useEffect(() => {
     let alive = true;
-    apiRequest('/purchase-order-loading-locations').then((response) => {
+    const supplierId = String(supplier?.supplierId || '').trim();
+    const preferredText = String(supplier?.loadingLocationText || '').trim();
+    const query = supplierId
+      ? `?supplierId=${encodeURIComponent(supplierId)}&preferredText=${encodeURIComponent(preferredText)}`
+      : '';
+    apiRequest(`/purchase-order-loading-locations${query}`).then((response) => {
       if (!alive) return;
       const next = Array.isArray(response?.data) ? response.data : [];
       setLocations(next);
-      setLoadingCustomerId(String(response?.meta?.ownCustomerId || '').trim());
+      setLoadingCustomerId(String(response?.meta?.calendarCustomerId || response?.meta?.ownCustomerId || '').trim());
       setHeader((previous) => {
-        const preferred = next.find((item) => String(item.id) === String(previous.loadingLocationId)) || next[0];
+        const previousText = String(previous.loadingLocationText || '').trim().toLocaleLowerCase('de-DE');
+        const preferred = next.find((item) => String(item.id) === String(previous.loadingLocationId))
+          || next.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === previousText)
+          || next[0];
         const hasCurrent = next.some((item) => String(item.id) === String(previous.loadingLocationId));
         return preferred && (!previous.loadingLocationId || !hasCurrent)
           ? { ...previous, loadingLocationId: preferred.id, loadingLocationText: preferred.text }
@@ -69,10 +86,10 @@ export default function PurchaseCart() {
       setLoading(false);
     });
     return () => { alive = false; };
-  }, [t]);
+  }, [supplier?.loadingLocationText, supplier?.supplierId, t]);
 
   React.useEffect(() => {
-    if (!items.length || !header.loadingLocationId) return undefined;
+    if (!items.length || !header.loadingLocationId || !loadingCustomerId || !/^\d+$/.test(String(header.loadingLocationId))) return undefined;
     const dates = [...new Set(items.map((item) => String(item.requestedDeliveryDate || '').slice(0, 10)).filter(Boolean))];
     if (!dates.length) return undefined;
     let alive = true;
@@ -108,8 +125,8 @@ export default function PurchaseCart() {
 
   const submit = async () => {
     if (!supplier || !items.length) return;
-    if (!header.loadingLocationId) {
-      setError('Bitte einen Ladeort des aktuellen Mandanten auswählen.');
+    if (missingFields.length) {
+      setError(`Bitte Pflichtfelder ausfüllen: ${missingFields.join(', ')}.`);
       return;
     }
     setSaving(true);
@@ -171,15 +188,25 @@ export default function PurchaseCart() {
       </Box>
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
+      {!loading && !locations.length && (
+        <Alert severity="warning">Für diesen Lieferanten wurde kein gespeicherter Ladeort gefunden. Bitte den Abholort unten manuell eintragen.</Alert>
+      )}
+      {!loading && missingFields.length > 0 && (
+        <Alert severity="info">Pflichtfelder fehlen: {missingFields.join(', ')}.</Alert>
+      )}
       <Card><CardContent sx={{ display: 'grid', gap: 1 }}>
         <Typography variant="h6">{supplier?.supplierName || supplier?.supplierId}</Typography>
         <TextField label="Ansprechpartner" value={header.supplierContact} onChange={(e) => setHeader({ ...header, supplierContact: e.target.value })} fullWidth size="small" />
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
           <TextField label="Abweichende ZB" value={header.paymentConditionText} onChange={(e) => setHeader({ ...header, paymentConditionText: e.target.value })} size="small" />
           <TextField label="Lieferbedingungen" value={header.deliveryTermText} onChange={(e) => setHeader({ ...header, deliveryTermText: e.target.value })} size="small" />
-          <TextField label="Ladeort" select value={header.loadingLocationId} onChange={setLocation} size="small" disabled={loading || !locations.length}>
-            {locations.map((location) => <MenuItem key={location.id} value={location.id}>{location.text}</MenuItem>)}
-          </TextField>
+          {locations.length ? (
+            <TextField label="Ladeort" required select value={header.loadingLocationId} onChange={setLocation} size="small" disabled={loading} error={!loading && !header.loadingLocationId && !header.loadingLocationText} helperText={!loading && !header.loadingLocationId && !header.loadingLocationText ? 'Pflichtfeld' : ''}>
+              {locations.map((location) => <MenuItem key={location.id} value={location.id}>{location.text}</MenuItem>)}
+            </TextField>
+          ) : (
+            <TextField label="Ladeort" required value={header.loadingLocationText} onChange={(e) => setHeader((previous) => ({ ...previous, loadingLocationId: '', loadingLocationText: e.target.value }))} size="small" disabled={loading} error={!loading && !header.loadingLocationText} helperText={!loading ? 'Kein gespeicherter Ladeort – bitte Abholort eintragen' : ''} />
+          )}
           <TextField label="Verpackung" value={header.packagingType} onChange={(e) => setHeader({ ...header, packagingType: e.target.value })} size="small" />
         </Box>
         <TextField label="Sonstiges" value={header.comment} onChange={(e) => setHeader({ ...header, comment: e.target.value })} multiline minRows={2} size="small" />
@@ -188,19 +215,19 @@ export default function PurchaseCart() {
         <Card key={item.lineId} variant="outlined"><CardContent sx={{ display: 'grid', gap: 0.75 }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Typography variant="subtitle1" sx={{ flex: 1 }}>{item.article}</Typography>
-            <IconButton size="small" onClick={() => { removePurchaseCartItem(item.lineId); setItems((previous) => previous.filter((entry) => entry.lineId !== item.lineId)); }} aria-label="entfernen"><DeleteOutlineIcon /></IconButton>
+            <IconButton color="error" size="small" onClick={() => { removePurchaseCartItem(item.lineId); setItems((previous) => previous.filter((entry) => entry.lineId !== item.lineId)); }} aria-label="entfernen"><DeleteOutlineIcon /></IconButton>
           </Box>
           <Typography variant="caption" sx={{ opacity: 0.7 }}>Artikelindex: {item.articleIndex || '-'} · letzte BE: {item.sourceBestellindex || '-'}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1 }}>
-            <TextField label="Menge" type="number" size="small" value={item.amount} onChange={(e) => setLine(item.lineId, { amount: e.target.value })} inputProps={{ min: 0.001, step: 0.001 }} />
+            <TextField label="Menge" required type="number" size="small" value={item.amount} error={!(Number(item.amount) > 0)} helperText={!(Number(item.amount) > 0) ? 'Pflichtfeld' : ''} onChange={(e) => setLine(item.lineId, { amount: e.target.value })} inputProps={{ min: 0.001, step: 0.001 }} />
             <TextField label="Einheit" size="small" value={item.unit || 'kg'} onChange={(e) => setLine(item.lineId, { unit: e.target.value })} />
-            <TextField label="EK" type="number" size="small" value={item.purchasePrice} onChange={(e) => setLine(item.lineId, { purchasePrice: e.target.value })} inputProps={{ min: 0, step: 0.01 }} />
-            <TextField label="Liefertermin" type="date" size="small" value={item.requestedDeliveryDate || nextWeekday()} onChange={(e) => setLine(item.lineId, { requestedDeliveryDate: e.target.value })} InputLabelProps={{ shrink: true }} />
+            <TextField label="EK" required type="number" size="small" value={item.purchasePrice} error={!(Number(item.purchasePrice) >= 0 && Number.isFinite(Number(item.purchasePrice)))} helperText={!(Number(item.purchasePrice) >= 0 && Number.isFinite(Number(item.purchasePrice))) ? 'Pflichtfeld' : ''} onChange={(e) => setLine(item.lineId, { purchasePrice: e.target.value })} inputProps={{ min: 0, step: 0.01 }} />
+            <TextField label="Liefertermin" required type="date" size="small" value={item.requestedDeliveryDate || ''} error={!/^\d{4}-\d{2}-\d{2}$/.test(String(item.requestedDeliveryDate || '').slice(0, 10))} helperText={!/^\d{4}-\d{2}-\d{2}$/.test(String(item.requestedDeliveryDate || '').slice(0, 10)) ? 'Pflichtfeld' : ''} onChange={(e) => setLine(item.lineId, { requestedDeliveryDate: e.target.value })} InputLabelProps={{ shrink: true }} />
           </Box>
           <TextField label="Reserviert für" size="small" value={item.reservedFor || ''} onChange={(e) => setLine(item.lineId, { reservedFor: e.target.value })} />
         </CardContent></Card>
       ))}
-      <Button variant="contained" onClick={submit} disabled={saving || loading || !locations.length}>
+      <Button variant="contained" onClick={submit} disabled={saving || loading || missingFields.length > 0}>
         {saving ? <CircularProgress size={20} /> : 'Bestellentwurf speichern'}
       </Button>
     </Box>
