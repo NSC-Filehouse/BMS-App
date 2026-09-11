@@ -1,6 +1,5 @@
 import { getMandant } from './mandant.js';
 import { nextWeekday } from './deliveryDate.js';
-import { splitPositionValues } from './positionSplit.js';
 
 export const ORDER_CART_CHANGED = 'bms-order-cart-changed';
 
@@ -59,6 +58,37 @@ function createSplitLineId(productId) {
   return `${productId || 'cart-line'}--split--${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function getSourceKey(item) {
+  const beNumber = String(item?.beNumber || '').trim();
+  const warehouseId = String(item?.warehouseId || '').trim();
+  if (beNumber || warehouseId) return `${beNumber}\u001f${warehouseId}`;
+  return `product\u001f${getProductId(item)}`;
+}
+
+function getSplitRemainder(items, lineId) {
+  const list = Array.isArray(items) ? items : [];
+  const item = list.find((entry) => matchesLine(entry, lineId));
+  if (!item) return null;
+
+  const sourceKey = getSourceKey(item);
+  const sourceEntries = list.filter((candidate) => getSourceKey(candidate) === sourceKey);
+  const availableAmounts = sourceEntries
+    .map((entry) => Number(entry.availableAmount))
+    .filter((amount) => Number.isFinite(amount));
+  if (availableAmounts.length === 0) return null;
+  const availableAmount = Math.min(...availableAmounts);
+
+  let totalQuantity = 0;
+  for (const entry of sourceEntries) {
+    const quantity = Number(entry.quantityKg);
+    if (!Number.isFinite(quantity) || quantity < 1) return null;
+    totalQuantity += quantity;
+  }
+
+  const remainder = availableAmount - totalQuantity;
+  return Number.isFinite(remainder) && remainder >= 1 ? remainder : null;
+}
+
 function getAvailableAmount(item, existing = null) {
   const hasBackendAvailableAmount = item?.availableAmount !== null
     && item?.availableAmount !== undefined
@@ -115,6 +145,9 @@ function buildCartPayload(item, quantityKg, existing = null) {
     deliveryDate,
     deliveryDateAuto,
     quantityKg,
+    splitPending: item?.splitPending !== undefined
+      ? Boolean(item.splitPending)
+      : Boolean(existing?.splitPending),
     wpzId,
     wpzOriginal: item?.wpzOriginal !== undefined
       ? item.wpzOriginal
@@ -158,11 +191,19 @@ export function removeOrderCartProduct(productId) {
 
 export function updateOrderCartQuantity(lineId, quantityKg) {
   const qty = normalizeDraftNumber(quantityKg);
-  const next = read().map((x) => (
-    matchesLine(x, lineId)
-      ? { ...x, quantityKg: qty }
-      : x
+  const current = read();
+  const index = current.findIndex((item) => matchesLine(item, lineId));
+  if (index < 0) return current;
+
+  const sourceKey = getSourceKey(current[index]);
+  const next = current.map((item, itemIndex) => (
+    getSourceKey(item) === sourceKey
+      ? { ...item, ...(itemIndex === index ? { quantityKg: qty } : {}), splitPending: false }
+      : item
   ));
+  if (getSplitRemainder(next, lineId) !== null) {
+    next[index] = { ...next[index], splitPending: true };
+  }
   write(next);
   return next;
 }
@@ -219,24 +260,34 @@ export function updateOrderCartItem(lineId, patch) {
   return next;
 }
 
-export function splitOrderCartItem(lineId, keptQuantityKg) {
+export function getOrderCartSplitRemainder(items, lineId) {
+  return getSplitRemainder(items, lineId);
+}
+
+export function addOrderCartRemainder(lineId) {
   const current = read();
   const index = current.findIndex((item) => matchesLine(item, lineId));
   if (index < 0) return current;
 
-  const split = splitPositionValues(current[index], keptQuantityKg, 'quantityKg');
-  if (!split) return current;
+  const remainder = current[index].splitPending ? getSplitRemainder(current, lineId) : null;
+  if (remainder === null) return current;
 
   const productId = getProductId(current[index]);
+  const sourceKey = getSourceKey(current[index]);
+  const sourcePosition = { ...current[index], splitPending: false };
   const remainderPosition = {
-    ...split.remainderPosition,
+    ...sourcePosition,
     id: productId,
     productId,
     lineId: createSplitLineId(productId),
+    quantityKg: remainder,
   };
-  current.splice(index, 1, split.keptPosition, remainderPosition);
-  write(current);
-  return current;
+  const next = current.map((item) => (
+    getSourceKey(item) === sourceKey ? { ...item, splitPending: false } : item
+  ));
+  next.splice(index, 1, sourcePosition, remainderPosition);
+  write(next);
+  return next;
 }
 
 export function addOrderCartItem(item, quantityKg) {

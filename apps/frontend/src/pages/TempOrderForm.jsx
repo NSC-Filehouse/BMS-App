@@ -24,7 +24,6 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import CallSplitOutlinedIcon from '@mui/icons-material/CallSplitOutlined';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import EditIcon from '@mui/icons-material/Edit';
@@ -44,7 +43,6 @@ import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
-import { calculatePositionSplit, splitPositionValues } from '../utils/positionSplit.js';
 import {
   getSelectedCustomer as getStoredSelectedCustomer,
   setSelectedCustomer as storeSelectedCustomer,
@@ -298,9 +296,6 @@ export default function TempOrderForm() {
   const [positions, setPositions] = React.useState([]);
   const [editingArticleKey, setEditingArticleKey] = React.useState('');
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
-  const [splitPositionIndex, setSplitPositionIndex] = React.useState(-1);
-  const [splitKeptQuantity, setSplitKeptQuantity] = React.useState('');
-  const [splitError, setSplitError] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
   const [deliveryDateStatuses, setDeliveryDateStatuses] = React.useState({});
@@ -319,8 +314,6 @@ export default function TempOrderForm() {
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
   const [addPosWpzComment, setAddPosWpzComment] = React.useState('Original verwenden');
   const [addPosOriginalPackagingType, setAddPosOriginalPackagingType] = React.useState('');
-  const splitPosition = splitPositionIndex >= 0 ? positions[splitPositionIndex] || null : null;
-  const splitPreview = calculatePositionSplit(splitPosition?.amountInKg, splitKeptQuantity);
   const addPosOptionsWithSelection = React.useMemo(() => {
     if (!addPosProduct) return addPosOptions;
     const exists = addPosOptions.some((x) => String(x?.id || '') === String(addPosProduct?.id || ''));
@@ -1083,41 +1076,6 @@ export default function TempOrderForm() {
     setPositions((prev) => prev.filter((_, i) => i !== idx));
   }, [isEdit, positions]);
 
-  const openSplitDialog = React.useCallback((position, idx, event) => {
-    event?.stopPropagation();
-    if (!calculatePositionSplit(position?.amountInKg, 1).ok) return;
-    setSplitPositionIndex(idx);
-    setSplitKeptQuantity('');
-    setSplitError('');
-  }, []);
-
-  const closeSplitDialog = React.useCallback(() => {
-    setSplitPositionIndex(-1);
-    setSplitKeptQuantity('');
-    setSplitError('');
-  }, []);
-
-  const confirmSplit = React.useCallback(() => {
-    const split = splitPositionValues(splitPosition, splitKeptQuantity, 'amountInKg');
-    if (!split) {
-      setSplitError(t('position_split_minimum'));
-      return;
-    }
-    const remainderPosition = {
-      ...split.remainderPosition,
-      id: null,
-      clientKey: createClientPositionKey(splitPosition?.beNumber),
-      splitFromPositionId: splitPosition?.id || splitPosition?.splitFromPositionId || null,
-    };
-    setPositions((previous) => {
-      if (splitPositionIndex < 0 || splitPositionIndex >= previous.length) return previous;
-      const next = [...previous];
-      next.splice(splitPositionIndex, 1, split.keptPosition, remainderPosition);
-      return next;
-    });
-    closeSplitDialog();
-  }, [closeSplitDialog, splitKeptQuantity, splitPosition, splitPositionIndex, t]);
-
   const beginArticleEdit = React.useCallback((position, idx, event) => {
     event?.stopPropagation();
     setEditingArticleKey(getPositionKey(position, idx));
@@ -1242,7 +1200,6 @@ export default function TempOrderForm() {
       if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
           id: x.id,
-          splitFromPositionId: x.splitFromPositionId || null,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           article: String(x.article || '').trim(),
@@ -1708,27 +1665,6 @@ export default function TempOrderForm() {
                                 >
                                   <EditIcon fontSize="small" />
                                 </IconButton>
-                                <IconButton
-                                  size="small"
-                                  aria-label={t('position_split_title')}
-                                  title={t('position_split_title')}
-                                  disabled={Boolean(foreignMandant) || !calculatePositionSplit(x.amountInKg, 1).ok}
-                                  onClick={(event) => openSplitDialog(x, idx, event)}
-                                >
-                                  <CallSplitOutlinedIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  aria-label={t('delete_label')}
-                                  title={t('delete_label')}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    onRemovePosition(idx);
-                                  }}
-                                >
-                                  <DeleteOutlineIcon fontSize="small" />
-                                </IconButton>
                               </Box>
                             )}
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -1796,6 +1732,11 @@ export default function TempOrderForm() {
                             onChange={(patch) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)))}
                             helperText={t('validation_wpz_individual_required')}
                           />
+                          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
                         </AccordionDetails>
                       </Accordion>
                     );
@@ -2036,41 +1977,6 @@ export default function TempOrderForm() {
           >
             {t('save_label')}
           </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={Boolean(splitPosition)} onClose={closeSplitDialog} fullWidth maxWidth="xs">
-        <DialogTitle>{t('position_split_title')}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('position_split_keep_amount')}
-            value={splitKeptQuantity}
-            onChange={(event) => {
-              setSplitKeptQuantity(event.target.value);
-              setSplitError('');
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                confirmSplit();
-              }
-            }}
-            inputProps={{ min: 1, max: Math.max(Number(splitPosition?.amountInKg || 0) - 1, 1), step: 'any' }}
-            error={Boolean(splitError)}
-            helperText={splitError || t('position_split_minimum')}
-          />
-          {splitPreview.ok && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {t('position_split_new_amount', { amount: splitPreview.remainder })}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeSplitDialog}>{t('back_label')}</Button>
-          <Button variant="contained" onClick={confirmSplit}>{t('position_split_action')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

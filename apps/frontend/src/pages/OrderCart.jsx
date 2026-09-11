@@ -5,17 +5,13 @@ import {
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import CallSplitOutlinedIcon from '@mui/icons-material/CallSplitOutlined';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
@@ -26,15 +22,15 @@ import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
   getOrderCartItems,
+  getOrderCartSplitRemainder,
+  addOrderCartRemainder,
   removeOrderCartItem,
-  splitOrderCartItem,
   updateOrderCartQuantity,
   updateOrderCartDeliveryDate,
   updateOrderCartSalePrice,
   updateOrderCartArticle,
   updateOrderCartItem,
 } from '../utils/orderCart.js';
-import { calculatePositionSplit } from '../utils/positionSplit.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
@@ -65,12 +61,7 @@ export default function OrderCart() {
   const [mandants, setMandants] = React.useState([]);
   const [editingArticleId, setEditingArticleId] = React.useState('');
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
-  const [splitLineId, setSplitLineId] = React.useState('');
-  const [splitKeptQuantity, setSplitKeptQuantity] = React.useState('');
-  const [splitError, setSplitError] = React.useState('');
   const activeMandant = getMandant();
-  const splitItem = items.find((item) => getCartLineId(item) === splitLineId) || null;
-  const splitPreview = calculatePositionSplit(splitItem?.quantityKg, splitKeptQuantity);
 
   React.useEffect(() => {
     let alive = true;
@@ -143,28 +134,6 @@ export default function OrderCart() {
     setEditingArticleId('');
     setEditingArticleValue('');
   }, [editingArticleValue, t]);
-
-  const openSplitDialog = React.useCallback((row) => {
-    setSplitLineId(getCartLineId(row));
-    setSplitKeptQuantity('');
-    setSplitError('');
-  }, []);
-
-  const closeSplitDialog = React.useCallback(() => {
-    setSplitLineId('');
-    setSplitKeptQuantity('');
-    setSplitError('');
-  }, []);
-
-  const confirmSplit = React.useCallback(() => {
-    const split = calculatePositionSplit(splitItem?.quantityKg, splitKeptQuantity);
-    if (!split.ok) {
-      setSplitError(t('position_split_minimum'));
-      return;
-    }
-    setItems(splitOrderCartItem(splitLineId, split.kept));
-    closeSplitDialog();
-  }, [closeSplitDialog, splitItem, splitKeptQuantity, splitLineId, t]);
 
   const validate = () => {
     const messages = [];
@@ -260,6 +229,7 @@ export default function OrderCart() {
             const foreignMandant = findForeignMandantName(row.beNumber, mandants, activeMandant);
             const lineId = getCartLineId(row);
             const isEditingArticle = String(editingArticleId) === lineId;
+            const splitRemainder = row.splitPending ? getOrderCartSplitRemainder(items, lineId) : null;
             return (
             <Card key={lineId} sx={{ width: '100%', minWidth: 0 }}>
               <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
@@ -333,23 +303,13 @@ export default function OrderCart() {
                       </Typography>
                     )}
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                    <IconButton
-                      aria-label={t('position_split_title')}
-                      title={t('position_split_title')}
-                      disabled={Boolean(foreignMandant) || !calculatePositionSplit(row.quantityKg, 1).ok}
-                      onClick={() => openSplitDialog(row)}
-                    >
-                      <CallSplitOutlinedIcon />
-                    </IconButton>
-                    <IconButton
-                      aria-label={t('cart_remove')}
-                      color="error"
-                      onClick={() => setItems(removeOrderCartItem(lineId))}
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
-                  </Box>
+                  <IconButton
+                    aria-label={t('cart_remove')}
+                    color="error"
+                    onClick={() => setItems(removeOrderCartItem(lineId))}
+                  >
+                    <DeleteOutlineIcon />
+                  </IconButton>
                 </Box>
                 <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_be_number')}: {row.beNumber || '-'} | {t('product_warehouse')}: {row.warehouse || row.warehouseId || '-'}
@@ -361,17 +321,32 @@ export default function OrderCart() {
               const rowErr = fieldErrors[lineId] || {};
               return (
                 <>
-                <TextField
-                  type="number"
-                  label={t('cart_quantity')}
-                  value={row.quantityKg}
-                  onChange={(e) => onQtyChange(lineId, e.target.value)}
-                  inputProps={{ min: 1, max: Number.isFinite(Number(row.availableAmount)) ? Number(row.availableAmount) : undefined, step: 'any' }}
-                  size="small"
-                  required
-                  error={Boolean(rowErr.quantityKg)}
-                  helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, minWidth: 0 }}>
+                  <TextField
+                    type="number"
+                    label={t('cart_quantity')}
+                    value={row.quantityKg}
+                    onChange={(e) => onQtyChange(lineId, e.target.value)}
+                    inputProps={{ min: 1, max: Number.isFinite(Number(row.availableAmount)) ? Number(row.availableAmount) : undefined, step: 'any' }}
+                    size="small"
+                    required
+                    error={Boolean(rowErr.quantityKg)}
+                    helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
+                    sx={{ flex: 1, minWidth: 0 }}
+                  />
+                  {splitRemainder !== null && !foreignMandant && (
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      aria-label={t('position_add_remainder')}
+                      title={t('position_add_remainder')}
+                      onClick={() => setItems(addOrderCartRemainder(lineId))}
+                      sx={{ mt: 0.25 }}
+                    >
+                      <AddCircleOutlineIcon />
+                    </IconButton>
+                  )}
+                </Box>
                 <TextField
                   type="number"
                   label={t('order_sale_price')}
@@ -469,41 +444,6 @@ export default function OrderCart() {
         onClose={() => setCustomerRequiredOpen(false)}
         onChoose={chooseCustomer}
       />
-      <Dialog open={Boolean(splitItem)} onClose={closeSplitDialog} fullWidth maxWidth="xs">
-        <DialogTitle>{t('position_split_title')}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            fullWidth
-            type="number"
-            label={t('position_split_keep_amount')}
-            value={splitKeptQuantity}
-            onChange={(event) => {
-              setSplitKeptQuantity(event.target.value);
-              setSplitError('');
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                confirmSplit();
-              }
-            }}
-            inputProps={{ min: 1, max: Math.max(Number(splitItem?.quantityKg || 0) - 1, 1), step: 'any' }}
-            error={Boolean(splitError)}
-            helperText={splitError || t('position_split_minimum')}
-          />
-          {splitPreview.ok && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {t('position_split_new_amount', { amount: splitPreview.remainder })}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeSplitDialog}>{t('back_label')}</Button>
-          <Button variant="contained" onClick={confirmSplit}>{t('position_split_action')}</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
