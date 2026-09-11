@@ -370,21 +370,25 @@ async function loadSupplierContext(database, customerId) {
   const rows = await runSQLQueryAccess(database, `
     SELECT [kdLi_Lieferanten_Nr] AS supplierNumber
     FROM [dbo].[tblKun_Lieferanten]
-    WHERE COALESCE([kdLi_Kunden_Nr], '') = ?
+    WHERE LTRIM(RTRIM(COALESCE([kdLi_Lieferanten_Nr], ''))) = ?
   `, [customerId]);
   const supplierNumbers = [];
   const seen = new Set();
-  for (const row of (Array.isArray(rows) ? rows : [])) {
-    const value = toText(row.supplierNumber);
-    const key = value.toLowerCase();
-    if (!value || seen.has(key)) continue;
+  const addSupplierNumber = (value) => {
+    const normalized = toText(value);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) return;
     seen.add(key);
-    supplierNumbers.push(value);
+    supplierNumbers.push(normalized);
+  };
+  if (Array.isArray(rows) && rows.length) addSupplierNumber(customerId);
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    addSupplierNumber(row.supplierNumber);
   }
   return {
     isSupplier: Array.isArray(rows) && rows.length > 0,
     supplierNumbers,
-    supplierMappingIncomplete: Array.isArray(rows) && rows.length > 0 && supplierNumbers.length === 0,
+    supplierMappingIncomplete: false,
   };
 }
 
@@ -1510,7 +1514,47 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     }
   }
 
+  const viewRows = await runSQLQueryAccess(req.database, `
+    SELECT
+      [availability].[beP_Artikelindex] AS articleIndex,
+      [availability].[Artikel] AS article,
+      [availability].[beP_MFI] AS mfi,
+      [availability].[beP_MFIgemessen] AS mfiMeasured,
+      [availability].[beP_MFI_Pruefmethode] AS mfiTestMethod,
+      [availability].[Menge] AS amount,
+      [availability].[Einheit] AS unit,
+      [availability].[bePR_Anzahl] AS reserved,
+      [availability].[EP] AS acquisitionPrice,
+      [availability].[Lagerort] AS warehouse,
+      [availability].[bePL_LagerID] AS warehouseId,
+      [availability].[Bestell-Pos] AS beNumber,
+      [availability].[Kunststoff] AS plastic,
+      [availability].[Kunststoff_Untergruppe] AS plasticSubCategory,
+      [availability].[beP_Additive] AS packaging,
+      [availability].[beP_VLbemerkung] AS about,
+      [availability].[beP_LagerBeiStrecke] AS warehouseSection,
+      [availability].[txtLagerInfo] AS description,
+      [article].[agA_Artikelname] AS masterArticleName,
+      [article].[agA_Artikelgruppe] AS articleGroupId,
+      [articleGroup].[ag_Gruppenname] AS articleGroupName
+    FROM ${PRODUCTS_VIEW_SQL}
+    LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
+      ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
+    LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
+      ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
+    ORDER BY [availability].[Artikel], [availability].[Bestell-Pos], [availability].[Lagerort]
+  `, []);
+  const currentViewRows = Array.isArray(viewRows) ? viewRows : [];
+  const tempPlanning = await loadTempOrderPlanning({
+    companyId: req.database?.firmaId,
+    currentOwnerShortCode: req.userIdentity?.shortCode || '',
+    keys: currentViewRows,
+  });
+
   const groups = new Map();
+  const groupByArticleKey = new Map();
+  const groupByArticleIndex = new Map();
+  const groupByArticle = new Map();
   for (const row of purchasedRows) {
     const article = toText(row.article);
     if (!article) continue;
@@ -1526,7 +1570,13 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       plasticSubCategory: meta.plasticSubCategory,
     });
     if (!groups.has(group.key)) {
-      groups.set(group.key, { ...group, articles: [], articleMap: new Map() });
+      groups.set(group.key, {
+        ...group,
+        articles: [],
+        articleMap: new Map(),
+        availablePositions: [],
+        availablePositionMap: new Map(),
+      });
     }
     const groupEntry = groups.get(group.key);
     const childKey = `${articleIndex}\u0000${article}`;
@@ -1543,6 +1593,9 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
         existing.purchasePricePerTonne = purchasePricePerTonne;
         existing.orderIndex = toText(row.orderIndex);
       }
+      groupByArticleKey.set(childKey, groupEntry);
+      if (articleIndex && !groupByArticleIndex.has(articleIndex)) groupByArticleIndex.set(articleIndex, groupEntry);
+      if (!groupByArticle.has(article)) groupByArticle.set(article, groupEntry);
       continue;
     }
     const textMfi = parseMfiFromText(article);
@@ -1559,12 +1612,95 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       deliveryDate: row.deliveryDate || null,
       purchasePricePerTonne,
       orderIndex: toText(row.orderIndex),
+      availablePositions: [],
     };
     groupEntry.articleMap.set(childKey, child);
     groupEntry.articles.push(child);
+    groupByArticleKey.set(childKey, groupEntry);
+    if (articleIndex && !groupByArticleIndex.has(articleIndex)) groupByArticleIndex.set(articleIndex, groupEntry);
+    if (!groupByArticle.has(article)) groupByArticle.set(article, groupEntry);
   }
 
-  const data = Array.from(groups.values()).map(({ articleMap, ...group }) => ({
+  function addAvailablePositionToGroup(group, positionData) {
+    const articleIndex = toText(positionData.articleIndex);
+    const article = toText(positionData.article);
+    const beNumber = toText(positionData.beNumber);
+    const warehouseId = toText(positionData.warehouseId);
+    if (!article || !beNumber || !warehouseId) return;
+
+    const productId = buildProductIdFromViewRow({
+      article,
+      warehouse: positionData.warehouse,
+      beNumber,
+      plastic: positionData.plastic,
+      sub: positionData.plasticSubCategory,
+    });
+    if (!productId || group.availablePositionMap.has(productId)) return;
+
+    const planning = getTempOrderPlanningEntry(tempPlanning, beNumber, warehouseId);
+    const availableAmount = Math.max(
+      (Number(positionData.amount) || 0)
+        - (Number(positionData.reserved) || 0)
+        - (Number(planning.totalAmountKg) || 0),
+      0,
+    );
+    const position = {
+      id: productId,
+      productId,
+      article,
+      articleIndex: articleIndex || null,
+      beNumber,
+      warehouseId,
+      warehouse: toText(positionData.warehouse),
+      amount: positionData.amount ?? null,
+      reserved: positionData.reserved ?? null,
+      availableAmount,
+      tempPlannedAmount: planning.totalAmountKg,
+      tempPlannedOtherAmount: planning.otherAmountKg,
+      tempPlannedBy: planning.byOwner.map((owner) => ({
+        shortCode: owner.shortCode,
+        amountInKg: owner.amountInKg,
+      })),
+      unit: toText(positionData.unit),
+      acquisitionPrice: positionData.acquisitionPrice ?? null,
+      mfi: positionData.mfiMeasured !== null
+        && positionData.mfiMeasured !== undefined
+        && positionData.mfiMeasured !== ''
+        ? positionData.mfiMeasured
+        : positionData.mfi,
+      mfiMeasured: positionData.mfiMeasured ?? null,
+      mfiTestMethod: toText(positionData.mfiTestMethod),
+      plastic: toText(positionData.plastic),
+      plasticSubCategory: toText(positionData.plasticSubCategory),
+      packaging: toText(positionData.packaging),
+      about: toText(positionData.about),
+      warehouseSection: toText(positionData.warehouseSection),
+      description: toText(positionData.description),
+    };
+    group.availablePositionMap.set(productId, position);
+    group.availablePositions.push(position);
+
+    const childKey = `${articleIndex}\u0000${article}`;
+    const child = group.articleMap.get(childKey)
+      || (articleIndex
+        ? group.articles.find((candidate) => candidate.articleIndex === articleIndex)
+        : null)
+      || group.articles.find((candidate) => candidate.article === article);
+    if (child) child.availablePositions.push(position);
+  }
+
+  for (const viewRow of currentViewRows) {
+    const articleIndex = toText(viewRow.articleIndex);
+    const article = toText(viewRow.article);
+    if (!articleIndex || !article) continue;
+    const group = groupByArticleKey.get(`${articleIndex}\u0000${article}`)
+      || groupByArticleIndex.get(articleIndex)
+      || groupByArticle.get(article);
+    if (!group) continue;
+    addAvailablePositionToGroup(group, viewRow);
+  }
+
+  const data = Array.from(groups.values()).map(({ articleMap, availablePositionMap, ...group }) => ({
     ...group,
     articles: group.articles.sort((left, right) => {
       if (left.mfi === null && right.mfi !== null) return 1;
@@ -1572,6 +1708,14 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       if (left.mfi !== null && right.mfi !== null && left.mfi !== right.mfi) return left.mfi - right.mfi;
       return left.article.localeCompare(right.article, 'de');
     }),
+    availablePositions: group.availablePositions.sort((left, right) => {
+      const articleCompare = left.article.localeCompare(right.article, 'de');
+      if (articleCompare !== 0) return articleCompare;
+      const warehouseCompare = left.warehouse.localeCompare(right.warehouse, 'de');
+      if (warehouseCompare !== 0) return warehouseCompare;
+      return left.beNumber.localeCompare(right.beNumber, 'de');
+    }),
+    availableCount: group.availablePositions.length,
   })).sort((left, right) => left.name.localeCompare(right.name, 'de'));
 
   sendEnvelope(res, {

@@ -315,6 +315,7 @@ function DocumentAccordionSummary({ title, controls }) {
 function SupplierPurchasedArticleGroups({ groups, t }) {
   return (Array.isArray(groups) ? groups : []).map((group, groupIndex) => {
     const articles = Array.isArray(group?.articles) ? group.articles : [];
+    const groupAvailablePositions = Array.isArray(group?.availablePositions) ? group.availablePositions : [];
     const groupKey = group?.id || group?.key || `${group?.name || 'group'}-${groupIndex}`;
     return (
       <Box key={groupKey} sx={{ display: 'grid', gap: 0.45, mt: groupIndex ? 0.45 : 0 }}>
@@ -325,28 +326,75 @@ function SupplierPurchasedArticleGroups({ groups, t }) {
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             {articles.length} {articles.length === 1 ? t('article_singular') : t('article_plural')}
           </Typography>
+          {groupAvailablePositions.length > 0 && (
+            <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+              {t('purchased_available_count', {
+                count: groupAvailablePositions.length,
+                positionLabel: getPositionLabel(groupAvailablePositions.length, t),
+              })}
+            </Typography>
+          )}
         </Box>
         <Box sx={{ display: 'grid', gap: 0.5, pl: 1 }}>
           {articles.map((article, articleIndex) => (
-            <Card key={article.id || `${article.article}-${articleIndex}`} variant="outlined">
-              <CardContent sx={{ py: '6px !important', px: '10px !important', display: 'grid', gap: 0.2 }}>
-                <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
-                  {article.article || '-'}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                  {article.amount !== null && article.amount !== undefined
-                    ? `${formatQuantity(article.amount)} ${article.unit || ''}`.trim()
-                    : ''}
-                  {article.mfi !== null && article.mfi !== undefined ? ` · MFI ${article.mfi}` : ''}
-                  {article.purchasePricePerTonne !== null && article.purchasePricePerTonne !== undefined
-                    ? ` · ${t('purchase_price_per_tonne')}: ${formatMoney(article.purchasePricePerTonne)}`
-                    : ''}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                  {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
-                </Typography>
-              </CardContent>
-            </Card>
+            (() => {
+              const articlePositions = Array.isArray(article?.availablePositions)
+                ? article.availablePositions
+                : groupAvailablePositions.filter((position) => (
+                  (article.articleIndex && position.articleIndex
+                    && String(article.articleIndex) === String(position.articleIndex))
+                  || (!article.articleIndex && !position.articleIndex && article.article === position.article)
+                  || (article.article === position.article && !position.articleIndex)
+                ));
+              return (
+                <Card key={article.id || `${article.article}-${articleIndex}`} variant="outlined">
+                  <CardContent sx={{ py: '6px !important', px: '10px !important', display: 'grid', gap: 0.35 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
+                      {article.article || '-'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                      {article.amount !== null && article.amount !== undefined
+                        ? `${formatQuantity(article.amount)} ${article.unit || ''}`.trim()
+                        : ''}
+                      {article.mfi !== null && article.mfi !== undefined ? ` · MFI ${article.mfi}` : ''}
+                      {article.purchasePricePerTonne !== null && article.purchasePricePerTonne !== undefined
+                        ? ` · ${t('purchase_price_per_tonne')}: ${formatMoney(article.purchasePricePerTonne)}`
+                        : ''}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                      {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
+                    </Typography>
+                    {articlePositions.length > 0 && (
+                      <Box sx={{ display: 'grid', gap: 0.25, mt: 0.2 }}>
+                        <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                          {t('purchased_available_heading')}
+                        </Typography>
+                        {articlePositions.map((position, positionIndex) => {
+                          const availableAmount = getAvailableAmount(position);
+                          const positionKey = position.id || position.productId || `${position.beNumber}-${positionIndex}`;
+                          return (
+                            <Box key={positionKey} sx={{ pl: 0.75, display: 'grid', gap: 0.05 }}>
+                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                                {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'}`}
+                                {position.acquisitionPrice !== null
+                                  && position.acquisitionPrice !== undefined
+                                  && String(position.acquisitionPrice).trim() !== ''
+                                  && Number.isFinite(Number(position.acquisitionPrice))
+                                  ? ` · EP: ${formatMoney(position.acquisitionPrice)}`
+                                  : ''}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                                {`${t('product_be_number')}: ${position.beNumber || '-'}`}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()
           ))}
         </Box>
       </Box>
@@ -656,6 +704,32 @@ export default function CustomerDetail() {
         const groupMatches = String(group?.name || '').toLowerCase().includes(query);
         const articles = Array.isArray(group?.articles) ? group.articles : [];
         const availablePositions = Array.isArray(group?.availablePositions) ? group.availablePositions : [];
+        if (isSupplier) {
+          const matchesPosition = (position) => (
+            [position?.article, position?.warehouse, position?.warehouseId, position?.beNumber]
+              .some((value) => String(value || '').toLowerCase().includes(query))
+          );
+          const filteredArticles = groupMatches
+            ? articles
+            : articles
+              .map((article) => {
+                const articleMatches = String(article?.article || '').toLowerCase().includes(query);
+                const articlePositions = Array.isArray(article?.availablePositions) ? article.availablePositions : [];
+                return {
+                  ...article,
+                  availablePositions: articleMatches ? articlePositions : articlePositions.filter(matchesPosition),
+                };
+              })
+              .filter((article) => (
+                String(article?.article || '').toLowerCase().includes(query)
+                || article.availablePositions.length > 0
+              ));
+          return {
+            ...group,
+            articles: filteredArticles,
+            availablePositions: groupMatches ? availablePositions : availablePositions.filter(matchesPosition),
+          };
+        }
         return {
           ...group,
           articles: groupMatches
@@ -670,7 +744,7 @@ export default function CustomerDetail() {
         };
       })
       .filter((group) => group.articles.length > 0 || group.availablePositions.length > 0);
-  }, [docs.purchasedArticles.items, purchasedArticlesQuery]);
+  }, [docs.purchasedArticles.items, isSupplier, purchasedArticlesQuery]);
 
   const allPurchasedAvailablePositions = React.useMemo(() => (
     (Array.isArray(docs.purchasedArticles.items) ? docs.purchasedArticles.items : [])
@@ -995,34 +1069,69 @@ export default function CustomerDetail() {
                 py: 0.75,
               }}
             >
-              <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0, mt: 0.55 }}>
                 {t('sales_rep_short_label')}
               </Typography>
-              <Box sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.5 }}>
-                {salesRepresentatives.length > 0 ? salesRepresentatives.map((assignment, index) => (
-                  <React.Fragment key={assignment.key}>
-                    {index > 0 && <Box component="span">, </Box>}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  columnGap: 1.5,
+                  rowGap: 0.75,
+                  minWidth: 0,
+                }}
+              >
+                {salesRepresentatives.length > 0 ? salesRepresentatives.map((assignment) => {
+                  const mandants = Array.isArray(assignment.mandants) ? assignment.mandants : [];
+                  return (
                     <Box
+                      key={assignment.key}
                       component="button"
                       type="button"
                       onClick={() => openEmployeeDetail(assignment.shortCode)}
                       aria-label={`${t('employee_detail_title')}: ${formatSalesRepresentative(assignment)}`}
                       sx={{
+                        display: 'inline-flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        minWidth: 0,
                         p: 0,
                         border: 0,
                         bgcolor: 'transparent',
                         color: 'primary.main',
                         cursor: 'pointer',
                         font: 'inherit',
-                        fontWeight: assignment.primary ? 700 : 400,
-                        display: 'inline',
+                        lineHeight: 1.1,
                         textDecoration: 'underline',
                       }}
                     >
-                      {formatSalesRepresentative(assignment)}
+                      <Box
+                        component="span"
+                        sx={{
+                          minHeight: '1em',
+                          color: 'text.secondary',
+                          fontSize: '0.62rem',
+                          fontWeight: 500,
+                          lineHeight: 1.1,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {mandants.join('/') || '\u00a0'}
+                      </Box>
+                      <Box
+                        component="span"
+                        sx={{
+                          fontWeight: assignment.primary ? 700 : 400,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {assignment.shortCode}
+                      </Box>
                     </Box>
-                  </React.Fragment>
-                )) : (
+                  );
+                }) : (
                   <Box component="span" color="text.secondary">
                     {t('sales_rep_none')}
                   </Box>
