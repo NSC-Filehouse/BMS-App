@@ -150,7 +150,7 @@ async function loadPositions(orderId) {
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT
       [tbp_id] AS id,
-      [tbp_line_no] AS lineNo,
+      [tbp_line_no] AS [lineNo],
       [tbp_article_index] AS articleIndex,
       [tbp_article] AS article,
       [tbp_amount] AS amount,

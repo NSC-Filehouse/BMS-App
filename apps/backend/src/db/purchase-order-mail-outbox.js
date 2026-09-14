@@ -78,7 +78,7 @@ async function loadOrder(orderId, acceptedOnly = true) {
   const order = rows?.[0] || null;
   if (!order) return null;
   const positions = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT [tbp_id] AS id, [tbp_line_no] AS lineNo, [tbp_article_index] AS articleIndex,
+    SELECT [tbp_id] AS id, [tbp_line_no] AS [lineNo], [tbp_article_index] AS articleIndex,
       [tbp_article] AS article, [tbp_amount] AS amount, [tbp_unit] AS unit,
       [tbp_purchase_price] AS purchasePrice, [tbp_currency] AS currency,
       [tbp_requested_delivery_date] AS requestedDeliveryDate, [tbp_reserved_for] AS reservedFor,

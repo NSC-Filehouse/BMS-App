@@ -1914,7 +1914,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const storedPositionRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT
       p.[tap_id] AS id,
-      p.[tap_line_no] AS lineNo,
+      p.[tap_line_no] AS [lineNo],
       p.[tap_be_number] AS beNumber,
       p.[tap_warehouse] AS warehouseId,
       p.[tap_article] AS article,
