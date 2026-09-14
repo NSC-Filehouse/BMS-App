@@ -432,6 +432,7 @@ export default function OrderCart() {
                     deliveryDate: x.deliveryDate || null,
                     deliveryDateAuto: x.deliveryDateAuto === true,
                     originalPackagingType: x.originalPackagingType || '',
+                    originalPackagingTypeId: x.originalPackagingTypeId ?? null,
                     wpzId: x.wpzId ?? null,
                     wpzOriginal: x.wpzId ? wpz.wpzOriginal : null,
                     wpzComment: wpz.wpzComment,

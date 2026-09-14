@@ -91,6 +91,7 @@ const TEMP_ORDER_POSITION_TABLE_NAME = appTableName('tempOrderPosition');
 const ORDER_MAIL_OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TIMELINE_TABLE = appTableSql('timeline');
 const APP_SCHEMA_NAME = appSchemaName();
+const PACKAGING_TEXT_TABLE = '[dbo].[tblSprachenTexte]';
 
 const TEMP_ORDER_STATUS = Object.freeze({
   DRAFT: 0,
@@ -131,6 +132,147 @@ function normalizePackagingType(value) {
 
 function packagingTypesEqual(left, right) {
   return normalizePackagingType(left) === normalizePackagingType(right);
+}
+
+function packagingTypesChanged(selectedType, selectedTypeId, originalType, originalTypeId) {
+  const selectedId = asInt(selectedTypeId, 0);
+  const originalId = asInt(originalTypeId, 0);
+  if (selectedId > 0 && originalId > 0) return selectedId !== originalId;
+  return !packagingTypesEqual(selectedType, originalType);
+}
+
+function mapRepresentativeName(row) {
+  return [asText(row?.salutation), asText(row?.firstName), asText(row?.lastName)]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+function normalizePackagingText(value) {
+  return asText(value).toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
+}
+
+async function loadPackagingTypes(lang) {
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const sql = `
+    SELECT
+      [spT_ID] AS id,
+      [spT_SortKey] AS sortKey,
+      CASE
+        WHEN ? = 'en' AND NULLIF(LTRIM(RTRIM([spT_en])), N'') IS NOT NULL
+          THEN LTRIM(RTRIM([spT_en]))
+        ELSE LTRIM(RTRIM([spT_de]))
+      END AS text
+    FROM ${PACKAGING_TEXT_TABLE}
+    WHERE [spT_GruppenID] = 1
+      AND LTRIM(RTRIM(COALESCE([spT_Ort], N''))) = N'BE, AB'
+      AND NULLIF(LTRIM(RTRIM(COALESCE([spT_de], N''))), N'') IS NOT NULL
+    ORDER BY [spT_SortKey] ASC, [spT_ID] ASC
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [safeLang]);
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      id: Number(row.id),
+      sortKey: Number(row.sortKey),
+      text: asText(row.text),
+    }))
+    .filter((row) => Number.isInteger(row.id) && row.id > 0 && row.text);
+}
+
+async function loadPackagingTypeById(packagingTypeId, lang) {
+  const id = asInt(packagingTypeId, 0);
+  if (!id) return null;
+  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+  const sql = `
+    SELECT TOP 1
+      [spT_ID] AS id,
+      CASE
+        WHEN ? = 'en' AND NULLIF(LTRIM(RTRIM([spT_en])), N'') IS NOT NULL
+          THEN LTRIM(RTRIM([spT_en]))
+        ELSE LTRIM(RTRIM([spT_de]))
+      END AS text
+    FROM ${PACKAGING_TEXT_TABLE}
+    WHERE [spT_ID] = ?
+      AND [spT_GruppenID] = 1
+      AND LTRIM(RTRIM(COALESCE([spT_Ort], N''))) = N'BE, AB'
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [safeLang, id]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row || !asText(row.text)) return null;
+  return { id: Number(row.id), text: asText(row.text) };
+}
+
+async function loadPackagingTypeIdByText(value) {
+  const text = asText(value);
+  if (!text) return null;
+  const normalized = normalizePackagingText(text);
+  const sql = `
+    SELECT TOP 1 [spT_ID] AS id
+    FROM ${PACKAGING_TEXT_TABLE}
+    WHERE [spT_GruppenID] = 1
+      AND LTRIM(RTRIM(COALESCE([spT_Ort], N''))) = N'BE, AB'
+      AND (
+        LOWER(LTRIM(RTRIM(COALESCE([spT_de], N'')))) = ?
+        OR LOWER(LTRIM(RTRIM(COALESCE([spT_en], N'')))) = ?
+        OR LOWER(LTRIM(RTRIM(COALESCE([spT_fr], N'')))) = ?
+        OR LOWER(LTRIM(RTRIM(COALESCE([spT_ni], N'')))) = ?
+        OR LOWER(LTRIM(RTRIM(COALESCE([spT_sp], N'')))) = ?
+      )
+    ORDER BY [spT_SortKey] ASC, [spT_ID] ASC
+  `;
+  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [normalized, normalized, normalized, normalized, normalized]);
+  const id = Number(rows?.[0]?.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function loadPackagingTypeInfo(database, beNumber) {
+  const sql = `
+    SELECT TOP 1 b.[be_Verpackung] AS packagingType
+    FROM [dbo].[tblBest_Position] p
+    INNER JOIN [dbo].[tblBestellung] b ON b.[be_Bestellindex] = p.[beP_BestellIndex]
+    WHERE COALESCE(p.[beP_BEposID], '') = ?
+  `;
+  const rows = await runSQLQueryAccess(database, sql, [beNumber]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const packagingType = asText(row?.packagingType || '');
+  return {
+    packagingType,
+    packagingTypeId: await loadPackagingTypeIdByText(packagingType),
+  };
+}
+
+async function loadRepresentativeById(database, customerId, representativeId) {
+  const id = asInt(representativeId, 0);
+  if (!id) return null;
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1
+      [kdA_lfdNR] AS id,
+      [kdA_Vorname] AS firstName,
+      [kdA_Name] AS lastName,
+      [kdA_Anrede] AS salutation
+    FROM [dbo].[tblKun_Ansprech]
+    WHERE [kdA_KdNR] = ? AND [kdA_lfdNR] = ?
+  `, [customerId, id]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const name = mapRepresentativeName(row);
+  if (!row || !name) return null;
+  return { id: Number(row.id), name };
+}
+
+async function normalizeRepresentativeInput(database, customerId, body, { allowLegacyText = false } = {}) {
+  const rawId = body?.clientRepresentativeId ?? body?.contactId;
+  const text = asText(body?.clientRepresentative);
+  if (rawId !== undefined && rawId !== null && asText(rawId) !== '') {
+    const id = asInt(rawId, 0);
+    const representative = await loadRepresentativeById(database, customerId, id);
+    if (!representative) {
+      throw createHttpError(400, 'Invalid customer representative.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    return representative;
+  }
+  if (!text) return { id: null, name: '' };
+  if (allowLegacyText) return { id: null, name: text };
+  throw createHttpError(400, 'Customer representative id is required.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
 }
 
 function resolveArticleName({ requestedArticle, canonicalArticle, storedArticle = '', storedOriginalArticle = '' }) {
@@ -372,6 +514,9 @@ function mapTempOrderRow(row) {
     clientName: row.ta_client_name,
     clientAddress: row.ta_client_address,
     clientRepresentative: row.ta_client_representative,
+    clientRepresentativeId: row.ta_client_representative_id === null || row.ta_client_representative_id === undefined
+      ? null
+      : Number(row.ta_client_representative_id),
     comment: row.ta_comment,
     returnComment: asText(row.ta_return_comment),
     specialPaymentCondition: Boolean(row.ta_special_payment_condition),
@@ -379,6 +524,9 @@ function mapTempOrderRow(row) {
     specialPaymentId: row.ta_special_payment_id === null || row.ta_special_payment_id === undefined ? null : Number(row.ta_special_payment_id),
     deliveryTypeId: row.ta_delivery_type_id === null || row.ta_delivery_type_id === undefined ? null : Number(row.ta_delivery_type_id),
     deliveryType: asText(row.ta_delivery_type),
+    packagingTypeId: row.ta_packaging_type_id === null || row.ta_packaging_type_id === undefined
+      ? null
+      : Number(row.ta_packaging_type_id),
     packagingType: asText(row.ta_packaging_type),
     deliveryDate: row.ta_delivery_date || null,
     deliveryAddress: asText(row.ta_delivery_address),
@@ -471,6 +619,9 @@ function mapTempOrderWithPositions(row, positions) {
     articleOriginal: asText(p.articleOriginal) || null,
     articleChanged: Boolean(p.articleChanged),
     originalPackagingType: asText(p.originalPackagingType),
+    originalPackagingTypeId: p.originalPackagingTypeId === null || p.originalPackagingTypeId === undefined
+      ? null
+      : Number(p.originalPackagingTypeId),
     packagingTypeChanged: Boolean(p.packagingTypeChanged),
   }));
   return {
@@ -636,21 +787,16 @@ async function assertTempOrderPositionsAvailable({ companyId, positions, exclude
   }
 }
 
-async function loadPackagingType(database, beNumber) {
+async function loadDeliveryType(database, beNumber) {
   const sql = `
-    SELECT TOP 1 b.[be_Verpackung] AS packagingType
+    SELECT TOP 1 b.[be_Lieferbedingung] AS deliveryType
     FROM [dbo].[tblBest_Position] p
     INNER JOIN [dbo].[tblBestellung] b ON b.[be_Bestellindex] = p.[beP_BestellIndex]
     WHERE COALESCE(p.[beP_BEposID], '') = ?
   `;
   const rows = await runSQLQueryAccess(database, sql, [beNumber]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
-  return asText(row?.packagingType || '');
-}
-
-async function loadDeliveryType(database, beNumber) {
-  // Business rule from legacy app: delivery type is read via be_Verpackung chain.
-  return loadPackagingType(database, beNumber);
+  return asText(row?.deliveryType || '');
 }
 
 async function loadLatestWpzId(database, beNumber) {
@@ -754,6 +900,7 @@ async function normalizeOrderLevelInput(
   body,
   clientAddress,
   lang,
+  { allowLegacyText = false } = {},
 ) {
   const specialPaymentCondition = asBit(body?.specialPaymentCondition, 0);
   const customerPaymentDefaultId = await loadCustomerPaymentDefaultId(req.database, body?.clientReferenceId);
@@ -778,9 +925,24 @@ async function normalizeOrderLevelInput(
     throw createHttpError(400, 'Invalid incoterm.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
-  const packagingType = asText(body?.packagingType);
+  const packagingTypeIdInput = body?.packagingTypeId;
+  let packagingType = null;
+  let packagingTypeId = null;
+  if (packagingTypeIdInput !== undefined && packagingTypeIdInput !== null && asText(packagingTypeIdInput) !== '') {
+    const packaging = await loadPackagingTypeById(packagingTypeIdInput, lang);
+    if (!packaging) {
+      throw createHttpError(400, 'Invalid packaging type id.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    packagingType = packaging.text;
+    packagingTypeId = packaging.id;
+  } else if (allowLegacyText) {
+    packagingType = asText(body?.packagingType);
+    if (packagingType) {
+      packagingTypeId = await loadPackagingTypeIdByText(packagingType);
+    }
+  }
   if (!packagingType) {
-    throw createHttpError(400, 'Invalid packaging type.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    throw createHttpError(400, 'Packaging type id is required.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
   const deliveryAddressChanged = asBit(body?.deliveryAddressChanged ?? body?.deliveryAddressManual, 0);
@@ -814,6 +976,7 @@ async function normalizeOrderLevelInput(
     incotermText: incoterm?.text || null,
     incotermId: incoterm?.id || null,
     packagingType,
+    packagingTypeId,
     deliveryAddress,
     deliveryAddressId,
     deliveryAddressChanged,
@@ -847,6 +1010,7 @@ async function loadOrderPositions(orderId) {
     const cWpzOriginal = resolveColumn(cols, ['tap_wpz_original']);
     const cWpzComment = resolveColumn(cols, ['tap_wpz_comment']);
     const cOriginalPackagingType = resolveColumn(cols, ['tap_Verpackungsart']);
+    const cOriginalPackagingTypeId = resolveColumn(cols, ['tap_Verpackungsart_id']);
     const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
@@ -869,6 +1033,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cAbout, 'about')},
         ${pick(cMfi, 'mfi')},
         ${pick(cOriginalPackagingType, 'originalPackagingType')},
+        ${pick(cOriginalPackagingTypeId, 'originalPackagingTypeId')},
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')},
@@ -938,13 +1103,14 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
   }
 
   const sourceDatabase = await resolvePositionDatabase(req, beNumber);
-  const packagingType = await loadPackagingType(sourceDatabase, beNumber);
+  const packagingTypeInfo = await loadPackagingTypeInfo(sourceDatabase, beNumber);
   const deliveryType = await loadDeliveryType(sourceDatabase, beNumber);
   sendEnvelope(res, {
     status: 200,
     data: {
       beNumber,
-      packagingType,
+      packagingType: packagingTypeInfo.packagingType,
+      packagingTypeId: packagingTypeInfo.packagingTypeId,
       deliveryType,
     },
     meta: {
@@ -959,6 +1125,17 @@ router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHand
 router.get('/temp-orders/payment-texts', requireMandant, asyncHandler(async (req, res) => {
   const lang = resolveLang(req);
   const data = await loadPaymentTexts(lang);
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: { mandant: req.mandant, count: data.length, lang },
+    error: null,
+  });
+}));
+
+router.get('/temp-orders/packaging-types', requireMandant, asyncHandler(async (req, res) => {
+  const lang = resolveLang(req);
+  const data = await loadPackagingTypes(lang);
   sendEnvelope(res, {
     status: 200,
     data,
@@ -1214,13 +1391,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const clientReferenceId = asText(body?.clientReferenceId);
   const clientName = asText(body?.clientName);
   const clientAddress = asText(body?.clientAddress);
-  const clientRepresentative = asText(body?.clientRepresentative);
   const supplier = asText(body?.supplier);
   const lang = resolveLang(req);
   if (!clientReferenceId || !clientName || !clientAddress) {
     throw createHttpError(400, 'Missing required client data for temp order.', { code: 'TEMP_ORDER_MISSING_CLIENT_DATA' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
+  const representative = await normalizeRepresentativeInput(req.database, clientReferenceId, body);
   const orderLevel = await normalizeOrderLevelInput(
     req,
     body,
@@ -1231,10 +1408,18 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
+  const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
+  const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasOriginalPackagingTypeId = hasColumn(positionCols, 'tap_Verpackungsart_id');
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
       code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
+  if (!hasRepresentativeId || !hasPackagingTypeId || !hasOriginalPackagingTypeId) {
+    throw createHttpError(503, 'Temp order tables are missing the new representative or packaging id columns. Apply the migration first.', {
+      code: 'TEMP_ORDER_REFERENCE_ID_SCHEMA_MISSING',
     });
   }
   const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
@@ -1274,14 +1459,20 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       requestedArticle: raw?.article,
       canonicalArticle: productContext.article,
     });
-    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
+    const originalPackagingTypeInfo = await loadPackagingTypeInfo(sourceDatabase, beNumber);
+    const originalPackagingType = originalPackagingTypeInfo.packagingType;
     if (!originalPackagingType) {
       throw createHttpError(400, 'Original packaging type is missing for position.', {
         code: 'INVALID_TEMP_ORDER_PAYLOAD',
         beNumber,
       });
     }
-    const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
+    const packagingTypeChanged = packagingTypesChanged(
+      orderLevel.packagingType,
+      orderLevel.packagingTypeId,
+      originalPackagingType,
+      originalPackagingTypeInfo.packagingTypeId,
+    );
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
@@ -1303,6 +1494,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       wpzOriginal,
       wpzComment,
       originalPackagingType,
+      originalPackagingTypeId: originalPackagingTypeInfo.packagingTypeId,
       packagingTypeChanged,
       productContext,
       sourceDatabase,
@@ -1325,19 +1517,19 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const nowIso = new Date().toISOString();
   const fallbackOrderDeliveryDate = deliveryDates[0] || null;
   const orderInsertColumns = [
-    '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]',
+    '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]', '[ta_client_representative_id]',
     '[ta_comment]', '[ta_special_payment_condition]', '[ta_special_payment_text]', '[ta_special_payment_id]', '[ta_delivery_type_id]', '[ta_delivery_type]',
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date]'] : []),
-    '[ta_packaging_type]', '[ta_delivery_address]', '[ta_delivery_address_id]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
+    '[ta_packaging_type]', '[ta_packaging_type_id]', '[ta_delivery_address]', '[ta_delivery_address_id]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
     '[ta_Attachment]', '[ta_AttachmentFileName]', '[ta_AttachmentMimeType]',
     '[ta_CreatedBy]', '[ta_CreateDate]', '[ta_LastModifiedBy]', '[ta_LastModifiedDate]',
     '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
   ];
   const orderInsertValues = [
-    '?', '?', '?', '?', '?',
+    '?', '?', '?', '?', '?', '?',
     '?', '?', '?', '?', '?', '?',
     ...(hasOrderDeliveryDate ? ['?'] : []),
-    '?', '?', '?', '?', '?', '?',
+    '?', '?', '?', '?', '?', '?', '?',
     'CAST(? AS VARBINARY(MAX))', '?', '?',
     '?', '?', '?', '?',
     '?', '?', '?', '?', '?',
@@ -1347,7 +1539,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     clientReferenceId,
     clientName,
     clientAddress,
-    clientRepresentative || null,
+    representative.name || null,
+    representative.id,
     asText(body?.comment) || null,
     orderLevel.specialPaymentCondition,
     orderLevel.specialPaymentText,
@@ -1356,6 +1549,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     orderLevel.incotermText,
     ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
+    orderLevel.packagingTypeId,
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressId,
     orderLevel.deliveryAddressChanged,
@@ -1396,7 +1590,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
         '[tap_about]', '[tap_mfi]',
-        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_Gewechselt]',
+        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
       ];
       const posSql = `
@@ -1425,6 +1619,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.wpzComment,
         pos.wpzId,
         pos.originalPackagingType,
+        pos.originalPackagingTypeId,
         pos.packagingTypeChanged,
         userShortCode,
         nowIso,
@@ -1529,8 +1724,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   for (const position of (missingPackagingRows || [])) {
     const beNumber = asText(position.beNumber);
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
-    const originalPackagingType = await loadPackagingType(sourceDatabase, beNumber);
-    if (originalPackagingType) resolvedMissingPackaging.set(Number(position.id), originalPackagingType);
+    const originalPackagingTypeInfo = await loadPackagingTypeInfo(sourceDatabase, beNumber);
+    if (originalPackagingTypeInfo.packagingType) {
+      resolvedMissingPackaging.set(Number(position.id), originalPackagingTypeInfo);
+    }
   }
   let finalized;
   try {
@@ -1589,6 +1786,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           [tap_wpz_original] AS wpzOriginal,
           [tap_wpz_comment] AS wpzComment,
           [tap_Verpackungsart] AS originalPackagingType,
+          [tap_Verpackungsart_id] AS originalPackagingTypeId,
           [tap_Verpackungsart_Gewechselt] AS packagingTypeChanged
         FROM ${TEMP_ORDER_POSITION_TABLE} WITH (HOLDLOCK)
         WHERE [tap_ta_id] = ?
@@ -1597,26 +1795,38 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       const positions = positionsResult.rows || [];
       const mappedOrder = mapTempOrderRow(orderRow);
       for (const position of positions) {
+        const resolvedPackaging = resolvedMissingPackaging.get(Number(position.id));
         const originalPackagingType = asText(position.originalPackagingType)
-          || asText(resolvedMissingPackaging.get(Number(position.id)));
+          || asText(resolvedPackaging?.packagingType);
+        const originalPackagingTypeId = asInt(position.originalPackagingTypeId, 0)
+          || asInt(resolvedPackaging?.packagingTypeId, 0)
+          || await loadPackagingTypeIdByText(originalPackagingType);
         if (!originalPackagingType) {
           throw createHttpError(400, 'Original packaging type is missing for position.', {
             code: 'INVALID_TEMP_ORDER_PAYLOAD',
             beNumber: position.beNumber,
           });
         }
-        const packagingTypeChanged = !packagingTypesEqual(mappedOrder.packagingType, originalPackagingType);
+        const packagingTypeChanged = packagingTypesChanged(
+          mappedOrder.packagingType,
+          mappedOrder.packagingTypeId,
+          originalPackagingType,
+          originalPackagingTypeId,
+        );
         if (asText(position.originalPackagingType) !== originalPackagingType
+          || asInt(position.originalPackagingTypeId, 0) !== originalPackagingTypeId
           || Boolean(position.packagingTypeChanged) !== packagingTypeChanged) {
           await query(`
             UPDATE ${TEMP_ORDER_POSITION_TABLE}
             SET [tap_Verpackungsart] = ?,
+                [tap_Verpackungsart_id] = ?,
                 [tap_Verpackungsart_Gewechselt] = ?,
                 [tap_LastModifiedBy] = ?,
                 [tap_LastModifiedDate] = ?
             WHERE [tap_id] = ? AND [tap_ta_id] = ?
-          `, [originalPackagingType, packagingTypeChanged ? 1 : 0, userShortCode, nowIso, position.id, id]);
+          `, [originalPackagingType, originalPackagingTypeId || null, packagingTypeChanged ? 1 : 0, userShortCode, nowIso, position.id, id]);
           position.originalPackagingType = originalPackagingType;
+          position.originalPackagingTypeId = originalPackagingTypeId || null;
           position.packagingTypeChanged = packagingTypeChanged;
         }
       }
@@ -1874,7 +2084,6 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const clientReferenceId = asText(body?.clientReferenceId);
   const clientName = asText(body?.clientName);
   const clientAddress = asText(body?.clientAddress);
-  const clientRepresentative = asText(body?.clientRepresentative);
   const supplier = asText(body?.supplier);
   const lang = resolveLang(req);
   const qualifiedOwnerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, 'o.[ta_CreatedBy]');
@@ -1883,6 +2092,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(400, 'Invalid temp order payload.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   await requireVisibleCustomer(req, clientReferenceId);
+  const representative = await normalizeRepresentativeInput(req.database, clientReferenceId, body, { allowLegacyText: true });
   const positionsInput = normalizePositionsInput(body);
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
@@ -1893,15 +2103,24 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     body,
     clientAddress,
     lang,
+    { allowLegacyText: true },
   );
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
   const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
+  const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
+  const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasOriginalPackagingTypeId = hasColumn(positionCols, 'tap_Verpackungsart_id');
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
       code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
+  if (!hasRepresentativeId || !hasPackagingTypeId || !hasOriginalPackagingTypeId) {
+    throw createHttpError(503, 'Temp order tables are missing the new representative or packaging id columns. Apply the migration first.', {
+      code: 'TEMP_ORDER_REFERENCE_ID_SCHEMA_MISSING',
     });
   }
   const hasOriginalPackagingType = hasColumn(positionCols, 'tap_Verpackungsart');
@@ -1923,6 +2142,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       p.[tap_about] AS about,
       p.[tap_mfi] AS mfi,
       p.[tap_Verpackungsart] AS originalPackagingType,
+      p.[tap_Verpackungsart_id] AS originalPackagingTypeId,
       p.[tap_CreatedBy] AS createdBy,
       p.[tap_CreateDate] AS createdAt
     FROM ${TEMP_ORDER_POSITION_TABLE} AS p
@@ -1982,15 +2202,26 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       storedOriginalArticle: snapshotPosition?.articleOriginal,
     });
     const storedOriginalPackagingType = asText(snapshotPosition?.originalPackagingType);
-    const originalPackagingType = storedOriginalPackagingType
-      || await loadPackagingType(sourceDatabase, beNumber);
+    const loadedPackagingTypeInfo = storedOriginalPackagingType
+      ? {
+        packagingType: storedOriginalPackagingType,
+        packagingTypeId: asInt(snapshotPosition?.originalPackagingTypeId, 0) || await loadPackagingTypeIdByText(storedOriginalPackagingType),
+      }
+      : await loadPackagingTypeInfo(sourceDatabase, beNumber);
+    const originalPackagingType = loadedPackagingTypeInfo.packagingType;
+    const originalPackagingTypeId = loadedPackagingTypeInfo.packagingTypeId;
     if (!originalPackagingType) {
       throw createHttpError(400, 'Original packaging type is missing for position.', {
         code: 'INVALID_TEMP_ORDER_PAYLOAD',
         beNumber,
       });
     }
-    const packagingTypeChanged = !packagingTypesEqual(orderLevel.packagingType, originalPackagingType);
+    const packagingTypeChanged = packagingTypesChanged(
+      orderLevel.packagingType,
+      orderLevel.packagingTypeId,
+      originalPackagingType,
+      originalPackagingTypeId,
+    );
     const wpzId = await loadLatestWpzId(sourceDatabase, beNumber);
     const wpzOriginal = wpzId ? asBit(raw?.wpzOriginal, 1) : null;
     const wpzCommentText = asText(raw?.wpzComment);
@@ -2014,6 +2245,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       wpzOriginal,
       wpzComment,
       originalPackagingType,
+      originalPackagingTypeId,
       packagingTypeChanged,
       createdBy: asText(storedPosition?.createdBy) || userShortCode,
       createdAt: storedPosition?.createdAt || null,
@@ -2060,6 +2292,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     '[ta_client_name] = ?',
     '[ta_client_address] = ?',
     '[ta_client_representative] = ?',
+    '[ta_client_representative_id] = ?',
     '[ta_comment] = ?',
     '[ta_special_payment_condition] = ?',
     '[ta_special_payment_text] = ?',
@@ -2068,6 +2301,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     '[ta_delivery_type] = ?',
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date] = ?'] : []),
     '[ta_packaging_type] = ?',
+    '[ta_packaging_type_id] = ?',
     '[ta_delivery_address] = ?',
     '[ta_delivery_address_id] = ?',
     '[ta_delivery_address_changed] = ?',
@@ -2091,7 +2325,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     clientReferenceId,
     clientName,
     clientAddress,
-    clientRepresentative || null,
+    representative.name || null,
+    representative.id,
     asText(body?.comment) || null,
     orderLevel.specialPaymentCondition,
     orderLevel.specialPaymentText,
@@ -2100,6 +2335,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     orderLevel.incotermText,
     ...(hasOrderDeliveryDate ? [fallbackOrderDeliveryDate] : []),
     orderLevel.packagingType,
+    orderLevel.packagingTypeId,
     orderLevel.deliveryAddress,
     orderLevel.deliveryAddressId,
     orderLevel.deliveryAddressChanged,
@@ -2171,6 +2407,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
           '[tap_wpz_comment] = ?',
           '[tap_wpz_id] = ?',
           '[tap_Verpackungsart] = ?',
+          '[tap_Verpackungsart_id] = ?',
           '[tap_Verpackungsart_Gewechselt] = ?',
           '[tap_LastModifiedBy] = ?',
           '[tap_LastModifiedDate] = ?',
@@ -2199,6 +2436,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
           pos.wpzComment,
           pos.wpzId,
           pos.originalPackagingType,
+          pos.originalPackagingTypeId,
           pos.packagingTypeChanged,
           userShortCode,
           nowIso,
@@ -2213,7 +2451,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
         '[tap_about]', '[tap_mfi]',
-        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_Gewechselt]',
+        '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
       ];
       const posSql = `
@@ -2242,6 +2480,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         pos.wpzComment,
         pos.wpzId,
         pos.originalPackagingType,
+        pos.originalPackagingTypeId,
         pos.packagingTypeChanged,
         pos.createdBy,
         pos.createdAt || nowIso,
@@ -2343,4 +2582,5 @@ module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
 module.exports.parseDeliveryAddressId = parseDeliveryAddressId;
 module.exports.normalizePackagingType = normalizePackagingType;
 module.exports.packagingTypesEqual = packagingTypesEqual;
+module.exports.packagingTypesChanged = packagingTypesChanged;
 module.exports.resolveArticleName = resolveArticleName;

@@ -13,6 +13,7 @@ const {
   normalizeTempOrderCompanyId,
   normalizePackagingType,
   packagingTypesEqual,
+  packagingTypesChanged,
   resolveArticleName,
 } = require('../src/routes/temp-orders.routes');
 
@@ -157,4 +158,9 @@ test('compares translated packaging aliases without treating big bags as sackwar
   assert.equal(packagingTypesEqual('Siloware', 'Silo/bulk'), true);
   assert.equal(packagingTypesEqual('Big Bags', 'Sackware'), false);
   assert.equal(packagingTypesEqual('Octa', 'Octabins'), true);
+});
+
+test('uses packaging ids for change detection when both ids are available', () => {
+  assert.equal(packagingTypesChanged('Bags', 78, 'Sackware', 78), false);
+  assert.equal(packagingTypesChanged('Bags', 78, 'Sackware', 79), true);
 });

@@ -156,6 +156,7 @@ function buildCartPayload(item, quantityKg, existing = null) {
       ? item.wpzComment
       : (existing?.wpzComment || 'Original verwenden'),
     originalPackagingType: item?.originalPackagingType ?? existing?.originalPackagingType ?? '',
+    originalPackagingTypeId: item?.originalPackagingTypeId ?? existing?.originalPackagingTypeId ?? null,
   };
 }
 
