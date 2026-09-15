@@ -60,6 +60,26 @@ test('new positions use the available maximum and empty per-position inputs', ()
   assert.equal(item.wpzComment, 'Original verwenden');
 });
 
+test('reservation positions keep reservation metadata and use the reserved amount initially', () => {
+  addOrderCartItemsWithDefaults([{
+    id: 'product-1',
+    article: 'Reservierter Artikel',
+    beNumber: 'BE-1',
+    warehouseId: 'L1',
+    amount: 1200,
+    reserved: 200,
+    availableAmount: 1000,
+    initialQuantityKg: 200,
+    reservationInKg: 200,
+    reservationDate: '2030-05-17T00:00:00.000Z',
+  }]);
+
+  const [item] = getOrderCartItems();
+  assert.equal(item.quantityKg, 200);
+  assert.equal(item.reservationInKg, 200);
+  assert.equal(item.reservationDate, '2030-05-17T00:00:00.000Z');
+});
+
 test('adding an existing position keeps every user-edited cart value', () => {
   addOrderCartItemsWithDefaults([{
     id: 'product-1',

@@ -16,10 +16,14 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
+import { getSelectedCustomer } from '../utils/customerSelection.js';
+import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
+import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -88,6 +92,8 @@ export default function OrderDetail() {
   const [editComment, setEditComment] = React.useState('');
   const [editLoading, setEditLoading] = React.useState(false);
   const [editError, setEditError] = React.useState('');
+  const [cartAdding, setCartAdding] = React.useState(false);
+  const [customerRequiredOpen, setCustomerRequiredOpen] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
@@ -113,6 +119,88 @@ export default function OrderDetail() {
   const mandant = getMandant();
   const isReserved = Boolean(item?.isReserved);
   const canEdit = Boolean(item?.canEdit);
+  const reservationAmount = Number(item?.reserveAmount);
+  const reservationCartAvailableAmount = React.useMemo(() => {
+    const totalAmount = Number(item?.amount);
+    const reservedAmount = Number(item?.reserved);
+    const freeAmount = Number.isFinite(totalAmount) && Number.isFinite(reservedAmount)
+      ? Math.max(totalAmount - reservedAmount, 0)
+      : 0;
+    return Number.isFinite(reservationAmount) && reservationAmount > 0
+      ? freeAmount + reservationAmount
+      : 0;
+  }, [item?.amount, item?.reserved, reservationAmount]);
+  const canAddReservationToCart = isReserved
+    && canEdit
+    && Boolean(String(item?.productId || '').trim())
+    && Number.isFinite(reservationAmount)
+    && reservationAmount > 0;
+
+  const addReservationToCart = React.useCallback(async () => {
+    if (!canAddReservationToCart) {
+      setError(t('reservation_cart_unavailable'));
+      return;
+    }
+    try {
+      setCartAdding(true);
+      setError('');
+      setSuccess('');
+      await addProductsToOrderCart([{
+        id: item.productId,
+        article: item.article,
+        warehouse: item.warehouse,
+        warehouseId: item.warehouseId,
+        unit: item.unit || 'kg',
+        amount: item.amount,
+        reserved: item.reserved,
+        availableAmount: reservationCartAvailableAmount,
+        initialQuantityKg: reservationAmount,
+        acquisitionPrice: item.price,
+        reservationInKg: reservationAmount,
+        reservationDate: item.reservationDate,
+      }], { vlMandantId: sourceMandantId });
+      setSuccess(t('reservation_added_to_cart'));
+    } catch (e) {
+      setError(e?.message || t('loading_error'));
+    } finally {
+      setCartAdding(false);
+    }
+  }, [canAddReservationToCart, item, reservationAmount, reservationCartAvailableAmount, sourceMandantId, t]);
+
+  const requestAddReservationToCart = React.useCallback(() => {
+    if (!getSelectedCustomer()?.id) {
+      setCustomerRequiredOpen(true);
+      return;
+    }
+    void addReservationToCart();
+  }, [addReservationToCart]);
+
+  const chooseCustomer = React.useCallback(() => {
+    setCustomerRequiredOpen(false);
+    navigate('/customers', {
+      state: {
+        afterSelect: {
+          to: location.pathname,
+          state: {
+            ...(location.state || {}),
+            pendingReservationCart: true,
+          },
+        },
+      },
+    });
+  }, [location.pathname, location.state, navigate]);
+
+  React.useEffect(() => {
+    if (!location.state?.pendingReservationCart || !item || !getSelectedCustomer()?.id) return;
+    const nextState = { ...(location.state || {}) };
+    delete nextState.pendingReservationCart;
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    });
+    void addReservationToCart();
+  }, [addReservationToCart, item, location.pathname, location.state, navigate]);
+
   const handleBack = React.useCallback(() => {
     const fromOrders = location.state?.fromOrders;
     if (fromOrders) {
@@ -147,6 +235,18 @@ export default function OrderDetail() {
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
             {item?.isReserved && (
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                {canAddReservationToCart && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<ShoppingCartIcon />}
+                    disabled={cartAdding}
+                    sx={{ whiteSpace: 'nowrap', minWidth: 0, px: 1.5 }}
+                    onClick={requestAddReservationToCart}
+                  >
+                    {t('reservation_add_to_cart')}
+                  </Button>
+                )}
                 {canEdit && (
                   <Button
                     variant="outlined"
@@ -267,6 +367,12 @@ export default function OrderDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CustomerRequiredDialog
+        open={customerRequiredOpen}
+        onClose={() => setCustomerRequiredOpen(false)}
+        onChoose={chooseCustomer}
+      />
     </Box>
   );
 }

@@ -51,6 +51,13 @@ function formatQuantity(value) {
   return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 }
 
+function formatDateOnly(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('de-DE');
+}
+
 function getCartLineId(item) {
   return String(item?.lineId || item?.id || '');
 }
@@ -323,6 +330,11 @@ export default function OrderCart() {
                 <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                   {t('product_available_now')}: {row.availableAmount ?? '-'} {row.unit || 'kg'} | {t('product_price')}: {formatPrice(row.acquisitionPrice)}
                 </Typography>
+                {Number(row.reservationInKg) > 0 && (
+                  <Typography variant="caption" sx={{ minWidth: 0, color: 'primary.main', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {t('order_reserve_amount')}: {row.reservationInKg} {row.unit || 'kg'} | {t('order_reserved_until')}: {formatDateOnly(row.reservationDate)}
+                  </Typography>
+                )}
             {(() => {
               const rowErr = fieldErrors[lineId] || {};
               return (
@@ -339,11 +351,11 @@ export default function OrderCart() {
                     error={Boolean(rowErr.quantityKg)}
                     helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
                     sx={{
-                      flex: splitRemainder !== null && !foreignMandant ? '0 0 50%' : 1,
+                      flex: splitRemainder !== null && !foreignMandant && !Number(row.reservationInKg) ? '0 0 50%' : 1,
                       minWidth: 0,
                     }}
                   />
-                  {splitRemainder !== null && !foreignMandant && (
+                  {splitRemainder !== null && !foreignMandant && !Number(row.reservationInKg) && (
                     <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: 0.25 }}>
                       <Typography
                         variant="body2"
@@ -431,6 +443,8 @@ export default function OrderCart() {
                     costPrice: Number(x.acquisitionPrice),
                     deliveryDate: x.deliveryDate || null,
                     deliveryDateAuto: x.deliveryDateAuto === true,
+                    reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
+                    reservationDate: x.reservationDate || null,
                     originalPackagingType: x.originalPackagingType || '',
                     originalPackagingTypeId: x.originalPackagingTypeId ?? null,
                     wpzId: x.wpzId ?? null,

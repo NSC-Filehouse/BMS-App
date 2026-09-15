@@ -885,8 +885,8 @@ export default function TempOrderForm() {
             originalPackagingType: x.originalPackagingType || '',
             originalPackagingTypeId: x.originalPackagingTypeId ?? null,
             packagingTypeChanged: false,
-            reservationInKg: null,
-            reservationDate: null,
+            reservationInKg: x.reservationInKg ?? null,
+            reservationDate: x.reservationDate ?? null,
             ...createPositionDefaults({
               deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
               deliveryDateAuto: x.deliveryDateAuto !== undefined ? Boolean(x.deliveryDateAuto) : !x.deliveryDate,

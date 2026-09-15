@@ -169,6 +169,8 @@ Stand: 20. Juli 2026
 - Reservierungsende erfassen
 - Reservierungskommentar erfassen
 - Reservierungsdetails öffnen
+- Eigene Reservierung in den Warenkorb übernehmen
+- Reservierung im Entwurf behalten und nach erfolgreichem BMS-Versand aufheben
 - Eigene Reservierung ändern
 - Eigene Reservierungsmenge ändern
 - Eigenes Reservierungsende ändern

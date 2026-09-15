@@ -744,6 +744,75 @@ async function loadProductContext(database, beNumber, warehouseId) {
   };
 }
 
+async function loadReservationForOrder(database, beNumber, warehouseId, userShortCode, isFullAccess = false) {
+  const ownerSql = isFullAccess
+    ? ''
+    : "      AND LOWER(COALESCE([bePR_reserviertVon], '')) = ?";
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1
+      [bePR_Anzahl] AS amount,
+      [bePR_gueltigBis] AS reservationDate
+    FROM [dbo].[tblBest_Pos_Reserviert]
+    WHERE [bePR_BEposID] = ?
+      AND [bePR_LagerID] = ?
+${ownerSql}
+  `, [
+    beNumber,
+    warehouseId,
+    ...(isFullAccess ? [] : [asText(userShortCode).toLowerCase()]),
+  ]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const amount = Number(row?.amount);
+  if (!row || !Number.isFinite(amount) || amount <= 0) {
+    throw createHttpError(409, 'Reservation is no longer available for this employee.', {
+      code: 'RESERVATION_NOT_FOUND',
+      beNumber,
+      warehouseId,
+    });
+  }
+  return {
+    amount,
+    reservationDate: row.reservationDate || null,
+  };
+}
+
+async function resolveReservationInput({ database, beNumber, warehouseId, raw, userShortCode, isFullAccess = false }) {
+  const hasReservationAmount = raw?.reservationInKg !== undefined
+    && raw?.reservationInKg !== null
+    && raw?.reservationInKg !== '';
+  const requestedReservationAmount = hasReservationAmount
+    ? asInt(raw.reservationInKg, 0)
+    : null;
+  let reservationDate = raw?.reservationDate ? new Date(raw.reservationDate) : null;
+  if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
+    throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
+  }
+  if (!(requestedReservationAmount > 0)) {
+    return {
+      reservationInKg: requestedReservationAmount,
+      reservationDate: reservationDate ? reservationDate.toISOString() : null,
+    };
+  }
+
+  const reservation = await loadReservationForOrder(database, beNumber, warehouseId, userShortCode, isFullAccess);
+  reservationDate = reservation.reservationDate ? new Date(reservation.reservationDate) : reservationDate;
+  return {
+    reservationInKg: reservation.amount,
+    reservationDate: reservationDate && !Number.isNaN(reservationDate.getTime())
+      ? reservationDate.toISOString()
+      : null,
+  };
+}
+
+function calculateTempOrderAvailableAmount(position, reservationInKg = 0, plannedAmount = 0) {
+  const baseAmount = Math.max(
+    (Number(position?.productContext?.amount) || 0)
+      - (Number(position?.productContext?.reserved) || 0),
+    0,
+  ) + Math.max(Number(reservationInKg) || 0, 0);
+  return Math.max(baseAmount - (Number(plannedAmount) || 0), 0);
+}
+
 async function assertTempOrderPositionsAvailable({ companyId, positions, excludeOrderId = null }) {
   const normalizedPositions = Array.isArray(positions) ? positions : [];
   if (!normalizedPositions.length) return;
@@ -757,23 +826,23 @@ async function assertTempOrderPositionsAvailable({ companyId, positions, exclude
 
   for (const position of normalizedPositions) {
     const key = buildTempPlanningKey(position.beNumber, position.warehouseId);
-    const current = requestedByKey.get(key) || { position, amountInKg: 0 };
+    const current = requestedByKey.get(key) || { position, amountInKg: 0, reservationInKg: 0 };
     current.amountInKg += Number(position.amountInKg) || 0;
+    current.reservationInKg += Math.max(Number(position.reservationInKg) || 0, 0);
     requestedByKey.set(key, current);
   }
 
-  for (const { position, amountInKg } of requestedByKey.values()) {
-    const baseAmount = Math.max(
-      (Number(position.productContext?.amount) || 0)
-        - (Number(position.productContext?.reserved) || 0),
-      0,
-    );
+  for (const { position, amountInKg, reservationInKg } of requestedByKey.values()) {
+    const productReserved = Number(position.productContext?.reserved);
+    const reservationCredit = Number.isFinite(productReserved) && productReserved > 0
+      ? Math.min(reservationInKg, productReserved)
+      : reservationInKg;
     const plannedAmount = getTempOrderPlanningEntry(
       planning,
       position.beNumber,
       position.warehouseId,
     ).totalAmountKg;
-    const availableAmount = Math.max(baseAmount - plannedAmount, 0);
+    const availableAmount = calculateTempOrderAvailableAmount(position, reservationCredit, plannedAmount);
     if (amountInKg > availableAmount + 0.000001) {
       throw createHttpError(400, `Temp order amount exceeds available quantity (${availableAmount}).`, {
         code: 'TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE',
@@ -1370,6 +1439,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
 
 router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1446,14 +1516,15 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
-    const reservationInKg = raw?.reservationInKg !== undefined && raw?.reservationInKg !== null && raw?.reservationInKg !== ''
-      ? asInt(raw?.reservationInKg, 0)
-      : null;
-    const reservationDate = raw?.reservationDate ? new Date(raw.reservationDate) : null;
-    if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
-      throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
-    }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const reservation = await resolveReservationInput({
+      database: sourceDatabase,
+      beNumber,
+      warehouseId,
+      raw,
+      userShortCode,
+      isFullAccess: accessScope.isFullAccess,
+    });
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const articleName = resolveArticleName({
       requestedArticle: raw?.article,
@@ -1487,8 +1558,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       amountInKg,
       salePricePerKg,
       costPricePerKg,
-      reservationInKg,
-      reservationDate: reservationDate ? reservationDate.toISOString() : null,
+      reservationInKg: reservation.reservationInKg,
+      reservationDate: reservation.reservationDate,
       ...articleName,
       wpzId,
       wpzOriginal,
@@ -2171,14 +2242,15 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
-    const reservationInKg = raw?.reservationInKg !== undefined && raw?.reservationInKg !== null && raw?.reservationInKg !== ''
-      ? asInt(raw?.reservationInKg, 0)
-      : null;
-    const reservationDate = raw?.reservationDate ? new Date(raw.reservationDate) : null;
-    if (raw?.reservationDate && Number.isNaN(reservationDate.getTime())) {
-      throw createHttpError(400, 'Invalid reservation end date.', { code: 'INVALID_RESERVATION_END_DATE' });
-    }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+    const reservation = await resolveReservationInput({
+      database: sourceDatabase,
+      beNumber,
+      warehouseId,
+      raw,
+      userShortCode,
+      isFullAccess: accessScope.isFullAccess,
+    });
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const storedPositionCandidate = storedPositionsById.get(Number(raw?.id));
     const storedPosition = storedPositionCandidate
@@ -2236,8 +2308,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       amountInKg,
       salePricePerKg,
       costPricePerKg,
-      reservationInKg,
-      reservationDate: reservationDate ? reservationDate.toISOString() : null,
+      reservationInKg: reservation.reservationInKg,
+      reservationDate: reservation.reservationDate,
       id: storedPosition ? Number(storedPosition.id) : null,
       lineNo: storedPosition ? Number(storedPosition.lineNo) : null,
       ...articleName,
@@ -2584,3 +2656,4 @@ module.exports.normalizePackagingType = normalizePackagingType;
 module.exports.packagingTypesEqual = packagingTypesEqual;
 module.exports.packagingTypesChanged = packagingTypesChanged;
 module.exports.resolveArticleName = resolveArticleName;
+module.exports.calculateTempOrderAvailableAmount = calculateTempOrderAvailableAmount;

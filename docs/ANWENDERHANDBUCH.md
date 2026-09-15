@@ -548,6 +548,10 @@ Die Detailansicht zeigt:
 
 Eine Reservierung kann nur von der Person geändert oder gelöscht werden, deren Mitarbeiterkürzel als Reservierender hinterlegt ist. Bei fremden Reservierungen aus der Ansicht „Alle“ fehlen deshalb die Schaltflächen „Ändern“ und „Löschen“.
 
+#### Reservierung in einen Auftrag übernehmen
+
+Bei einer eigenen Reservierung kann „In den Warenkorb“ gewählt werden. Die reservierte Menge und das Reservierungsdatum werden als Auftragsposition übernommen. Im Entwurf bleibt die Reservierung bestehen. Erst wenn der Auftrag erfolgreich an BMS gesendet wurde, hebt die App die zugehörige Reservierung auf. Für diesen Vorgang muss ein Kunde ausgewählt sein; fehlt er, führt die App zunächst zur Kundenauswahl.
+
 #### Reservierung ändern
 
 Bearbeitbar sind:
@@ -601,6 +605,7 @@ Ein neuer Auftrag kann auf mehreren Wegen begonnen werden:
 
 - Plus-Symbol im Screen „Aufträge“;
 - „Auftrag erstellen“ im Warenkorb;
+- „In den Warenkorb“ in den Details einer eigenen Reservierung;
 - „Kopieren“ in einem vorhandenen Auftrag.
 
 Für einen neuen Auftrag muss ein Kunde ausgewählt sein. Ist beim Einstieg über das Plus noch kein Kunde gewählt, öffnet die App zuerst die Kundenliste und setzt den Ablauf nach der Auswahl fort.

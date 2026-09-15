@@ -15,6 +15,7 @@ const {
   packagingTypesEqual,
   packagingTypesChanged,
   resolveArticleName,
+  calculateTempOrderAvailableAmount,
 } = require('../src/routes/temp-orders.routes');
 
 test('normalizes temp-order list filters to supported values', () => {
@@ -163,4 +164,11 @@ test('compares translated packaging aliases without treating big bags as sackwar
 test('uses packaging ids for change detection when both ids are available', () => {
   assert.equal(packagingTypesChanged('Bags', 78, 'Sackware', 78), false);
   assert.equal(packagingTypesChanged('Bags', 78, 'Sackware', 79), true);
+});
+
+test('adds a carried reservation back to the temp-order availability', () => {
+  const position = { productContext: { amount: 1000, reserved: 250 } };
+
+  assert.equal(calculateTempOrderAvailableAmount(position, 250, 100), 900);
+  assert.equal(calculateTempOrderAvailableAmount(position, 0, 100), 650);
 });

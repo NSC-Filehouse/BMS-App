@@ -15,6 +15,12 @@ function buildReservationId(beNumber, warehouseId) {
   return `${String(beNumber || '').trim()}${ID_SEPARATOR}${String(warehouseId || '').trim()}`;
 }
 
+function buildProductId(article, warehouse, beNumber, plastic, sub) {
+  return [article, warehouse, beNumber, plastic, sub]
+    .map((value) => String(value || '').trim())
+    .join(ID_SEPARATOR);
+}
+
 function parseReservationId(id) {
   const [beNumber = '', warehouseId = ''] = String(id || '').split(ID_SEPARATOR);
   return { beNumber: beNumber.trim(), warehouseId: warehouseId.trim() };
@@ -192,7 +198,12 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       r.[bePR_gueltigBis] AS createdAt,
       v.[Artikel] AS article,
       v.[EP] AS price,
-      v.[Einheit] AS unit
+      v.[Einheit] AS unit,
+      v.[Menge] AS amount,
+      v.[bePR_Anzahl] AS reserved,
+      v.[Lagerort] AS warehouse,
+      v.[Kunststoff] AS plastic,
+      v.[Kunststoff_Untergruppe] AS plasticSubCategory
     FROM [dbo].[tblBest_Pos_Reserviert] AS r
     LEFT JOIN ${VIEW_SQL}
       ON COALESCE(v.[Bestell-Pos], '') = COALESCE(r.[bePR_BEposID], '')
@@ -210,6 +221,9 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const detail = {
     id: buildReservationId(row.beNumber, row.warehouseId),
+    productId: row.article && row.beNumber
+      ? buildProductId(row.article, row.warehouse, row.beNumber, row.plastic, row.plasticSubCategory)
+      : null,
     orderNumber: row.beNumber || row.id,
     clientName: null,
     distributor: sourceDatabase?.name || req.mandant,
@@ -224,7 +238,11 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     reserveAmount: row.reserveAmount,
     comment: row.comment || null,
     unit: row.unit || null,
+    amount: row.amount,
+    reserved: row.reserved,
+    warehouse: row.warehouse || null,
     warehouseId: row.warehouseId || null,
+    sourceMandantId: sourceDatabase?.firmaId ?? null,
     canEdit: accessScope.isFullAccess
       || String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase(),
   };

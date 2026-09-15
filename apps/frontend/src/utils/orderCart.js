@@ -142,6 +142,8 @@ function buildCartPayload(item, quantityKg, existing = null) {
     acquisitionPrice: item?.acquisitionPrice ?? existing?.acquisitionPrice ?? null,
     // A sales price must be entered explicitly; never use the acquisition price as VK.
     salePrice: item?.salePrice ?? existing?.salePrice ?? null,
+    reservationInKg: item?.reservationInKg ?? existing?.reservationInKg ?? null,
+    reservationDate: item?.reservationDate ?? existing?.reservationDate ?? null,
     deliveryDate,
     deliveryDateAuto,
     quantityKg,
@@ -336,7 +338,11 @@ export function addOrderCartItemsWithDefaults(items) {
 
     const availableAmount = getAvailableAmount(item);
     if (!Number.isFinite(availableAmount) || availableAmount <= 0) continue;
-    current.push(buildCartPayload(item, availableAmount));
+    const requestedInitialQuantity = Number(item?.initialQuantityKg);
+    const initialQuantity = Number.isFinite(requestedInitialQuantity) && requestedInitialQuantity > 0
+      ? Math.min(requestedInitialQuantity, availableAmount)
+      : availableAmount;
+    current.push(buildCartPayload(item, initialQuantity));
   }
 
   write(current);

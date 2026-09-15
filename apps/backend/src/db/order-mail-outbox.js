@@ -1,7 +1,8 @@
 const config = require('../config');
 const logger = require('../logger');
-const { runSQLQuerySqlServer } = require('./access');
+const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
+const { getDatabaseConnectionForCompanyId } = require('./databases');
 const {
   sendOrderMail,
   resolveOrderMailRecipient,
@@ -10,6 +11,8 @@ const {
 
 const OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
+const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
+const RESERVATION_TABLE = '[dbo].[tblBest_Pos_Reserviert]';
 let workerTimer = null;
 let workerRunning = false;
 
@@ -95,6 +98,76 @@ function nextRetryDate(attemptCount) {
   return new Date(Date.now() + minutes * 60 * 1000).toISOString();
 }
 
+function buildReservationReleaseKeys(rows) {
+  const keys = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const beNumber = asText(row?.beNumber);
+    const warehouseId = asText(row?.warehouseId);
+    const reservationInKg = Number(row?.reservationInKg);
+    if (!beNumber || !warehouseId || !Number.isFinite(reservationInKg) || reservationInKg <= 0) continue;
+    keys.set(`${beNumber}\u001f${warehouseId}`, { beNumber, warehouseId });
+  }
+  return [...keys.values()];
+}
+
+async function releaseReservationsForOrder(orderId, companyId) {
+  const positionRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT
+      [tap_be_number] AS beNumber,
+      [tap_warehouse] AS warehouseId,
+      [tap_reservation_in_kg] AS reservationInKg
+    FROM ${TEMP_ORDER_POSITION_TABLE}
+    WHERE [tap_ta_id] = ?
+  `, [orderId]);
+  const keys = buildReservationReleaseKeys(positionRows);
+  if (!keys.length) return { released: 0, positions: 0 };
+
+  const sourceDatabase = await getDatabaseConnectionForCompanyId(companyId);
+  for (const { beNumber, warehouseId } of keys) {
+    await runSQLQueryAccess(sourceDatabase, `
+      DELETE FROM ${RESERVATION_TABLE}
+      WHERE [bePR_BEposID] = ? AND [bePR_LagerID] = ?
+    `, [beNumber, warehouseId]);
+  }
+
+  // The marker makes the cleanup idempotent and lets the worker retry the
+  // release if a source database was temporarily unavailable after sending.
+  await runSQLQuerySqlServer(config.sql.database, `
+    UPDATE ${TEMP_ORDER_POSITION_TABLE}
+    SET [tap_reservation_in_kg] = NULL,
+        [tap_reservation_date] = NULL
+    WHERE [tap_ta_id] = ?
+      AND [tap_reservation_in_kg] > 0
+  `, [orderId]);
+
+  logger.info(`Reservierungen fuer finalisierten Auftrag ${orderId} aufgehoben (${keys.length} Positionen).`);
+  return { released: keys.length, positions: positionRows.length };
+}
+
+async function releaseReservationsForSentOrders(limit = 25) {
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT DISTINCT TOP ${Math.max(1, Math.min(Number(limit) || 25, 100))}
+      o.[ta_id] AS orderId,
+      o.[ta_company_id] AS companyId
+    FROM ${TEMP_ORDER_TABLE} AS o
+    INNER JOIN ${TEMP_ORDER_POSITION_TABLE} AS p
+      ON p.[tap_ta_id] = o.[ta_id]
+    INNER JOIN ${OUTBOX_TABLE} AS m
+      ON m.[om_OrderID] = o.[ta_id]
+     AND m.[om_Status] = N'sent'
+    WHERE o.[ta_Status] IN (1, 2)
+      AND p.[tap_reservation_in_kg] > 0
+    ORDER BY o.[ta_id] ASC
+  `);
+  for (const row of Array.isArray(rows) ? rows : []) {
+    try {
+      await releaseReservationsForOrder(row.orderId, row.companyId);
+    } catch (error) {
+      logger.error(`Reservierungsaufhebung fuer finalisierten Auftrag ${row.orderId} fehlgeschlagen`, error);
+    }
+  }
+}
+
 async function processOrderMailOutboxById(outboxId) {
   const item = await claimSpecificOutboxItem(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
@@ -121,6 +194,13 @@ async function processOrderMailOutboxById(outboxId) {
           [om_LastModifiedDate] = SYSUTCDATETIME()
       WHERE [om_ID] = ?
     `, [item.id]);
+    try {
+      await releaseReservationsForOrder(item.orderId, item.companyId);
+    } catch (error) {
+      // The mail is already sent. Keep the outbox item sent and let the
+      // reconciliation pass retry the reservation release later.
+      logger.error(`Reservierungsaufhebung nach Versand fuer Auftrag ${item.orderId} fehlgeschlagen`, error);
+    }
     logger.info(`Auftragsmail ${item.id} fuer Auftrag ${item.orderId} ueber ${delivery.transport} angenommen an ${effectiveRecipient}.`);
     return { processed: true, status: 'sent', recipient: effectiveRecipient, transport: delivery.transport };
   } catch (error) {
@@ -145,11 +225,13 @@ async function processPendingOrderMails(limit = 5) {
   if (!validateOrderMailConfig(config.orderMail, config.mailService).ok) return;
   workerRunning = true;
   try {
+    await releaseReservationsForSentOrders();
     for (let i = 0; i < limit; i += 1) {
       const id = await findNextOutboxId();
       if (!id) break;
       await processOrderMailOutboxById(id);
     }
+    await releaseReservationsForSentOrders();
   } catch (error) {
     logger.error('Auftragsmail-Outbox konnte nicht verarbeitet werden', error);
   } finally {
@@ -172,6 +254,7 @@ function startOrderMailOutboxWorker() {
 }
 
 module.exports = {
+  buildReservationReleaseKeys,
   processOrderMailOutboxById,
   processPendingOrderMails,
   startOrderMailOutboxWorker,
