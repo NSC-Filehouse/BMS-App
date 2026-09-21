@@ -125,6 +125,8 @@ function toMailSubmissionRequest(request = {}) {
     ['Subject', ['subject', 'Subject']],
     ['FromAddress', ['fromAddress', 'FromAddress']],
     ['FromDisplayName', ['fromDisplayName', 'FromDisplayName']],
+    ['OnBehalfOfAddress', ['onBehalfOfAddress', 'OnBehalfOfAddress']],
+    ['OnBehalfOfDisplayName', ['onBehalfOfDisplayName', 'OnBehalfOfDisplayName']],
   ]) {
     setIfDefined(result, key, firstDefined(source, ...fields));
   }

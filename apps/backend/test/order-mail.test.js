@@ -24,6 +24,7 @@ const {
 const {
   eventKeyForOrder,
   getVlMailRecipients,
+  resolveVlMailOnBehalfOfAddress,
 } = require('../src/db/vl-completion-mail');
 const {
   compareMfiValues,
@@ -133,6 +134,21 @@ test('missing mandant distributor keeps the legacy recipient path available', ()
   });
 });
 
+test('VL on-behalf address is only set for configured distributors', () => {
+  assert.equal(resolveVlMailOnBehalfOfAddress({
+    address: 'frupack-europe@frupack.de',
+    source: 'mandant_distributor',
+  }), 'frupack-europe@frupack.de');
+  assert.equal(resolveVlMailOnBehalfOfAddress({
+    address: 'ad-user@filehouse.net',
+    source: 'excel_ad',
+  }), null);
+  assert.equal(resolveVlMailOnBehalfOfAddress({
+    address: 'm.frank@filehouse.net',
+    source: 'test_mandant_override_mfr',
+  }), null);
+});
+
 test('EWS text values are XML escaped after removing invalid control characters', () => {
   assert.equal(
     cleanEwsText('ER&GE <GmbH>\u0001'),
@@ -179,6 +195,8 @@ test('BMS sends the mail-service request with the shared contract', async () => 
         timeoutMs: 1000,
       },
       recipient: 'user@example.com',
+      fromAddress: 'sender@example.com',
+      onBehalfOfAddress: 'verteiler@example.com',
       ccRecipients: ['copy@example.com'],
       bccRecipients: ['blind-copy@example.com'],
       subject: 'Test subject',
@@ -192,6 +210,8 @@ test('BMS sends the mail-service request with the shared contract', async () => 
     assert.equal(requests[0].options.headers['X-Api-Key'], 'fhm-test-key');
     const requestBody = JSON.parse(requests[0].options.body);
     assert.equal(requestBody.ClientMessageId, 'bms-app:test:1');
+    assert.equal(requestBody.FromAddress, 'sender@example.com');
+    assert.equal(requestBody.OnBehalfOfAddress, 'verteiler@example.com');
     assert.equal(requestBody.To[0].Address, 'user@example.com');
     assert.deepEqual(requestBody.Cc, [{ Address: 'copy@example.com' }]);
     assert.deepEqual(requestBody.Bcc, [{ Address: 'blind-copy@example.com' }]);
@@ -317,6 +337,44 @@ test('BMS can send an HTML VL completion body through MailService', async () => 
     const requestBody = JSON.parse(requests[0].options.body);
     assert.equal(requestBody.IsBodyHtml, true);
     assert.equal(requestBody.Body, '<strong>Sale completed</strong>');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('BMS omits on-behalf fields for VL mail without a distributor', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 202,
+      text: async () => JSON.stringify({ Id: 125, ClientMessageId: 'bms-app:vl-sale:no-distributor' }),
+    };
+  };
+
+  try {
+    await sendOrderMail({
+      orderMailConfig: { enabled: true, ewsFallback: false, ews: {} },
+      mailServiceConfig: {
+        enabled: true,
+        baseAddress: 'https://db03.example.test:3300/',
+        apiKey: 'fhm-test-key',
+        timeoutMs: 1000,
+      },
+      recipient: 'ad-user@filehouse.net',
+      fromAddress: 'sender@example.com',
+      subject: VL_COMPLETION_MAIL_SUBJECT,
+      body: '<strong>Sale completed</strong>',
+      clientMessageId: 'bms-app:vl-sale:no-distributor',
+      isBodyHtml: true,
+    });
+
+    const requestBody = JSON.parse(requests[0].options.body);
+    assert.equal(requestBody.FromAddress, 'sender@example.com');
+    assert.equal(Object.hasOwn(requestBody, 'OnBehalfOfAddress'), false);
+    assert.equal(Object.hasOwn(requestBody, 'OnBehalfOfDisplayName'), false);
   } finally {
     globalThis.fetch = originalFetch;
   }

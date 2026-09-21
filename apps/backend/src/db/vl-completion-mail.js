@@ -3,7 +3,7 @@ const logger = require('../logger');
 const { runSQLQueryAccess, runSQLQueryFx, runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
 const { getDatabaseConnectionForCompanyId } = require('./databases');
-const { getUserIdentitiesByPersonNumbers } = require('./users');
+const { getUserIdentitiesByPersonNumbers, getUserIdentityByShortCode } = require('./users');
 const { productAvailabilitySource } = require('./product-availability');
 const {
   sendOrderMail,
@@ -50,6 +50,21 @@ function normalizeEmail(email) {
 
 function isEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(asText(value));
+}
+
+async function resolveVlMailFromAddress(order) {
+  const identity = await getUserIdentityByShortCode(order?.completedBy, order?.companyId);
+  const email = normalizeEmail(identity?.email);
+  if (!isEmailAddress(email)) {
+    throw new Error(`Kein gültiger E-Mail-Absender für VL-Mail von Auftrag ${order?.id || '-'}.`);
+  }
+  return email;
+}
+
+function resolveVlMailOnBehalfOfAddress(recipient) {
+  return recipient?.source === 'mandant_distributor'
+    ? normalizeEmail(recipient.address)
+    : null;
 }
 
 function isMissingObjectError(error) {
@@ -316,14 +331,16 @@ async function upsertOrderState(order) {
   `, [companyId, lastModifiedDate, Number(order.id), Number(order.id), companyId, lastModifiedDate]);
 }
 
-async function queueVlMail({ order, eventKey, recipient, body }) {
+async function queueVlMail({ order, eventKey, recipient, body, fromAddress }) {
   const nowIso = new Date().toISOString();
+  const onBehalfOfAddress = resolveVlMailOnBehalfOfAddress(recipient);
   await runSQLQuerySqlServer(config.sql.database, `
     INSERT INTO ${VL_MAIL_OUTBOX_TABLE} (
       [vmo_OrderID], [vmo_CompanyID], [vmo_EventKey], [vmo_Recipient], [vmo_RecipientSource],
+      [vmo_FromAddress], [vmo_OnBehalfOfAddress],
       [vmo_Subject], [vmo_Body], [vmo_Status], [vmo_AttemptCount], [vmo_CreateDate], [vmo_LastModifiedDate]
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?
     WHERE NOT EXISTS (
       SELECT 1
       FROM ${VL_MAIL_OUTBOX_TABLE}
@@ -335,6 +352,8 @@ async function queueVlMail({ order, eventKey, recipient, body }) {
     eventKey,
     recipient.address,
     recipient.source,
+    fromAddress,
+    onBehalfOfAddress,
     VL_COMPLETION_MAIL_SUBJECT,
     body,
     nowIso,
@@ -354,6 +373,7 @@ async function processStatus2Order(candidate) {
   const recipients = await getVlMailRecipients(order.companyId);
   const eventKey = eventKeyForOrder(order);
   if (recipients.length) {
+    const fromAddress = await resolveVlMailFromAddress(order);
     const vlItems = await loadCurrentVl(database);
     const body = formatVlCompletionMailBody({
       order,
@@ -364,7 +384,7 @@ async function processStatus2Order(candidate) {
       completedAt: order.lastModifiedDate || order.closingDate,
     });
     for (const recipient of recipients) {
-      await queueVlMail({ order, eventKey, recipient, body });
+      await queueVlMail({ order, eventKey, recipient, body, fromAddress });
     }
   } else {
     logger.warn(`Keine aktiven AD-Empfaenger fuer VL-Mail von Mandant ${order.companyId}; Auftrag ${order.id} wird als verarbeitet markiert.`);
@@ -382,6 +402,9 @@ function mapOutboxRow(row) {
     companyId: Number(row.companyId),
     eventKey: asText(row.eventKey),
     recipient: normalizeEmail(row.recipient),
+    recipientSource: asText(row.recipientSource),
+    fromAddress: normalizeEmail(row.fromAddress),
+    onBehalfOfAddress: normalizeEmail(row.onBehalfOfAddress),
     subject: asText(row.subject),
     body: String(row.body || ''),
     status: asText(row.status),
@@ -402,6 +425,9 @@ async function claimSpecificVlMail(outboxId) {
       INSERTED.[vmo_CompanyID] AS companyId,
       INSERTED.[vmo_EventKey] AS eventKey,
       INSERTED.[vmo_Recipient] AS recipient,
+      INSERTED.[vmo_RecipientSource] AS recipientSource,
+      INSERTED.[vmo_FromAddress] AS fromAddress,
+      INSERTED.[vmo_OnBehalfOfAddress] AS onBehalfOfAddress,
       INSERTED.[vmo_Subject] AS subject,
       INSERTED.[vmo_Body] AS body,
       INSERTED.[vmo_Status] AS status,
@@ -447,6 +473,10 @@ async function processVlMailOutboxById(outboxId) {
   if (!item) return { processed: false, status: 'not_claimed' };
 
   try {
+    const order = item.fromAddress ? null : await loadOrder(item.orderId);
+    const fromAddress = item.fromAddress || await resolveVlMailFromAddress(order);
+    const onBehalfOfAddress = item.onBehalfOfAddress
+      || (item.recipientSource === 'mandant_distributor' ? item.recipient : null);
     if (!(await isVlMailEnabledForUser(item.recipient))) {
       await runSQLQuerySqlServer(config.sql.database, `
         UPDATE ${VL_MAIL_OUTBOX_TABLE}
@@ -464,6 +494,8 @@ async function processVlMailOutboxById(outboxId) {
     const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
       mailServiceConfig: config.mailService,
+      fromAddress,
+      onBehalfOfAddress,
       recipient: item.recipient,
       subject: item.subject,
       body: item.body,
@@ -551,6 +583,8 @@ module.exports = {
   processPendingVlMails,
   processStatus2Order,
   processVlMailOutboxById,
+  resolveVlMailFromAddress,
+  resolveVlMailOnBehalfOfAddress,
   saveVlMailSettingsForUser,
   startVlCompletionMailWorker,
   eventKeyForOrder,

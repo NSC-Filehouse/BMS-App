@@ -43,6 +43,8 @@ BEGIN
     [vmo_EventKey] NVARCHAR(200) NOT NULL,
     [vmo_Recipient] NVARCHAR(320) NOT NULL,
     [vmo_RecipientSource] NVARCHAR(50) NOT NULL,
+    [vmo_FromAddress] NVARCHAR(320) NULL,
+    [vmo_OnBehalfOfAddress] NVARCHAR(320) NULL,
     [vmo_Subject] NVARCHAR(255) NOT NULL,
     [vmo_Body] NVARCHAR(MAX) NOT NULL,
     [vmo_Status] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VlMailOutbox_Status] DEFAULT (N'pending'),
@@ -66,6 +68,18 @@ BEGIN
 
   CREATE INDEX [IX_VlMailOutbox_OrderID]
     ON [BMSApp].[VlMailOutbox] ([vmo_OrderID], [vmo_ID]);
+END;
+
+IF COL_LENGTH(N'BMSApp.VlMailOutbox', N'vmo_FromAddress') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[VlMailOutbox]
+    ADD [vmo_FromAddress] NVARCHAR(320) NULL;
+END;
+
+IF COL_LENGTH(N'BMSApp.VlMailOutbox', N'vmo_OnBehalfOfAddress') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[VlMailOutbox]
+    ADD [vmo_OnBehalfOfAddress] NVARCHAR(320) NULL;
 END;
 
 IF OBJECT_ID(N'BMSApp.VlMailOrderState', N'U') IS NULL

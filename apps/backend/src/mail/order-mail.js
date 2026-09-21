@@ -264,6 +264,10 @@ function excludeRecipients(recipients, excluded) {
 
 async function sendOrderMailViaEws({
   orderMailConfig,
+  fromAddress,
+  fromDisplayName,
+  onBehalfOfAddress,
+  onBehalfOfDisplayName,
   recipient,
   recipients,
   ccRecipient,
@@ -293,6 +297,19 @@ async function sendOrderMailViaEws({
   service.Url = new EWS.Uri(orderMailConfig.ews.url);
 
   const message = new EWS.EmailMessage(service);
+  const technicalSender = asText(fromAddress);
+  const visibleSender = asText(onBehalfOfAddress) || technicalSender;
+  const visibleSenderName = asText(onBehalfOfDisplayName) || asText(fromDisplayName);
+  if (technicalSender) {
+    message.Sender = asText(fromDisplayName)
+      ? new EWS.EmailAddress(cleanEwsText(fromDisplayName), cleanEwsText(technicalSender))
+      : new EWS.EmailAddress(cleanEwsText(technicalSender));
+  }
+  if (visibleSender) {
+    message.From = visibleSenderName
+      ? new EWS.EmailAddress(cleanEwsText(visibleSenderName), cleanEwsText(visibleSender))
+      : new EWS.EmailAddress(cleanEwsText(visibleSender));
+  }
   message.Subject = cleanEwsText(subject);
   message.Body = new EWS.MessageBody(
     isBodyHtml ? EWS.BodyType.HTML : EWS.BodyType.Text,
@@ -336,6 +353,10 @@ function shouldUseEwsFallback(error) {
 async function sendOrderMail({
   orderMailConfig,
   mailServiceConfig,
+  fromAddress,
+  fromDisplayName,
+  onBehalfOfAddress,
+  onBehalfOfDisplayName,
   recipient,
   recipients,
   ccRecipient,
@@ -379,6 +400,12 @@ async function sendOrderMail({
         subject,
         body,
         isBodyHtml: Boolean(isBodyHtml),
+        ...(asText(fromAddress) ? { fromAddress: asText(fromAddress) } : {}),
+        ...(asText(fromDisplayName) ? { fromDisplayName: asText(fromDisplayName) } : {}),
+        ...(asText(onBehalfOfAddress) ? { onBehalfOfAddress: asText(onBehalfOfAddress) } : {}),
+        ...(asText(onBehalfOfDisplayName)
+          ? { onBehalfOfDisplayName: asText(onBehalfOfDisplayName) }
+          : {}),
         to: targetRecipients.map((address) => ({ address })),
         ...(targetCcRecipients.length
           ? { cc: targetCcRecipients.map((address) => ({ address })) }
@@ -409,6 +436,10 @@ async function sendOrderMail({
   if (orderMailConfig.ewsFallback && ewsValidation.ok) {
     await sendOrderMailViaEws({
       orderMailConfig,
+      fromAddress,
+      fromDisplayName,
+      onBehalfOfAddress,
+      onBehalfOfDisplayName,
       recipients: targetRecipients,
       ccRecipients: targetCcRecipients,
       bccRecipients: targetBccRecipients,
