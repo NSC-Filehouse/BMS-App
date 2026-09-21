@@ -4,6 +4,16 @@ const { runSQLQueryAccess, runSQLQueryFx, runSQLQuerySqlServer } = require('./ac
 const { appTableSql } = require('./app-tables');
 const { getDatabaseConnectionForCompanyId } = require('./databases');
 const { getUserIdentitiesByPersonNumbers, getUserIdentityByShortCode } = require('./users');
+const { loadErpSalesRepresentative } = require('./erp-order-sales-representative');
+const {
+  buildSaleTimelineEntries,
+  claimVlSalePush,
+  completeVlSalePush,
+  isMissingVlSalePushStateError,
+  loadPendingVlSalePushes,
+  skipVlSalePush,
+} = require('./vl-sale-push');
+const { sendPushNotificationsForTimelineEntries } = require('./push');
 const { productAvailabilitySource } = require('./product-availability');
 const {
   sendOrderMail,
@@ -101,6 +111,7 @@ function mapOrderRow(row) {
     packagingType: row.packagingType ?? row.ta_packaging_type,
     deliveryAddress: row.deliveryAddress ?? row.ta_delivery_address,
     deliveryAddressId: row.deliveryAddressId ?? row.ta_delivery_address_id,
+    orderIndex: row.orderIndex ?? row.ta_Auftragsindex,
     createdBy: row.createdBy ?? row.ta_CreatedBy,
     createdAt: row.createdAt ?? row.ta_CreateDate,
     completedBy: row.completedBy ?? row.ta_CompletedBy,
@@ -180,6 +191,7 @@ async function loadOrder(orderId) {
       [ta_packaging_type] AS packagingType,
       [ta_delivery_address] AS deliveryAddress,
       [ta_delivery_address_id] AS deliveryAddressId,
+      [ta_Auftragsindex] AS orderIndex,
       [ta_CreatedBy] AS createdBy,
       [ta_CreateDate] AS createdAt,
       [ta_CompletedBy] AS completedBy,
@@ -216,6 +228,76 @@ async function loadCurrentVl(database) {
     ORDER BY [Kunststoff] ASC, [Kunststoff_Untergruppe] ASC, [Artikel] ASC, [Bestell-Pos] ASC
   `, []);
   return sortVlItems((Array.isArray(rows) ? rows : []).map(mapAvailabilityRow));
+}
+
+async function updateOrderTimelineSalesRepresentative(order, salesRepresentative) {
+  const shortCode = asText(salesRepresentative);
+  if (!shortCode) return;
+
+  try {
+    await runSQLQuerySqlServer(config.sql.database, `
+      UPDATE ${appTableSql('timeline')}
+      SET [tl_UserShortCode] = ?
+      WHERE [tl_Type] = N'order'
+        AND [tl_CompanyId] = ?
+        AND [tl_ReferenceId] = ?
+    `, [shortCode, Number(order.companyId), String(order.id)]);
+  } catch (error) {
+    logger.warn(`Timeline-Verkaeufer fuer Temp-Auftrag ${order.id} konnte nicht aktualisiert werden: ${error?.message || error}`);
+  }
+}
+
+async function resolveSalesRepresentativeEmail(shortCode, companyId) {
+  try {
+    const identity = await getUserIdentityByShortCode(shortCode, companyId);
+    return normalizeEmail(identity?.email);
+  } catch (error) {
+    logger.warn(`ERP-Verkaeufer ${shortCode} fuer Temp-Auftrag konnte nicht als Push-Absender aufgeloest werden.`);
+    return '';
+  }
+}
+
+async function processVlSalePush({ order, positions, database, salesRepresentative }) {
+  await updateOrderTimelineSalesRepresentative(order, salesRepresentative);
+
+  let claim;
+  try {
+    claim = await claimVlSalePush({ order, salesRepresentative });
+  } catch (error) {
+    if (isMissingVlSalePushStateError(error)) {
+      logger.warn('ERP-Verkaufs-Push ist deaktiviert: Migration add_vl_sale_push_state.sql fehlt.');
+      return { status: 'schema_missing' };
+    }
+    throw error;
+  }
+  if (!claim) return { status: 'not_due' };
+
+  try {
+    const userEmail = await resolveSalesRepresentativeEmail(salesRepresentative, order.companyId);
+    const entries = buildSaleTimelineEntries({
+      order,
+      positions,
+      database,
+      salesRepresentative,
+      userEmail,
+    });
+    const pushResult = await sendPushNotificationsForTimelineEntries(entries);
+    await completeVlSalePush(claim.stateId, claim.attemptCount, pushResult);
+    return { status: pushResult?.delivered > 0 ? 'sent' : 'processed', pushResult };
+  } catch (error) {
+    try {
+      await completeVlSalePush(claim.stateId, claim.attemptCount, {
+        delivered: 0,
+        subscriptions: 1,
+        failed: 1,
+        reason: asText(error?.message || error) || 'Unbekannter Push-Fehler',
+      });
+    } catch (stateError) {
+      logger.error(`ERP-Verkaufs-Push-State fuer Auftrag ${order.id} konnte nicht aktualisiert werden`, stateError);
+    }
+    logger.warn(`ERP-Verkaufs-Push fuer Auftrag ${order.id} fehlgeschlagen: ${error?.message || error}`);
+    return { status: 'failed', error: asText(error?.message || error) };
+  }
 }
 
 async function loadExcelAdRows(companyId) {
@@ -369,6 +451,19 @@ async function processStatus2Order(candidate) {
 
   const positions = await loadOrderPositions(order.id);
   const database = await getDatabaseConnectionForCompanyId(order.companyId);
+  const erpSalesRepresentative = await loadErpSalesRepresentative(database, order.orderIndex);
+  if (!erpSalesRepresentative) {
+    logger.debug(`VL-Mail/Verkaufs-Push fuer Auftrag ${order.id} wartet auf ERP-Auftragsindex und au_Aussendienst.`);
+    return { status: 'waiting_for_erp_sales_representative' };
+  }
+  order.salesRepresentativeShortCode = erpSalesRepresentative.shortCode;
+
+  const pushResult = await processVlSalePush({
+    order,
+    positions,
+    database,
+    salesRepresentative: erpSalesRepresentative.shortCode,
+  });
 
   const recipients = await getVlMailRecipients(order.companyId);
   const eventKey = eventKeyForOrder(order);
@@ -382,6 +477,7 @@ async function processStatus2Order(candidate) {
       mandantName: database.name,
       mandantShortName: database.shortName,
       completedAt: order.lastModifiedDate || order.closingDate,
+      salesRepresentativeShortCode: erpSalesRepresentative.shortCode,
     });
     for (const recipient of recipients) {
       await queueVlMail({ order, eventKey, recipient, body, fromAddress });
@@ -391,7 +487,12 @@ async function processStatus2Order(candidate) {
   }
 
   await upsertOrderState(order);
-  return { status: 'queued', recipientCount: recipients.length, eventKey };
+  return {
+    status: 'queued',
+    recipientCount: recipients.length,
+    eventKey,
+    pushStatus: pushResult.status,
+  };
 }
 
 function mapOutboxRow(row) {
@@ -531,6 +632,45 @@ async function processVlMailOutboxById(outboxId) {
   }
 }
 
+async function processPendingVlSalePushes(limit = MAX_SEND_COUNT) {
+  let candidates;
+  try {
+    candidates = await loadPendingVlSalePushes(limit);
+  } catch (error) {
+    if (isMissingVlSalePushStateError(error)) {
+      return { status: 'schema_missing', processed: 0 };
+    }
+    throw error;
+  }
+
+  let processed = 0;
+  for (const candidate of (Array.isArray(candidates) ? candidates : [])) {
+    try {
+      const order = await loadOrder(candidate.orderId);
+      if (!order) {
+        await skipVlSalePush(candidate.stateId, 'Auftrag ist nicht mehr im Status 2.');
+        continue;
+      }
+      const database = await getDatabaseConnectionForCompanyId(order.companyId);
+      const erpSalesRepresentative = await loadErpSalesRepresentative(database, order.orderIndex);
+      if (!erpSalesRepresentative) continue;
+
+      order.salesRepresentativeShortCode = erpSalesRepresentative.shortCode;
+      const positions = await loadOrderPositions(order.id);
+      await processVlSalePush({
+        order,
+        positions,
+        database,
+        salesRepresentative: erpSalesRepresentative.shortCode,
+      });
+      processed += 1;
+    } catch (error) {
+      logger.warn(`Offener ERP-Verkaufs-Push fuer Auftrag ${candidate.orderId} konnte nicht verarbeitet werden: ${error?.message || error}`);
+    }
+  }
+  return { status: 'processed', processed };
+}
+
 async function processPendingVlMails(limit = MAX_SEND_COUNT) {
   if (workerRunning) return;
   if (!validateOrderMailConfig(config.orderMail, config.mailService).ok) return;
@@ -554,6 +694,8 @@ async function processPendingVlMails(limit = MAX_SEND_COUNT) {
       if (!id) break;
       await processVlMailOutboxById(id);
     }
+
+    await processPendingVlSalePushes(limit);
   } catch (error) {
     logger.error('VL-Mail-Outbox konnte nicht verarbeitet werden', error);
   } finally {
@@ -581,6 +723,7 @@ module.exports = {
   isVlMailEnabledForUser,
   loadCurrentVl,
   processPendingVlMails,
+  processPendingVlSalePushes,
   processStatus2Order,
   processVlMailOutboxById,
   resolveVlMailFromAddress,

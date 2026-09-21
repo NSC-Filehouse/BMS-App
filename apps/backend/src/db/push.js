@@ -319,13 +319,19 @@ async function savePushSettingsForUser(identityOrEmail, settings) {
 
 async function sendPushNotificationsForTimelineEntries(entries) {
   const list = Array.isArray(entries) ? entries : [];
-  if (!list.length) return;
+  const summary = {
+    delivered: 0,
+    subscriptions: 0,
+    failed: 0,
+    reason: 'no_entries',
+  };
+  if (!list.length) return summary;
 
   try {
     ensureVapidConfigured();
   } catch (error) {
     logger.warn(`Push skipped: ${error.message}`);
-    return;
+    return { ...summary, reason: 'push_not_configured' };
   }
 
   for (const entry of list) {
@@ -347,7 +353,6 @@ async function sendPushNotificationsForTimelineEntries(entries) {
           AND [m].[pms_Enabled] = 1
           AND [m].[pms_CompanyId] = ?
       `, [companyId]);
-
       for (const row of (Array.isArray(targetRows) ? targetRows : [])) {
         const targetEmail = normalizeEmail(row.userEmail);
         const sourceEmail = normalizeEmail(entry.userEmail);
@@ -357,6 +362,7 @@ async function sendPushNotificationsForTimelineEntries(entries) {
         if (targetEmail && sourceEmail && targetEmail === sourceEmail && !isFilehouseEmail(sourceEmail)) {
           continue;
         }
+        summary.subscriptions += 1;
 
         const payload = JSON.stringify({
           title: 'BMS App',
@@ -372,7 +378,9 @@ async function sendPushNotificationsForTimelineEntries(entries) {
               auth: asText(row.auth),
             },
           }, payload);
+          summary.delivered += 1;
         } catch (error) {
+          summary.failed += 1;
           const statusCode = Number(error?.statusCode);
           if (statusCode === 404 || statusCode === 410) {
             await deactivatePushSubscription(row.endpoint);
@@ -384,11 +392,18 @@ async function sendPushNotificationsForTimelineEntries(entries) {
     } catch (error) {
       if (isMissingPushTableError(error)) {
         logger.warn('Push tables are missing. Push notification skipped.');
-        return;
+        return { ...summary, reason: 'push_tables_missing' };
       }
       logger.warn(`Push dispatch failed: ${error?.message || error}`);
     }
   }
+
+  return {
+    ...summary,
+    reason: summary.delivered > 0
+      ? 'delivered'
+      : (summary.subscriptions > 0 ? 'all_failed' : 'no_active_subscription'),
+  };
 }
 
 async function sendDirectPushNotificationToUser({

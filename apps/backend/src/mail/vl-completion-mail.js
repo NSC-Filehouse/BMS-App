@@ -164,7 +164,7 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
   const safeMandant = asText(mandantShortName) || asText(mandantName) || '-';
   const list = Array.isArray(positions) ? positions : [];
   const customer = asText(order?.clientName) || '-';
-  const sellerShortCode = asText(order?.createdBy);
+  const sellerShortCode = asText(order?.salesRepresentativeShortCode) || asText(order?.createdBy);
   const saleDescriptions = uniqueSaleDescriptions(list, order?.deliveryType);
   const costPrices = uniqueFormattedValues(list, 'costPrice');
   const saleDescription = saleDescriptions.length ? saleDescriptions.join(' / ') : '-';

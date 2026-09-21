@@ -135,6 +135,7 @@ const config = {
       vlMailOutbox: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_OUTBOX || 'VlMailOutbox').trim(),
       vlMailOrderState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_ORDER_STATE || 'VlMailOrderState').trim(),
       vlMailWorkerState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_WORKER_STATE || 'VlMailWorkerState').trim(),
+      vlSalePushState: (process.env.BMS_SQL_APP_TABLE_VL_SALE_PUSH_STATE || 'VlSalePushState').trim(),
     },
     columns: {
       persNr: (process.env.BMS_SQL_COL_PERSNR || 'ma_PersNR').trim(),

@@ -26,6 +26,7 @@ const {
   getVlMailRecipients,
   resolveVlMailOnBehalfOfAddress,
 } = require('../src/db/vl-completion-mail');
+const { buildSaleTimelineEntries } = require('../src/db/vl-sale-push');
 const {
   compareMfiValues,
   formatMfiValue,
@@ -304,6 +305,35 @@ test('VL completion header pairs each distinct VK price with its incoterm', () =
 
   assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250 DDP \/ 1\.210 FCA \(buying price 1\.175\)/);
   assert.doesNotMatch(body, /margin \d/);
+});
+
+test('VL completion mail prefers the ERP sales representative over the app creator', () => {
+  const body = formatVlCompletionMailBody({
+    order: {
+      createdBy: 'HZE',
+      salesRepresentativeShortCode: 'VVV',
+      clientName: 'Rotpunkt',
+    },
+    positions: [{ article: 'Artikel A', amountInKg: 1000, price: 1200, costPrice: 1000 }],
+    vlItems: [],
+  });
+
+  assert.match(body, />VVV<\/span> <span style="color:#ff0000;font-weight:700;">sold/);
+  assert.doesNotMatch(body, />HZE<\/span> <span style="color:#ff0000;font-weight:700;">sold/);
+});
+
+test('ERP sales representative is carried into the status-2 timeline push entry', () => {
+  const entries = buildSaleTimelineEntries({
+    order: { id: 151, companyId: 3, orderIndex: '3-03-26-01731' },
+    positions: [{ article: 'Artikel A', beNumber: 'BE-1', amountInKg: 1000 }],
+    database: { name: 'Frupack', shortName: 'FRU' },
+    salesRepresentative: 'ETO',
+    userEmail: 'eto@example.test',
+  });
+
+  assert.equal(entries[0].userShortCode, 'ETO');
+  assert.equal(entries[0].userEmail, 'eto@example.test');
+  assert.equal(entries[0].payloadJson.erpOrderIndex, '3-03-26-01731');
 });
 
 test('BMS can send an HTML VL completion body through MailService', async () => {

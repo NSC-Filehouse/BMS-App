@@ -8,7 +8,6 @@ const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { getUserIdentityByShortCode } = require('../db/users');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
-const { sendPushNotificationsForTimelineEntries } = require('../db/push');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
 const {
   loadOpenTempOrderRows,
@@ -2112,6 +2111,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         }
       }
 
+      // Sales pushes are sent by the status-2 ERP reconciliation once the
+      // actual au_Aussendienst is available.
       return { alreadyFinalized: false, outboxId, creditNotifications, timelineEntries };
     });
   } catch (error) {
@@ -2121,14 +2122,6 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }
     throw error;
-  }
-
-  if (finalized.timelineEntries.length) {
-    try {
-      await sendPushNotificationsForTimelineEntries(finalized.timelineEntries);
-    } catch (error) {
-      logger.error(`Push fuer finalisierten Auftrag ${id} fehlgeschlagen`, error);
-    }
   }
 
   const mailResult = finalized.outboxId
