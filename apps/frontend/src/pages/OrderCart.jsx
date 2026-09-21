@@ -435,6 +435,7 @@ export default function OrderCart() {
                   return {
                     productId: x.productId || x.id,
                     clientKey: x.lineId,
+                    articleIndex: x.articleIndex || null,
                     article: x.article,
                     beNumber: x.beNumber,
                     warehouseId: x.warehouseId,

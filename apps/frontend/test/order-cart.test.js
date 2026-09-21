@@ -125,6 +125,7 @@ test('temporarily empty cart inputs are persisted instead of restoring stale val
 test('edited cart article names persist and survive a product refresh', () => {
   addOrderCartItemsWithDefaults([{
     id: 'product-1',
+    articleIndex: '02921',
     article: 'ERP-Artikelname',
     availableAmount: 100,
   }]);
@@ -138,6 +139,7 @@ test('edited cart article names persist and survive a product refresh', () => {
 
   const [item] = getOrderCartItems();
   assert.equal(item.article, 'Eigener Warenkorbname');
+  assert.equal(item.articleIndex, '02921');
   assert.equal(item.articleOriginal, 'ERP-Artikelname');
   assert.equal(item.articleChanged, true);
   assert.equal(item.availableAmount, 90);

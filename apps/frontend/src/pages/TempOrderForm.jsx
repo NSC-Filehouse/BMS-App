@@ -772,6 +772,7 @@ export default function TempOrderForm() {
             clientKey: `stored-${p.id}`,
             beNumber: p.beNumber,
             warehouseId: p.warehouse || p.warehouseId,
+            articleIndex: p.articleIndex || '',
             article: p.article,
             articleOriginal: p.articleOriginal || '',
             articleChanged: Boolean(p.articleChanged),
@@ -841,6 +842,7 @@ export default function TempOrderForm() {
           productId: x.productId || null,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId || x.warehouse,
+          articleIndex: x.articleIndex || '',
           article: x.article,
           articleOriginal: x.articleOriginal || '',
           articleChanged: Boolean(x.articleChanged),
@@ -876,6 +878,7 @@ export default function TempOrderForm() {
             productId: x.productId || x.id || null,
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
+            articleIndex: x.articleIndex || '',
             article: x.article,
             articleOriginal: x.articleOriginal || '',
             articleChanged: Boolean(x.articleChanged),
@@ -1392,6 +1395,7 @@ export default function TempOrderForm() {
           id: x.id,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
+          articleIndex: x.articleIndex || null,
           article: String(x.article || '').trim(),
           amountInKg: Number(x.amountInKg),
           salePricePerKg: Number(x.price),
@@ -1881,6 +1885,9 @@ export default function TempOrderForm() {
                               </Box>
                             )}
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                              {t('product_article_index')}: {x.articleIndex || '-'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                             </Typography>
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -2241,6 +2248,7 @@ export default function TempOrderForm() {
                   clientKey: createClientPositionKey(product.beNumber),
                   beNumber: String(product.beNumber || '').trim(),
                   warehouseId: String(product.storageId || '').trim(),
+                  articleIndex: product.articleIndex || '',
                   article: product.article,
                   amountInKg: qty,
                   price: salePrice,

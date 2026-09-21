@@ -240,6 +240,9 @@ export default function TempOrderDetail() {
                     {pos.article || '-'}
                   </Typography>
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {t('product_article_index')}: {pos.articleIndex || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
                   </Typography>
                   {findForeignMandantName(pos.beNumber, mandants, activeMandant) && (

@@ -289,9 +289,10 @@ function resolveArticleName({ requestedArticle, canonicalArticle, storedArticle 
 function assertArticleNameSchema(positionCols) {
   const hasOriginal = hasColumn(positionCols, 'tap_Artikelname_Original');
   const hasChanged = hasColumn(positionCols, 'tap_Artikelname_Gewechselt');
-  if (!hasOriginal || !hasChanged) {
-    throw createHttpError(503, 'Temp order position table is missing article name change support. Apply the migration first.', {
-      code: 'TEMP_ORDER_ARTICLE_NAME_SCHEMA_MISSING',
+  const hasArticleIndex = hasColumn(positionCols, 'tap_Artikelindex');
+  if (!hasOriginal || !hasChanged || !hasArticleIndex) {
+    throw createHttpError(503, 'Temp order position table is missing article name or article index support. Apply the migration first.', {
+      code: 'TEMP_ORDER_ARTICLE_NAME_OR_INDEX_SCHEMA_MISSING',
     });
   }
 }
@@ -613,6 +614,7 @@ function mapTempOrderWithPositions(row, positions) {
   const base = mapTempOrderRow(row);
   const list = (Array.isArray(positions) ? positions : []).map((p) => ({
     ...p,
+    articleIndex: asText(p.articleIndex) || null,
     wpzId: p.wpzId === null || p.wpzId === undefined ? null : Number(p.wpzId),
     wpzOriginal: p.wpzOriginal === null || p.wpzOriginal === undefined ? null : Boolean(p.wpzOriginal),
     wpzComment: asText(p.wpzComment),
@@ -684,6 +686,7 @@ function resolveColumn(columns, candidates) {
 async function loadProductContext(database, beNumber, warehouseId) {
   const sqlByStorageId = `
     SELECT TOP 1
+      [beP_Artikelindex] AS articleIndex,
       [Artikel] AS article,
       [Lagerort] AS warehouse,
       [Menge] AS amount,
@@ -703,6 +706,7 @@ async function loadProductContext(database, beNumber, warehouseId) {
   if (!row) {
     const sqlByWarehouseName = `
       SELECT TOP 1
+        [beP_Artikelindex] AS articleIndex,
         [Artikel] AS article,
         [Lagerort] AS warehouse,
         [Menge] AS amount,
@@ -734,6 +738,7 @@ async function loadProductContext(database, beNumber, warehouseId) {
     : (Number.isFinite(base) ? String(base) : asText(row.mfiMeasured || row.mfiBase));
 
   return {
+    articleIndex: asText(row.articleIndex),
     article: asText(row.article),
     warehouse: asText(row.warehouse),
     amount: Number(row.amount) || 0,
@@ -1063,6 +1068,7 @@ async function loadOrderPositions(orderId) {
     const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
     const cId = resolveColumn(cols, ['tap_id', 'taP_id', 'id']);
     const cBeNumber = resolveColumn(cols, ['tap_be_number', 'taP_be_number', 'be_number']);
+    const cArticleIndex = resolveColumn(cols, ['tap_Artikelindex', 'tap_article_index', 'taP_article_index', 'article_index']);
     const cArticle = resolveColumn(cols, ['tap_article', 'taP_article', 'article']);
     const cArticleOriginal = resolveColumn(cols, ['tap_Artikelname_Original']);
     const cArticleChanged = resolveColumn(cols, ['tap_Artikelname_Gewechselt']);
@@ -1089,6 +1095,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cOrderId, 'orderId')},
         ${pick(cLineNo, 'lineNo')},
         ${pick(cBeNumber, 'beNumber')},
+        ${pick(cArticleIndex, 'articleIndex')},
         ${pick(cArticle, 'article')},
         ${pick(cArticleOriginal, 'articleOriginal')},
         ${pick(cArticleChanged, 'articleChanged')},
@@ -1133,6 +1140,7 @@ async function loadPositionSummariesForOrders(orderIds) {
 
   const cArticle = resolveColumn(cols, ['tap_article', 'taP_article', 'article']);
   const cBeNumber = resolveColumn(cols, ['tap_be_number', 'taP_be_number', 'be_number']);
+  const cArticleIndex = resolveColumn(cols, ['tap_Artikelindex', 'tap_article_index', 'taP_article_index', 'article_index']);
   const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
   const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
   const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
@@ -1143,6 +1151,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       ${pick(cOrderId, 'orderId')},
       ${pick(cArticle, 'article')},
       ${pick(cBeNumber, 'beNumber')},
+      ${pick(cArticleIndex, 'articleIndex')},
       ${pick(cAmount, 'amountInKg')},
       ${pick(cDeliveryDate, 'deliveryDate')}
     FROM ${TEMP_ORDER_POSITION_TABLE}
@@ -1158,6 +1167,7 @@ async function loadPositionSummariesForOrders(orderIds) {
     map.get(orderId).push({
       article: asText(row.article),
       beNumber: asText(row.beNumber),
+      articleIndex: asText(row.articleIndex) || null,
       amountInKg: row.amountInKg,
       deliveryDate: row.deliveryDate || null,
     });
@@ -1554,6 +1564,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     normalizedPositions.push({
       beNumber,
       warehouseId,
+      articleIndex: asText(productContext.articleIndex) || null,
       deliveryDate: deliveryDate.toISOString(),
       amountInKg,
       salePricePerKg,
@@ -1657,7 +1668,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       const pos = normalizedPositions[i];
       const posCtx = pos.productContext;
       const posInsertColumns = [
-        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
         '[tap_about]', '[tap_mfi]',
@@ -1674,6 +1685,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         createdRow.ta_id,
         i + 1,
         pos.beNumber,
+        pos.articleIndex,
         pos.article,
         pos.articleOriginal,
         pos.articleChanged,
@@ -1860,6 +1872,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           [tap_id] AS id,
           [tap_line_no] AS [lineNo],
           [tap_be_number] AS beNumber,
+          [tap_Artikelindex] AS articleIndex,
           [tap_article] AS article,
           [tap_amount_in_kg] AS amountInKg,
           [tap_warehouse] AS warehouse,
@@ -2060,7 +2073,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
             userShortCode,
             type: 'order',
             product: asText(position.article) || asText(position.beNumber),
-            productId: asText(position.beNumber),
+            productId: asText(position.articleIndex) || asText(position.beNumber),
             beNumber: asText(position.beNumber),
             amountKg: Number(position.amountInKg),
             unit: 'kg',
@@ -2224,6 +2237,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       p.[tap_id] AS id,
       p.[tap_line_no] AS [lineNo],
       p.[tap_be_number] AS beNumber,
+      p.[tap_Artikelindex] AS articleIndex,
       p.[tap_warehouse] AS warehouseId,
       p.[tap_article] AS article,
       p.[tap_Artikelname_Original] AS articleOriginal,
@@ -2322,6 +2336,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     normalizedPositions.push({
       beNumber,
       warehouseId,
+      articleIndex: asText(snapshotPosition?.articleIndex) || asText(productContext.articleIndex) || null,
       deliveryDate: deliveryDate.toISOString(),
       amountInKg,
       salePricePerKg,
@@ -2481,6 +2496,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         const positionAssignments = [
           '[tap_line_no] = ?',
           '[tap_be_number] = ?',
+          '[tap_Artikelindex] = ?',
           '[tap_article] = ?',
           '[tap_Artikelname_Original] = ?',
           '[tap_Artikelname_Gewechselt] = ?',
@@ -2510,6 +2526,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         await query(positionUpdateSql, [
           i + 1,
           pos.beNumber,
+          pos.articleIndex,
           pos.article,
           pos.articleOriginal,
           pos.articleChanged,
@@ -2537,7 +2554,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       }
 
       const posInsertColumns = [
-        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
+        '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
         '[tap_about]', '[tap_mfi]',
@@ -2554,6 +2571,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         id,
         i + 1,
         pos.beNumber,
+        pos.articleIndex,
         pos.article,
         pos.articleOriginal,
         pos.articleChanged,

@@ -133,6 +133,7 @@ function buildCartPayload(item, quantityKg, existing = null) {
     article,
     articleOriginal,
     articleChanged: existingArticleChanged || Boolean(item?.articleChanged),
+    articleIndex: item?.articleIndex || existing?.articleIndex || '',
     beNumber: item?.beNumber || existing?.beNumber || '',
     warehouse: item?.warehouse || existing?.warehouse || '',
     warehouseId: item?.storageId || item?.warehouseId || existing?.warehouseId || '',
