@@ -88,6 +88,10 @@ test('credit-limit mail body contains the legal customer identity and exposure',
     unpaidInvoicesAmount: 500,
     requestedLimit: 350000,
     requestedAt: '2026-09-11T10:00:00.000Z',
+    salesRepresentative: {
+      fullName: 'Erika Mustermann',
+      shortCode: 'EPO',
+    },
   });
 
   assert.match(body, /ER&GE GmbH/);
@@ -95,6 +99,8 @@ test('credit-limit mail body contains the legal customer identity and exposure',
   assert.match(body, /DE123456789/);
   assert.match(body, /350\.000,00 EUR/);
   assert.match(body, /326\.000,00 EUR/);
+  assert.match(body, /Mandant-ID: Mandant GmbH \(7\)/);
+  assert.match(body, /Außendienst: Erika Mustermann \(EPO\)/);
 });
 
 test('queues one request and suppresses the next request for the same customer', async () => {

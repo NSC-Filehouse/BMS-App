@@ -1738,16 +1738,33 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const nowIso = new Date().toISOString();
   let creditLimitContext = null;
   let primaryAdEmail = '';
+  let orderSalesRepresentative = null;
   let creditLimitLookupStatus = 'not_applicable';
   if (config.creditLimitMail.enabled) {
     try {
       const customerRows = await runSQLQuerySqlServer(config.sql.database, `
-        SELECT TOP 1 [ta_ClientReferenceId] AS customerId
+        SELECT TOP 1
+          [ta_ClientReferenceId] AS customerId,
+          [ta_CreatedBy] AS createdBy
         FROM ${TEMP_ORDER_TABLE}
         WHERE [ta_id] = ? AND [ta_company_id] = ?
           ${ownerFilter.whereSql}
       `, [id, companyId, ...ownerFilter.params]);
       const customerId = asText(customerRows?.[0]?.customerId);
+      const createdBy = asText(customerRows?.[0]?.createdBy);
+      if (createdBy) {
+        try {
+          const orderOwner = await getUserIdentityByShortCode(createdBy, companyId);
+          orderSalesRepresentative = {
+            shortCode: createdBy,
+            fullName: asText(orderOwner?.fullName)
+              || [orderOwner?.givenName, orderOwner?.surname].filter(Boolean).join(' '),
+          };
+        } catch (error) {
+          logger.warn(`Auftrags-AD fuer Kreditlimit-Mail von Temp-Auftrag ${id} konnte nicht aufgeloest werden.`);
+          orderSalesRepresentative = { shortCode: createdBy };
+        }
+      }
       if (customerId) {
         creditLimitContext = await loadCustomerCreditContext(req.database, customerId);
         if (!creditLimitContext) {
@@ -2015,6 +2032,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           primaryAdEmail,
           mandantName: req.mandant,
           mandantShortName: req.database?.shortName || null,
+          salesRepresentative: orderSalesRepresentative,
           nowIso,
           creditTo: config.creditLimitMail.to,
           creditCc: [

@@ -217,6 +217,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
     positions: [{
       article: 'Artikel A',
       beNumber: 'BE-65',
+      warehouse: 'Verkaufslager',
       amountInKg: 1000,
       price: 1234,
       costPrice: 1035,
@@ -259,6 +260,9 @@ test('VL completion mail uses the compact sale layout without margin', async () 
   assert.match(body, /background:#000000;color:#ffffff/);
   assert.match(body, /Verfügbare Mengen Neu/);
   assert.match(body, /padding:0 0 0 9px/);
+  assert.match(body, /1\.000 KG Artikel A - BE-65/);
+  assert.doesNotMatch(body, /1\.000 KG Artikel A - Verkaufslager BE-65/);
+  assert.match(body, /500 KG VL 2 MFI 2-3,99 \(ISO\) zu 1\.040 ex Hamburg BE-VL-2/);
   assert.doesNotMatch(body, /margin \d/);
   assert.doesNotMatch(body, /Übernahme des Verkaufs in das ERP/);
   assert.ok(body.indexOf('VL 2') < body.indexOf('VL 10'));

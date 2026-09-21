@@ -190,6 +190,7 @@ async function queueCreditLimitMails({
   primaryAdEmail,
   mandantName,
   mandantShortName,
+  salesRepresentative,
   nowIso,
   creditTo,
   creditCc,
@@ -249,6 +250,7 @@ async function queueCreditLimitMails({
       requestedLimit,
       previousRequestedLimit: state?.lastRequestedLimit ?? null,
       requestedAt: nowIso,
+      salesRepresentative,
     });
     const outboxId = await insertOutbox(query, {
       companyId,

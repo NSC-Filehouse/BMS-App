@@ -127,9 +127,8 @@ function renderSaleRows(positions) {
     const amount = formatCompactQuantity(position?.amountInKg);
     const unit = asText(position?.unit) || 'KG';
     const article = asText(position?.article) || '-';
-    const warehouse = asText(position?.warehouse);
     const beNumber = asText(position?.beNumber);
-    const details = [warehouse, beNumber].filter(Boolean).join(' ');
+    const details = beNumber;
     const remark = asText(position?.about || position?.remark || position?.comment);
 
     return `<div style="margin:0;padding:1px 0;line-height:1.35;word-break:break-word;">

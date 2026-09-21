@@ -92,6 +92,14 @@ function line(label, value) {
   return `${label}: ${normalizeText(value) || '-'}`;
 }
 
+function formatIdentityWithShortCode(identity) {
+  const fullName = normalizeText(identity?.fullName)
+    || [identity?.givenName, identity?.surname].map(normalizeText).filter(Boolean).join(' ');
+  const shortCode = normalizeText(identity?.shortCode);
+  if (fullName && shortCode) return `${fullName} (${shortCode})`;
+  return fullName || shortCode;
+}
+
 function hasBankDetails(customer) {
   const iban = normalizeText(customer?.iban);
   const bankName = normalizeText(customer?.bankName);
@@ -237,6 +245,7 @@ function formatCreditLimitRequestBody({
   requestedLimit,
   previousRequestedLimit = null,
   requestedAt,
+  salesRepresentative = null,
 }) {
   const tempTotal = openTempOrders.reduce((sum, item) => sum + toAmount(item.amount), 0);
   const openErpTotal = openOrders.reduce((sum, item) => sum + toAmount(item.amount), 0);
@@ -254,7 +263,8 @@ function formatCreditLimitRequestBody({
     '',
     'ANFRAGE',
     line('Mandant', [mandantName, mandantShortName ? `(${mandantShortName})` : ''].filter(Boolean).join(' ')),
-    line('Mandant-ID', companyId),
+    line('Mandant-ID', [mandantName, companyId === null || companyId === undefined ? '' : `(${companyId})`].filter(Boolean).join(' ')),
+    line('Außendienst', formatIdentityWithShortCode(salesRepresentative)),
     line('Auslösender BMS-App-Auftrag', orderId),
     line('Ausgelöst am', formatDate(requestedAt)),
     line('Wert des auslösenden Auftrags', formatEuro(currentOrderAmount)),
