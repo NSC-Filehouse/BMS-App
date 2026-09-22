@@ -95,7 +95,8 @@ Stand: 20. Juli 2026
 - Mitarbeiterkürzel, Menge, Artikel und Mandant eines Ereignisses sehen
 - Timeline nach Artikel oder Mitarbeiterkürzel durchsuchen
 - Suche leeren
-- Timeline als reine, nicht verlinkte Aktivitätsübersicht verwenden
+- Auftragsnummern nach der ERP-Rückübertragung am Anfang eines Auftragseintrags anzeigen
+- Auftragsnummer anklicken und die neueste verfügbare Auftragsbestätigung als PDF öffnen
 - Einstellungen direkt aus der Timeline öffnen
 - BMS-App durch Antippen einer Push-Benachrichtigung öffnen
 

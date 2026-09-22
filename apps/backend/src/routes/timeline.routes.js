@@ -1,14 +1,16 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
-const { getMandantsForIdentity } = require('../db/databases');
-const { runSQLQuerySqlServer } = require('../db/access');
+const { getDatabaseConnectionForIdentityById, getMandantsForIdentity } = require('../db/databases');
+const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
+const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
 const config = require('../config');
 const logger = require('../logger');
 
 const router = express.Router();
 const TIMELINE_TABLE = appTableSql('timeline');
+const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TIMELINE_TABLE_NAME = appTableName('timeline').toLowerCase();
 const LEGACY_TIMELINE_TABLE_NAME = 'tblbmsapp_timeline';
 
@@ -73,8 +75,13 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
       [tl_BeNumber] AS beNumber,
       [tl_AmountKg] AS amountKg,
       [tl_Unit] AS unit,
-      [tl_ReferenceId] AS referenceId
+      [tl_ReferenceId] AS referenceId,
+      [temp].[ta_Auftragsindex] AS orderIndex
     FROM ${TIMELINE_TABLE}
+    LEFT JOIN ${TEMP_ORDER_TABLE} AS [temp]
+      ON [tl_Type] = N'order'
+     AND [temp].[ta_company_id] = [tl_CompanyId]
+     AND CONVERT(NVARCHAR(100), [temp].[ta_id]) = [tl_ReferenceId]
     WHERE [tl_CreatedAt] >= ?
       AND (${filters.join(' OR ')})
     ORDER BY [tl_CreatedAt] DESC, [tl_ID] DESC
@@ -104,6 +111,7 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
     amountKg: row.amountKg === null || row.amountKg === undefined ? null : Number(row.amountKg),
     unit: asText(row.unit) || 'kg',
     referenceId: asText(row.referenceId),
+    orderIndex: asText(row.orderIndex),
   }));
 
   sendEnvelope(res, {
@@ -111,6 +119,91 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
     data,
     meta: { count: data.length, days: 14 },
     error: null,
+  });
+}));
+
+router.get('/timeline/:timelineId/order-pdf', requireMandant, asyncHandler(async (req, res, next) => {
+  const timelineId = Number.parseInt(String(req.params.timelineId || '').trim(), 10);
+  if (!Number.isSafeInteger(timelineId) || timelineId <= 0) {
+    throw createHttpError(400, 'Invalid timeline id.', { code: 'INVALID_TIMELINE_ID' });
+  }
+
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1
+      [timeline].[tl_Type] AS type,
+      [timeline].[tl_CompanyId] AS companyId,
+      [temp].[ta_Auftragsindex] AS orderIndex,
+      [temp].[ta_ClientReferenceId] AS customerId
+    FROM ${TIMELINE_TABLE} AS [timeline]
+    INNER JOIN ${TEMP_ORDER_TABLE} AS [temp]
+      ON [timeline].[tl_Type] = N'order'
+     AND [timeline].[tl_CompanyId] = [temp].[ta_company_id]
+     AND CONVERT(NVARCHAR(100), [temp].[ta_id]) = [timeline].[tl_ReferenceId]
+    WHERE [timeline].[tl_ID] = ?
+      AND [timeline].[tl_CreatedAt] >= DATEADD(DAY, -14, SYSUTCDATETIME())
+  `, [timelineId]);
+  const timelineOrder = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!timelineOrder) {
+    throw createHttpError(404, 'Timeline order not found.', {
+      code: 'TIMELINE_ORDER_NOT_FOUND',
+      id: timelineId,
+    });
+  }
+
+  const companyId = Number(timelineOrder.companyId);
+  const orderIndex = asText(timelineOrder.orderIndex);
+  if (!Number.isSafeInteger(companyId) || companyId < 0 || !orderIndex) {
+    throw createHttpError(404, 'ERP order number is not available yet.', {
+      code: 'TIMELINE_ORDER_INDEX_NOT_AVAILABLE',
+      id: timelineId,
+    });
+  }
+
+  const sourceDatabase = await getDatabaseConnectionForIdentityById(req.userIdentity, companyId);
+  const customerId = asText(timelineOrder.customerId);
+  const customerFilter = customerId ? 'AND COALESCE([au_KdNr], \'\') = ?' : '';
+  const orderRows = await runSQLQueryAccess(sourceDatabase, `
+    SELECT TOP 1
+      [au_Auftragsindex] AS orderIndex,
+      [au_Auftragsnummer] AS orderNumber
+    FROM [dbo].[tblAuftrag]
+    WHERE COALESCE([au_Auftragsindex], '') = ?
+      ${customerFilter}
+  `, customerId ? [orderIndex, customerId] : [orderIndex]);
+  const orderRow = Array.isArray(orderRows) && orderRows.length ? orderRows[0] : null;
+  if (!orderRow) {
+    throw createHttpError(404, `Order not found: ${orderIndex}`, {
+      code: 'ORDER_NOT_FOUND',
+      id: orderIndex,
+    });
+  }
+
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Order PDF storage is not configured.', {
+      code: 'ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const orderNumber = asText(orderRow.orderNumber) || asText(orderRow.orderIndex) || orderIndex;
+  const pdf = await resolveLatestOrderPdf({
+    companyName: sourceDatabase.name,
+    orderNumber,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
+      code: 'ORDER_PDF_NOT_FOUND',
+      orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
   });
 }));
 

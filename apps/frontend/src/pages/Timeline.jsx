@@ -14,7 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 function formatDateTime(value, locale) {
@@ -107,6 +107,8 @@ export default function Timeline() {
   const [error, setError] = React.useState('');
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState('');
+  const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
+  const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const effectiveQuery = String(searchInput || '').trim().toLowerCase();
   const filteredItems = React.useMemo(() => {
@@ -114,7 +116,10 @@ export default function Timeline() {
     return items.filter((item) => {
       const product = String(item?.product || item?.beNumber || '').toLowerCase();
       const shortCode = String(item?.userShortCode || '').toLowerCase();
-      return product.includes(effectiveQuery) || shortCode.includes(effectiveQuery);
+      const orderIndex = String(item?.orderIndex || '').toLowerCase();
+      return product.includes(effectiveQuery)
+        || shortCode.includes(effectiveQuery)
+        || orderIndex.includes(effectiveQuery);
     });
   }, [effectiveQuery, items]);
   const groupedItems = React.useMemo(() => {
@@ -155,6 +160,42 @@ export default function Timeline() {
     })();
 
     return () => { alive = false; };
+  }, [t]);
+
+  const openOrderPdf = React.useCallback(async (event, item) => {
+    event.preventDefault();
+    const timelineId = String(item?.id || '').trim();
+    if (!timelineId) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [timelineId]: t('order_pdf_popup_blocked'),
+      }));
+      return;
+    }
+
+    setOrderPdfLoadingId(timelineId);
+    setOrderPdfErrors((previous) => {
+      const next = { ...previous };
+      delete next[timelineId];
+      return next;
+    });
+    try {
+      const blob = await apiRequestBlob(`/timeline/${encodeURIComponent(timelineId)}/order-pdf`);
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [timelineId]: e?.message || t('order_pdf_unavailable'),
+      }));
+    } finally {
+      setOrderPdfLoadingId('');
+    }
   }, [t]);
 
   return (
@@ -252,8 +293,39 @@ export default function Timeline() {
                         {formatDateTime(item.createdAt, locale)}
                       </Typography>
                       <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {item.type === 'order' && item.orderIndex && (
+                          <>
+                            <Box component="span" sx={{ fontWeight: 700 }}>{t('order_number_label')}:</Box>
+                            {' '}
+                            <Box
+                              component="button"
+                              type="button"
+                              onClick={(event) => openOrderPdf(event, item)}
+                              disabled={orderPdfLoadingId === String(item.id || '')}
+                              aria-label={t('open_order_pdf')}
+                              sx={{
+                                p: 0,
+                                border: 0,
+                                bgcolor: 'transparent',
+                                color: 'primary.main',
+                                textDecoration: 'underline',
+                                cursor: orderPdfLoadingId === String(item.id || '') ? 'wait' : 'pointer',
+                                font: 'inherit',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {item.orderIndex}
+                            </Box>
+                            {' '}
+                          </>
+                        )}
                         {renderTimelineMessage(item, locale, t)}
                       </Typography>
+                      {orderPdfErrors[String(item.id || '')] && (
+                        <Typography variant="caption" sx={{ color: 'error.main' }}>
+                          {orderPdfErrors[String(item.id || '')]}
+                        </Typography>
+                      )}
                       <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {t('mandant_label')}: {item.mandant || '-'}
                       </Typography>

@@ -336,7 +336,7 @@ Ein Eintrag zeigt:
 
 Das Zahnradsymbol führt direkt zu den Einstellungen.
 
-Die Timeline dient als reine Aktivitätsübersicht. Ein Ereigniseintrag selbst besitzt derzeit keine Schaltfläche zum Öffnen des zugehörigen Artikels, Auftrags oder der Reservierung.
+Bei einem Auftrag wird, sobald der ERP-Auftragsindex vorliegt, die Auftragsnummer am Anfang des Eintrags angezeigt. Die blau unterstrichene Auftragsnummer öffnet die neueste verfügbare Auftragsbestätigung als PDF. Ist der ERP-Auftragsindex noch nicht zurückübertragen oder keine PDF verfügbar, wird keine Auftragsnummer beziehungsweise eine Fehlermeldung angezeigt.
 
 Wird eine Push-Benachrichtigung angetippt, fokussiert das Gerät eine bereits geöffnete BMS-App. Ist noch kein Fenster geöffnet, startet die App auf der Timeline.
 

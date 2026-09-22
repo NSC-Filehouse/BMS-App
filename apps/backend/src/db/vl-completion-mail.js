@@ -130,6 +130,7 @@ function mapTempPosition(row) {
     warehouse: asText(row.warehouse ?? row.tap_warehouse),
     price: asNumber(row.price ?? row.tap_price),
     costPrice: asNumber(row.costPrice ?? row.tap_ep),
+    deliveryDate: row.deliveryDate ?? row.tap_delivery_date,
   };
 }
 
@@ -213,7 +214,8 @@ async function loadOrderPositions(orderId) {
       [tap_amount_in_kg] AS amountInKg,
       [tap_warehouse] AS warehouse,
       [tap_price] AS price,
-      [tap_ep] AS costPrice
+      [tap_ep] AS costPrice,
+      [tap_delivery_date] AS deliveryDate
     FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
     ORDER BY [tap_line_no] ASC, [tap_id] ASC

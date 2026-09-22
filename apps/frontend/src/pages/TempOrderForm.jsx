@@ -2161,9 +2161,7 @@ export default function TempOrderForm() {
                 <Typography variant="caption" sx={{ color: 'text.secondary', width: '100%', textAlign: 'left' }}>
                   {`${String(option?.warehouse || '-')}; ${Number.isFinite(Number(option?.availableAmount))
                     ? Number(option.availableAmount)
-                    : (option?.amount ?? '-')} ${String(option?.unit || 'kg')}; ${Number.isFinite(Number(option?.acquisitionPrice))
-                    ? Number(option.acquisitionPrice).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '-'} EUR`}
+                    : (option?.amount ?? '-')} ${String(option?.unit || 'kg')}; ${t('product_price')}: ${formatPrice(option?.acquisitionPrice)}`}
                 </Typography>
               </Box>
             )}
@@ -2182,6 +2180,11 @@ export default function TempOrderForm() {
               ? `${t('product_available_now')}: -`
               : `${t('product_available_now')}: ${addPosAvailableAmount} ${String(addPosProduct?.unit || 'kg')}`}
           </Typography>
+          {addPosProduct && (
+            <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
+              {t('product_price')}: {formatPrice(addPosProduct.acquisitionPrice)}
+            </Typography>
+          )}
           <TextField
             type="number"
             label={t('order_sale_price')}

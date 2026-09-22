@@ -234,6 +234,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
       deliveryAddress: 'Werk 2',
       deliveryAddressId: 3,
       completedBy: 'CS',
+      deliveryType: 'CPT',
     },
     positions: [{
       article: 'Artikel A',
@@ -242,6 +243,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
       amountInKg: 1000,
       price: 1234,
       costPrice: 1035,
+      deliveryDate: '2026-10-01T00:00:00.000Z',
     }],
     vlItems: [
       {
@@ -275,13 +277,14 @@ test('VL completion mail uses the compact sale layout without margin', async () 
 
   assert.equal(VL_COMPLETION_MAIL_SUBJECT, '@BMS-App Verkauf');
   assert.match(body, /<span style="color:#000000;font-weight:700;">NS<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Muster &amp; Söhne &lt;Kunde&gt;<\/span>/);
-  assert.match(body, /at 1\.234€ \(AP 1\.035€\)/);
+  assert.doesNotMatch(body, / at 1\.234€|AP /);
   assert.match(body, /font-weight:700/);
   assert.match(body, /color:#ff0000/);
   assert.match(body, /background:#000000;color:#ffffff/);
   assert.match(body, /Verfügbare Mengen Neu/);
   assert.match(body, /padding:0 0 0 9px/);
-  assert.match(body, /1\.000 KG Artikel A - BE-65/);
+  assert.match(body, /1\.234€ CPT 1\.000 KG Artikel A - BE-65 - EP 1\.035€/);
+  assert.match(body, /<span style="color:#0000ff;"> - Oktober\/2026<\/span>/);
   assert.doesNotMatch(body, /1\.000 KG Artikel A - Verkaufslager BE-65/);
   assert.match(body, /500 KG VL 2 MFI 2-3,99 \(ISO\) zu 1\.040€ ex Hamburg BE-VL-2/);
   assert.doesNotMatch(body, /margin \d/);
@@ -289,7 +292,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
   assert.ok(body.indexOf('VL 2') < body.indexOf('VL 10'));
 });
 
-test('VL completion header pairs each distinct VK price with its incoterm', () => {
+test('VL completion mail renders VK, incoterm and EP per position', () => {
   const body = formatVlCompletionMailBody({
     order: {
       createdBy: 'AKI',
@@ -303,7 +306,10 @@ test('VL completion header pairs each distinct VK price with its incoterm', () =
     vlItems: [],
   });
 
-  assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250€ DDP \/ 1\.210€ FCA \(AP 1\.175€\)/);
+  assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span><\/div>/);
+  assert.doesNotMatch(body, / at 1\.250€|AP /);
+  assert.match(body, /1\.250€ DDP 1\.000 KG Position 1 - EP 1\.175€/);
+  assert.match(body, /1\.210€ FCA 2\.000 KG Position 2 - EP 1\.175€/);
   assert.doesNotMatch(body, /margin \d/);
 });
 
@@ -321,7 +327,7 @@ test('VL completion mail omits the legacy Frachtfrei suffix from the incoterm', 
     vlItems: [],
   });
 
-  assert.match(body, /at 1\.550€ CPT \(AP 1\.285€\)/);
+  assert.match(body, /1\.550€ CPT 1\.000 KG Position 1 - EP 1\.285€/);
   assert.doesNotMatch(body, /Frachtfrei/);
 });
 
@@ -336,7 +342,7 @@ test('VL completion mail uses only the first three characters of an incoterm sou
     vlItems: [],
   });
 
-  assert.match(body, /at 1\.550€ DDP \(AP 1\.285€\)/);
+  assert.match(body, /1\.550€ DDP 1\.000 KG Position 1 - EP 1\.285€/);
   assert.doesNotMatch(body, /Delivered Duty Paid/);
 });
 
