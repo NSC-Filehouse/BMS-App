@@ -275,7 +275,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
 
   assert.equal(VL_COMPLETION_MAIL_SUBJECT, '@BMS-App Verkauf');
   assert.match(body, /<span style="color:#000000;font-weight:700;">NS<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Muster &amp; Söhne &lt;Kunde&gt;<\/span>/);
-  assert.match(body, /at 1\.234 \(buying price 1\.035\)/);
+  assert.match(body, /at 1\.234€ \(AP 1\.035€\)/);
   assert.match(body, /font-weight:700/);
   assert.match(body, /color:#ff0000/);
   assert.match(body, /background:#000000;color:#ffffff/);
@@ -283,7 +283,7 @@ test('VL completion mail uses the compact sale layout without margin', async () 
   assert.match(body, /padding:0 0 0 9px/);
   assert.match(body, /1\.000 KG Artikel A - BE-65/);
   assert.doesNotMatch(body, /1\.000 KG Artikel A - Verkaufslager BE-65/);
-  assert.match(body, /500 KG VL 2 MFI 2-3,99 \(ISO\) zu 1\.040 ex Hamburg BE-VL-2/);
+  assert.match(body, /500 KG VL 2 MFI 2-3,99 \(ISO\) zu 1\.040€ ex Hamburg BE-VL-2/);
   assert.doesNotMatch(body, /margin \d/);
   assert.doesNotMatch(body, /Übernahme des Verkaufs in das ERP/);
   assert.ok(body.indexOf('VL 2') < body.indexOf('VL 10'));
@@ -303,8 +303,41 @@ test('VL completion header pairs each distinct VK price with its incoterm', () =
     vlItems: [],
   });
 
-  assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250 DDP \/ 1\.210 FCA \(buying price 1\.175\)/);
+  assert.match(body, /<span style="color:#000000;font-weight:700;">AKI<\/span> <span style="color:#ff0000;font-weight:700;">sold<\/span> to <span style="color:#ff0000;font-weight:700;">Rotpunkt<\/span> at 1\.250€ DDP \/ 1\.210€ FCA \(AP 1\.175€\)/);
   assert.doesNotMatch(body, /margin \d/);
+});
+
+test('VL completion mail omits the legacy Frachtfrei suffix from the incoterm', async () => {
+  const body = formatVlCompletionMailBody({
+    order: {
+      createdBy: 'AKI',
+      clientName: 'Rotpunkt',
+      deliveryType: 'CPT Frachtfrei',
+    },
+    positions: [
+      { price: 1550, costPrice: 1285, amountInKg: 1000, article: 'Position 1' },
+      { price: 1550, costPrice: 1285, amountInKg: 2000, article: 'Position 2' },
+    ],
+    vlItems: [],
+  });
+
+  assert.match(body, /at 1\.550€ CPT \(AP 1\.285€\)/);
+  assert.doesNotMatch(body, /Frachtfrei/);
+});
+
+test('VL completion mail uses only the first three characters of an incoterm source text', async () => {
+  const body = formatVlCompletionMailBody({
+    order: {
+      createdBy: 'AKI',
+      clientName: 'Rotpunkt',
+      deliveryType: 'DDP Delivered Duty Paid',
+    },
+    positions: [{ price: 1550, costPrice: 1285, amountInKg: 1000, article: 'Position 1' }],
+    vlItems: [],
+  });
+
+  assert.match(body, /at 1\.550€ DDP \(AP 1\.285€\)/);
+  assert.doesNotMatch(body, /Delivered Duty Paid/);
 });
 
 test('VL completion mail prefers the ERP sales representative over the app creator', () => {

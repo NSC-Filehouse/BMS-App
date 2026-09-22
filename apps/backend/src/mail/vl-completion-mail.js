@@ -40,9 +40,7 @@ function classicLineParts(item) {
   const mfiValue = item?.mfiMeasured ?? item?.mfi;
   const mfi = formatMfiValue(mfiValue);
   const method = asText(item?.mfiTestMethod);
-  const price = asNumber(item?.acquisitionPrice) === null
-    ? asText(item?.acquisitionPrice)
-    : formatNumber(item.acquisitionPrice, 0);
+  const price = formatEuroPrice(item?.acquisitionPrice);
   const warehouse = asText(item?.warehouse);
   const beNumber = asText(item?.beNumber);
   const remark = asText(item?.about);
@@ -77,7 +75,7 @@ function uniqueFormattedValues(positions, field, digits = 0) {
   for (const position of Array.isArray(positions) ? positions : []) {
     const number = asNumber(position?.[field]);
     if (number === null) continue;
-    const formatted = formatNumber(number, digits);
+    const formatted = formatEuroPrice(number, digits);
     if (!values.includes(formatted)) values.push(formatted);
   }
   return values;
@@ -90,11 +88,22 @@ function splitIncoterms(value) {
     .filter(Boolean);
 }
 
+function normalizedIncotermParts(value) {
+  return splitIncoterms(value)
+    .filter((item) => item.toLocaleLowerCase('de-DE') !== 'frachtfrei')
+    .map((item) => item.slice(0, 3).toUpperCase())
+    .filter(Boolean);
+}
+
+function normalizeIncoterm(value) {
+  return normalizedIncotermParts(value).join(' / ');
+}
+
 function getPositionIncoterm(position, orderDeliveryType, index) {
-  const ownIncoterm = asText(position?.incoterm || position?.incotermText || position?.deliveryType);
+  const ownIncoterm = normalizeIncoterm(position?.incoterm || position?.incotermText || position?.deliveryType);
   if (ownIncoterm) return ownIncoterm;
 
-  const orderIncoterms = splitIncoterms(orderDeliveryType);
+  const orderIncoterms = normalizedIncotermParts(orderDeliveryType);
   if (!orderIncoterms.length) return '';
   return orderIncoterms.length > 1
     ? (orderIncoterms[index] || orderIncoterms[orderIncoterms.length - 1])
@@ -103,7 +112,12 @@ function getPositionIncoterm(position, orderDeliveryType, index) {
 
 function formatPositionPrice(value) {
   const number = asNumber(value);
-  return number === null ? (asText(value) || '-') : formatNumber(number, 0);
+  return number === null ? (asText(value) || '-') : formatEuroPrice(number, 0);
+}
+
+function formatEuroPrice(value, digits = 0) {
+  const number = asNumber(value);
+  return number === null ? (asText(value) || '-') : `${formatNumber(number, digits)}€`;
 }
 
 function uniqueSaleDescriptions(positions, orderDeliveryType) {
@@ -174,7 +188,7 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
 <html>
   <body style="margin:0;padding:8px;background:#ffffff;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.35;">
     <div style="width:100%;">
-      <div style="margin:0 0 8px;">${sellerShortCode ? `<span style="color:#000000;font-weight:700;">${escapeHtml(sellerShortCode)}</span> ` : ''}<span style="color:#ff0000;font-weight:700;">sold</span> to <span style="color:#ff0000;font-weight:700;">${escapeHtml(customer)}</span> at ${escapeHtml(saleDescription)} (buying price ${escapeHtml(costDescription)})</div>
+      <div style="margin:0 0 8px;">${sellerShortCode ? `<span style="color:#000000;font-weight:700;">${escapeHtml(sellerShortCode)}</span> ` : ''}<span style="color:#ff0000;font-weight:700;">sold</span> to <span style="color:#ff0000;font-weight:700;">${escapeHtml(customer)}</span> at ${escapeHtml(saleDescription)} (AP ${escapeHtml(costDescription)})</div>
       <div style="margin:0 0 14px;">${renderSaleRows(list)}</div>
 
       <div style="margin:0 0 8px;padding:2px 4px;background:#000000;color:#ffffff;">${escapeHtml(safeMandant)} - Verfügbare Mengen Neu</div>
