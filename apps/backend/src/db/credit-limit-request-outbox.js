@@ -11,7 +11,11 @@ const {
   roundCreditLimit,
   uniqueCaseInsensitive,
 } = require('../credit-limit');
-const { sendOrderMail, validateOrderMailConfig } = require('../mail/order-mail');
+const {
+  parseMandantAddressMap,
+  sendOrderMail,
+  validateOrderMailConfig,
+} = require('../mail/order-mail');
 
 const STATE_TABLE = appTableSql('creditLimitRequestState');
 const OUTBOX_TABLE = appTableSql('creditLimitMailOutbox');
@@ -214,9 +218,15 @@ async function queueCreditLimitMails({
   const effectiveCreditTo = configuredTestRecipient && isEmailAddress(configuredTestRecipient)
     ? [configuredTestRecipient]
     : uniqueCaseInsensitive(creditTo);
+  const customerServiceAddress = parseMandantAddressMap(config.orderMail.customerServiceAddressMap)
+    .get(Number(companyId));
+  const configuredCreditCc = [
+    ...(creditCc || []),
+    ...(customerServiceAddress ? [customerServiceAddress] : []),
+  ];
   const effectiveCreditCc = configuredTestRecipient && isEmailAddress(configuredTestRecipient)
     ? []
-    : uniqueCaseInsensitive((creditCc || []).filter((address) => !effectiveCreditTo.some((to) => to.toLowerCase() === String(address).trim().toLowerCase())));
+    : uniqueCaseInsensitive(configuredCreditCc.filter((address) => !effectiveCreditTo.some((to) => to.toLowerCase() === String(address).trim().toLowerCase())));
 
   if (!creditRequestDue) {
     result.creditRequest = {

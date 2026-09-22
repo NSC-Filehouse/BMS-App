@@ -106,8 +106,10 @@ test('credit-limit mail body contains the legal customer identity and exposure',
 test('queues one request and suppresses the next request for the same customer', async () => {
   const previousEnabled = config.creditLimitMail.enabled;
   const previousCooldown = config.creditLimitMail.cooldownMonths;
+  const previousCustomerServiceAddressMap = config.orderMail.customerServiceAddressMap;
   config.creditLimitMail.enabled = true;
   config.creditLimitMail.cooldownMonths = 6;
+  config.orderMail.customerServiceAddressMap = 'cs@chg-thermoplast.de|7,cs@mlplastics.de|2';
 
   const nowIso = '2026-09-11T10:00:00.000Z';
   const creditContext = {
@@ -128,7 +130,7 @@ test('queues one request and suppresses the next request for the same customer',
     openOrders: [],
   };
 
-  const runQueue = async (stateRows) => {
+  const runQueue = async (stateRows, testRecipient = '') => {
     const calls = [];
     let nextId = 10;
     const query = async (sql, params) => {
@@ -158,7 +160,7 @@ test('queues one request and suppresses the next request for the same customer',
       nowIso,
       creditTo: ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de'],
       creditCc: ['Meyer@mlplastics.de', 'flasch@chg-thermoplast.de'],
-      testRecipient: '',
+      testRecipient,
     });
     return { calls, result };
   };
@@ -169,7 +171,16 @@ test('queues one request and suppresses the next request for the same customer',
     assert.equal(first.result.creditRequest.requestedLimit, 350000);
     const insert = first.calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox'));
     assert.deepEqual(JSON.parse(insert.params[4]), ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de']);
-    assert.deepEqual(JSON.parse(insert.params[5]), ['Meyer@mlplastics.de', 'flasch@chg-thermoplast.de']);
+    assert.deepEqual(JSON.parse(insert.params[5]), [
+      'Meyer@mlplastics.de',
+      'flasch@chg-thermoplast.de',
+      'cs@chg-thermoplast.de',
+    ]);
+
+    const testOverride = await runQueue([], 'test@example.com');
+    const testOverrideInsert = testOverride.calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox'));
+    assert.deepEqual(JSON.parse(testOverrideInsert.params[4]), ['test@example.com']);
+    assert.deepEqual(JSON.parse(testOverrideInsert.params[5]), []);
 
     const second = await runQueue([{
       id: 1,
@@ -183,5 +194,6 @@ test('queues one request and suppresses the next request for the same customer',
   } finally {
     config.creditLimitMail.enabled = previousEnabled;
     config.creditLimitMail.cooldownMonths = previousCooldown;
+    config.orderMail.customerServiceAddressMap = previousCustomerServiceAddressMap;
   }
 });

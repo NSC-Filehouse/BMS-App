@@ -177,8 +177,12 @@ Vor dem ersten Einsatz muss zusätzlich die idempotente Migration
 SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden. Beim Klick auf
 „An BMS senden“ wird bei einem exakt auf `0` gesetzten Kreditlimit eine eigene
 Kreditlimit-Mail über dieselbe BMS-App-Mailstrecke erzeugt. Die Mail geht an
-Kimaz und Petschler, mit Meyer sowie den aus SanctionChecker übernommenen
-mandantabhängigen GF-Empfängern in CC.
+Kimaz und Petschler, mit Meyer, dem mandantabhängigen Customer Service aus
+`INVOICE_ROUTER_ADDRESS_MAP` sowie den aus SanctionChecker übernommenen
+mandantabhängigen GF-Empfängern in CC. Die Zuordnung erfolgt über die
+Mandanten-ID hinter dem Pipe-Zeichen (`E-Mail-Adresse|Mandanten-ID`). Ein
+gesetzter `BMS_ORDER_MAIL_TEST_RECIPIENT` bleibt ein isolierter Testversand an
+nur diese Adresse; echte CC-Empfänger werden dann nicht angeschrieben.
 
 Die Merktabelle führt je Mandant und Kunde den letzten Anfragezeitpunkt und
 die letzte beantragte Summe. Dadurch wird eine erneute Anfrage innerhalb des
