@@ -38,6 +38,7 @@ const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_CUSTOMER_ORDER_NUMBER_LENGTH = 20;
 const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   'application/pdf',
   'image/png',
@@ -106,6 +107,18 @@ function normalizeDir(dir) {
 function asText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function normalizeCustomerOrderNumber(value) {
+  const text = asText(value);
+  if (text.length > MAX_CUSTOMER_ORDER_NUMBER_LENGTH) {
+    throw createHttpError(400, 'Customer order number must not exceed 20 characters.', {
+      code: 'INVALID_TEMP_ORDER_PAYLOAD',
+      field: 'customerOrderNumber',
+      maxLength: MAX_CUSTOMER_ORDER_NUMBER_LENGTH,
+    });
+  }
+  return text || null;
 }
 
 const PACKAGING_TYPE_CANONICAL = new Map([
@@ -509,6 +522,7 @@ function mapTempOrderRow(row) {
     id: row.ta_id,
     companyId: row.ta_company_id,
     clientReferenceId: row.ta_ClientReferenceId,
+    customerOrderNumber: asText(row.ta_KundenAuftragsnummer) || null,
     distributor: row.ta_distributor,
     distributorLogo: row.ta_distributorLogo,
     clientName: row.ta_client_name,
@@ -1468,6 +1482,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   assertPositionsBelongToActiveMandant(req, positionsInput);
 
   const clientReferenceId = asText(body?.clientReferenceId);
+  const customerOrderNumber = normalizeCustomerOrderNumber(body?.customerOrderNumber);
   const clientName = asText(body?.clientName);
   const clientAddress = asText(body?.clientAddress);
   const supplier = asText(body?.supplier);
@@ -1486,6 +1501,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasCustomerOrderNumber = hasColumn(orderCols, 'ta_KundenAuftragsnummer');
   const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
   const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
   const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
@@ -1494,6 +1510,11 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
       code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
+  if (!hasCustomerOrderNumber) {
+    throw createHttpError(503, 'Temp order table is missing customer order number support. Apply the schema change first.', {
+      code: 'TEMP_ORDER_CUSTOMER_ORDER_NUMBER_SCHEMA_MISSING',
     });
   }
   if (!hasRepresentativeId || !hasPackagingTypeId || !hasOriginalPackagingTypeId) {
@@ -1598,7 +1619,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const nowIso = new Date().toISOString();
   const fallbackOrderDeliveryDate = deliveryDates[0] || null;
   const orderInsertColumns = [
-    '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]', '[ta_client_representative_id]',
+    '[ta_company_id]', '[ta_ClientReferenceId]', '[ta_KundenAuftragsnummer]', '[ta_client_name]', '[ta_client_address]', '[ta_client_representative]', '[ta_client_representative_id]',
     '[ta_comment]', '[ta_special_payment_condition]', '[ta_special_payment_text]', '[ta_special_payment_id]', '[ta_delivery_type_id]', '[ta_delivery_type]',
     ...(hasOrderDeliveryDate ? ['[ta_delivery_date]'] : []),
     '[ta_packaging_type]', '[ta_packaging_type_id]', '[ta_delivery_address]', '[ta_delivery_address_id]', '[ta_delivery_address_changed]', '[ta_completed]', '[ta_Status]',
@@ -1607,7 +1628,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     '[ta_PassedTo]', '[ta_ReceivedFrom]', '[ta_PassedToUserId]', '[ta_ReceivedFromUserId]', '[ta_IsConfirmed]',
   ];
   const orderInsertValues = [
-    '?', '?', '?', '?', '?', '?',
+    '?', '?', '?', '?', '?', '?', '?',
     '?', '?', '?', '?', '?', '?',
     ...(hasOrderDeliveryDate ? ['?'] : []),
     '?', '?', '?', '?', '?', '?', '?',
@@ -1618,6 +1639,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const orderInsertParams = [
     companyId,
     clientReferenceId,
+    customerOrderNumber,
     clientName,
     clientAddress,
     representative.name || null,
@@ -2177,6 +2199,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
 
   const clientReferenceId = asText(body?.clientReferenceId);
+  const customerOrderNumber = normalizeCustomerOrderNumber(body?.customerOrderNumber);
   const clientName = asText(body?.clientName);
   const clientAddress = asText(body?.clientAddress);
   const supplier = asText(body?.supplier);
@@ -2203,6 +2226,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const orderCols = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
   const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
   const hasOrderDeliveryDate = hasColumn(orderCols, 'ta_delivery_date');
+  const hasCustomerOrderNumber = hasColumn(orderCols, 'ta_KundenAuftragsnummer');
   const hasOrderDeliveryAddressId = hasColumn(orderCols, 'ta_delivery_address_id');
   const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
   const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
@@ -2211,6 +2235,11 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
       code: 'TEMP_ORDER_DELIVERY_ADDRESS_ID_SCHEMA_MISSING',
+    });
+  }
+  if (!hasCustomerOrderNumber) {
+    throw createHttpError(503, 'Temp order table is missing customer order number support. Apply the schema change first.', {
+      code: 'TEMP_ORDER_CUSTOMER_ORDER_NUMBER_SCHEMA_MISSING',
     });
   }
   if (!hasRepresentativeId || !hasPackagingTypeId || !hasOriginalPackagingTypeId) {
@@ -2387,6 +2416,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const fallbackOrderDeliveryDate = deliveryDates[0] || null;
   const orderAssignments = [
     '[ta_ClientReferenceId] = ?',
+    '[ta_KundenAuftragsnummer] = ?',
     '[ta_client_name] = ?',
     '[ta_client_address] = ?',
     '[ta_client_representative] = ?',
@@ -2421,6 +2451,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   `;
   const updateParams = [
     clientReferenceId,
+    customerOrderNumber,
     clientName,
     clientAddress,
     representative.name || null,
@@ -2680,6 +2711,7 @@ module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;
 module.exports.shouldRetryExistingOrderMail = shouldRetryExistingOrderMail;
 module.exports.normalizeTempOrderCompanyId = normalizeTempOrderCompanyId;
+module.exports.normalizeCustomerOrderNumber = normalizeCustomerOrderNumber;
 module.exports.parseDeliveryAddressId = parseDeliveryAddressId;
 module.exports.normalizePackagingType = normalizePackagingType;
 module.exports.packagingTypesEqual = packagingTypesEqual;

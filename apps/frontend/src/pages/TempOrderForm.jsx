@@ -345,6 +345,7 @@ export default function TempOrderForm() {
 
   const [form, setForm] = React.useState({
     clientReferenceId: '',
+    customerOrderNumber: '',
     clientName: '',
     clientAddress: '',
     clientRepresentative: '',
@@ -739,6 +740,7 @@ export default function TempOrderForm() {
           });
           setForm({
             clientReferenceId: d.clientReferenceId || '',
+            customerOrderNumber: d.customerOrderNumber || '',
             clientName: d.clientName || '',
             clientAddress: d.clientAddress || '',
             clientRepresentative: d.clientRepresentative || '',
@@ -804,6 +806,7 @@ export default function TempOrderForm() {
         setForm((prev) => ({
           ...prev,
           clientReferenceId: copyOrder?.clientReferenceId || '',
+          customerOrderNumber: '',
           clientName: copyOrder?.clientName || '',
           clientAddress: copyOrder?.clientAddress || '',
           clientRepresentative: copyOrder?.clientRepresentative || '',
@@ -1139,6 +1142,7 @@ export default function TempOrderForm() {
         ...prev,
         clientRepresentative: '',
         clientRepresentativeId: '',
+        customerOrderNumber: '',
         deliveryAddressNewlyCreated: false,
       }));
       return;
@@ -1161,6 +1165,9 @@ export default function TempOrderForm() {
     setForm((prev) => ({
       ...prev,
       clientReferenceId,
+      customerOrderNumber: prev.clientReferenceId === clientReferenceId
+        ? prev.customerOrderNumber
+        : '',
       clientName,
       clientAddress,
       clientRepresentative: '',
@@ -1367,6 +1374,7 @@ export default function TempOrderForm() {
       setSuccess('');
       const payload = {
         clientReferenceId: form.clientReferenceId,
+        customerOrderNumber: String(form.customerOrderNumber || '').trim() || null,
         clientName: form.clientName,
         clientAddress: form.clientAddress,
         clientRepresentative: form.clientRepresentative || null,
@@ -1585,6 +1593,14 @@ export default function TempOrderForm() {
                 </MenuItem>
               ))}
             </TextField>
+
+            <TextField
+              label={t('customer_order_number_label')}
+              value={form.customerOrderNumber}
+              onChange={(e) => setForm((p) => ({ ...p, customerOrderNumber: e.target.value }))}
+              inputProps={{ maxLength: 20 }}
+              fullWidth
+            />
 
             <TextField multiline minRows={3} label={t('order_comment')} value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} fullWidth />
 

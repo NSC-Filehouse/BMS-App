@@ -7,7 +7,10 @@ const {
   mapDeliveryAddressRow,
   normalizeDeliveryAddressInput,
 } = require('../src/db/delivery-addresses');
-const { parseDeliveryAddressId } = require('../src/routes/temp-orders.routes');
+const {
+  parseDeliveryAddressId,
+  normalizeCustomerOrderNumber,
+} = require('../src/routes/temp-orders.routes');
 
 test('formats delivery addresses consistently for selection and persistence', () => {
   const row = {
@@ -47,6 +50,18 @@ test('accepts delivery address id zero and rejects invalid ids', () => {
   assert.throws(() => parseDeliveryAddressId('1.5'), /Invalid delivery address id/);
   assert.deepEqual(parseDeliveryAddressId('40000'), { provided: true, id: 40000 });
   assert.throws(() => parseDeliveryAddressId('2147483648'), /Invalid delivery address id/);
+});
+
+test('normalizes optional customer order numbers and enforces the database limit', () => {
+  assert.equal(normalizeCustomerOrderNumber('  PO-4711  '), 'PO-4711');
+  assert.equal(normalizeCustomerOrderNumber(''), null);
+  assert.equal(normalizeCustomerOrderNumber('12345678901234567890'), '12345678901234567890');
+  assert.throws(
+    () => normalizeCustomerOrderNumber('123456789012345678901'),
+    (error) => error?.details?.code === 'INVALID_TEMP_ORDER_PAYLOAD'
+      && error.details.field === 'customerOrderNumber'
+      && error.details.maxLength === 20,
+  );
 });
 
 test('normalizes a new delivery address from customer defaults', () => {

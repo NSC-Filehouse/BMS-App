@@ -182,6 +182,7 @@ export default function TempOrderDetail() {
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
             <InfoRow label={t('order_customer')} value={item.clientName} />
+            <InfoRow label={t('customer_order_number_label')} value={item.customerOrderNumber} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
             <InfoRow label={t('contact_label')} value={item.clientRepresentative} />
             <InfoRow label={t('order_passed_to')} value={item.passedTo} />

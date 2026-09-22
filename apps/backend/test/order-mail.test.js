@@ -447,6 +447,7 @@ test('mail body contains the complete structured order data', () => {
       createdByEmail: 'n.schroeder@filehouse.net',
       createdAt: '2026-08-28T09:00:00.000Z',
       clientReferenceId: 'K-100',
+      customerOrderNumber: 'PO-2026-4711',
       clientName: 'Testkunde',
       clientAddress: 'Musterstra\u00dfe 1, 80331 M\u00fcnchen',
       clientRepresentative: 'Max Mustermann',
@@ -486,6 +487,7 @@ test('mail body contains the complete structured order data', () => {
   for (const expected of [
     'Mandant: MLPlastics (PLA)',
     'Kundennummer: K-100',
+    'Kunden-Auftragsnummer: PO-2026-4711',
     'Kundenanschrift: Musterstra\u00dfe 1, 80331 M\u00fcnchen',
     'Position 1',
     'BE-Nummer: BE-1',
