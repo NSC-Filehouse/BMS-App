@@ -10,7 +10,7 @@ const HOLIDAY_SQL = `
     [FeiertagText] AS holidayText,
     CONVERT(char(10), [DatumAktJahr], 23) AS activeDate,
     CONVERT(char(10), [DatumNextJahr], 23) AS nextDate,
-    [HalbeTag] AS halfDay,
+    [HalberTag] AS halfDay,
     [Gültig01] AS validity01,
     [Gültig02] AS validity02,
     [Gültig03] AS validity03,
