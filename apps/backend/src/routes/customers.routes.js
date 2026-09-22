@@ -31,6 +31,7 @@ const {
   resolveLatestOrderPdf,
   resolveLatestPurchaseOrderPdf,
 } = require('../order-pdf');
+const { buildCustomerInvoiceTimeline } = require('../customer-invoice-ordering');
 
 const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -1429,15 +1430,20 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   }
   await requireVisibleCustomer(req, customerId);
 
-  const scopeFilterSql = scope === 'open' ? 'AND [re_Bezahlt] = 0' : '';
+  const scopeFilterSql = scope === 'open'
+    ? "AND ([re_Bezahlt] = 0 OR [re_Auftragsstatus] = N'Gutschrift')"
+    : '';
   const dateFilter = buildDocumentDateFilter('[re_rgDatum]', scope, req.query.year);
 
   const sql = `
     SELECT
+      [re_KdNr] AS customerId,
       [re_RgNummer] AS invoiceNumber,
       [re_rgDatum] AS invoiceDate,
       [re_RGfaellig] AS dueDate,
       [re_Bezahlt] AS paidFlag,
+      [re_Auftragsstatus] AS documentStatus,
+      [re_RefRGNr] AS referenceInvoiceNumber,
       [re_Zahltext] AS paymentTextId,
       [re_MahnTextID] AS reminderTextId,
       [re_MahnTextIDneu] AS reminderTextIdNew,
@@ -1447,10 +1453,10 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     WHERE COALESCE([re_KdNr], '') = ?
       ${scopeFilterSql}
       ${dateFilter.sql}
-    ORDER BY [re_rgDatum] DESC
+    ORDER BY [re_rgDatum] DESC, [re_RgNummer] DESC
   `;
   const rows = await runSQLQueryAccess(req.database, sql, [customerId, ...dateFilter.params]);
-  const invoices = Array.isArray(rows) ? rows : [];
+  const invoices = buildCustomerInvoiceTimeline(rows);
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
   const reminderMap = await loadReminderStageTextMap(
     req.database,
@@ -1470,9 +1476,15 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
     const eu = Number(row.grossEu);
     const dm = Number(row.grossDm);
     const invoiceDate = row.invoiceDate || null;
+    const invoiceNumber = toText(row.invoiceNumber);
+    const isCreditNote = row.documentType === 'creditNote';
     return {
-      id: `${invoiceDate || 'inv'}-${idx + 1}`,
-      invoiceNumber: toText(row.invoiceNumber),
+      id: `${isCreditNote ? 'credit' : 'invoice'}-${invoiceNumber || 'document'}-${invoiceDate || 'unknown'}-${idx + 1}`,
+      documentType: row.documentType,
+      isCreditNote,
+      isAttachedCredit: Boolean(row.isAttachedCredit),
+      relatedInvoiceNumber: row.relatedInvoiceNumber || null,
+      invoiceNumber,
       invoiceDate,
       dueDate: row.dueDate || null,
       isPaid: paidFlag !== 0,

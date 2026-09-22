@@ -220,22 +220,23 @@ Pro Auftrag werden angezeigt:
 
 Dieser Bereich zeigt die vorhandenen Auftragsdaten des Kunden. Er ist nicht mit dem Menübereich „Aufträge“ zum Erfassen eigener neuer Aufträge zu verwechseln.
 
-#### Rechnungen
+#### Rechnungen und Gutschriften
 
 Der aufklappbare Bereich „Rechnungen“ kann zwischen folgenden Umfängen wechseln:
 
 - „Offen“;
 - „Alle“.
 
-Pro Rechnung werden angezeigt:
+Angezeigt werden Rechnungen und Gutschriften. Pro Beleg werden angezeigt:
 
-- Rechnungsnummer;
-- Rechnungsdatum;
-- Fälligkeitsdatum;
-- Zahlungsziel beziehungsweise Zahltext;
+- Rechnungs- beziehungsweise Gutschriftsnummer;
+- Rechnungs- beziehungsweise Gutschriftsdatum;
+- bei Rechnungen Fälligkeitsdatum, Zahlungsziel beziehungsweise Zahltext und Zahlungsstatus;
 - Betrag;
-- Status „offen“ oder grün hervorgehoben „bezahlt“;
-- gegebenenfalls die Mahnstufe in Rot.
+- bei Rechnungen gegebenenfalls die Mahnstufe in Rot;
+- bei einer zugeordneten Gutschrift die zugehörige Rechnung.
+
+Eine Gutschrift wird direkt unter der zugehörigen Rechnung angezeigt, sofern die Referenz aus den ERP-Daten eindeutig auf diese Rechnung zeigt. Gutschriften ohne ermittelbare Zuordnung werden nach ihrem eigenen Datum in die Belegfolge einsortiert.
 
 #### Verkaufte Artikel
 
