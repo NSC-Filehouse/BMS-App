@@ -42,6 +42,10 @@ BEGIN
     [om_CompanyID] INT NOT NULL,
     [om_Recipient] NVARCHAR(320) NOT NULL,
     [om_RecipientSource] NVARCHAR(30) NOT NULL,
+    [om_FromAddress] NVARCHAR(320) NULL,
+    [om_FromDisplayName] NVARCHAR(255) NULL,
+    [om_OnBehalfOfAddress] NVARCHAR(320) NULL,
+    [om_OnBehalfOfDisplayName] NVARCHAR(255) NULL,
     [om_Subject] NVARCHAR(255) NOT NULL,
     [om_Body] NVARCHAR(MAX) NOT NULL,
     [om_Status] NVARCHAR(20) NOT NULL CONSTRAINT [DF_OrderMailOutbox_Status] DEFAULT (N'pending'),
@@ -62,6 +66,30 @@ BEGIN
 
   CREATE INDEX [IX_OrderMailOutbox_Pending]
     ON [BMSApp].[OrderMailOutbox] ([om_Status], [om_NextAttemptAt], [om_ID]);
+END;
+
+IF COL_LENGTH(N'BMSApp.OrderMailOutbox', N'om_FromAddress') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[OrderMailOutbox]
+    ADD [om_FromAddress] NVARCHAR(320) NULL;
+END;
+
+IF COL_LENGTH(N'BMSApp.OrderMailOutbox', N'om_FromDisplayName') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[OrderMailOutbox]
+    ADD [om_FromDisplayName] NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'BMSApp.OrderMailOutbox', N'om_OnBehalfOfAddress') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[OrderMailOutbox]
+    ADD [om_OnBehalfOfAddress] NVARCHAR(320) NULL;
+END;
+
+IF COL_LENGTH(N'BMSApp.OrderMailOutbox', N'om_OnBehalfOfDisplayName') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[OrderMailOutbox]
+    ADD [om_OnBehalfOfDisplayName] NVARCHAR(255) NULL;
 END;
 
 COMMIT TRANSACTION;

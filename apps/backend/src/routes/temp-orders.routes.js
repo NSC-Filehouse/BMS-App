@@ -17,6 +17,7 @@ const {
 const {
   calculateTempOrderValue,
   hasBankDetails,
+  isEmailAddress,
   loadCustomerCreditContext,
 } = require('../credit-limit');
 const { getEmailsForUserCodes, getGfsForMandant } = require('../config/geschaeftsfuehrer');
@@ -1856,6 +1857,12 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   let creditLimitContext = null;
   let primaryAdEmail = '';
   let orderSalesRepresentative = null;
+  let orderMailSender = {
+    fromAddress: null,
+    fromDisplayName: null,
+    onBehalfOfAddress: null,
+    onBehalfOfDisplayName: null,
+  };
   let creditLimitLookupStatus = 'not_applicable';
   if (config.creditLimitMail.enabled || config.orderMail.enabled) {
     try {
@@ -1872,14 +1879,28 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       if (createdBy) {
         try {
           const orderOwner = await getUserIdentityByShortCode(createdBy, companyId);
+          const orderOwnerEmail = asText(orderOwner?.email).toLowerCase();
+          const orderOwnerName = asText(orderOwner?.fullName)
+            || [orderOwner?.givenName, orderOwner?.surname].filter(Boolean).join(' ');
           orderSalesRepresentative = {
             shortCode: createdBy,
-            fullName: asText(orderOwner?.fullName)
-              || [orderOwner?.givenName, orderOwner?.surname].filter(Boolean).join(' '),
+            fullName: orderOwnerName,
           };
+          if (isEmailAddress(orderOwnerEmail)) {
+            orderMailSender = {
+              ...orderMailSender,
+              onBehalfOfAddress: orderOwnerEmail,
+              onBehalfOfDisplayName: orderOwnerName || null,
+            };
+          } else if (config.orderMail.enabled) {
+            logger.warn(`Auftrags-AD ${createdBy} fuer Temp-Auftrag ${id} hat keine gueltige E-Mail-Adresse; Standardabsender wird verwendet.`);
+          }
         } catch (error) {
           logger.warn(`Auftrags-AD fuer Kreditlimit-Mail von Temp-Auftrag ${id} konnte nicht aufgeloest werden.`);
           orderSalesRepresentative = { shortCode: createdBy };
+          if (config.orderMail.enabled) {
+            logger.warn(`Auftrags-AD fuer Auftragsmail von Temp-Auftrag ${id} konnte nicht aufgeloest werden; Standardabsender wird verwendet.`);
+          }
         }
       }
       if (customerId) {
@@ -2083,6 +2104,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           SET [om_CompanyID] = ?,
               [om_Recipient] = ?,
               [om_RecipientSource] = ?,
+              [om_FromAddress] = ?,
+              [om_FromDisplayName] = ?,
+              [om_OnBehalfOfAddress] = ?,
+              [om_OnBehalfOfDisplayName] = ?,
               [om_Subject] = ?,
               [om_Body] = ?,
               [om_Status] = N'pending',
@@ -2098,6 +2123,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           companyId,
           recipient.address,
           recipient.source,
+          orderMailSender.fromAddress,
+          orderMailSender.fromDisplayName,
+          orderMailSender.onBehalfOfAddress,
+          orderMailSender.onBehalfOfDisplayName,
           ORDER_MAIL_SUBJECT,
           mailBody,
           nowIso,
@@ -2111,16 +2140,21 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         const outboxResult = await query(`
           INSERT INTO ${ORDER_MAIL_OUTBOX_TABLE} (
             [om_OrderID], [om_CompanyID], [om_Recipient], [om_RecipientSource],
+            [om_FromAddress], [om_FromDisplayName], [om_OnBehalfOfAddress], [om_OnBehalfOfDisplayName],
             [om_Subject], [om_Body], [om_Status], [om_AttemptCount],
             [om_NextAttemptAt], [om_CreateDate], [om_LastModifiedDate]
           )
           OUTPUT INSERTED.[om_ID] AS id
-          VALUES (?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
         `, [
           id,
           companyId,
           recipient.address,
           recipient.source,
+          orderMailSender.fromAddress,
+          orderMailSender.fromDisplayName,
+          orderMailSender.onBehalfOfAddress,
+          orderMailSender.onBehalfOfDisplayName,
           ORDER_MAIL_SUBJECT,
           mailBody,
           nowIso,

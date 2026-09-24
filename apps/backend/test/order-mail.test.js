@@ -197,7 +197,9 @@ test('BMS sends the mail-service request with the shared contract', async () => 
       },
       recipient: 'user@example.com',
       fromAddress: 'sender@example.com',
+      fromDisplayName: 'BMS-MailService',
       onBehalfOfAddress: 'verteiler@example.com',
+      onBehalfOfDisplayName: 'Außendienst Test',
       ccRecipients: ['copy@example.com'],
       bccRecipients: ['blind-copy@example.com'],
       subject: 'Test subject',
@@ -212,7 +214,9 @@ test('BMS sends the mail-service request with the shared contract', async () => 
     const requestBody = JSON.parse(requests[0].options.body);
     assert.equal(requestBody.ClientMessageId, 'bms-app:test:1');
     assert.equal(requestBody.FromAddress, 'sender@example.com');
+    assert.equal(requestBody.FromDisplayName, 'BMS-MailService');
     assert.equal(requestBody.OnBehalfOfAddress, 'verteiler@example.com');
+    assert.equal(requestBody.OnBehalfOfDisplayName, 'Außendienst Test');
     assert.equal(requestBody.To[0].Address, 'user@example.com');
     assert.deepEqual(requestBody.Cc, [{ Address: 'copy@example.com' }]);
     assert.deepEqual(requestBody.Bcc, [{ Address: 'blind-copy@example.com' }]);

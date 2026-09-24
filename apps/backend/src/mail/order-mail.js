@@ -321,7 +321,11 @@ async function sendOrderMailViaEws({
   service.Url = new EWS.Uri(orderMailConfig.ews.url);
 
   const message = new EWS.EmailMessage(service);
-  const technicalSender = asText(fromAddress);
+  // MailService uses its configured default technical sender when FromAddress
+  // is omitted. Keep the same relationship for the EWS fallback by using the
+  // authenticated mailbox as Sender when an on-behalf-of address is present.
+  const technicalSender = asText(fromAddress)
+    || (asText(onBehalfOfAddress) ? asText(orderMailConfig?.ews?.username) : '');
   const visibleSender = asText(onBehalfOfAddress) || technicalSender;
   const visibleSenderName = asText(onBehalfOfDisplayName) || asText(fromDisplayName);
   if (technicalSender) {

@@ -3,6 +3,7 @@ const logger = require('../logger');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
 const { getDatabaseConnectionForCompanyId } = require('./databases');
+const { getUserIdentityByShortCode } = require('./users');
 const {
   sendOrderMail,
   resolveOrderMailRecipient,
@@ -21,6 +22,10 @@ function asText(value) {
   return String(value).trim();
 }
 
+function isEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(asText(value));
+}
+
 function mapOutboxRow(row) {
   if (!row) return null;
   return {
@@ -29,11 +34,50 @@ function mapOutboxRow(row) {
     companyId: Number(row.companyId),
     recipient: asText(row.recipient),
     recipientSource: asText(row.recipientSource),
+    fromAddress: asText(row.fromAddress) || null,
+    fromDisplayName: asText(row.fromDisplayName) || null,
+    onBehalfOfAddress: asText(row.onBehalfOfAddress) || null,
+    onBehalfOfDisplayName: asText(row.onBehalfOfDisplayName) || null,
     subject: asText(row.subject),
     body: String(row.body || ''),
     status: asText(row.status),
     attemptCount: Number(row.attemptCount || 0),
   };
+}
+
+async function resolveMissingOrderMailSender(item) {
+  const sender = {
+    fromAddress: item.fromAddress,
+    fromDisplayName: item.fromDisplayName,
+    onBehalfOfAddress: item.onBehalfOfAddress,
+    onBehalfOfDisplayName: item.onBehalfOfDisplayName,
+  };
+  if (sender.onBehalfOfAddress) return sender;
+
+  try {
+    const rows = await runSQLQuerySqlServer(config.sql.database, `
+      SELECT TOP 1 [ta_CreatedBy] AS createdBy
+      FROM ${TEMP_ORDER_TABLE}
+      WHERE [ta_id] = ? AND [ta_company_id] = ?
+    `, [item.orderId, item.companyId]);
+    const createdBy = asText(rows?.[0]?.createdBy);
+    if (!createdBy) return sender;
+
+    const identity = await getUserIdentityByShortCode(createdBy, item.companyId);
+    const email = asText(identity?.email).toLowerCase();
+    if (!isEmailAddress(email)) return sender;
+
+    return {
+      ...sender,
+      onBehalfOfAddress: email,
+      onBehalfOfDisplayName: asText(identity?.fullName)
+        || [identity?.givenName, identity?.surname].filter(Boolean).join(' ')
+        || null,
+    };
+  } catch (error) {
+    logger.warn(`Auftrags-AD fuer bestehende Auftragsmail ${item.id} konnte nicht aufgeloest werden; Standardabsender wird verwendet.`);
+    return sender;
+  }
 }
 
 async function claimSpecificOutboxItem(outboxId) {
@@ -49,6 +93,10 @@ async function claimSpecificOutboxItem(outboxId) {
       INSERTED.[om_CompanyID] AS companyId,
       INSERTED.[om_Recipient] AS recipient,
       INSERTED.[om_RecipientSource] AS recipientSource,
+      INSERTED.[om_FromAddress] AS fromAddress,
+      INSERTED.[om_FromDisplayName] AS fromDisplayName,
+      INSERTED.[om_OnBehalfOfAddress] AS onBehalfOfAddress,
+      INSERTED.[om_OnBehalfOfDisplayName] AS onBehalfOfDisplayName,
       INSERTED.[om_Subject] AS subject,
       INSERTED.[om_Body] AS body,
       INSERTED.[om_Status] AS status,
@@ -175,9 +223,14 @@ async function processOrderMailOutboxById(outboxId) {
   const effectiveRecipient = configuredRecipient.ok ? configuredRecipient.address : item.recipient;
 
   try {
+    const sender = await resolveMissingOrderMailSender(item);
     const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
       mailServiceConfig: config.mailService,
+      fromAddress: sender.fromAddress,
+      fromDisplayName: sender.fromDisplayName,
+      onBehalfOfAddress: sender.onBehalfOfAddress,
+      onBehalfOfDisplayName: sender.onBehalfOfDisplayName,
       recipient: effectiveRecipient,
       subject: item.subject,
       body: item.body,
