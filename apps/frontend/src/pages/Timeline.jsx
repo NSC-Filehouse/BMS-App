@@ -15,6 +15,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
+import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 function formatDateTime(value, locale) {
@@ -28,6 +29,16 @@ function formatAmount(value, locale) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
   return n.toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+function formatPrice(value, locale) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+}
+
+function TimelineSeparator() {
+  return <Box component="span" sx={{ color: 'text.disabled' }}>·</Box>;
 }
 
 function renderTimelineMessage(item, locale, t) {
@@ -67,6 +78,83 @@ function renderTimelineMessage(item, locale, t) {
       {' '}
       {t('timeline_text_ordered')}
     </>
+  );
+}
+
+function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
+  const timelineId = String(item?.id || '');
+  const isPdfLoading = orderPdfLoadingId === timelineId;
+  const customerName = item.customerName || '-';
+  const userShortCode = item.userShortCode || '-';
+  const amount = formatAmount(item.amountKg, locale);
+  const unit = item.unit || 'kg';
+  const product = item.product || '-';
+  const beNumber = item.beNumber || '-';
+
+  return (
+    <Box sx={{ display: 'grid', gap: 0.35, minWidth: 0 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          columnGap: 0.75,
+          rowGap: 0.25,
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
+        {item.orderIndex && (
+          <>
+            <Box
+              component="button"
+              type="button"
+              onClick={(event) => openOrderPdf(event, item)}
+              disabled={isPdfLoading}
+              aria-label={t('open_order_pdf')}
+              sx={{
+                p: 0,
+                border: 0,
+                bgcolor: 'transparent',
+                color: 'primary.main',
+                textDecoration: 'underline',
+                cursor: isPdfLoading ? 'wait' : 'pointer',
+                font: 'inherit',
+                fontWeight: 700,
+              }}
+            >
+              {item.orderIndex}
+            </Box>
+            <TimelineSeparator />
+          </>
+        )}
+        <Box component="span" sx={{ fontWeight: 700 }}>{userShortCode}</Box>
+        <TimelineSeparator />
+        <Box component="span" sx={{ minWidth: 0 }}>{customerName}</Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          columnGap: 0.75,
+          rowGap: 0.25,
+          minWidth: 0,
+          color: 'text.secondary',
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
+        <Box component="span">{t('timeline_amount')}: {amount} {unit}</Box>
+        <TimelineSeparator />
+        <Box component="span">{t('timeline_article')}: {product}</Box>
+        <TimelineSeparator />
+        <Box component="span">{t('timeline_sale_price')}: {formatPrice(item.salePrice, locale)}</Box>
+        <TimelineSeparator />
+        <Box component="span">{t('timeline_be_number')}: {beNumber}</Box>
+      </Box>
+    </Box>
   );
 }
 
@@ -191,7 +279,7 @@ export default function Timeline() {
       popup.close();
       setOrderPdfErrors((previous) => ({
         ...previous,
-        [timelineId]: e?.message || t('order_pdf_unavailable'),
+        [timelineId]: getOrderPdfErrorMessage(e, t),
       }));
     } finally {
       setOrderPdfLoadingId('');
@@ -292,34 +380,10 @@ export default function Timeline() {
                       <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {formatDateTime(item.createdAt, locale)}
                       </Typography>
-                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                        {item.type === 'order' && item.orderIndex && (
-                          <>
-                            <Box component="span" sx={{ fontWeight: 700 }}>{t('order_number_label')}:</Box>
-                            {' '}
-                            <Box
-                              component="button"
-                              type="button"
-                              onClick={(event) => openOrderPdf(event, item)}
-                              disabled={orderPdfLoadingId === String(item.id || '')}
-                              aria-label={t('open_order_pdf')}
-                              sx={{
-                                p: 0,
-                                border: 0,
-                                bgcolor: 'transparent',
-                                color: 'primary.main',
-                                textDecoration: 'underline',
-                                cursor: orderPdfLoadingId === String(item.id || '') ? 'wait' : 'pointer',
-                                font: 'inherit',
-                                fontWeight: 700,
-                              }}
-                            >
-                              {item.orderIndex}
-                            </Box>
-                            {' '}
-                          </>
-                        )}
-                        {renderTimelineMessage(item, locale, t)}
+                      <Typography component="div" variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {item.type === 'order'
+                          ? renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId)
+                          : renderTimelineMessage(item, locale, t)}
                       </Typography>
                       {orderPdfErrors[String(item.id || '')] && (
                         <Typography variant="caption" sx={{ color: 'error.main' }}>

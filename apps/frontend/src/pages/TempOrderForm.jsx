@@ -292,6 +292,7 @@ export default function TempOrderForm() {
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [deliveryAddressOptions, setDeliveryAddressOptions] = React.useState([]);
+  const [deliveryAddressCountryOptions, setDeliveryAddressCountryOptions] = React.useState([]);
   const [newDeliveryAddressOpen, setNewDeliveryAddressOpen] = React.useState(false);
   const [newDeliveryAddressSaving, setNewDeliveryAddressSaving] = React.useState(false);
   const [newDeliveryAddressError, setNewDeliveryAddressError] = React.useState('');
@@ -300,7 +301,7 @@ export default function TempOrderForm() {
     street: '',
     postalCode: '',
     city: '',
-    countryCode: '',
+    countryId: '',
     pickupTimes: '',
     contact: '',
   });
@@ -499,22 +500,32 @@ export default function TempOrderForm() {
       const customerPromise = selectedCustomer && String(selectedCustomer?.kd_KdNR || '').trim() === customerId
         ? Promise.resolve(selectedCustomer)
         : apiRequest(`/customers/${encodeURIComponent(customerId)}`).then((response) => response?.data || null);
-      const [addresses, customer] = await Promise.all([
+      const [addresses, customer, countryResponse] = await Promise.all([
         loadDeliveryAddresses(customerId, { throwOnError: true }),
         customerPromise,
+        apiRequest('/delivery-address-country-types'),
       ]);
+      const countries = Array.isArray(countryResponse?.data) ? countryResponse.data : [];
+      setDeliveryAddressCountryOptions(countries);
+      if (!countries.length) throw new Error(t('delivery_address_country_load_error'));
       const resolvedCustomer = customer || selectedCustomer || {};
+      const defaultCountry = countries.find((country) => (
+        String(country?.id || '').trim().toUpperCase()
+          === String(resolvedCustomer?.kd_LK || '').trim().toUpperCase()
+      ));
       setNewDeliveryAddressCustomer(resolvedCustomer);
       setNewDeliveryAddressDraft({
         street: addresses.length ? '' : String(resolvedCustomer?.kd_Strasse || ''),
         postalCode: addresses.length ? '' : String(resolvedCustomer?.kd_PLZ || ''),
         city: addresses.length ? '' : String(resolvedCustomer?.kd_Ort || ''),
-        countryCode: addresses.length ? '' : String(resolvedCustomer?.kd_LK || '').trim().toUpperCase(),
+        countryId: addresses.length ? '' : String(defaultCountry?.id || ''),
         pickupTimes: '',
         contact: '',
       });
       setNewDeliveryAddressOpen(true);
     } catch (error) {
+      setDeliveryAddressCountryOptions([]);
+      setNewDeliveryAddressOpen(true);
       setNewDeliveryAddressError(error?.message || t('delivery_address_load_error'));
     }
   }, [form.clientReferenceId, loadDeliveryAddresses, selectedCustomer, t]);
@@ -531,16 +542,16 @@ export default function TempOrderForm() {
       street: String(newDeliveryAddressDraft.street || '').trim(),
       postalCode: String(newDeliveryAddressDraft.postalCode || '').trim(),
       city: String(newDeliveryAddressDraft.city || '').trim(),
-      countryCode: String(newDeliveryAddressDraft.countryCode || '').trim().toUpperCase(),
+      countryId: String(newDeliveryAddressDraft.countryId || '').trim().toUpperCase(),
       pickupTimes: String(newDeliveryAddressDraft.pickupTimes || '').trim(),
       contact: String(newDeliveryAddressDraft.contact || '').trim(),
     };
-    const missing = [draft.street, draft.postalCode, draft.city, draft.countryCode].some((value) => !value);
+    const missing = [draft.street, draft.postalCode, draft.city, draft.countryId].some((value) => !value);
     if (missing) {
       setNewDeliveryAddressError(t('delivery_address_required_fields'));
       return;
     }
-    if (!/^[A-Z]{2}$/.test(draft.countryCode)) {
+    if (!deliveryAddressCountryOptions.some((country) => String(country?.id || '').toUpperCase() === draft.countryId)) {
       setNewDeliveryAddressError(t('delivery_address_country_invalid'));
       return;
     }
@@ -582,7 +593,7 @@ export default function TempOrderForm() {
     } finally {
       setNewDeliveryAddressSaving(false);
     }
-  }, [form.clientReferenceId, loadDeliveryAddresses, newDeliveryAddressDraft, t]);
+  }, [deliveryAddressCountryOptions, form.clientReferenceId, loadDeliveryAddresses, newDeliveryAddressDraft, t]);
 
   React.useEffect(() => {
     if (form.deliveryAddressManual || !String(form.deliveryAddress || '').trim()) {
@@ -2060,14 +2071,24 @@ export default function TempOrderForm() {
           </Box>
           <TextField
             label={t('delivery_address_country_code')}
-            value={newDeliveryAddressDraft.countryCode}
-            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, countryCode: event.target.value.toUpperCase() }))}
-            inputProps={{ maxLength: 2, style: { textTransform: 'uppercase' } }}
+            select
+            value={newDeliveryAddressDraft.countryId}
+            onChange={(event) => setNewDeliveryAddressDraft((previous) => ({ ...previous, countryId: event.target.value }))}
             helperText={t('delivery_address_country_code_hint')}
             disabled={newDeliveryAddressSaving}
             required
             fullWidth
-          />
+          >
+            <MenuItem value="" disabled>{t('select_label')}</MenuItem>
+            {deliveryAddressCountryOptions.map((country) => {
+              const name = lang === 'en' ? country.nameEnglish || country.name : country.name || country.nameEnglish;
+              return (
+                <MenuItem key={country.id} value={country.id}>
+                  {country.isoAlpha2}{name ? ` — ${name}` : ''}
+                </MenuItem>
+              );
+            })}
+          </TextField>
           <TextField
             label={t('delivery_address_pickup_times')}
             value={newDeliveryAddressDraft.pickupTimes}
@@ -2087,7 +2108,7 @@ export default function TempOrderForm() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeNewDeliveryAddressDialog} disabled={newDeliveryAddressSaving}>{t('back_label')}</Button>
-          <Button variant="contained" onClick={() => { void saveNewDeliveryAddress(); }} disabled={newDeliveryAddressSaving}>
+          <Button variant="contained" onClick={() => { void saveNewDeliveryAddress(); }} disabled={newDeliveryAddressSaving || !deliveryAddressCountryOptions.length}>
             {newDeliveryAddressSaving ? <CircularProgress size={18} color="inherit" /> : t('save_label')}
           </Button>
         </DialogActions>

@@ -11,6 +11,7 @@ const logger = require('../logger');
 const router = express.Router();
 const TIMELINE_TABLE = appTableSql('timeline');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
+const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
 const TIMELINE_TABLE_NAME = appTableName('timeline').toLowerCase();
 const LEGACY_TIMELINE_TABLE_NAME = 'tblbmsapp_timeline';
 
@@ -76,12 +77,22 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
       [tl_AmountKg] AS amountKg,
       [tl_Unit] AS unit,
       [tl_ReferenceId] AS referenceId,
-      [temp].[ta_Auftragsindex] AS orderIndex
+      [temp].[ta_Auftragsindex] AS orderIndex,
+      [temp].[ta_client_name] AS customerName,
+      [tempPosition].[salePrice] AS salePrice
     FROM ${TIMELINE_TABLE}
     LEFT JOIN ${TEMP_ORDER_TABLE} AS [temp]
       ON [tl_Type] = N'order'
      AND [temp].[ta_company_id] = [tl_CompanyId]
      AND CONVERT(NVARCHAR(100), [temp].[ta_id]) = [tl_ReferenceId]
+    OUTER APPLY (
+      SELECT TOP 1
+        [position].[tap_price] AS salePrice
+      FROM ${TEMP_ORDER_POSITION_TABLE} AS [position]
+      WHERE [position].[tap_ta_id] = [temp].[ta_id]
+        AND [position].[tap_be_number] = [tl_BeNumber]
+      ORDER BY [position].[tap_line_no] ASC, [position].[tap_id] ASC
+    ) AS [tempPosition]
     WHERE [tl_CreatedAt] >= ?
       AND (${filters.join(' OR ')})
     ORDER BY [tl_CreatedAt] DESC, [tl_ID] DESC
@@ -112,6 +123,8 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
     unit: asText(row.unit) || 'kg',
     referenceId: asText(row.referenceId),
     orderIndex: asText(row.orderIndex),
+    customerName: asText(row.customerName),
+    salePrice: row.salePrice === null || row.salePrice === undefined ? null : Number(row.salePrice),
   }));
 
   sendEnvelope(res, {

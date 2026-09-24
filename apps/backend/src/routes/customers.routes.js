@@ -21,6 +21,7 @@ const {
   createCustomerDeliveryAddress,
   loadCustomerDeliveryAddresses,
 } = require('../db/delivery-addresses');
+const { loadDeliveryAddressCountryTypes } = require('../db/delivery-address-country-types');
 const {
   isHiddenCustomerDetailEmployee,
   loadCustomerSalesRepresentatives,
@@ -874,6 +875,23 @@ router.get('/customers/:id/activities', requireMandant, asyncHandler(async (req,
       id: customerId,
       scope: result.scope,
       year: result.year,
+    },
+    error: null,
+  });
+}));
+
+router.get('/delivery-address-country-types', requireMandant, asyncHandler(async (req, res) => {
+  const data = await loadDeliveryAddressCountryTypes();
+
+  sendEnvelope(res, {
+    status: 200,
+    data,
+    meta: {
+      mandant: req.mandant,
+      count: data.length,
+      idField: 'la_LandISO',
+      displayField: 'la_ISOalpha2',
+      databaseName: 'BMS',
     },
     error: null,
   });

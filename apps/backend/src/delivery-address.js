@@ -9,7 +9,7 @@ function buildDeliveryAddressText(row) {
   const street = asText(row?.kdL_Strasse);
   const plz = asText(row?.kdL_PLZ);
   const city = asText(row?.kdL_Ort);
-  const country = asText(row?.kdL_LK);
+  const country = asText(row?.countryCode || row?.la_ISOalpha2 || row?.kdL_LK);
   const plzCity = [plz, city].filter(Boolean).join(' ');
   return [name1, name2, street, plzCity, country].filter(Boolean).join(', ');
 }

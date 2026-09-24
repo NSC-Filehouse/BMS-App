@@ -51,9 +51,9 @@ const errorTexts = {
     de: 'Bitte Straße, PLZ, Ort und Land der Lieferadresse ausfüllen.',
     en: 'Please provide the delivery address street, postal code, city, and country.',
   },
-  DELIVERY_ADDRESS_COUNTRY_CODE_INVALID: {
-    de: 'Das Lieferland muss als zweistelliger ISO-Alpha-2-Code angegeben werden.',
-    en: 'The delivery country must be a two-letter ISO Alpha-2 code.',
+  DELIVERY_ADDRESS_COUNTRY_ID_INVALID: {
+    de: 'Das ausgewählte Lieferland ist nicht verfügbar. Bitte wählen Sie ein Land aus der Liste.',
+    en: 'The selected delivery country is unavailable. Please choose a country from the list.',
   },
   DELIVERY_ADDRESS_FIELD_TOO_LONG: {
     de: (d) => `Das Feld ${d?.field || ''} darf höchstens ${d?.maxLength || 0} Zeichen enthalten.`.trim(),

@@ -32,6 +32,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
+import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import {
   CUSTOMER_SELECTION_CHANGED,
@@ -870,7 +871,7 @@ export default function CustomerDetail() {
       popup.close();
       setOrderPdfErrors((previous) => ({
         ...previous,
-        [orderIndex]: e?.message || t('order_pdf_unavailable'),
+        [orderIndex]: getOrderPdfErrorMessage(e, t),
       }));
     } finally {
       setOrderPdfLoadingId('');
@@ -1341,6 +1342,29 @@ export default function CustomerDetail() {
                 {!docs.orders.loading && !docs.orders.error && docs.orders.items.map((order, idx) => (
                   <Card key={`${order.id || idx}-order`} variant="outlined">
                     <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
+                      {!isSupplier && order.id && (
+                        <Typography variant="subtitle1" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={(event) => openOrderPdf(event, order)}
+                            disabled={orderPdfLoadingId === String(order.id || '')}
+                            aria-label={t('open_order_pdf')}
+                            sx={{
+                              p: 0,
+                              border: 0,
+                              bgcolor: 'transparent',
+                              color: 'primary.main',
+                              textDecoration: 'underline',
+                              cursor: orderPdfLoadingId === String(order.id || '') ? 'wait' : 'pointer',
+                              font: 'inherit',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {order.id}
+                          </Box>
+                        </Typography>
+                      )}
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
                         {t(isSupplier ? 'purchase_order_number_label' : 'order_number_label')}: {' '}
                         <Box

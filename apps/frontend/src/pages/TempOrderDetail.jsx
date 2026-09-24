@@ -16,7 +16,8 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
+import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
@@ -98,6 +99,8 @@ export default function TempOrderDetail() {
   const [finalizeOpen, setFinalizeOpen] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
   const [mandants, setMandants] = React.useState([]);
+  const [orderPdfLoading, setOrderPdfLoading] = React.useState(false);
+  const [orderPdfError, setOrderPdfError] = React.useState('');
 
   React.useEffect(() => {
     let alive = true;
@@ -141,6 +144,32 @@ export default function TempOrderDetail() {
     navigate('/temp-orders');
   }, [location.state, navigate]);
 
+  const openOrderPdf = React.useCallback(async (event) => {
+    event.preventDefault();
+    const orderId = String(id || '').trim();
+    if (!orderId || !item?.orderIndex) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setOrderPdfError(t('order_pdf_popup_blocked'));
+      return;
+    }
+
+    setOrderPdfLoading(true);
+    setOrderPdfError('');
+    try {
+      const blob = await apiRequestBlob(`/temp-orders/${encodeURIComponent(orderId)}/order-pdf`);
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setOrderPdfError(getOrderPdfErrorMessage(e, t));
+    } finally {
+      setOrderPdfLoading(false);
+    }
+  }, [id, item?.orderIndex, t]);
+
   const deleteOrder = async () => {
     try {
       setError('');
@@ -170,9 +199,39 @@ export default function TempOrderDetail() {
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton aria-label="back" onClick={handleBack}><ArrowBackIcon /></IconButton>
-        <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {item?.clientName || id}
-        </Typography>
+        <Box sx={{ minWidth: 0 }}>
+          {item?.orderIndex && (
+            <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              <Box
+                component="button"
+                type="button"
+                onClick={openOrderPdf}
+                disabled={orderPdfLoading}
+                aria-label={t('open_order_pdf')}
+                sx={{
+                  p: 0,
+                  border: 0,
+                  bgcolor: 'transparent',
+                  color: 'primary.main',
+                  textDecoration: 'underline',
+                  cursor: orderPdfLoading ? 'wait' : 'pointer',
+                  font: 'inherit',
+                  fontWeight: 700,
+                }}
+              >
+                {item.orderIndex}
+              </Box>
+            </Typography>
+          )}
+          <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+            {item?.clientName || id}
+          </Typography>
+          {orderPdfError && (
+            <Typography variant="caption" sx={{ color: 'error.main', display: 'block' }}>
+              {orderPdfError}
+            </Typography>
+          )}
+        </Box>
       </Box>
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}

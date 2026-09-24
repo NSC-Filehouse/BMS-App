@@ -18,8 +18,9 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
+import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import {
   getTempOrderStatusColor,
@@ -47,6 +48,8 @@ export default function TempOrdersList() {
   const [status, setStatus] = React.useState('all');
   const [ownerScope, setOwnerScope] = React.useState('all');
   const [canViewAll, setCanViewAll] = React.useState(false);
+  const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
+  const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
 
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
@@ -125,6 +128,43 @@ export default function TempOrdersList() {
     }, 300);
     return () => clearTimeout(handle);
   }, [q, load]);
+
+  const openOrderPdf = React.useCallback(async (event, row) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const orderId = String(row?.id || '').trim();
+    if (!orderId) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [orderId]: t('order_pdf_popup_blocked'),
+      }));
+      return;
+    }
+
+    setOrderPdfLoadingId(orderId);
+    setOrderPdfErrors((previous) => {
+      const next = { ...previous };
+      delete next[orderId];
+      return next;
+    });
+    try {
+      const blob = await apiRequestBlob(`/temp-orders/${encodeURIComponent(orderId)}/order-pdf`);
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setOrderPdfErrors((previous) => ({
+        ...previous,
+        [orderId]: getOrderPdfErrorMessage(e, t),
+      }));
+    } finally {
+      setOrderPdfLoadingId('');
+    }
+  }, [t]);
 
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -246,6 +286,34 @@ export default function TempOrdersList() {
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
+                    {row.orderIndex && (
+                      <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        <Box
+                          component="button"
+                          type="button"
+                          onClick={(event) => openOrderPdf(event, row)}
+                          disabled={orderPdfLoadingId === String(row.id || '')}
+                          aria-label={t('open_order_pdf')}
+                          sx={{
+                            p: 0,
+                            border: 0,
+                            bgcolor: 'transparent',
+                            color: 'primary.main',
+                            textDecoration: 'underline',
+                            cursor: orderPdfLoadingId === String(row.id || '') ? 'wait' : 'pointer',
+                            font: 'inherit',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {row.orderIndex}
+                        </Box>
+                      </Typography>
+                    )}
+                    {orderPdfErrors[String(row.id || '')] && (
+                      <Typography variant="caption" sx={{ color: 'error.main' }}>
+                        {orderPdfErrors[String(row.id || '')]}
+                      </Typography>
+                    )}
                     <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {row.clientName || row.id}
                     </Typography>

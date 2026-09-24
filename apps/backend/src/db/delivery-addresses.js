@@ -1,6 +1,7 @@
 const { runSQLQueryAccess, withSqlTransaction } = require('./access');
 const { buildDeliveryAddressText } = require('../delivery-address');
 const { createHttpError } = require('../utils');
+const { getDeliveryAddressCountryType } = require('./delivery-address-country-types');
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -8,19 +9,20 @@ function asText(value) {
 }
 
 const DELIVERY_ADDRESS_COLUMNS = `
-  [kdL_KdNR],
-  [kdL_ID],
-  [kdL_Lieferanschrift_Nr],
-  [kdL_Kurz],
-  [kdL_Name1],
-  [kdL_Name2],
-  [kdL_Strasse],
-  [kdL_LK],
-  [kdL_PLZ],
-  [kdL_Ort],
-  [kdL_Region],
-  [kdL_Kontrakt],
-  [kdL_Abhol]
+  [deliveryAddress].[kdL_KdNR],
+  [deliveryAddress].[kdL_ID],
+  [deliveryAddress].[kdL_Lieferanschrift_Nr],
+  [deliveryAddress].[kdL_Kurz],
+  [deliveryAddress].[kdL_Name1],
+  [deliveryAddress].[kdL_Name2],
+  [deliveryAddress].[kdL_Strasse],
+  [deliveryAddress].[kdL_LK],
+  [deliveryAddress].[kdL_PLZ],
+  [deliveryAddress].[kdL_Ort],
+  [deliveryAddress].[kdL_Region],
+  [deliveryAddress].[kdL_Kontrakt],
+  [deliveryAddress].[kdL_Abhol],
+  [land].[la_ISOalpha2] AS [countryCode]
 `;
 
 const DELIVERY_ADDRESS_FIELD_LIMITS = Object.freeze({
@@ -29,7 +31,7 @@ const DELIVERY_ADDRESS_FIELD_LIMITS = Object.freeze({
   name1: 50,
   name2: 50,
   street: 50,
-  countryCode: 3,
+  countryId: 3,
   postalCode: 10,
   city: 50,
   region: 100,
@@ -51,7 +53,7 @@ function normalizeDeliveryAddressInput(input, customer, customerId) {
   const street = asText(input?.street);
   const postalCode = asText(input?.postalCode);
   const city = asText(input?.city);
-  const countryCode = asText(input?.countryCode).toUpperCase();
+  const countryId = asText(input?.countryId).toUpperCase();
   const contact = asText(input?.contact);
   const pickupTimes = asText(input?.pickupTimes);
   const short = asText(customer?.kd_Kurz);
@@ -64,7 +66,7 @@ function normalizeDeliveryAddressInput(input, customer, customerId) {
     ['street', street],
     ['postalCode', postalCode],
     ['city', city],
-    ['countryCode', countryCode],
+    ['countryId', countryId],
   ];
   const missing = required.filter(([, value]) => !value).map(([field]) => field);
   if (missing.length) {
@@ -73,14 +75,7 @@ function normalizeDeliveryAddressInput(input, customer, customerId) {
       fields: missing,
     });
   }
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
-    throw createHttpError(400, 'Country code must be a two-letter ISO Alpha-2 code.', {
-      code: 'DELIVERY_ADDRESS_COUNTRY_CODE_INVALID',
-      field: 'countryCode',
-    });
-  }
-
-  const values = { resolvedCustomerId, short, name1, name2, street, countryCode, postalCode, city, region, contact, pickupTimes };
+  const values = { resolvedCustomerId, short, name1, name2, street, countryId, postalCode, city, region, contact, pickupTimes };
   Object.entries(values).forEach(([field, value]) => {
     const maxLength = DELIVERY_ADDRESS_FIELD_LIMITS[field];
     if (maxLength) assertTextLength(value, field, maxLength);
@@ -104,6 +99,7 @@ function getNextDeliveryAddressNumber(rows) {
 }
 
 function mapDeliveryAddressRow(row) {
+  const countryCode = asText(row?.countryCode || row?.la_ISOalpha2 || row?.kdL_LK);
   return {
     id: row?.kdL_ID === null || row?.kdL_ID === undefined
       ? ''
@@ -114,11 +110,11 @@ function mapDeliveryAddressRow(row) {
     customerId: row?.kdL_KdNR === null || row?.kdL_KdNR === undefined
       ? ''
       : String(row.kdL_KdNR).trim(),
-    text: buildDeliveryAddressText(row),
+    text: buildDeliveryAddressText({ ...row, countryCode }),
     short: row?.kdL_Kurz === null || row?.kdL_Kurz === undefined ? '' : String(row.kdL_Kurz).trim(),
     name1: row?.kdL_Name1 === null || row?.kdL_Name1 === undefined ? '' : String(row.kdL_Name1).trim(),
     name2: row?.kdL_Name2 === null || row?.kdL_Name2 === undefined ? '' : String(row.kdL_Name2).trim(),
-    countryCode: asText(row?.kdL_LK),
+    countryCode,
     region: asText(row?.kdL_Region),
   };
 }
@@ -127,15 +123,27 @@ async function loadCustomerDeliveryAddresses(database, customerId) {
   const rows = await runSQLQueryAccess(database, `
     SELECT
       ${DELIVERY_ADDRESS_COLUMNS}
-    FROM [dbo].[tblKun_LiefAdress]
-    WHERE COALESCE([kdL_KdNR], '') = ?
-    ORDER BY [kdL_Lieferanschrift_Nr] ASC
+    FROM [dbo].[tblKun_LiefAdress] AS [deliveryAddress]
+    LEFT JOIN [BMS].[dbo].[tblLand] AS [land]
+      ON [land].[la_LandISO] = [deliveryAddress].[kdL_LK]
+    WHERE COALESCE([deliveryAddress].[kdL_KdNR], '') = ?
+    ORDER BY [deliveryAddress].[kdL_Lieferanschrift_Nr] ASC
   `, [String(customerId ?? '').trim()]);
   return (Array.isArray(rows) ? rows : []).map(mapDeliveryAddressRow);
 }
 
 async function createCustomerDeliveryAddress(database, customer, input, customerId) {
   const values = normalizeDeliveryAddressInput(input, customer, customerId);
+  const countryType = await getDeliveryAddressCountryType(values.countryId);
+  if (!countryType) {
+    throw createHttpError(400, 'Delivery address country type is not available.', {
+      code: 'DELIVERY_ADDRESS_COUNTRY_ID_INVALID',
+      field: 'countryId',
+    });
+  }
+  values.countryId = countryType.id;
+  values.countryCode = countryType.isoAlpha2;
+
   const result = await withSqlTransaction(database?.databaseName || database, async ({ query }) => {
     // Serialize address-number allocation per customer. The address table has no
     // unique constraint for kdL_Lieferanschrift_Nr, so locking the customer row
@@ -168,7 +176,7 @@ async function createCustomerDeliveryAddress(database, customer, input, customer
       values.name1 || null,
       values.name2 || null,
       values.street,
-      values.countryCode,
+      values.countryId,
       values.postalCode,
       values.city,
       values.region || null,
@@ -177,7 +185,7 @@ async function createCustomerDeliveryAddress(database, customer, input, customer
     ]);
     const row = Array.isArray(inserted.rows) ? inserted.rows[0] : null;
     if (!row) throw new Error('Delivery address insert returned no row.');
-    return mapDeliveryAddressRow(row);
+    return mapDeliveryAddressRow({ ...row, countryCode: values.countryCode });
   });
   return result;
 }

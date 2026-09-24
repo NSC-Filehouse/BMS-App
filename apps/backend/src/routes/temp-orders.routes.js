@@ -35,6 +35,7 @@ const {
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
+const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -521,6 +522,7 @@ function mapTempOrderRow(row) {
   return {
     id: row.ta_id,
     companyId: row.ta_company_id,
+    orderIndex: asText(row.ta_Auftragsindex) || null,
     clientReferenceId: row.ta_ClientReferenceId,
     customerOrderNumber: asText(row.ta_KundenAuftragsnummer) || null,
     distributor: row.ta_distributor,
@@ -1279,6 +1281,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const whereText = text
     ? ` AND (
         [o].[ta_client_name] LIKE ? OR [o].[ta_comment] LIKE ?
+        OR [o].[ta_Auftragsindex] LIKE ?
         OR EXISTS (
           SELECT 1
           FROM ${TEMP_ORDER_POSITION_TABLE} p
@@ -1287,7 +1290,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
         )
       )`
     : '';
-  const whereParams = text ? [like, like, like, like] : [];
+  const whereParams = text ? [like, like, like, like, like] : [];
   const statusFilter = buildTempOrderStatusFilter(req.query?.status);
   const requestedOwnerScope = normalizeTempOrderOwnerScope(req.query?.ownerScope);
   const ownerFilter = buildTempOrderOwnerFilter(
@@ -1311,6 +1314,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const listSql = `
     SELECT
       [o].[ta_id] AS id,
+      [o].[ta_Auftragsindex] AS orderIndex,
       [fp].[beNumber] AS beNumber,
       [fp].[article] AS article,
       [fp].[price] AS price,
@@ -1350,6 +1354,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
   const data = (rows || []).map((row) => ({
     id: row.id,
+    orderIndex: asText(row.orderIndex) || null,
     beNumber: row.beNumber,
     article: row.article,
     clientName: row.clientName,
@@ -1421,6 +1426,85 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     },
     meta: { mandant: req.mandant, id },
     error: null,
+  });
+}));
+
+router.get('/temp-orders/:id/order-pdf', requireMandant, asyncHandler(async (req, res, next) => {
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const userShortCode = asText(userIdentity.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1
+      [ta_Auftragsindex] AS orderIndex,
+      [ta_ClientReferenceId] AS customerId
+    FROM ${TEMP_ORDER_TABLE}
+    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      ${ownerFilter.whereSql}
+  `, [id, companyId, ...ownerFilter.params]);
+  const tempOrder = Array.isArray(rows) && rows.length ? rows[0] : null;
+  const orderIndex = asText(tempOrder?.orderIndex);
+  if (!tempOrder || !orderIndex) {
+    throw createHttpError(404, 'ERP order number is not available yet.', {
+      code: 'TEMP_ORDER_ORDER_INDEX_NOT_AVAILABLE',
+      id,
+    });
+  }
+
+  const customerId = asText(tempOrder.customerId);
+  const customerFilter = customerId ? 'AND COALESCE([au_KdNr], \'\') = ?' : '';
+  const orderRows = await runSQLQueryAccess(req.database, `
+    SELECT TOP 1
+      [au_Auftragsindex] AS orderIndex,
+      [au_Auftragsnummer] AS orderNumber
+    FROM [dbo].[tblAuftrag]
+    WHERE COALESCE([au_Auftragsindex], '') = ?
+      ${customerFilter}
+  `, customerId ? [orderIndex, customerId] : [orderIndex]);
+  const order = Array.isArray(orderRows) && orderRows.length ? orderRows[0] : null;
+  if (!order) {
+    throw createHttpError(404, `Order not found: ${orderIndex}`, {
+      code: 'ORDER_NOT_FOUND',
+      id: orderIndex,
+    });
+  }
+
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Order PDF storage is not configured.', {
+      code: 'ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const orderNumber = asText(order.orderNumber) || asText(order.orderIndex) || orderIndex;
+  const pdf = await resolveLatestOrderPdf({
+    companyName: req.database?.name,
+    orderNumber,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
+      code: 'ORDER_PDF_NOT_FOUND',
+      orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
   });
 }));
 

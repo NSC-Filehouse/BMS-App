@@ -23,21 +23,22 @@ test('formats delivery addresses consistently for selection and persistence', ()
     kdL_PLZ: '38239',
     kdL_Ort: 'Salzgitter-Watenstedt',
     kdL_LK: 'D',
+    countryCode: 'DE',
   };
 
   assert.equal(
     buildDeliveryAddressText(row),
-    'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, D',
+    'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, DE',
   );
   assert.deepEqual(mapDeliveryAddressRow(row), {
     id: '117',
     addressNo: '0',
     customerId: '38201',
-    text: 'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, D',
+    text: 'Karl Schoengen KG, Werk, Carl Zeiss Weg 8, 38239 Salzgitter-Watenstedt, DE',
     short: '',
     name1: 'Karl Schoengen KG',
     name2: 'Werk',
-    countryCode: 'D',
+    countryCode: 'DE',
     region: '',
   });
 });
@@ -69,7 +70,7 @@ test('normalizes a new delivery address from customer defaults', () => {
     street: 'Hafenstraße 12',
     postalCode: '20457',
     city: 'Hamburg',
-    countryCode: 'de',
+    countryId: 'd',
     pickupTimes: 'Mo-Fr 08:00-16:00',
     contact: 'Max Mustermann',
   }, {
@@ -84,7 +85,7 @@ test('normalizes a new delivery address from customer defaults', () => {
     name1: 'Kunde GmbH',
     name2: 'Werk 1',
     street: 'Hafenstraße 12',
-    countryCode: 'DE',
+    countryId: 'D',
     postalCode: '20457',
     city: 'Hamburg',
     region: 'Nord',
@@ -93,13 +94,13 @@ test('normalizes a new delivery address from customer defaults', () => {
   });
 });
 
-test('requires a two-letter country code and required address fields', () => {
+test('requires a country type id and required address fields', () => {
   assert.throws(
-    () => normalizeDeliveryAddressInput({ street: 'Hafenstraße 12', postalCode: '20457', city: 'Hamburg', countryCode: 'D' }, { kd_KdNR: '10001' }),
-    (error) => error?.details?.code === 'DELIVERY_ADDRESS_COUNTRY_CODE_INVALID',
+    () => normalizeDeliveryAddressInput({ street: 'Hafenstraße 12', postalCode: '20457', city: 'Hamburg', countryId: '' }, { kd_KdNR: '10001' }),
+    (error) => error?.details?.code === 'DELIVERY_ADDRESS_REQUIRED' && error.details.fields.includes('countryId'),
   );
   assert.throws(
-    () => normalizeDeliveryAddressInput({ street: '', postalCode: '20457', city: 'Hamburg', countryCode: 'DE' }, { kd_KdNR: '10001' }),
+    () => normalizeDeliveryAddressInput({ street: '', postalCode: '20457', city: 'Hamburg', countryId: 'D' }, { kd_KdNR: '10001' }),
     (error) => error?.details?.code === 'DELIVERY_ADDRESS_REQUIRED' && error.details.fields.includes('street'),
   );
 });
