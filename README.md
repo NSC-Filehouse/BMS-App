@@ -191,6 +191,10 @@ Aufträge werden nach Ablauf des Fensters mit der dann aktuellen Auftragssumme
 neu bewertet. Der Betrag wird in 50-, 500-, 5.000- oder 50.000-EUR-Schritten
 aufgerundet. Fehlen Bankdaten, wird zusätzlich der Haupt-Außendienst des
 Kunden einmal pro Cooldown-Zeitraum per Mail zur Stammdatenpflege aufgefordert.
+Steht in `tblKunden.kd_Insolvenz` der Wert `1`, werden Kreditlimit- und
+Bankdaten-Automatik unterdrückt. Die normale Auftragsmail wird weiterhin
+gesendet und beginnt mit dem fett roten Hinweis „Kunde insolvent!“. Auch eine
+bereits wartende Kreditlimit-Mail wird vor dem Versand nochmals geprüft.
 
 ## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
 

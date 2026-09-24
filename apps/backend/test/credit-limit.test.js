@@ -6,7 +6,9 @@ const {
   calculateTempOrderValue,
   formatCreditLimitRequestBody,
   hasBankDetails,
+  isInsolventFlag,
   isWithinCooldown,
+  mapCustomerIdentity,
   roundCreditLimit,
 } = require('../src/credit-limit');
 const config = require('../src/config');
@@ -65,6 +67,16 @@ test('detects bank details and suppresses repeated requests during the cooldown'
   assert.equal(hasBankDetails({ iban: '', bankName: '', accountNumber: '', bankInfo: '' }), false);
   assert.equal(isWithinCooldown('2026-06-01T00:00:00.000Z', new Date('2026-09-01T00:00:00.000Z'), 6), true);
   assert.equal(isWithinCooldown('2025-12-01T00:00:00.000Z', new Date('2026-09-01T00:00:00.000Z'), 6), false);
+});
+
+test('interprets the customer insolvency flag without treating string zero as true', () => {
+  assert.equal(isInsolventFlag(1), true);
+  assert.equal(isInsolventFlag(true), true);
+  assert.equal(isInsolventFlag('1'), true);
+  assert.equal(isInsolventFlag(0), false);
+  assert.equal(isInsolventFlag('0'), false);
+  assert.equal(mapCustomerIdentity({ customerId: 'K-1', insolvent: 1 }).insolvent, true);
+  assert.equal(mapCustomerIdentity({ customerId: 'K-1', insolvent: 0 }).insolvent, false);
 });
 
 test('credit-limit mail body contains the legal customer identity and exposure', () => {
@@ -191,6 +203,29 @@ test('queues one request and suppresses the next request for the same customer',
     }]);
     assert.equal(second.result.creditRequest.status, 'suppressed_cooldown');
     assert.equal(second.calls.some((call) => call.sql.includes('INSERT INTO')), false);
+
+    const insolvent = await queueCreditLimitMails({
+      query: async () => { throw new Error('insolvent customers must not query the request state'); },
+      companyId: 7,
+      customerId: 'K-1',
+      orderId: 42,
+      currentOrderAmount: 323000,
+      openTempOrders: [],
+      creditContext: {
+        ...creditContext,
+        customer: { ...creditContext.customer, insolvent: true },
+      },
+      primaryAdEmail: 'ad@example.com',
+      mandantName: 'Mandant GmbH',
+      mandantShortName: 'MFL',
+      nowIso,
+      creditTo: ['Kimaz@mlplastics.de'],
+      creditCc: ['Meyer@mlplastics.de'],
+      testRecipient: '',
+    });
+    assert.equal(insolvent.creditRequest.status, 'suppressed_insolvent');
+    assert.equal(insolvent.bankReminder.status, 'suppressed_insolvent');
+    assert.deepEqual(insolvent.outboxIds, []);
   } finally {
     config.creditLimitMail.enabled = previousEnabled;
     config.creditLimitMail.cooldownMonths = previousCooldown;

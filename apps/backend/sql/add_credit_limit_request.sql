@@ -53,7 +53,7 @@ BEGIN
     CONSTRAINT [CK_CreditLimitMailOutbox_Type]
       CHECK ([clm_Type] IN (N'credit_limit_request', N'bank_details_reminder')),
     CONSTRAINT [CK_CreditLimitMailOutbox_Status]
-      CHECK ([clm_Status] IN (N'pending', N'sending', N'sent', N'failed'))
+      CHECK ([clm_Status] IN (N'pending', N'sending', N'sent', N'failed', N'suppressed'))
   );
 
   CREATE INDEX [IX_CreditLimitMailOutbox_Pending]
@@ -61,6 +61,19 @@ BEGIN
 
   CREATE INDEX [IX_CreditLimitMailOutbox_Customer]
     ON [BMSApp].[CreditLimitMailOutbox] ([clm_CompanyID], [clm_CustomerID], [clm_CreateDate]);
+END;
+
+IF OBJECT_ID(N'BMSApp.CreditLimitMailOutbox', N'U') IS NOT NULL
+BEGIN
+  IF OBJECT_ID(N'BMSApp.CK_CreditLimitMailOutbox_Status', N'C') IS NOT NULL
+  BEGIN
+    ALTER TABLE [BMSApp].[CreditLimitMailOutbox]
+      DROP CONSTRAINT [CK_CreditLimitMailOutbox_Status];
+  END;
+
+  ALTER TABLE [BMSApp].[CreditLimitMailOutbox]
+    ADD CONSTRAINT [CK_CreditLimitMailOutbox_Status]
+      CHECK ([clm_Status] IN (N'pending', N'sending', N'sent', N'failed', N'suppressed'));
 END;
 
 COMMIT TRANSACTION;

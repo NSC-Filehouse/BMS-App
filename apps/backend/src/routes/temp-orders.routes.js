@@ -1857,7 +1857,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   let primaryAdEmail = '';
   let orderSalesRepresentative = null;
   let creditLimitLookupStatus = 'not_applicable';
-  if (config.creditLimitMail.enabled) {
+  if (config.creditLimitMail.enabled || config.orderMail.enabled) {
     try {
       const customerRows = await runSQLQuerySqlServer(config.sql.database, `
         SELECT TOP 1
@@ -1886,7 +1886,9 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         creditLimitContext = await loadCustomerCreditContext(req.database, customerId);
         if (!creditLimitContext) {
           creditLimitLookupStatus = 'customer_not_found';
-        } else if (creditLimitContext.credit.amount !== 0) {
+        } else if (creditLimitContext.customer.insolvent) {
+          creditLimitLookupStatus = 'insolvent';
+        } else if (!config.creditLimitMail.enabled || creditLimitContext.credit.amount !== 0) {
           creditLimitLookupStatus = 'not_required';
         } else {
           creditLimitLookupStatus = 'eligible';
@@ -2055,6 +2057,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         mandantShortName: req.database?.shortName || null,
         finalizedBy,
         finalizedAt: nowIso,
+        insolvent: Boolean(creditLimitContext?.customer?.insolvent),
       });
 
       await query(`

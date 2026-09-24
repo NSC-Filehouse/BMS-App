@@ -1,11 +1,13 @@
 const config = require('../config');
 const logger = require('../logger');
-const { runSQLQuerySqlServer } = require('./access');
+const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
+const { getDatabaseConnectionForCompanyId } = require('./databases');
 const { appTableSql } = require('./app-tables');
 const {
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
   hasBankDetails,
+  isInsolventFlag,
   isEmailAddress,
   isWithinCooldown,
   roundCreditLimit,
@@ -209,6 +211,14 @@ async function queueCreditLimitMails({
     return result;
   }
 
+  if (creditContext.customer?.insolvent) {
+    return {
+      ...result,
+      creditRequest: { status: 'suppressed_insolvent' },
+      bankReminder: { status: 'suppressed_insolvent' },
+    };
+  }
+
   const state = await loadStateForUpdate(query, companyId, customerId);
   const now = new Date(nowIso);
   const cooldownMonths = config.creditLimitMail.cooldownMonths;
@@ -407,11 +417,40 @@ async function updateStateMailStatus(item, status) {
   `, [status, item.companyId, item.customerId]);
 }
 
+async function isCustomerCurrentlyInsolvent(item) {
+  const database = await getDatabaseConnectionForCompanyId(item.companyId);
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1 [kd_Insolvenz] AS insolvent
+    FROM [dbo].[tblKunden]
+    WHERE [kd_KdNR] = ?
+  `, [item.customerId]);
+  return isInsolventFlag(rows?.[0]?.insolvent);
+}
+
+async function suppressInsolventOutboxItem(item) {
+  await runSQLQuerySqlServer(config.sql.database, `
+    UPDATE ${OUTBOX_TABLE}
+    SET [clm_Status] = N'suppressed',
+        [clm_NextAttemptAt] = NULL,
+        [clm_LockedAt] = NULL,
+        [clm_LastError] = N'Kunde ist insolvent.',
+        [clm_LastModifiedDate] = SYSUTCDATETIME()
+    WHERE [clm_ID] = ?
+  `, [item.id]);
+  await updateStateMailStatus(item, 'suppressed_insolvent');
+  logger.info(`Kreditlimit-Mail ${item.id} fuer insolventen Kunden ${item.customerId} unterdrueckt.`);
+  return { processed: true, status: 'suppressed_insolvent', type: item.type };
+}
+
 async function processCreditLimitMailOutboxById(outboxId) {
   const item = await claimSpecificOutboxItem(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
 
   try {
+    if (await isCustomerCurrentlyInsolvent(item)) {
+      return suppressInsolventOutboxItem(item);
+    }
+
     const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
       mailServiceConfig: config.mailService,

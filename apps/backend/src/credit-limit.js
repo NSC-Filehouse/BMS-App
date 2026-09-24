@@ -30,6 +30,11 @@ function normalizeEmail(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function isInsolventFlag(value) {
+  if (value === true || value === 1) return true;
+  return ['1', 'true'].includes(normalizeText(value).toLowerCase());
+}
+
 function isEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(normalizeText(value));
 }
@@ -122,6 +127,7 @@ function mapCustomerIdentity(row) {
     city: normalizeText(row.city),
     street: normalizeText(row.street),
     vatId: normalizeText(row.vatId),
+    insolvent: isInsolventFlag(row.insolvent),
     mainSalesRepresentative: normalizeText(row.mainSalesRepresentative),
     iban: normalizeText(row.iban),
     swift: normalizeText(row.swift),
@@ -148,6 +154,7 @@ async function loadCustomerCreditContext(database, customerId) {
       [kd_Ort] AS city,
       [kd_Strasse] AS street,
       [kd_UST_Ident_Nr] AS vatId,
+      [kd_Insolvenz] AS insolvent,
       [kd_Aussendienst] AS mainSalesRepresentative,
       [kd_IBAN] AS iban,
       [kd_SWIFT] AS swift,
@@ -307,6 +314,7 @@ module.exports = {
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
   hasBankDetails,
+  isInsolventFlag,
   isEmailAddress,
   isWithinCooldown,
   loadCustomerCreditContext,

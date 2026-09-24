@@ -183,6 +183,7 @@ async function processOrderMailOutboxById(outboxId) {
       body: item.body,
       attachment: await loadAttachment(item.orderId),
       clientMessageId: `bms-app:order:${item.orderId}`,
+      isBodyHtml: true,
     });
     await runSQLQuerySqlServer(config.sql.database, `
       UPDATE ${OUTBOX_TABLE}

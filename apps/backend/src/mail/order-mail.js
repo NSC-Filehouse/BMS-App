@@ -121,6 +121,15 @@ function line(label, value) {
   return `${label}: ${asText(value) || '-'}`;
 }
 
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatUnfinalizedOrderReminderBody({ count } = {}) {
   const numericCount = Number(count);
   const countText = Number.isFinite(numericCount) ? numericCount.toLocaleString('de-DE') : '-';
@@ -133,7 +142,15 @@ function formatUnfinalizedOrderReminderBody({ count } = {}) {
   ].join('\r\n');
 }
 
-function formatOrderMailBody({ order, positions, mandantName, mandantShortName, finalizedBy, finalizedAt }) {
+function formatOrderMailBody({
+  order,
+  positions,
+  mandantName,
+  mandantShortName,
+  finalizedBy,
+  finalizedAt,
+  insolvent = false,
+}) {
   const list = Array.isArray(positions) ? positions : [];
   const lines = [
     'In der BMS-App wurde ein neuer Auftrag finalisiert.',
@@ -193,7 +210,13 @@ function formatOrderMailBody({ order, positions, mandantName, mandantShortName, 
     );
   });
 
-  return lines.join('\r\n');
+  const warning = insolvent
+    ? '<div style="color:#c00000;font-weight:700;font-size:18px;margin:0 0 14px 0;">Kunde insolvent!</div>'
+    : '';
+  const content = lines
+    .map((value) => value ? escapeHtml(value) : '&nbsp;')
+    .join('<br>');
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.4;">${warning}${content}</div>`;
 }
 
 function validateEwsConfig(orderMailConfig) {

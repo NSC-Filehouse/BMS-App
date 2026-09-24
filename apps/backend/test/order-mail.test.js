@@ -542,6 +542,24 @@ test('mail body contains the complete structured order data', () => {
   }
 });
 
+test('marks an insolvent customer at the top of the normal order mail', () => {
+  const body = formatOrderMailBody({
+    mandantName: 'MLPlastics',
+    mandantShortName: 'PLA',
+    finalizedBy: 'NS',
+    finalizedAt: '2026-09-24T10:00:00.000Z',
+    insolvent: true,
+    order: { id: 42, clientReferenceId: 'K-100', clientName: 'Testkunde' },
+    positions: [],
+  });
+
+  const warningIndex = body.indexOf('Kunde insolvent!');
+  const introIndex = body.indexOf('In der BMS-App wurde ein neuer Auftrag finalisiert.');
+  assert.ok(warningIndex >= 0);
+  assert.ok(warningIndex < introIndex);
+  assert.match(body, /color:#c00000;font-weight:700/);
+});
+
 test('unfinalized order reminder contains the current count', () => {
   assert.equal(
     UNFINALIZED_ORDER_REMINDER_SUBJECT,
