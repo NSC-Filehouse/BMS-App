@@ -625,6 +625,8 @@ export default function CustomerDetail() {
     }
   }, [address, id, name, t]);
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
+  const isInsolvent = Number(item?.kd_Insolvenz) === 1;
+  const hasLawyer = Number(item?.kd_Anwalt) === 1;
   const creditLimit = item?.creditLimit || null;
   const creditLimitText = creditLimit?.status === 'expired'
     ? t('credit_limit_expired')
@@ -1793,11 +1795,23 @@ export default function CustomerDetail() {
 
             <Divider sx={{ my: 3 }} />
 
-            {!isSupplier && reminderInvoicesCount > 0 && (
+            {(isInsolvent || hasLawyer || (!isSupplier && reminderInvoicesCount > 0)) && (
               <>
-                <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
-                  {t('customer_reminder_warning', { count: reminderInvoicesCount })}
-                </Typography>
+                {isInsolvent && (
+                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.5 }}>
+                    {t('customer_insolvent_warning')}
+                  </Typography>
+                )}
+                {hasLawyer && (
+                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.5 }}>
+                    {t('customer_lawyer_warning')}
+                  </Typography>
+                )}
+                {!isSupplier && reminderInvoicesCount > 0 && (
+                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
+                    {t('customer_reminder_warning', { count: reminderInvoicesCount })}
+                  </Typography>
+                )}
                 <Divider sx={{ my: 3 }} />
               </>
             )}
