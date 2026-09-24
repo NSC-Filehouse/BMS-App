@@ -38,6 +38,7 @@ const router = express.Router();
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
 const ACTIVE_CUSTOMERS_TTL_MS = 5 * 60 * 1000;
+const RECENT_CUSTOMER_LIMIT = 25;
 const activeCustomersCache = new Map();
 
 function normalizeTotal(countResult) {
@@ -220,7 +221,7 @@ function buildWhereClause(q, searchField, options = {}) {
       ? [col('[kd_Region]')]
       : mode === 'sales'
         ? [col('[kd_Aussendienst]')]
-        : [col('[kd_Name1]'), col('[kd_Name2]'), col('[kd_Kurz]')];
+        : [col('[kd_Kurz]')];
   const searchClauses = fields.map((f) => `${f} LIKE ?`);
   clauses.push(`(${searchClauses.join(' OR ')})`);
   return {
@@ -331,6 +332,17 @@ async function loadActiveCustomerIds(database, supplierOnly = false) {
 function toText(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function parseRecentCustomerIds(value) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(value || '[]'));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return Array.from(new Set(parsed.map(toText).filter(Boolean))).slice(0, RECENT_CUSTOMER_LIMIT);
 }
 
 function toDateOnly(value) {
@@ -570,13 +582,21 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
-    sort: reminderOnly ? 'kd_Name1' : 'orderCountLast2Years',
-    dir: reminderOnly ? 'ASC' : 'DESC',
+    sort: 'kd_Name1',
+    dir: 'ASC',
   });
 
-  const safeSort = resolveSortField(sort, reminderOnly ? 'kd_Name1' : 'orderCountLast2Years');
+  const safeSort = resolveSortField(sort, 'kd_Name1');
   const safeDir = normalizeDir(dir);
   const searchField = resolveSearchField(req.query.searchField);
+  const hasRecentCustomerOrder = !q && req.query.recentCustomerIds !== undefined;
+  const recentCustomerIdsJson = hasRecentCustomerOrder
+    ? JSON.stringify(parseRecentCustomerIds(req.query.recentCustomerIds))
+    : null;
+  const recentCustomerJoinSql = hasRecentCustomerOrder
+    ? `INNER JOIN OPENJSON(?) [recent_customer]
+      ON [recent_customer].[value] = COALESCE([k].[kd_KdNR], '')`
+    : '';
   const activeOnly = !reminderOnly && !includeInactive;
   const activeCustomerIds = activeOnly ? await loadActiveCustomerIds(req.database, supplierOnly) : [];
   const activeCustomerIdsJson = activeOnly ? JSON.stringify(activeCustomerIds) : null;
@@ -589,14 +609,22 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     reminderOnly,
     supplierOnly,
   });
-  const queryParams = activeOnly ? [activeCustomerIdsJson, ...params] : params;
+  const queryParams = [
+    ...(hasRecentCustomerOrder ? [recentCustomerIdsJson] : []),
+    ...(activeOnly ? [activeCustomerIdsJson] : []),
+    ...params,
+  ];
   const offset = (page - 1) * pageSize;
+  const orderBySql = hasRecentCustomerOrder
+    ? `TRY_CONVERT(INT, [recent_customer].[key]) ASC, [k].[kd_Name1] ASC, [k].[kd_KdNR] ASC`
+    : buildCustomerOrderBy(safeSort, safeDir);
 
   const cteSql = `${getReminderCountsCte()}${getOrderCountsCte()}`;
   const countSql = `
     ${cteSql}
     SELECT COUNT(*) AS total
     FROM [dbo].[tblKunden] [k]
+    ${recentCustomerJoinSql}
     ${activeJoinSql}
     LEFT JOIN [reminder_counts] [rc]
       ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
@@ -612,13 +640,14 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       COALESCE([rc].[reminderInvoicesCount], 0) AS reminderInvoicesCount,
       COALESCE([oc].[orderCountLast2Years], 0) AS orderCountLast2Years
     FROM [dbo].[tblKunden] [k]
+    ${recentCustomerJoinSql}
     ${activeJoinSql}
     LEFT JOIN [reminder_counts] [rc]
       ON COALESCE([k].[kd_KdNR], '') = [rc].[customerId]
     LEFT JOIN [order_counts] [oc]
       ON COALESCE([k].[kd_KdNR], '') = [oc].[customerId]
     ${whereSql}
-    ORDER BY ${buildCustomerOrderBy(safeSort, safeDir)}
+    ORDER BY ${orderBySql}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(req.database, dataSql, [...queryParams, offset, pageSize]);
@@ -639,8 +668,8 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       includeInactive,
       supplierOnly,
       activityWindowYears: 2,
-      sort: safeSort.key,
-      dir: safeDir,
+      sort: hasRecentCustomerOrder ? 'recent' : safeSort.key,
+      dir: hasRecentCustomerOrder ? 'ASC' : safeDir,
     },
     error: null,
   });

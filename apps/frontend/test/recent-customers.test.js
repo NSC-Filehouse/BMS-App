@@ -35,14 +35,14 @@ test('records recent customers newest first and moves duplicates to the top', ()
   );
 });
 
-test('keeps only the latest 20 customers', () => {
-  for (let index = 1; index <= 21; index += 1) {
+test('keeps only the latest 25 customers', () => {
+  for (let index = 1; index <= 26; index += 1) {
     recordRecentCustomer({ id: String(index), name: `Kunde ${index}` });
   }
 
   const recent = getRecentCustomers();
-  assert.equal(recent.length, 20);
-  assert.equal(recent[0].id, '21');
+  assert.equal(recent.length, 25);
+  assert.equal(recent[0].id, '26');
   assert.equal(recent.at(-1).id, '2');
 });
 

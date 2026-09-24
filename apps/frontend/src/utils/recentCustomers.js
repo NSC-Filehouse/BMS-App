@@ -1,7 +1,8 @@
 import { getMandant } from './mandant.js';
 
 const PREFIX = 'bms.recentCustomers';
-const MAX_RECENT_CUSTOMERS = 20;
+export const RECENT_CUSTOMERS_LIMIT = 25;
+const MAX_RECENT_CUSTOMERS = RECENT_CUSTOMERS_LIMIT;
 export const RECENT_CUSTOMERS_CHANGED = 'bms:recent-customers-changed';
 
 function key() {

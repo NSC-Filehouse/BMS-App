@@ -31,6 +31,8 @@ import {
 } from '../utils/customerSelection.js';
 import {
   getRecentCustomers,
+  RECENT_CUSTOMERS_LIMIT,
+  recordRecentCustomer,
   RECENT_CUSTOMERS_CHANGED,
 } from '../utils/recentCustomers.js';
 
@@ -74,7 +76,7 @@ export default function CustomersList() {
   const [q, setQ] = React.useState('');
   const [searchField, setSearchField] = React.useState('name');
   const [reminderOnly, setReminderOnly] = React.useState(false);
-  const [orderQuantity, setOrderQuantity] = React.useState(true);
+  const [orderQuantity, setOrderQuantity] = React.useState(false);
   const [hideInactive, setHideInactive] = React.useState(false);
   const [supplierOnly, setSupplierOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
@@ -123,47 +125,78 @@ export default function CustomersList() {
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
   const isRecentMode = searchField === 'recent';
+  const isRecentListView = isRecentMode || (
+    !q.trim()
+    && !orderQuantity
+  );
 
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
-    const page = opts.page ?? currentMeta.page ?? 1;
-    const pageSize = PAGE_SIZE;
+    const requestedPage = opts.page ?? currentMeta.page ?? 1;
     const qVal = opts.q ?? qRef.current ?? '';
     const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
-    const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? true;
+    const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? false;
     const hideInactiveVal = opts.hideInactive ?? hideInactiveRef.current ?? false;
-    const recentMode = searchFieldVal === 'recent';
-    const recentRows = recentMode
-      ? getRecentCustomers().map(recentCustomerToRow)
+    const supplierOnlyVal = opts.supplierOnly ?? supplierOnlyRef.current ?? false;
+    const useRecentRows = searchFieldVal === 'recent' || (
+      !qVal.trim()
+      && !reminderOnlyVal
+      && !orderQuantityVal
+      && !hideInactiveVal
+      && !supplierOnlyVal
+    );
+    const recentCustomers = qVal.trim() ? [] : getRecentCustomers();
+    const recentRows = useRecentRows
+      ? recentCustomers.map(recentCustomerToRow)
       : null;
+    const recentCustomerIds = recentCustomers.map((customer) => String(customer.id || '').trim()).filter(Boolean);
+    const useRecentOrder = !qVal.trim() && !orderQuantityVal && searchFieldVal !== 'recent';
+    const pageSize = useRecentOrder ? RECENT_CUSTOMERS_LIMIT : PAGE_SIZE;
+    const page = useRecentRows || useRecentOrder ? 1 : requestedPage;
     const useOrderQuantity = !reminderOnlyVal && orderQuantityVal;
     const sortVal = useOrderQuantity ? 'orderCountLast2Years' : 'kd_Name1';
     const dirVal = useOrderQuantity ? 'DESC' : 'ASC';
-    const focusCustomerId = String(opts.focusCustomerId || '').trim();
+    const selectedCustomerForFocus = getSelectedCustomer();
+    const requestedFocusCustomerId = opts.focusCustomerId !== undefined
+      ? opts.focusCustomerId
+      : selectedCustomerForFocus?.id;
+    const focusCustomerId = qVal.trim()
+      ? ''
+      : String(requestedFocusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        recentMode
+        useRecentRows
           ? Promise.resolve({
             data: recentRows,
-            meta: { page: 1, pageSize, total: recentRows.length },
+            meta: { page: 1, pageSize: RECENT_CUSTOMERS_LIMIT, total: recentRows.length },
           })
-          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnlyRef.current ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}`),
+          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnlyVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
       ]);
       const rows = res?.data || [];
       const filtered = rows.filter((row) => isValidCustomerName(getCustomerName(row)));
-      const focusedCustomer = focusedCustomerRes?.data;
+      const focusedCustomer = focusCustomerId
+        ? (
+          (String(focusedCustomerRes?.data?.kd_KdNR || '').trim() === focusCustomerId
+            ? focusedCustomerRes.data
+            : null)
+          || rows.find((row) => String(row?.kd_KdNR || '').trim() === focusCustomerId)
+          || (String(selectedCustomerForFocus?.id || '').trim() === focusCustomerId
+            ? recentCustomerToRow(selectedCustomerForFocus)
+            : null)
+        )
+        : null;
       const focusedCustomerIsValid = focusedCustomer
-        && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId
-        && isValidCustomerName(getCustomerName(focusedCustomer));
-      const displayRows = focusedCustomerIsValid
+        && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId;
+      let displayRows = focusedCustomerIsValid
         ? [focusedCustomer, ...filtered.filter((row) => String(row?.kd_KdNR || '').trim() !== focusCustomerId)]
         : filtered;
+      if (useRecentRows || useRecentOrder) displayRows = displayRows.slice(0, RECENT_CUSTOMERS_LIMIT);
       setItems(displayRows);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
@@ -176,9 +209,18 @@ export default function CustomersList() {
   React.useEffect(() => {
     const syncSelectedCustomer = () => setSelectedCustomerState(getSelectedCustomer());
     const syncRecentCustomers = () => {
-      if (searchFieldRef.current === 'recent') {
-        load({ page: 1, q: '', searchField: 'recent', reminderOnly: false, orderQuantity: false, hideInactive: false });
-      }
+      const showingRecentList = searchFieldRef.current === 'recent'
+        || (!String(qRef.current || '').trim() && !orderQuantityRef.current);
+      if (!showingRecentList) return;
+      load({
+        page: 1,
+        q: qRef.current,
+        searchField: searchFieldRef.current,
+        reminderOnly: reminderOnlyRef.current,
+        orderQuantity: orderQuantityRef.current,
+        hideInactive: hideInactiveRef.current,
+        supplierOnly: supplierOnlyRef.current,
+      });
     };
 
     window.addEventListener(CUSTOMER_SELECTION_CHANGED, syncSelectedCustomer);
@@ -205,7 +247,7 @@ export default function CustomersList() {
       const restoredReminderOnly = Boolean(listState.reminderOnly);
       const restoredOrderQuantity = listState.orderQuantity !== undefined
         ? Boolean(listState.orderQuantity)
-        : true;
+        : false;
       const restoredHideInactive = listState.hideInactive !== undefined
         ? Boolean(listState.hideInactive)
         : listState.includeInactive !== undefined
@@ -233,7 +275,7 @@ export default function CustomersList() {
       setQ('');
       setSearchField('name');
       setReminderOnly(false);
-      setOrderQuantity(true);
+      setOrderQuantity(false);
       setHideInactive(false);
       setSupplierOnly(false);
       load({
@@ -241,7 +283,7 @@ export default function CustomersList() {
         q: '',
         searchField: 'name',
         reminderOnly: false,
-        orderQuantity: true,
+        orderQuantity: false,
         hideInactive: false,
         focusCustomerId: currentSelectedCustomer?.id,
       });
@@ -252,7 +294,7 @@ export default function CustomersList() {
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
     skipSearchReloadRef.current = true;
-    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: true, hideInactive: false, focusCustomerId: selectedCustomerId });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: false, hideInactive: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -271,6 +313,7 @@ export default function CustomersList() {
   }, []);
 
   React.useEffect(() => {
+    if (q.trim()) setItems([]);
     const handle = setTimeout(() => {
       const qVal = q.trim();
       if (skipSearchReloadRef.current) {
@@ -292,6 +335,12 @@ export default function CustomersList() {
       representative: row?.kd_Aussendienst || '',
     });
     setSelectedCustomerState(next);
+    recordRecentCustomer({
+      id: row?.kd_KdNR,
+      name: getCustomerName(row),
+      address: buildAddress(row),
+      representative: row?.kd_Aussendienst || '',
+    });
     const afterSelect = location.state?.afterSelect;
     if (afterSelect?.to) {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
@@ -315,7 +364,7 @@ export default function CustomersList() {
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {reminderOnly ? t('customers_reminders_title') : t('customers_title')}
         </Typography>
-        {!isRecentMode && (
+        {!isRecentListView && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
               aria-label="zurueck"
@@ -502,7 +551,7 @@ export default function CustomersList() {
 
       {!loading && !error && items.length === 0 && (
         <Typography sx={{ opacity: 0.7 }}>
-          {isRecentMode ? t('customers_recent_empty') : t('customers_empty')}
+          {isRecentListView ? t('customers_recent_empty') : t('customers_empty')}
         </Typography>
       )}
 
