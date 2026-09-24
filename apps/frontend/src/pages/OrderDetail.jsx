@@ -20,6 +20,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
@@ -178,6 +179,7 @@ export default function OrderDetail() {
   const chooseCustomer = React.useCallback(() => {
     setCustomerRequiredOpen(false);
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: location.pathname,
@@ -202,12 +204,16 @@ export default function OrderDetail() {
   }, [addReservationToCart, item, location.pathname, location.state, navigate]);
 
   const handleBack = React.useCallback(() => {
-    const fromOrders = location.state?.fromOrders;
-    if (fromOrders) {
-      navigate('/orders', { state: { listState: fromOrders } });
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/orders');
       return;
     }
-    navigate(-1);
+    const fromOrders = location.state?.fromOrders;
+    if (fromOrders) {
+      navigate('/orders', { replace: true, state: { listState: fromOrders } });
+      return;
+    }
+    navigate('/orders', { replace: true });
   }, [location.state, navigate]);
 
   return (
@@ -275,7 +281,12 @@ export default function OrderDetail() {
                         setSuccess('');
                         await apiRequest(`/orders/${encodeURIComponent(id)}${sourceQuery}`, { method: 'DELETE' });
                         setSuccess(t('reservation_deleted'));
-                        navigate('/orders', { state: { sourceMandantId: sourceMandantId || null } });
+                        navigateToReturn(
+                          navigate,
+                          location.state?.returnTo,
+                          '/orders',
+                          { sourceMandantId: sourceMandantId || null },
+                        );
                       } catch (e) {
                         setError(e?.message || t('loading_error'));
                       }

@@ -13,9 +13,10 @@ import {
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 import {
   getPurchaseCartItems,
   removePurchaseCartItem,
@@ -25,6 +26,7 @@ import {
 
 export default function PurchaseCart() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const [items, setItems] = React.useState(() => getPurchaseCartItems());
   const [locations, setLocations] = React.useState([]);
@@ -161,7 +163,10 @@ export default function PurchaseCart() {
       });
       clearPurchaseCart();
       setSuccess('Bestellentwurf wurde angelegt.');
-      navigate(`/temp-purchase-orders/${encodeURIComponent(response?.data?.id)}`);
+      navigate(`/temp-purchase-orders/${encodeURIComponent(response?.data?.id)}`, {
+        replace: true,
+        state: location.state?.returnTo ? { returnTo: location.state.returnTo } : null,
+      });
     } catch (e) {
       setError(e?.payload?.error?.suggestedDate
         ? `${e.message} Vorschlag: ${e.payload.error.suggestedDate}`
@@ -183,7 +188,7 @@ export default function PurchaseCart() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', display: 'grid', gap: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <IconButton onClick={() => navigate('/temp-purchase-orders')} aria-label="zurück"><ArrowBackIcon /></IconButton>
+        <IconButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/temp-purchase-orders')} aria-label="zurück"><ArrowBackIcon /></IconButton>
         <Typography variant="h5" sx={{ flex: 1 }}>{t('temp_purchase_cart_title')}</Typography>
       </Box>
       {error && <Alert severity="error">{error}</Alert>}

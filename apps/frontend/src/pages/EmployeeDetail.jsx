@@ -18,6 +18,7 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 
 function text(value) {
   return value === null || value === undefined ? '' : String(value).trim();
@@ -116,14 +117,19 @@ export default function EmployeeDetail() {
   )).join(' / ');
 
   const handleBack = React.useCallback(() => {
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/customers');
+      return;
+    }
     const fromCustomer = location.state?.fromCustomer;
     if (fromCustomer?.id) {
       navigate(`/customers/${encodeURIComponent(fromCustomer.id)}`, {
+        replace: true,
         state: fromCustomer.fromCustomers ? { fromCustomers: fromCustomer.fromCustomers } : undefined,
       });
       return;
     }
-    navigate(-1);
+    navigate('/customers', { replace: true });
   }, [location.state, navigate]);
 
   return (

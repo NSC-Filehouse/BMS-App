@@ -23,6 +23,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 import {
   CUSTOMER_SELECTION_CHANGED,
   getSelectedCustomer,
@@ -195,6 +196,7 @@ export default function CustomersList() {
   React.useEffect(() => {
     const focusSelected = Boolean(location.state?.focusSelected);
     const listState = location.state?.listState;
+    const afterSelect = location.state?.afterSelect || null;
     const selectedCustomerId = getSelectedCustomer()?.id;
     if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined || listState.supplierOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
@@ -220,7 +222,7 @@ export default function CustomersList() {
       setSupplierOnly(restoredSupplierOnly);
       supplierOnlyRef.current = restoredSupplierOnly;
       load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, focusCustomerId: selectedCustomerId });
-      navigate(location.pathname, { replace: true, state: null });
+      navigate(location.pathname, { replace: true, state: afterSelect ? { afterSelect } : null });
       return;
     }
 
@@ -550,6 +552,10 @@ export default function CustomersList() {
                     state: {
                       fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly },
                       afterSelect: location.state?.afterSelect || null,
+                      returnTo: createReturnTo(location, {
+                        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly },
+                        afterSelect: location.state?.afterSelect || null,
+                      }),
                     },
                   });
                 }}

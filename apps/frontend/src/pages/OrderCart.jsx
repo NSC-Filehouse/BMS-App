@@ -18,6 +18,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
@@ -92,16 +93,18 @@ export default function OrderCart() {
     setCustomerRequiredOpen(false);
     if (Array.isArray(pendingSourceItems) && pendingSourceItems.length > 0) {
       navigate('/customers', {
+        replace: true,
         state: {
           afterSelect: {
             to: '/temp-orders/new',
-            state: { sourceItems: pendingSourceItems },
+            state: { sourceItems: pendingSourceItems, returnTo: createReturnTo(location) },
           },
         },
       });
       return;
     }
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: '/order-cart',
@@ -218,15 +221,15 @@ export default function OrderCart() {
         <IconButton
           aria-label="back"
           onClick={() => {
+            if (location.state?.returnTo?.pathname) {
+              navigateToReturn(navigate, location.state.returnTo, '/products');
+              return;
+            }
             if (location.state?.fromVl) {
-              navigate('/vl');
+              navigate('/vl', { replace: true });
               return;
             }
-            if (window.history.length > 1) {
-              navigate(-1);
-              return;
-            }
-            navigate('/products');
+            navigate('/products', { replace: true });
           }}
         >
           <ArrowBackIcon />
@@ -461,6 +464,7 @@ export default function OrderCart() {
                 navigate('/temp-orders/new', {
                   state: {
                     sourceItems,
+                    returnTo: createReturnTo(location),
                   },
                 });
               }}

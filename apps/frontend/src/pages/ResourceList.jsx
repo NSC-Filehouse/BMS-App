@@ -16,9 +16,10 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { RESOURCES } from '../config.js';
+import { createReturnTo } from '../utils/navigation.js';
 
 function buildColumns(items, pk) {
   if (!items || !items.length) return [pk];
@@ -30,6 +31,7 @@ function buildColumns(items, pk) {
 export default function ResourceList({ resourceKey }) {
   const resource = RESOURCES[resourceKey];
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [items, setItems] = React.useState([]);
   const [meta, setMeta] = React.useState({ page: 1, pageSize: 25, total: null });
@@ -138,7 +140,9 @@ export default function ResourceList({ resourceKey }) {
                       key={id ?? idx}
                       hover
                       sx={{ cursor: 'pointer' }}
-                      onClick={() => navigate(`/${resource.key}/${encodeURIComponent(id)}`)}
+                      onClick={() => navigate(`/${resource.key}/${encodeURIComponent(id)}`, {
+                        state: { returnTo: createReturnTo(location) },
+                      })}
                     >
                       {columns.map((c) => (
                         <TableCell key={c}>

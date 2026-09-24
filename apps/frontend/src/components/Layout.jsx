@@ -35,6 +35,7 @@ import { CUSTOMER_SELECTION_CHANGED, clearSelectedCustomer, getSelectedCustomer 
 import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 import { getOrderCartCount, ORDER_CART_CHANGED } from '../utils/orderCart.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
+import { createReturnTo } from '../utils/navigation.js';
 
 const drawerWidth = 260;
 
@@ -43,7 +44,7 @@ function redirectToStart() {
   window.location.assign(`${APP_BASE_PATH}/`);
 }
 
-function NavItem({ to, label, icon, onClick }) {
+function NavItem({ to, label, icon, onClick, preserveReturn = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const selected = location.pathname === to || location.pathname.startsWith(`${to}/`);
@@ -52,7 +53,7 @@ function NavItem({ to, label, icon, onClick }) {
     <ListItemButton
       selected={selected}
       onClick={() => {
-        navigate(to);
+        navigate(to, preserveReturn ? { state: { returnTo: createReturnTo(location) } } : undefined);
         onClick?.();
       }}
     >
@@ -225,7 +226,7 @@ export default function Layout() {
       </List>
       <Divider />
       <List>
-        <NavItem to="/settings" label={t('settings_title')} icon={<SettingsIcon />} onClick={closeDrawer} />
+        <NavItem to="/settings" label={t('settings_title')} icon={<SettingsIcon />} onClick={closeDrawer} preserveReturn />
       </List>
       <Divider />
       <Box sx={{ p: 2 }}>
@@ -361,7 +362,7 @@ export default function Layout() {
           <IconButton
             color="inherit"
             disabled={!mandant}
-            onClick={() => navigate('/order-cart')}
+            onClick={() => navigate('/order-cart', { state: { returnTo: createReturnTo(location) } })}
             aria-label={t('cart_open')}
             sx={{ ml: 0.5, mr: -1 }}
           >

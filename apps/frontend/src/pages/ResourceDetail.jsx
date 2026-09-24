@@ -13,14 +13,16 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { RESOURCES } from '../config.js';
+import { navigateToReturn } from '../utils/navigation.js';
 
 export default function ResourceDetail({ resourceKey }) {
   const resource = RESOURCES[resourceKey];
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -50,7 +52,7 @@ export default function ResourceDetail({ resourceKey }) {
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="zurueck" onClick={() => navigate(-1)}>
+        <IconButton aria-label="zurueck" onClick={() => navigateToReturn(navigate, location.state?.returnTo, `/${resource.key}`)}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>

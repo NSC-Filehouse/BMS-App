@@ -21,6 +21,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 
 const PAGE_SIZE = 12;
 
@@ -139,7 +140,17 @@ export default function OrdersList() {
           >
             <ArrowForwardIcon />
           </IconButton>
-          <IconButton aria-label={t('order_add')} color="primary" onClick={() => navigate('/orders/new')}>
+          <IconButton
+            aria-label={t('order_add')}
+            color="primary"
+            onClick={() => navigate('/orders/new', {
+              state: {
+                returnTo: createReturnTo(location, {
+                  listState: { page: meta.page || 1, q, scope, sourceMandantId },
+                }),
+              },
+            })}
+          >
             <AddIcon />
           </IconButton>
         </Box>
@@ -210,6 +221,9 @@ export default function OrdersList() {
                 state: {
                   fromOrders: { page: meta.page || 1, q, scope, sourceMandantId: sourceMandantId || row.sourceMandantId || '' },
                   sourceMandantId: sourceMandantId || row.sourceMandantId || '',
+                  returnTo: createReturnTo(location, {
+                    listState: { page: meta.page || 1, q, scope, sourceMandantId: sourceMandantId || row.sourceMandantId || '' },
+                  }),
                 },
               })}
             >

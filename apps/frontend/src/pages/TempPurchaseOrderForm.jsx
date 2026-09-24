@@ -1,12 +1,14 @@
 import React from 'react';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, IconButton, MenuItem, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import { navigateToReturn } from '../utils/navigation.js';
 
 export default function TempPurchaseOrderForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [order, setOrder] = React.useState(null);
   const [locations, setLocations] = React.useState([]);
   const [loadingCustomerId, setLoadingCustomerId] = React.useState('');
@@ -108,7 +110,12 @@ export default function TempPurchaseOrderForm() {
           positions: order.positions,
         }),
       });
-      navigate(`/temp-purchase-orders/${encodeURIComponent(response?.data?.id || id)}`);
+      navigate(`/temp-purchase-orders/${encodeURIComponent(response?.data?.id || id)}`, {
+        replace: true,
+        state: (location.state?.afterSaveReturnTo || location.state?.returnTo)
+          ? { returnTo: location.state.afterSaveReturnTo || location.state.returnTo }
+          : null,
+      });
     } catch (e) { setError(e?.payload?.error?.suggestedDate ? `${e.message} Vorschlag: ${e.payload.error.suggestedDate}` : (e?.message || 'Speichern fehlgeschlagen.')); }
     finally { setSaving(false); }
   };
@@ -117,7 +124,7 @@ export default function TempPurchaseOrderForm() {
   if (!order) return <Alert severity="error">{error || 'Bestellung nicht gefunden.'}</Alert>;
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', display: 'grid', gap: 1.25 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}><IconButton onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(id)}`)}><ArrowBackIcon /></IconButton><Typography variant="h5">Bestellung bearbeiten</Typography></Box>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}><IconButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, `/temp-purchase-orders/${encodeURIComponent(id)}`)}><ArrowBackIcon /></IconButton><Typography variant="h5">Bestellung bearbeiten</Typography></Box>
       {error && <Alert severity="error">{error}</Alert>}
       {missingFields.length > 0 && <Alert severity="info">Pflichtfelder fehlen: {missingFields.join(', ')}.</Alert>}
       <Card><CardContent sx={{ display: 'grid', gap: 1 }}>

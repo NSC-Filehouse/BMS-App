@@ -22,6 +22,7 @@ import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 import {
   getTempOrderStatusColor,
   getTempOrderStatusLabel,
@@ -192,7 +193,17 @@ export default function TempOrdersList() {
           >
             <ArrowForwardIcon />
           </IconButton>
-          <IconButton aria-label="new-temp-order" color="primary" onClick={() => navigate('/temp-orders/new')}>
+          <IconButton
+            aria-label="new-temp-order"
+            color="primary"
+            onClick={() => navigate('/temp-orders/new', {
+              state: {
+                returnTo: createReturnTo(location, {
+                  listState: { page: meta.page || 1, q, status, ownerScope },
+                }),
+              },
+            })}
+          >
             <AddIcon />
           </IconButton>
         </Box>
@@ -281,7 +292,12 @@ export default function TempOrdersList() {
                   minWidth: 0,
                 }}
                 onClick={() => navigate(`/temp-orders/${encodeURIComponent(row.id)}`, {
-                  state: { fromTempOrders: { page: meta.page || 1, q, status, ownerScope } },
+                  state: {
+                    fromTempOrders: { page: meta.page || 1, q, status, ownerScope },
+                    returnTo: createReturnTo(location, {
+                      listState: { page: meta.page || 1, q, status, ownerScope },
+                    }),
+                  },
                 })}
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>

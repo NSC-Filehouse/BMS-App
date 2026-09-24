@@ -19,15 +19,17 @@ import LanguageIcon from '@mui/icons-material/Language';
 import NavigationIcon from '@mui/icons-material/Navigation';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import EmailIcon from '@mui/icons-material/Email';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { MAP_PROVIDER_APPLE, MAP_PROVIDER_GOOGLE, getMapPreference, setMapPreference } from '../utils/mapPreference.js';
 import { getCurrentPushSubscription, isPushSupported, subscribeToPush } from '../utils/push.js';
+import { navigateToReturn } from '../utils/navigation.js';
 
 export default function Settings() {
   const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -190,7 +192,7 @@ export default function Settings() {
               <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {t('settings_title')}
               </Typography>
-              <IconButton aria-label="back" onClick={() => navigate(-1)} size="small">
+              <IconButton aria-label="back" onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/customers')} size="small">
                 <ArrowBackIcon />
               </IconButton>
             </Box>

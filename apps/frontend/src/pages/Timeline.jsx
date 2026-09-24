@@ -13,10 +13,11 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 
 function formatDateTime(value, locale) {
   if (!value) return '-';
@@ -190,6 +191,7 @@ function getRelativeDayLabel(dateKey, locale, t) {
 export default function Timeline() {
   const { lang, t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -308,7 +310,7 @@ export default function Timeline() {
           </IconButton>
           <IconButton
             aria-label="open-push-settings"
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/settings', { state: { returnTo: createReturnTo(location) } })}
           >
             <SettingsIcon />
           </IconButton>

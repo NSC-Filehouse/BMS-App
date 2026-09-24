@@ -31,6 +31,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 import { getDefaultContactName, normalizeContactRanking } from '../utils/contactRanking.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
@@ -739,7 +740,14 @@ export default function TempOrderForm() {
           const d = res?.data || {};
           const loadedStatus = normalizeTempOrderStatus(d.orderStatus, d.completed);
           if (!isTempOrderEditableStatus(loadedStatus, d.completed)) {
-            navigate(`/temp-orders/${encodeURIComponent(id)}`, { replace: true });
+            navigate(`/temp-orders/${encodeURIComponent(id)}`, {
+              replace: true,
+              state: location.state?.afterSaveReturnTo
+                ? { returnTo: location.state.afterSaveReturnTo }
+                : location.state?.returnTo
+                  ? { returnTo: location.state.returnTo }
+                  : null,
+            });
             return;
           }
           setAttachmentFile(null);
@@ -1258,14 +1266,14 @@ export default function TempOrderForm() {
       setSuccess('');
       await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
       setSuccess(t('temp_order_deleted'));
-      navigate('/temp-orders');
+      navigateToReturn(navigate, location.state?.returnTo, '/temp-orders');
     } catch (e) {
       setError(e?.message || t('loading_error'));
     } finally {
       setDeletingOrder(false);
       setDeleteLastConfirmOpen(false);
     }
-  }, [id, isEdit, navigate, t]);
+  }, [id, isEdit, location.state, navigate, t]);
 
   const onRemovePosition = React.useCallback((idx) => {
     if (!Array.isArray(positions) || idx < 0 || idx >= positions.length) return;
@@ -1455,9 +1463,14 @@ export default function TempOrderForm() {
       const newId = res?.data?.id;
       if (newId) {
         if (!isCopyCreate && Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
-        navigate(`/temp-orders/${encodeURIComponent(newId)}`);
+        navigate(`/temp-orders/${encodeURIComponent(newId)}`, {
+          replace: true,
+          state: (location.state?.afterSaveReturnTo || location.state?.returnTo)
+            ? { returnTo: location.state.afterSaveReturnTo || location.state.returnTo }
+            : null,
+        });
       } else {
-        navigate('/temp-orders');
+        navigateToReturn(navigate, location.state?.returnTo, '/temp-orders');
       }
     } catch (e) {
       setError(e?.message || t('loading_error'));
@@ -1477,7 +1490,16 @@ export default function TempOrderForm() {
       />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={() => navigate(-1)}><ArrowBackIcon /></IconButton>
+        <IconButton
+          aria-label="back"
+          onClick={() => navigateToReturn(
+            navigate,
+            location.state?.returnTo,
+            isEdit ? `/temp-orders/${encodeURIComponent(id)}` : '/temp-orders',
+          )}
+        >
+          <ArrowBackIcon />
+        </IconButton>
         <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
           {isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}
         </Typography>

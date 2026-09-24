@@ -27,6 +27,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
 import {
@@ -746,9 +747,17 @@ export default function VlList() {
       setCustomerRequiredOpen(true);
       return;
     }
-    if (action === 'reserve') navigate('/orders/new', { state: { source: item, fromVl: true, vlMandantId, vlReturnState } });
+    if (action === 'reserve') navigate('/orders/new', {
+      state: {
+        source: item,
+        fromVl: true,
+        vlMandantId,
+        vlReturnState,
+        returnTo: createReturnTo(location, { vlReturnState }),
+      },
+    });
     else if (action === 'cart') void addItemsToCart(sourceItems);
-  }, [addItemsToCart, cartIds, getAddableSelectedItems, getVlReturnState, isForeignVl, navigate, vlMandantId]);
+  }, [addItemsToCart, cartIds, getAddableSelectedItems, getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
 
   const requestBatchCart = React.useCallback(() => {
     if (isForeignVl) return;
@@ -766,6 +775,7 @@ export default function VlList() {
     if (!pendingCustomerAction) return;
     setCustomerRequiredOpen(false);
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: '/vl',
@@ -788,11 +798,20 @@ export default function VlList() {
       setSelectedItems(pending.items);
       void addItemsToCart(pending.items);
     } else if (pending.type === 'reserve' && pending.product) {
-      navigate('/orders/new', { state: { source: pending.product, fromVl: true, vlMandantId, vlReturnState: pending.vlReturnState || null } });
+      const vlReturnState = pending.vlReturnState || getVlReturnState();
+      navigate('/orders/new', {
+        state: {
+          source: pending.product,
+          fromVl: true,
+          vlMandantId,
+          vlReturnState,
+          returnTo: createReturnTo(location, { vlReturnState }),
+        },
+      });
     } else if (pending.type === 'cart' && pending.product) {
       void addItemsToCart([pending.product]);
     }
-  }, [addItemsToCart, isForeignVl, location.pathname, location.state, navigate, vlMandantId]);
+  }, [addItemsToCart, getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
 
   const handleAction = React.useCallback((action, item) => {
     setRevealedRow({ id: '', side: '' });
@@ -808,6 +827,7 @@ export default function VlList() {
         vlMandantId,
         vlReadOnly: isForeignVl,
         vlReturnState: getVlReturnState(),
+        returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }),
       },
     });
   }, [getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
@@ -926,7 +946,7 @@ export default function VlList() {
                 onTap={handleRowTap}
                 onAction={handleAction}
                 onDetails={openProductDetail}
-                onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+                onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
                 inCart={!isForeignVl && cartIds.has(getItemId(item))}
                 readOnly={isForeignVl}
                 t={t}
@@ -958,7 +978,7 @@ export default function VlList() {
           onTap={handleRowTap}
           onAction={handleAction}
           onDetails={openProductDetail}
-          onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+          onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
           inCart={!isForeignVl && cartIds.has(getItemId(item))}
           readOnly={isForeignVl}
           t={t}

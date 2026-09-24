@@ -34,6 +34,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import {
   CUSTOMER_SELECTION_CHANGED,
   getSelectedCustomer,
@@ -704,6 +705,7 @@ export default function CustomerDetail() {
           id,
           fromCustomers: location.state?.fromCustomers || null,
         },
+        returnTo: createReturnTo(location),
       },
     });
   }, [id, location.state, navigate]);
@@ -879,12 +881,16 @@ export default function CustomerDetail() {
   }, [id, isSupplier, t]);
 
   const handleBack = React.useCallback(() => {
-    const fromCustomers = location.state?.fromCustomers;
-    if (fromCustomers) {
-      navigate('/customers', { state: { listState: fromCustomers } });
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/customers');
       return;
     }
-    navigate(-1);
+    const fromCustomers = location.state?.fromCustomers;
+    if (fromCustomers) {
+      navigate('/customers', { replace: true, state: { listState: fromCustomers } });
+      return;
+    }
+    navigate('/customers', { replace: true });
   }, [location.state, navigate]);
 
   const handleInvoiceScopeChange = React.useCallback((event) => {
@@ -1101,6 +1107,7 @@ export default function CustomerDetail() {
           address,
           representative: salesRep,
         },
+        returnTo: createReturnTo(location),
       },
     });
   }, [address, id, location, name, navigate, salesRep]);
@@ -1697,7 +1704,7 @@ export default function CustomerDetail() {
                                             </Box>
                                             <TempPlanningHint
                                               item={position}
-                                              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+                                              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
                                               t={t}
                                             />
                                           </Box>

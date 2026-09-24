@@ -19,6 +19,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 
@@ -165,6 +166,7 @@ export default function OrderCreate() {
   const chooseCustomer = React.useCallback(() => {
     setCustomerRequiredOpen(false);
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: '/orders/new',
@@ -175,6 +177,10 @@ export default function OrderCreate() {
   }, [location.state, navigate]);
 
   const handleBack = React.useCallback(() => {
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/orders');
+      return;
+    }
     if (location.state?.fromVl) {
       navigate('/vl', {
         replace: true,
@@ -184,7 +190,7 @@ export default function OrderCreate() {
       });
       return;
     }
-    navigate('/orders');
+    navigate('/orders', { replace: true });
   }, [location.state, navigate]);
 
   return (

@@ -22,6 +22,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 import { getPurchaseCartCount, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
 import { getTempOrderStatusColor, getTempOrderStatusLabel } from '../utils/tempOrderStatus.js';
 
@@ -139,7 +140,19 @@ export default function TempPurchaseOrdersList() {
           <IconButton aria-label="zurueck" onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope })} disabled={(meta.page || 1) <= 1}><ArrowBackIcon /></IconButton>
           <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>{t('page_label')} {meta.page || 1}/{totalPages || '?'}</Typography>
           <IconButton aria-label="weiter" onClick={() => load({ page: (meta.page || 1) + 1, q, status, ownerScope })} disabled={meta.total !== null && meta.total !== undefined ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total : false}><ArrowForwardIcon /></IconButton>
-          <IconButton color="primary" onClick={() => navigate('/purchase-cart')} aria-label={t('temp_purchase_cart_title')}><Badge badgeContent={cartCount} color="error"><AddShoppingCartIcon /></Badge></IconButton>
+          <IconButton
+            color="primary"
+            onClick={() => navigate('/purchase-cart', {
+              state: {
+                returnTo: createReturnTo(location, {
+                  listState: { page: meta.page || 1, q, status, ownerScope },
+                }),
+              },
+            })}
+            aria-label={t('temp_purchase_cart_title')}
+          >
+            <Badge badgeContent={cartCount} color="error"><AddShoppingCartIcon /></Badge>
+          </IconButton>
         </Box>
       </Box>
 
@@ -190,7 +203,18 @@ export default function TempPurchaseOrdersList() {
         {!loading && !error && items.length > 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {items.map((item) => (
-              <Card key={item.id} sx={{ borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', cursor: 'pointer', width: '100%', minWidth: 0 }} onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(item.id)}`, { state: { listState: { page: meta.page || 1, q, status, ownerScope } } })}>
+              <Card
+                key={item.id}
+                sx={{ borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', cursor: 'pointer', width: '100%', minWidth: 0 }}
+                onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(item.id)}`, {
+                  state: {
+                    listState: { page: meta.page || 1, q, status, ownerScope },
+                    returnTo: createReturnTo(location, {
+                      listState: { page: meta.page || 1, q, status, ownerScope },
+                    }),
+                  },
+                })}
+              >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
                     <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{item.supplierName || item.supplierId || item.id}</Typography>

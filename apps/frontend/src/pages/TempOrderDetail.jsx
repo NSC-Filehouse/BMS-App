@@ -19,6 +19,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import {
@@ -136,12 +137,16 @@ export default function TempOrderDetail() {
   }, [load]);
 
   const handleBack = React.useCallback(() => {
-    const fromTempOrders = location.state?.fromTempOrders;
-    if (fromTempOrders) {
-      navigate('/temp-orders', { state: { listState: fromTempOrders } });
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/temp-orders');
       return;
     }
-    navigate('/temp-orders');
+    const fromTempOrders = location.state?.fromTempOrders;
+    if (fromTempOrders) {
+      navigate('/temp-orders', { replace: true, state: { listState: fromTempOrders } });
+      return;
+    }
+    navigate('/temp-orders', { replace: true });
   }, [location.state, navigate]);
 
   const openOrderPdf = React.useCallback(async (event) => {
@@ -174,7 +179,7 @@ export default function TempOrderDetail() {
     try {
       setError('');
       await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      navigate('/temp-orders');
+      navigateToReturn(navigate, location.state?.returnTo, '/temp-orders');
     } catch (e) {
       setError(e?.message || t('loading_error'));
     }
@@ -351,7 +356,12 @@ export default function TempOrderDetail() {
                 <Button
                   variant="outlined"
                   sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
-                  onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`)}
+                  onClick={() => navigate(`/temp-orders/${encodeURIComponent(id)}/edit`, {
+                    state: {
+                      returnTo: createReturnTo(location),
+                      afterSaveReturnTo: location.state?.returnTo || null,
+                    },
+                  })}
                 >
                   {t('edit_label')}
                 </Button>
@@ -361,6 +371,7 @@ export default function TempOrderDetail() {
                 sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
                 onClick={() => navigate('/temp-orders/new', {
                   state: {
+                    returnTo: createReturnTo(location),
                     copyOrder: {
                       clientReferenceId: item.clientReferenceId || '',
                       clientName: item.clientName || '',

@@ -13,6 +13,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -88,8 +89,13 @@ export default function ProductWpzDetail() {
   }, [id, sourceQuery, t]);
 
   const handleBack = React.useCallback(() => {
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, `/products/${encodeURIComponent(id)}`);
+      return;
+    }
     const fromProduct = location.state?.fromProduct || {};
     navigate(`/products/${encodeURIComponent(id)}`, {
+      replace: true,
       state: {
         fromProducts: fromProduct.fromProducts || null,
         fromVl: Boolean(fromProduct.fromVl),

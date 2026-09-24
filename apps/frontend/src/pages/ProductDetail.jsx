@@ -21,6 +21,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { navigateToReturn } from '../utils/navigation.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
@@ -201,6 +202,7 @@ export default function ProductDetail({ modal = false }) {
     setCustomerRequiredOpen(false);
     setCustomerPromptType('generic');
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: location.pathname,
@@ -282,6 +284,10 @@ export default function ProductDetail({ modal = false }) {
   }, [addProductToCart, item, location.pathname, location.state, navigate, openReserveDialog]);
 
   const handleBack = React.useCallback(() => {
+    if (location.state?.returnTo?.pathname) {
+      navigateToReturn(navigate, location.state.returnTo, '/products');
+      return;
+    }
     const fromVl = Boolean(location.state?.fromVl);
     if (fromVl) {
       navigate('/vl', {
@@ -294,10 +300,10 @@ export default function ProductDetail({ modal = false }) {
     }
     const fromProducts = location.state?.fromProducts;
     if (fromProducts) {
-      navigate('/products', { state: { listState: fromProducts } });
+      navigate('/products', { replace: true, state: { listState: fromProducts } });
       return;
     }
-    navigate(-1);
+    navigate('/products', { replace: true });
   }, [location.state, navigate]);
 
   const detailBody = (
@@ -369,7 +375,7 @@ export default function ProductDetail({ modal = false }) {
             />
             <TempPlanningHint
               item={item}
-              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`)}
+              onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
               t={t}
             />
             <InfoRow label={t('product_unit')} value={item.unit} />
@@ -548,7 +554,10 @@ export default function ProductDetail({ modal = false }) {
   );
 
   const closeModal = () => {
-    if (!reserveLoading) navigate(-1);
+    if (!reserveLoading) {
+      if (location.state?.backgroundLocation) navigate(-1);
+      else navigate('/products', { replace: true });
+    }
   };
 
   if (modal) {

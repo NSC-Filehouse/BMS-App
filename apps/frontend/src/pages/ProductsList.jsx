@@ -21,6 +21,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { createReturnTo } from '../utils/navigation.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
@@ -199,6 +200,7 @@ export default function ProductsList() {
     if (!pendingCustomerAction) return;
     setCustomerRequiredOpen(false);
     navigate('/customers', {
+      replace: true,
       state: {
         afterSelect: {
           to: '/products',
@@ -367,6 +369,7 @@ export default function ProductsList() {
                   state: {
                     backgroundLocation: location,
                     fromProducts: { q },
+                    returnTo: createReturnTo(location, { listState: { q } }),
                   },
                 })}
               />
@@ -448,6 +451,7 @@ export default function ProductsList() {
                                         state: {
                                           backgroundLocation: location,
                                           fromProducts: { q },
+                                          returnTo: createReturnTo(location, { listState: { q } }),
                                         },
                                       })}
                                     />
