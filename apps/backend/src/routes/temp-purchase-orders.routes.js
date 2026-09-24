@@ -4,6 +4,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
+const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
@@ -20,6 +21,7 @@ const { appendTimelineEntries } = require('../db/timeline');
 const TIMELINE_TABLE = appTableSql('timeline');
 
 const router = express.Router();
+router.use(requirePilotFeature('purchaseOrders'));
 const TEMP_PURCHASE_ORDER_TABLE = appTableSql('tempPurchaseOrder');
 const TEMP_PURCHASE_POSITION_TABLE = appTableSql('tempPurchaseOrderPosition');
 

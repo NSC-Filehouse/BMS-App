@@ -43,6 +43,7 @@ import {
 import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { addPurchaseCartItem } from '../utils/purchaseCart.js';
+import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
@@ -578,7 +579,9 @@ export default function CustomerDetail() {
 
   const name = getCustomerName(item);
   const isSupplier = Boolean(item?.isSupplier);
+  const { features } = useFeatureAccess();
   const canManageSupplier = Boolean(item?.canManageSupplier);
+  const canCreatePurchaseOrder = canManageSupplier && features.purchaseOrders;
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
   const addressForMap = address ? String(address).replace(/\n/g, ', ') : '';
@@ -1524,12 +1527,12 @@ export default function CustomerDetail() {
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
                   placeholder={t(isSupplier ? 'customer_docs_procured_articles_search' : 'customer_docs_purchased_articles_search')}
                 />
-                {isSupplier && canManageSupplier && purchaseCartSuccess && (
+                {isSupplier && canCreatePurchaseOrder && purchaseCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {purchaseCartSuccess}
                   </Typography>
                 )}
-                {isSupplier && canManageSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
+                {isSupplier && canCreatePurchaseOrder && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
                 {!isSupplier && batchCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {batchCartSuccess}
@@ -1557,7 +1560,7 @@ export default function CustomerDetail() {
                   <SupplierPurchasedArticleGroups
                     groups={filteredPurchasedArticleGroups}
                     t={t}
-                    onAdd={canManageSupplier ? addSupplierArticleToPurchaseCart : undefined}
+                    onAdd={canCreatePurchaseOrder ? addSupplierArticleToPurchaseCart : undefined}
                   />
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && !isSupplier && filteredPurchasedArticleGroups.map((group, groupIdx) => (

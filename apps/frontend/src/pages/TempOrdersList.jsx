@@ -5,8 +5,12 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  FormControlLabel,
   IconButton,
   InputAdornment,
+  Radio,
+  RadioGroup,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -48,6 +52,7 @@ export default function TempOrdersList() {
   const [q, setQ] = React.useState('');
   const [status, setStatus] = React.useState('all');
   const [ownerScope, setOwnerScope] = React.useState('all');
+  const [createdPeriod, setCreatedPeriod] = React.useState('all');
   const [canViewAll, setCanViewAll] = React.useState(false);
   const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
   const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
@@ -56,6 +61,7 @@ export default function TempOrdersList() {
   const qRef = React.useRef(q);
   const statusRef = React.useRef(status);
   const ownerScopeRef = React.useRef(ownerScope);
+  const createdPeriodRef = React.useRef(createdPeriod);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
 
@@ -63,6 +69,7 @@ export default function TempOrdersList() {
   React.useEffect(() => { qRef.current = q; }, [q]);
   React.useEffect(() => { statusRef.current = status; }, [status]);
   React.useEffect(() => { ownerScopeRef.current = ownerScope; }, [ownerScope]);
+  React.useEffect(() => { createdPeriodRef.current = createdPeriod; }, [createdPeriod]);
 
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
@@ -75,15 +82,17 @@ export default function TempOrdersList() {
     const qVal = opts.q ?? qRef.current ?? '';
     const statusVal = opts.status ?? statusRef.current ?? 'all';
     const ownerScopeVal = opts.ownerScope ?? ownerScopeRef.current ?? 'all';
+    const createdPeriodVal = opts.createdPeriod ?? createdPeriodRef.current ?? 'all';
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest(`/temp-orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&status=${encodeURIComponent(statusVal)}&ownerScope=${encodeURIComponent(ownerScopeVal)}&sort=createdAt&dir=DESC`);
+      const res = await apiRequest(`/temp-orders?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&status=${encodeURIComponent(statusVal)}&ownerScope=${encodeURIComponent(ownerScopeVal)}&createdPeriod=${encodeURIComponent(createdPeriodVal)}&sort=createdAt&dir=DESC`);
       setItems(res?.data || []);
       const nextMeta = res?.meta || { page, pageSize, total: null };
       setMeta(nextMeta);
       if (nextMeta.status) setStatus(nextMeta.status);
       if (nextMeta.ownerScope) setOwnerScope(nextMeta.ownerScope);
+      if (nextMeta.createdPeriod) setCreatedPeriod(nextMeta.createdPeriod);
       if (nextMeta.canViewAll !== undefined) setCanViewAll(Boolean(nextMeta.canViewAll));
     } catch (e) {
       setError(e?.message || t('loading_orders_error'));
@@ -97,23 +106,27 @@ export default function TempOrdersList() {
     hydratedFromStateRef.current = true;
 
     const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined || listState.status !== undefined || listState.ownerScope !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.status !== undefined || listState.ownerScope !== undefined || listState.createdPeriod !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredStatus = ['all', 'draft', 'sent', 'rework'].includes(String(listState.status || ''))
         ? String(listState.status)
         : 'all';
       const restoredOwnerScope = String(listState.ownerScope || '') === 'mine' ? 'mine' : 'all';
+      const restoredCreatedPeriod = ['today', 'week', 'all'].includes(String(listState.createdPeriod || ''))
+        ? String(listState.createdPeriod)
+        : 'all';
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
       setStatus(restoredStatus);
       setOwnerScope(restoredOwnerScope);
-      load({ page: restoredPage, q: restoredQ, status: restoredStatus, ownerScope: restoredOwnerScope });
+      setCreatedPeriod(restoredCreatedPeriod);
+      load({ page: restoredPage, q: restoredQ, status: restoredStatus, ownerScope: restoredOwnerScope, createdPeriod: restoredCreatedPeriod });
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
 
-    load({ page: 1, q: '', status: 'all', ownerScope: 'all' });
+    load({ page: 1, q: '', status: 'all', ownerScope: 'all', createdPeriod: 'all' });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
@@ -176,7 +189,7 @@ export default function TempOrdersList() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton
             aria-label="zurueck"
-            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope })}
+            onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope, createdPeriod })}
             disabled={(meta.page || 1) <= 1}
           >
             <ArrowBackIcon />
@@ -186,7 +199,7 @@ export default function TempOrdersList() {
           </Typography>
           <IconButton
             aria-label="weiter"
-            onClick={() => load({ page: (meta.page || 1) + 1, q, status, ownerScope })}
+            onClick={() => load({ page: (meta.page || 1) + 1, q, status, ownerScope, createdPeriod })}
             disabled={meta.total !== null && meta.total !== undefined
               ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
               : false}
@@ -199,7 +212,7 @@ export default function TempOrdersList() {
             onClick={() => navigate('/temp-orders/new', {
               state: {
                 returnTo: createReturnTo(location, {
-                  listState: { page: meta.page || 1, q, status, ownerScope },
+                  listState: { page: meta.page || 1, q, status, ownerScope, createdPeriod },
                 }),
               },
             })}
@@ -210,58 +223,79 @@ export default function TempOrdersList() {
       </Box>
 
       <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <TextField
-            fullWidth
-            size="small"
-            sx={{ minWidth: 0 }}
-            placeholder={t('temp_orders_search')}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ opacity: 0.6 }} />
-                </InputAdornment>
-              ),
-            }}
-          />
+        <CardContent sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
+          <Box sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
+            <TextField
+              fullWidth
+              size="small"
+              sx={{ minWidth: 0 }}
+              placeholder={t('temp_orders_search')}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ opacity: 0.6 }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
 
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={status}
-            aria-label={t('temp_order_status')}
-            onChange={(e, value) => {
-              if (!value) return;
-              setStatus(value);
-              load({ page: 1, q, status: value, ownerScope });
-            }}
-            sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
-          >
-            <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton>
-            <ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton>
-            <ToggleButton value="rework">{t('temp_orders_status_rework')}</ToggleButton>
-            <ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
-          </ToggleButtonGroup>
-
-          {canViewAll && (
             <ToggleButtonGroup
               size="small"
               exclusive
-              value={ownerScope}
-              aria-label={t('temp_orders_owner_filter')}
+              value={status}
+              aria-label={t('temp_order_status')}
               onChange={(e, value) => {
                 if (!value) return;
-                setOwnerScope(value);
-                load({ page: 1, q, status, ownerScope: value });
+                setStatus(value);
+                load({ page: 1, q, status: value, ownerScope, createdPeriod });
               }}
               sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
             >
-              <ToggleButton value="mine">{t('temp_orders_scope_mine')}</ToggleButton>
-              <ToggleButton value="all">{t('temp_orders_scope_all')}</ToggleButton>
+              <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton>
+              <ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton>
+              <ToggleButton value="rework">{t('temp_orders_status_rework')}</ToggleButton>
+              <ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
             </ToggleButtonGroup>
-          )}
+
+            {canViewAll && (
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={ownerScope === 'mine'}
+                    onChange={(event) => {
+                      const nextOwnerScope = event.target.checked ? 'mine' : 'all';
+                      setOwnerScope(nextOwnerScope);
+                      load({ page: 1, q, status, ownerScope: nextOwnerScope, createdPeriod });
+                    }}
+                    size="small"
+                  />
+                )}
+                label={t('temp_orders_scope_mine')}
+                sx={{ ml: { xs: 0, md: 1 }, mr: 0, whiteSpace: 'nowrap' }}
+              />
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="caption" color="text.secondary">{t('temp_orders_period_label')}</Typography>
+            <RadioGroup
+              row
+              value={createdPeriod}
+              aria-label={t('temp_orders_period_label')}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (!['today', 'week', 'all'].includes(value)) return;
+                setCreatedPeriod(value);
+                load({ page: 1, q, status, ownerScope, createdPeriod: value });
+              }}
+            >
+              <FormControlLabel value="today" control={<Radio size="small" />} label={t('temp_orders_period_today')} sx={{ mr: 1 }} />
+              <FormControlLabel value="week" control={<Radio size="small" />} label={t('temp_orders_period_week')} sx={{ mr: 1 }} />
+              <FormControlLabel value="all" control={<Radio size="small" />} label={t('temp_orders_period_all')} sx={{ mr: 0 }} />
+            </RadioGroup>
+          </Box>
         </CardContent>
       </Card>
 
@@ -293,9 +327,9 @@ export default function TempOrdersList() {
                 }}
                 onClick={() => navigate(`/temp-orders/${encodeURIComponent(row.id)}`, {
                   state: {
-                    fromTempOrders: { page: meta.page || 1, q, status, ownerScope },
+                    fromTempOrders: { page: meta.page || 1, q, status, ownerScope, createdPeriod },
                     returnTo: createReturnTo(location, {
-                      listState: { page: meta.page || 1, q, status, ownerScope },
+                      listState: { page: meta.page || 1, q, status, ownerScope, createdPeriod },
                     }),
                   },
                 })}
@@ -333,15 +367,17 @@ export default function TempOrdersList() {
                     <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {row.clientName || row.id}
                     </Typography>
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: getTempOrderStatusColor(row.orderStatus, row.completed),
-                        fontWeight: 600,
-                      }}
-                    >
-                      {getTempOrderStatusLabel(t, row.orderStatus, row.completed)}
-                    </Typography>
+                    {!row.orderIndex && (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: getTempOrderStatusColor(row.orderStatus, row.completed),
+                          fontWeight: 600,
+                        }}
+                      >
+                        {getTempOrderStatusLabel(t, row.orderStatus, row.completed)}
+                      </Typography>
+                    )}
                     {(Array.isArray(row.positions) && row.positions.length > 0
                       ? row.positions
                       : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]

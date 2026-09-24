@@ -125,6 +125,8 @@ const config = {
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
       tempPurchaseOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER || 'tbl_Temp_Bestellung').trim(),
       tempPurchaseOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_POSITION || 'tbl_Temp_Best_Position').trim(),
+      options: (process.env.BMS_SQL_APP_TABLE_OPTIONS || 'tblOptionen').trim(),
+      optionPositions: (process.env.BMS_SQL_APP_TABLE_OPTION_POSITIONS || 'tblOptionenPositionen').trim(),
       purchaseOrderMailOutbox: (process.env.BMS_SQL_APP_TABLE_PURCHASE_ORDER_MAIL_OUTBOX || 'PurchaseOrderMailOutbox').trim(),
       purchaseOrderCsMailOutbox: (process.env.BMS_SQL_APP_TABLE_PURCHASE_ORDER_CS_MAIL_OUTBOX || 'PurchaseOrderCsMailOutbox').trim(),
       creditLimitRequestState: (process.env.BMS_SQL_APP_TABLE_CREDIT_LIMIT_REQUEST_STATE || 'CreditLimitRequestState').trim(),

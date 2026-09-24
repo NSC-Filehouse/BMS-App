@@ -364,6 +364,11 @@ function normalizeTempOrderStatus(status) {
   return value === 'draft' || value === 'sent' || value === 'rework' ? value : 'all';
 }
 
+function normalizeTempOrderCreatedPeriod(period) {
+  const value = asText(period).toLowerCase();
+  return value === 'today' || value === 'week' ? value : 'all';
+}
+
 function normalizeStoredTempOrderStatus(value, legacyCompleted = false) {
   const text = asText(value);
   if (text) {
@@ -412,6 +417,26 @@ function buildTempOrderStatusFilter(status, column = '[o].[ta_Status]') {
     return { whereSql: ` AND COALESCE(${column}, 0) = 3`, status: normalizedStatus };
   }
   return { whereSql: '', status: normalizedStatus };
+}
+
+function buildTempOrderCreatedPeriodFilter(period, column = '[o].[ta_CreateDate]') {
+  const normalizedPeriod = normalizeTempOrderCreatedPeriod(period);
+  if (normalizedPeriod === 'today') {
+    return {
+      whereSql: ` AND ${column} >= CONVERT(date, GETDATE()) AND ${column} < DATEADD(DAY, 1, CONVERT(date, GETDATE()))`,
+      period: normalizedPeriod,
+    };
+  }
+  if (normalizedPeriod === 'week') {
+    const mondayOffset = "(DATEDIFF(DAY, CONVERT(date, '19000101', 112), CONVERT(date, GETDATE())) % 7)";
+    const weekStart = `DATEADD(DAY, -${mondayOffset}, CONVERT(date, GETDATE()))`;
+    const nextWeekStart = `DATEADD(DAY, 7 - ${mondayOffset}, CONVERT(date, GETDATE()))`;
+    return {
+      whereSql: ` AND ${column} >= ${weekStart} AND ${column} < ${nextWeekStart}`,
+      period: normalizedPeriod,
+    };
+  }
+  return { whereSql: '', period: normalizedPeriod };
 }
 
 function normalizeAttachmentFileName(value) {
@@ -1293,6 +1318,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     : '';
   const whereParams = text ? [like, like, like, like, like] : [];
   const statusFilter = buildTempOrderStatusFilter(req.query?.status);
+  const createdPeriodFilter = buildTempOrderCreatedPeriodFilter(req.query?.createdPeriod);
   const requestedOwnerScope = normalizeTempOrderOwnerScope(req.query?.ownerScope);
   const ownerFilter = buildTempOrderOwnerFilter(
     userShortCode,
@@ -1307,6 +1333,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     WHERE [o].[ta_company_id] = ?
     ${ownerFilter.whereSql}
     ${statusFilter.whereSql}
+    ${createdPeriodFilter.whereSql}
     ${whereText}
   `;
   const totalRows = await runSQLQuerySqlServer(config.sql.database, countSql, [companyId, ...ownerFilter.params, ...whereParams]);
@@ -1340,6 +1367,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     WHERE [o].[ta_company_id] = ?
     ${ownerFilter.whereSql}
     ${statusFilter.whereSql}
+    ${createdPeriodFilter.whereSql}
     ${whereText}
     ORDER BY ${safeSort} ${safeDir}
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -1384,6 +1412,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       sort,
       dir: safeDir,
       status: statusFilter.status,
+      createdPeriod: createdPeriodFilter.period,
       ownerScope: ownerFilter.scope,
       canViewAll: Boolean(accessScope.isFullAccess),
     },
@@ -2825,8 +2854,10 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
 module.exports = router;
 module.exports.buildTempOrderOwnerFilter = buildTempOrderOwnerFilter;
 module.exports.buildTempOrderStatusFilter = buildTempOrderStatusFilter;
+module.exports.buildTempOrderCreatedPeriodFilter = buildTempOrderCreatedPeriodFilter;
 module.exports.normalizeTempOrderOwnerScope = normalizeTempOrderOwnerScope;
 module.exports.normalizeTempOrderStatus = normalizeTempOrderStatus;
+module.exports.normalizeTempOrderCreatedPeriod = normalizeTempOrderCreatedPeriod;
 module.exports.normalizeStoredTempOrderStatus = normalizeStoredTempOrderStatus;
 module.exports.isTempOrderEditableStatus = isTempOrderEditableStatus;
 module.exports.isTempOrderFinalizedStatus = isTempOrderFinalizedStatus;

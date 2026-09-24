@@ -5,6 +5,7 @@ import Layout from './components/Layout.jsx';
 import { LanguageProvider } from './utils/i18n.jsx';
 import MandantGuard from './components/MandantGuard.jsx';
 import CustomerGuard from './components/CustomerGuard.jsx';
+import { FeatureGuard, FeatureProvider } from './components/FeatureAccess.jsx';
 
 import Start from './pages/Start.jsx';
 
@@ -30,6 +31,9 @@ import TempOrderForm from './pages/TempOrderForm.jsx';
 import TempPurchaseOrdersList from './pages/TempPurchaseOrdersList.jsx';
 import TempPurchaseOrderDetail from './pages/TempPurchaseOrderDetail.jsx';
 import TempPurchaseOrderForm from './pages/TempPurchaseOrderForm.jsx';
+import OptionsList from './pages/OptionsList.jsx';
+import OptionDetail from './pages/OptionDetail.jsx';
+import ForecastList from './pages/ForecastList.jsx';
 import DatabaseUnavailable from './pages/DatabaseUnavailable.jsx';
 
 function AppRoutes() {
@@ -137,7 +141,7 @@ function AppRoutes() {
           path="/purchase-cart"
           element={
             <MandantGuard>
-              <PurchaseCart />
+              <FeatureGuard feature="purchaseOrders"><PurchaseCart /></FeatureGuard>
             </MandantGuard>
           }
         />
@@ -205,7 +209,7 @@ function AppRoutes() {
           path="/temp-purchase-orders"
           element={
             <MandantGuard>
-              <TempPurchaseOrdersList />
+              <FeatureGuard feature="purchaseOrders"><TempPurchaseOrdersList /></FeatureGuard>
             </MandantGuard>
           }
         />
@@ -213,7 +217,7 @@ function AppRoutes() {
           path="/temp-purchase-orders/new"
           element={
             <MandantGuard>
-              <PurchaseCart />
+              <FeatureGuard feature="purchaseOrders"><PurchaseCart /></FeatureGuard>
             </MandantGuard>
           }
         />
@@ -221,7 +225,7 @@ function AppRoutes() {
           path="/temp-purchase-orders/:id"
           element={
             <MandantGuard>
-              <TempPurchaseOrderDetail />
+              <FeatureGuard feature="purchaseOrders"><TempPurchaseOrderDetail /></FeatureGuard>
             </MandantGuard>
           }
         />
@@ -229,10 +233,13 @@ function AppRoutes() {
           path="/temp-purchase-orders/:id/edit"
           element={
             <MandantGuard>
-              <TempPurchaseOrderForm />
+              <FeatureGuard feature="purchaseOrders"><TempPurchaseOrderForm /></FeatureGuard>
             </MandantGuard>
           }
         />
+        <Route path="/options" element={<MandantGuard><FeatureGuard feature="options"><OptionsList /></FeatureGuard></MandantGuard>} />
+        <Route path="/options/:id" element={<MandantGuard><FeatureGuard feature="options"><OptionDetail /></FeatureGuard></MandantGuard>} />
+        <Route path="/forecast" element={<MandantGuard><FeatureGuard feature="forecast"><ForecastList /></FeatureGuard></MandantGuard>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -256,7 +263,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <LanguageProvider>
-      <AppRoutes />
+      <FeatureProvider><AppRoutes /></FeatureProvider>
     </LanguageProvider>
   );
 }

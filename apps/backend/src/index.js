@@ -15,6 +15,7 @@ const productsRouter = require('./routes/products.routes');
 const ordersRouter = require('./routes/orders.routes');
 const tempOrdersRouter = require('./routes/temp-orders.routes');
 const tempPurchaseOrdersRouter = require('./routes/temp-purchase-orders.routes');
+const optionsRouter = require('./routes/options.routes');
 const deliveryCalendarRouter = require('./routes/delivery-calendar.routes');
 const timelineRouter = require('./routes/timeline.routes');
 const pushRouter = require('./routes/push.routes');
@@ -22,6 +23,7 @@ const vlMailRouter = require('./routes/vl-mail.routes');
 const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityFromRequestContext } = require('./db/users');
+const { pilotFeaturesForIdentity } = require('./pilot-features');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-outbox');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
@@ -81,6 +83,7 @@ app.get(`${config.apiBasePath}/me`, async (req, res) => {
       mainCompanyId: identity?.mainCompanyId ?? null,
       userId: identity?.userId || null,
       identityResolved: true,
+      features: pilotFeaturesForIdentity(identity),
     });
   } catch {
     res.json({ ...publicBase, identityResolved: false });
@@ -133,6 +136,7 @@ app.use(config.apiBasePath, productsRouter);
 app.use(config.apiBasePath, ordersRouter);
 app.use(config.apiBasePath, tempOrdersRouter);
 app.use(config.apiBasePath, tempPurchaseOrdersRouter);
+app.use(config.apiBasePath, optionsRouter);
 app.use(config.apiBasePath, deliveryCalendarRouter);
 app.use(config.apiBasePath, timelineRouter);
 app.use(config.apiBasePath, pushRouter);

@@ -253,10 +253,12 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_received_from')} value={item.receivedFrom} />
             <InfoRow label={t('order_completed')} value={orderIsFinalized ? t('yes_label') : t('no_label')} />
             <Box sx={{ py: 0.75 }}>
-              <InfoRow
-                label={t('temp_order_status')}
-                value={getTempOrderStatusLabel(t, orderStatus, item.completed)}
-              />
+              {!item.orderIndex && (
+                <InfoRow
+                  label={t('temp_order_status')}
+                  value={getTempOrderStatusLabel(t, orderStatus, item.completed)}
+                />
+              )}
               {orderStatus === TEMP_ORDER_STATUS.NEEDS_REWORK && (
                 <Typography variant="caption" sx={{ color: getTempOrderStatusColor(orderStatus), display: 'block', mt: -0.25 }}>
                   {t('temp_order_status_rework_hint')}

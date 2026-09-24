@@ -31,6 +31,10 @@ const errorTexts = {
     de: (d) => `Keine Berechtigung fuer Mandant: ${d?.mandant || ''}`.trim(),
     en: (d) => `No permission for mandant: ${d?.mandant || ''}`.trim(),
   },
+  PILOT_FEATURE_FORBIDDEN: {
+    de: 'Dieser Bereich ist derzeit nicht freigeschaltet.',
+    en: 'This area is not currently enabled for you.',
+  },
   DB_NOT_AVAILABLE: {
     de: 'Diese DB ist noch nicht verfuegbar.',
     en: 'This database is not available yet.',
