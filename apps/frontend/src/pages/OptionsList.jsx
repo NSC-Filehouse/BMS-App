@@ -77,7 +77,6 @@ export default function OptionsList() {
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-                    <Box component="span" sx={{ color: 'success.main', fontWeight: 700 }}>{t('option_prefix')} </Box>
                     <Box component="span" sx={{ fontWeight: 600 }}>{position.internalArticleName || position.articleName}</Box>
                     {offer.isDemo && <Box component="span" sx={{ color: 'warning.dark', fontWeight: 600 }}> · {t('option_demo')}</Box>}
                     {position.internalArticleName && position.internalArticleName !== position.articleName && ` · ${position.articleName}`}
