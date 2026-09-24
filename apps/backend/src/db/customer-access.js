@@ -232,11 +232,29 @@ async function loadVisibleCustomer(database, customerId, scope) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+async function loadVisibleSupplierCustomer(database, customerId) {
+  const id = toText(customerId);
+  if (!id) return null;
+
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1 [k].*
+    FROM [dbo].[tblKunden] [k]
+    WHERE LTRIM(RTRIM(COALESCE([k].[kd_KdNR], ''))) = ?
+      AND EXISTS (
+        SELECT 1
+        FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
+        WHERE LTRIM(RTRIM(COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], ''))) = LTRIM(RTRIM(COALESCE([k].[kd_KdNR], '')))
+      )
+  `, [id]);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
 module.exports = {
   buildCustomerScopeFilter,
   getCustomerAccessScope,
   isAppFullAccessUser,
   loadVisibleCustomer,
+  loadVisibleSupplierCustomer,
   normalizeUserGroup,
   resolveCustomerAccessMode,
 };

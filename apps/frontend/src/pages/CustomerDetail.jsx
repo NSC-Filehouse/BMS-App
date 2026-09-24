@@ -367,16 +367,18 @@ function SupplierPurchasedArticleGroups({ groups, t, onAdd }) {
                     <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
                       {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
                     </Typography>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<ShoppingCartIcon />}
-                      onClick={() => onAdd?.(article)}
-                      disabled={!article.articleIndex}
-                      sx={{ justifySelf: 'start', mt: 0.25 }}
-                    >
-                      {t('purchase_add_to_cart')}
-                    </Button>
+                    {typeof onAdd === 'function' && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ShoppingCartIcon />}
+                        onClick={() => onAdd(article)}
+                        disabled={!article.articleIndex}
+                        sx={{ justifySelf: 'start', mt: 0.25 }}
+                      >
+                        {t('purchase_add_to_cart')}
+                      </Button>
+                    )}
                     {articlePositions.length > 0 && (
                       <Box sx={{ display: 'grid', gap: 0.25, mt: 0.2 }}>
                         <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
@@ -576,6 +578,7 @@ export default function CustomerDetail() {
 
   const name = getCustomerName(item);
   const isSupplier = Boolean(item?.isSupplier);
+  const canManageSupplier = Boolean(item?.canManageSupplier);
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
   const address = buildAddress(item);
   const addressForMap = address ? String(address).replace(/\n/g, ', ') : '';
@@ -1521,12 +1524,12 @@ export default function CustomerDetail() {
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
                   placeholder={t(isSupplier ? 'customer_docs_procured_articles_search' : 'customer_docs_purchased_articles_search')}
                 />
-                {isSupplier && purchaseCartSuccess && (
+                {isSupplier && canManageSupplier && purchaseCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {purchaseCartSuccess}
                   </Typography>
                 )}
-                {isSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
+                {isSupplier && canManageSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
                 {!isSupplier && batchCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {batchCartSuccess}
@@ -1554,7 +1557,7 @@ export default function CustomerDetail() {
                   <SupplierPurchasedArticleGroups
                     groups={filteredPurchasedArticleGroups}
                     t={t}
-                    onAdd={addSupplierArticleToPurchaseCart}
+                    onAdd={canManageSupplier ? addSupplierArticleToPurchaseCart : undefined}
                   />
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && !isSupplier && filteredPurchasedArticleGroups.map((group, groupIdx) => (
@@ -1864,7 +1867,7 @@ export default function CustomerDetail() {
                           <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500 }}>
                             {rep.name || '-'}
                           </Typography>
-                          {rep.id && (
+                          {rep.id && (!isSupplier || canManageSupplier) && (
                             <TextField
                               select
                               size="small"

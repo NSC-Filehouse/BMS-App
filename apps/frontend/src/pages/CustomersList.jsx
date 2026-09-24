@@ -192,7 +192,8 @@ export default function CustomersList() {
         )
         : null;
       const focusedCustomerIsValid = focusedCustomer
-        && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId;
+        && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId
+        && (!supplierOnlyVal || Boolean(focusedCustomer?.isSupplier));
       let displayRows = focusedCustomerIsValid
         ? [focusedCustomer, ...filtered.filter((row) => String(row?.kd_KdNR || '').trim() !== focusCustomerId)]
         : filtered;

@@ -6,6 +6,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const {
   getCustomerAccessScope,
   loadVisibleCustomer,
+  loadVisibleSupplierCustomer,
 } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
 const { calculateAvailableCredit } = require('../credit-limit');
@@ -161,7 +162,9 @@ function buildWhereClause(q, searchField, options = {}) {
   const customerAlias = toText(options.customerAlias);
   const col = (name) => customerAlias ? `[${customerAlias}].${name}` : name;
 
-  const customerAccess = options.customerAccess || null;
+  // The supplier-only list is a tenant-wide supplier directory. Personal
+  // customer assignment rules still apply to the normal customer list.
+  const customerAccess = options.supplierOnly ? null : (options.customerAccess || null);
   if (customerAccess?.whereSql) {
     clauses.push(`(${customerAccess.whereSql})`);
     params.push(...(Array.isArray(customerAccess.params) ? customerAccess.params : []));
@@ -242,6 +245,22 @@ async function requireVisibleCustomer(req, customerId, accessScope = null) {
     throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
   }
   return customer;
+}
+
+async function requireVisibleCustomerOrSupplier(req, customerId, accessScope = null) {
+  const id = toText(customerId);
+  if (!id) {
+    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
+  }
+
+  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database);
+  const customer = await loadVisibleCustomer(req.database, id, scope);
+  if (customer) return { customer, canManageSupplier: true };
+
+  const supplierCustomer = await loadVisibleSupplierCustomer(req.database, id);
+  if (supplierCustomer) return { customer: supplierCustomer, canManageSupplier: false };
+
+  throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
 }
 
 function getReminderCountsCte() {
@@ -705,7 +724,8 @@ router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (r
 router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const id = toText(req.params.id);
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
-  const item = await requireVisibleCustomer(req, id, accessScope);
+  const visibleCustomer = await requireVisibleCustomerOrSupplier(req, id, accessScope);
+  const item = visibleCustomer.customer;
   const supplierContext = await loadSupplierContext(req.database, id);
 
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
@@ -743,6 +763,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const detail = {
     ...item,
     ...supplierContext,
+    canManageSupplier: Boolean(supplierContext.isSupplier && visibleCustomer.canManageSupplier),
     creditLimit,
     representatives,
     salesRepresentatives,
@@ -796,7 +817,7 @@ router.put('/customers/:id/contacts/:contactId/ranking', requireMandant, asyncHa
 router.get('/customers/:id/representatives/:shortCode', requireMandant, asyncHandler(async (req, res) => {
   const id = toText(req.params.id);
   const shortCode = toText(req.params.shortCode);
-  const customer = await requireVisibleCustomer(req, id);
+  const { customer } = await requireVisibleCustomerOrSupplier(req, id);
   const normalizedCode = shortCode.toLowerCase();
   if (isHiddenCustomerDetailEmployee(shortCode)) {
     throw createHttpError(404, `Representative not assigned to customer: ${shortCode}`, {
@@ -886,7 +907,7 @@ router.get('/customers/:id/activities', requireMandant, asyncHandler(async (req,
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
-  await requireVisibleCustomer(req, customerId);
+  await requireVisibleCustomerOrSupplier(req, customerId);
 
   const result = await loadCustomerActivities(
     req.database,
@@ -1077,7 +1098,7 @@ router.get('/customers/:id/purchase-orders', requireMandant, asyncHandler(async 
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
-  await requireVisibleCustomer(req, customerId);
+  await requireVisibleCustomerOrSupplier(req, customerId);
   const supplierContext = await loadSupplierContext(req.database, customerId);
   if (!supplierContext.supplierNumbers.length) {
     sendEnvelope(res, {
@@ -1246,7 +1267,7 @@ router.get('/customers/:id/purchase-orders/:orderIndex/pdf', requireMandant, asy
     throw createHttpError(400, 'Missing purchase order id.', { code: 'INVALID_PURCHASE_ORDER_ID' });
   }
 
-  await requireVisibleCustomer(req, customerId);
+  await requireVisibleCustomerOrSupplier(req, customerId);
   const supplierContext = await loadSupplierContext(req.database, customerId);
   if (!supplierContext.supplierNumbers.length) {
     throw createHttpError(404, `Supplier not found: ${customerId}`, {
@@ -1387,7 +1408,7 @@ router.get('/customers/:id/supplier-invoices', requireMandant, asyncHandler(asyn
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
-  await requireVisibleCustomer(req, customerId);
+  await requireVisibleCustomerOrSupplier(req, customerId);
   const supplierContext = await loadSupplierContext(req.database, customerId);
   if (!supplierContext.supplierNumbers.length) {
     sendEnvelope(res, {
@@ -1562,7 +1583,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
   if (!customerId) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
-  await requireVisibleCustomer(req, customerId);
+  await requireVisibleCustomerOrSupplier(req, customerId);
   const supplierContext = await loadSupplierContext(req.database, customerId);
   if (!supplierContext.supplierNumbers.length) {
     sendEnvelope(res, {
