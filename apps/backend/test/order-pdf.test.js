@@ -105,6 +105,30 @@ test('resolves a BE position below the main purchase-order directory and prefers
   }
 });
 
+test('falls back from a missing BE position PDF to the main BE PDF', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bms-purchase-main-pdf-'));
+  try {
+    const directory = buildDocumentPdfDirectory({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001',
+      documentFolder: '02 Bestellung',
+    });
+    await fs.promises.mkdir(directory, { recursive: true });
+    const fileName = '3-02-17-00001_BE_20260206_120000.pdf';
+    await fs.promises.writeFile(path.join(directory, fileName), 'main');
+
+    const result = await resolveLatestPurchaseOrderPdf({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001-01',
+    });
+    assert.equal(result.fileName, fileName);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts a drive-letter root used by the local fallback configuration', () => {
   assert.equal(
     buildOrderPdfDirectory({

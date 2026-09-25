@@ -1243,6 +1243,20 @@ export default function CustomerDetail() {
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2, minWidth: 0 }}>
             {!isSupplier && <Box sx={{ mb: 1 }}>
+              {(isInsolvent || hasLawyer) && (
+                <Box sx={{ mb: 0.75 }}>
+                  {isInsolvent && (
+                    <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.25 }}>
+                      {t('customer_insolvent_warning')}
+                    </Typography>
+                  )}
+                  {hasLawyer && (
+                    <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.25 }}>
+                      {t('customer_lawyer_warning')}
+                    </Typography>
+                  )}
+                </Box>
+              )}
               <Box
                 sx={{
                   display: 'grid',
@@ -1801,23 +1815,11 @@ export default function CustomerDetail() {
 
             <Divider sx={{ my: 3 }} />
 
-            {(isInsolvent || hasLawyer || (!isSupplier && reminderInvoicesCount > 0)) && (
+            {!isSupplier && reminderInvoicesCount > 0 && (
               <>
-                {isInsolvent && (
-                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.5 }}>
-                    {t('customer_insolvent_warning')}
-                  </Typography>
-                )}
-                {hasLawyer && (
-                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 0.5 }}>
-                    {t('customer_lawyer_warning')}
-                  </Typography>
-                )}
-                {!isSupplier && reminderInvoicesCount > 0 && (
-                  <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
-                    {t('customer_reminder_warning', { count: reminderInvoicesCount })}
-                  </Typography>
-                )}
+                <Typography sx={{ color: 'error.main', fontWeight: 700, mb: 3, whiteSpace: 'pre-line' }}>
+                  {t('customer_reminder_warning', { count: reminderInvoicesCount })}
+                </Typography>
                 <Divider sx={{ my: 3 }} />
               </>
             )}

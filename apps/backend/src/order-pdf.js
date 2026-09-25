@@ -109,13 +109,17 @@ async function resolveLatestPurchaseOrderPdf({ companyName, orderNumber, baseFil
     throw error;
   }
 
-  const prefix = requestedOrderNumber;
-  const candidates = entries
-    .filter((entry) => (
+  const prefixes = [requestedOrderNumber];
+  if (directoryOrderNumber !== requestedOrderNumber) prefixes.push(directoryOrderNumber);
+  let candidates = [];
+  for (const prefix of prefixes) {
+    candidates = entries.filter((entry) => (
       entry && entry.isFile() && entry.name.toLowerCase().endsWith('.pdf')
       && entry.name.toLowerCase().startsWith(prefix.toLowerCase())
       && (/^[\s_.(-]/.test(entry.name.slice(prefix.length)) || entry.name.length === prefix.length + 4)
     ));
+    if (candidates.length) break;
+  }
   const candidatesWithStats = await Promise.all(candidates.map(async (entry) => {
     const filePath = path.win32.join(directory, entry.name);
     try {
