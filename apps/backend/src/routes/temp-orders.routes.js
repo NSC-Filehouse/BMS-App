@@ -1187,6 +1187,7 @@ async function loadPositionSummariesForOrders(orderIds) {
   const cBeNumber = resolveColumn(cols, ['tap_be_number', 'taP_be_number', 'be_number']);
   const cArticleIndex = resolveColumn(cols, ['tap_Artikelindex', 'tap_article_index', 'taP_article_index', 'article_index']);
   const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
+  const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
   const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
   const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
   const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
@@ -1198,6 +1199,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       ${pick(cBeNumber, 'beNumber')},
       ${pick(cArticleIndex, 'articleIndex')},
       ${pick(cAmount, 'amountInKg')},
+      ${pick(cPrice, 'price')},
       ${pick(cDeliveryDate, 'deliveryDate')}
     FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE ${toId(cOrderId)} IN (${placeholders})
@@ -1214,6 +1216,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       beNumber: asText(row.beNumber),
       articleIndex: asText(row.articleIndex) || null,
       amountInKg: row.amountInKg,
+      price: row.price,
       deliveryDate: row.deliveryDate || null,
     });
   }

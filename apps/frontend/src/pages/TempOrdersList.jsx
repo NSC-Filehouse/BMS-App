@@ -41,6 +41,20 @@ function formatDateOnly(value) {
   return d.toLocaleDateString('de-DE');
 }
 
+function formatNumber(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString('de-DE') : String(value);
+}
+
+function formatPrice(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR/t`
+    : String(value);
+}
+
 export default function TempOrdersList() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -336,37 +350,43 @@ export default function TempOrdersList() {
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
                   <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
-                    {row.orderIndex && (
-                      <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                        <Box
-                          component="button"
-                          type="button"
-                          onClick={(event) => openOrderPdf(event, row)}
-                          disabled={orderPdfLoadingId === String(row.id || '')}
-                          aria-label={t('open_order_pdf')}
-                          sx={{
-                            p: 0,
-                            border: 0,
-                            bgcolor: 'transparent',
-                            color: 'primary.main',
-                            textDecoration: 'underline',
-                            cursor: orderPdfLoadingId === String(row.id || '') ? 'wait' : 'pointer',
-                            font: 'inherit',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {row.orderIndex}
-                        </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                        AD: {row.createdBy || '-'}
                       </Typography>
-                    )}
+                      <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {row.clientName || row.id}
+                      </Typography>
+                      {row.orderIndex && (
+                        <Typography variant="subtitle1" sx={{ whiteSpace: 'nowrap' }}>
+                          AB:{' '}
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={(event) => openOrderPdf(event, row)}
+                            disabled={orderPdfLoadingId === String(row.id || '')}
+                            aria-label={t('open_order_pdf')}
+                            sx={{
+                              p: 0,
+                              border: 0,
+                              bgcolor: 'transparent',
+                              color: 'primary.main',
+                              textDecoration: 'underline',
+                              cursor: orderPdfLoadingId === String(row.id || '') ? 'wait' : 'pointer',
+                              font: 'inherit',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {row.orderIndex}
+                          </Box>
+                        </Typography>
+                      )}
+                    </Box>
                     {orderPdfErrors[String(row.id || '')] && (
                       <Typography variant="caption" sx={{ color: 'error.main' }}>
                         {orderPdfErrors[String(row.id || '')]}
                       </Typography>
                     )}
-                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                      {row.clientName || row.id}
-                    </Typography>
                     {!row.orderIndex && (
                       <Typography
                         variant="caption"
@@ -380,11 +400,16 @@ export default function TempOrdersList() {
                     )}
                     {(Array.isArray(row.positions) && row.positions.length > 0
                       ? row.positions
-                      : [{ article: row.article, beNumber: row.beNumber, amountInKg: row.amountInKg }]
+                      : [{ article: row.article, amountInKg: row.amountInKg, price: row.price }]
                     ).map((pos, idx) => (
-                      <Typography key={`${row.id}-${idx}`} variant="body2" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                        {`${idx + 1}. ${pos?.article || '-'}; ${pos?.beNumber || '-'}; ${pos?.amountInKg ?? '-'} kg; ${formatDateOnly(pos?.deliveryDate) || '-'}; ${row.createdBy || '-'}`}
-                      </Typography>
+                      <Box key={`${row.id}-${idx}`} sx={{ mt: 0.75, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {`${idx + 1}. ${formatNumber(pos?.amountInKg)} kg · ${pos?.article || '-'} · VK: ${formatPrice(pos?.price)}`}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          {t('delivery_date')}: {formatDateOnly(pos?.deliveryDate) || '-'}
+                        </Typography>
+                      </Box>
                     ))}
                   </Box>
                   <Box sx={{ width: 38, minWidth: 38, flex: '0 0 38px', display: 'flex', justifyContent: 'center' }}>
