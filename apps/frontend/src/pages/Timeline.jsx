@@ -19,11 +19,20 @@ import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
 
-function formatDateTime(value, locale) {
+function formatDateTime(value) {
   if (!value) return '-';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString(locale);
+  const date = d.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const time = d.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${date} ${time}`;
 }
 
 function formatAmount(value, locale) {
@@ -85,15 +94,30 @@ function renderTimelineMessage(item, locale, t) {
 function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
   const timelineId = String(item?.id || '');
   const isPdfLoading = orderPdfLoadingId === timelineId;
-  const customerName = item.customerName || '-';
   const userShortCode = item.userShortCode || '-';
   const amount = formatAmount(item.amountKg, locale);
-  const unit = item.unit || 'kg';
+  const unit = String(item.unit || 'kg').toUpperCase();
   const product = item.product || '-';
   const beNumber = item.beNumber || '-';
 
   return (
     <Box sx={{ display: 'grid', gap: 0.35, minWidth: 0 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          columnGap: 0.75,
+          rowGap: 0.25,
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
+        <Box component="span" color="text.secondary">{formatDateTime(item.createdAt)}</Box>
+        <TimelineSeparator />
+        <Box component="span" sx={{ fontWeight: 700 }}>{userShortCode}</Box>
+      </Box>
       <Box
         sx={{
           display: 'flex',
@@ -130,30 +154,22 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
             <TimelineSeparator />
           </>
         )}
-        <Box component="span" sx={{ fontWeight: 700 }}>{userShortCode}</Box>
+        <Box component="span">{amount} {unit}</Box>
         <TimelineSeparator />
-        <Box component="span" sx={{ minWidth: 0 }}>{customerName}</Box>
+        <Box component="span" sx={{ minWidth: 0 }}>{product}</Box>
+        <TimelineSeparator />
+        <Box component="span">VK {formatPrice(item.salePrice, locale)}</Box>
       </Box>
       <Box
         sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'baseline',
-          columnGap: 0.75,
-          rowGap: 0.25,
+          display: 'block',
           minWidth: 0,
           color: 'text.secondary',
           overflowWrap: 'anywhere',
           wordBreak: 'break-word',
         }}
       >
-        <Box component="span">{t('timeline_amount')}: {amount} {unit}</Box>
-        <TimelineSeparator />
-        <Box component="span">{t('timeline_article')}: {product}</Box>
-        <TimelineSeparator />
-        <Box component="span">{t('timeline_sale_price')}: {formatPrice(item.salePrice, locale)}</Box>
-        <TimelineSeparator />
-        <Box component="span">{t('timeline_be_number')}: {beNumber}</Box>
+        <Box component="span">BE {beNumber}</Box>
       </Box>
     </Box>
   );
@@ -379,9 +395,11 @@ export default function Timeline() {
                 return (
                   <Card key={item.id} variant="outlined" sx={{ width: '100%', minWidth: 0 }}>
                     <CardContent sx={{ display: 'grid', gap: 0.35, py: '10px !important', minWidth: 0 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                        {formatDateTime(item.createdAt, locale)}
-                      </Typography>
+                      {item.type !== 'order' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {formatDateTime(item.createdAt)}
+                        </Typography>
+                      )}
                       <Typography component="div" variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {item.type === 'order'
                           ? renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId)
@@ -392,9 +410,11 @@ export default function Timeline() {
                           {orderPdfErrors[String(item.id || '')]}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                        {t('mandant_label')}: {item.mandant || '-'}
-                      </Typography>
+                      {item.type !== 'order' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {t('mandant_label')}: {item.mandant || '-'}
+                        </Typography>
+                      )}
                     </CardContent>
                   </Card>
                 );

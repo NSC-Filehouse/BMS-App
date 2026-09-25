@@ -78,7 +78,6 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
       [tl_Unit] AS unit,
       [tl_ReferenceId] AS referenceId,
       [temp].[ta_Auftragsindex] AS orderIndex,
-      [temp].[ta_client_name] AS customerName,
       [tempPosition].[salePrice] AS salePrice
     FROM ${TIMELINE_TABLE}
     LEFT JOIN ${TEMP_ORDER_TABLE} AS [temp]
@@ -123,7 +122,6 @@ router.get('/timeline', requireMandant, asyncHandler(async (req, res) => {
     unit: asText(row.unit) || 'kg',
     referenceId: asText(row.referenceId),
     orderIndex: asText(row.orderIndex),
-    customerName: asText(row.customerName),
     salePrice: row.salePrice === null || row.salePrice === undefined ? null : Number(row.salePrice),
   }));
 
