@@ -52,7 +52,15 @@ function AppRoutes() {
           path="/customers"
           element={
             <MandantGuard>
-              <CustomersList />
+              <CustomersList key="customers" />
+            </MandantGuard>
+          }
+        />
+        <Route
+          path="/suppliers"
+          element={
+            <MandantGuard>
+              <CustomersList key="suppliers" supplierOnly />
             </MandantGuard>
           }
         />

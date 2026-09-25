@@ -280,8 +280,18 @@ function getReminderCountsCte() {
   `;
 }
 
-function getOrderCountsCte() {
-  return `
+function getOrderCountsCte(supplierOnly = false) {
+  return supplierOnly ? `
+    , [order_counts] AS (
+      SELECT
+        [supplier_order].[be_KdNr] AS customerId,
+        COUNT(*) AS orderCountLast2Years
+      FROM [dbo].[tblBestellung] [supplier_order]
+      WHERE [supplier_order].[be_Bestelldatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
+        AND COALESCE([supplier_order].[be_KdNr], '') <> ''
+      GROUP BY [supplier_order].[be_KdNr]
+    )
+  ` : `
     , [order_counts] AS (
       SELECT
         [customer_order].[au_KdNr] AS customerId,
@@ -303,14 +313,10 @@ async function loadActiveCustomerIds(database, supplierOnly = false) {
   }
 
   const promise = runSQLQueryAccess(database, supplierOnly ? `
-    SELECT [purchase].[be_KdNr] AS customerId
+    SELECT DISTINCT [purchase].[be_KdNr] AS customerId
     FROM [dbo].[tblBestellung] [purchase]
     WHERE [purchase].[be_Bestelldatum] >= DATEADD(YEAR, -2, CONVERT(date, GETDATE()))
       AND COALESCE([purchase].[be_KdNr], '') <> ''
-    UNION
-    SELECT [supplier_mapping].[kdLi_Lieferanten_Nr] AS customerId
-    FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
-    WHERE COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], '') <> ''
   ` : `
     SELECT [activity].[kdH_KdNR] AS customerId
     FROM [dbo].[tblKun_Historie] [activity]
@@ -638,7 +644,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     ? `TRY_CONVERT(INT, [recent_customer].[key]) ASC, [k].[kd_Name1] ASC, [k].[kd_KdNR] ASC`
     : buildCustomerOrderBy(safeSort, safeDir);
 
-  const cteSql = `${getReminderCountsCte()}${getOrderCountsCte()}`;
+  const cteSql = `${getReminderCountsCte()}${getOrderCountsCte(supplierOnly)}`;
   const countSql = `
     ${cteSql}
     SELECT COUNT(*) AS total

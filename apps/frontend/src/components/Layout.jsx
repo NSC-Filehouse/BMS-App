@@ -20,6 +20,7 @@ import {
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import PeopleIcon from '@mui/icons-material/People';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -198,6 +199,7 @@ export default function Layout() {
         <NavItem to="/vl" label={t('vl_title')} icon={<FormatListBulletedIcon />} onClick={closeDrawer} />
         <NavItem to="/timeline" label={t('timeline_title')} icon={<HistoryIcon />} onClick={closeDrawer} />
         <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
+        <NavItem to="/suppliers" label={t('suppliers_title')} icon={<LocalShippingIcon />} onClick={closeDrawer} />
         {reminderCustomersCount > 0 && (
           <ListItemButton
             onClick={() => {

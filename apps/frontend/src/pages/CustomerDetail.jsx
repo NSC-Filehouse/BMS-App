@@ -578,7 +578,12 @@ export default function CustomerDetail() {
   }, [id, t]);
 
   const name = getCustomerName(item);
-  const isSupplier = Boolean(item?.isSupplier);
+  const requestedDetailView = location.state?.detailView;
+  const isSupplier = requestedDetailView === 'customer'
+    ? false
+    : requestedDetailView === 'supplier'
+      ? true
+      : Boolean(item?.isSupplier);
   const { features } = useFeatureAccess();
   const canManageSupplier = Boolean(item?.canManageSupplier);
   const canCreatePurchaseOrder = canManageSupplier && features.purchaseOrders;
@@ -895,7 +900,10 @@ export default function CustomerDetail() {
     }
     const fromCustomers = location.state?.fromCustomers;
     if (fromCustomers) {
-      navigate('/customers', { replace: true, state: { listState: fromCustomers } });
+      navigate(fromCustomers.supplierOnly ? '/suppliers' : '/customers', {
+        replace: true,
+        state: { listState: fromCustomers },
+      });
       return;
     }
     navigate('/customers', { replace: true });

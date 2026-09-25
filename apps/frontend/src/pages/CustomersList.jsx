@@ -42,11 +42,6 @@ function getCustomerName(row) {
   return name1 || name2 || '';
 }
 
-function isValidCustomerName(name) {
-  const trimmed = String(name || '').trim();
-  return trimmed.length >= 3;
-}
-
 function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
   const plz = row?.kd_PLZ ? String(row.kd_PLZ).trim() : '';
@@ -55,16 +50,7 @@ function buildAddress(row) {
   return [street, [plz, ort].filter(Boolean).join(' '), lk].filter(Boolean).join(', ');
 }
 
-function recentCustomerToRow(customer) {
-  return {
-    kd_KdNR: customer.id,
-    kd_Name1: customer.name,
-    kd_Strasse: customer.address,
-    kd_Aussendienst: customer.representative,
-  };
-}
-
-export default function CustomersList() {
+export default function CustomersList({ supplierOnly = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
@@ -78,7 +64,6 @@ export default function CustomersList() {
   const [reminderOnly, setReminderOnly] = React.useState(false);
   const [orderQuantity, setOrderQuantity] = React.useState(false);
   const [hideInactive, setHideInactive] = React.useState(false);
-  const [supplierOnly, setSupplierOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
@@ -87,7 +72,6 @@ export default function CustomersList() {
   const reminderOnlyRef = React.useRef(reminderOnly);
   const orderQuantityRef = React.useRef(orderQuantity);
   const hideInactiveRef = React.useRef(hideInactive);
-  const supplierOnlyRef = React.useRef(supplierOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
   const touchRef = React.useRef({ x: 0, y: 0 });
@@ -117,18 +101,11 @@ export default function CustomersList() {
     hideInactiveRef.current = hideInactive;
   }, [hideInactive]);
 
-  React.useEffect(() => {
-    supplierOnlyRef.current = supplierOnly;
-  }, [supplierOnly]);
-
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
   const isRecentMode = searchField === 'recent';
-  const isRecentListView = isRecentMode || (
-    !q.trim()
-    && !orderQuantity
-  );
+  const isRecentListView = isRecentMode;
 
   const load = React.useCallback(async (opts = {}) => {
     const currentMeta = metaRef.current || {};
@@ -138,66 +115,46 @@ export default function CustomersList() {
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? false;
     const hideInactiveVal = opts.hideInactive ?? hideInactiveRef.current ?? false;
-    const supplierOnlyVal = opts.supplierOnly ?? supplierOnlyRef.current ?? false;
-    const useRecentRows = searchFieldVal === 'recent' || (
-      !qVal.trim()
-      && !reminderOnlyVal
-      && !orderQuantityVal
-      && !hideInactiveVal
-      && !supplierOnlyVal
-    );
-    const recentCustomers = qVal.trim() ? [] : getRecentCustomers();
-    const recentRows = useRecentRows
-      ? recentCustomers.map(recentCustomerToRow)
-      : null;
-    const recentCustomerIds = recentCustomers.map((customer) => String(customer.id || '').trim()).filter(Boolean);
-    const useRecentOrder = !qVal.trim() && !orderQuantityVal && searchFieldVal !== 'recent';
+    const useRecentOrder = searchFieldVal === 'recent' && !qVal.trim();
+    const recentCustomerIds = useRecentOrder
+      ? getRecentCustomers().map((customer) => String(customer.id || '').trim()).filter(Boolean)
+      : [];
     const pageSize = useRecentOrder ? RECENT_CUSTOMERS_LIMIT : PAGE_SIZE;
-    const page = useRecentRows || useRecentOrder ? 1 : requestedPage;
-    const useOrderQuantity = !reminderOnlyVal && orderQuantityVal;
+    const page = useRecentOrder ? 1 : requestedPage;
+    const useOrderQuantity = !reminderOnlyVal && !useRecentOrder && orderQuantityVal;
     const sortVal = useOrderQuantity ? 'orderCountLast2Years' : 'kd_Name1';
     const dirVal = useOrderQuantity ? 'DESC' : 'ASC';
     const selectedCustomerForFocus = getSelectedCustomer();
     const requestedFocusCustomerId = opts.focusCustomerId !== undefined
       ? opts.focusCustomerId
       : selectedCustomerForFocus?.id;
-    const focusCustomerId = qVal.trim()
+    const focusCustomerId = qVal.trim() || useRecentOrder
       ? ''
       : String(requestedFocusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        useRecentRows
-          ? Promise.resolve({
-            data: recentRows,
-            meta: { page: 1, pageSize: RECENT_CUSTOMERS_LIMIT, total: recentRows.length },
-          })
-          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnlyVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
+        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnly ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
       ]);
       const rows = res?.data || [];
-      const filtered = rows.filter((row) => isValidCustomerName(getCustomerName(row)));
       const focusedCustomer = focusCustomerId
         ? (
           (String(focusedCustomerRes?.data?.kd_KdNR || '').trim() === focusCustomerId
             ? focusedCustomerRes.data
             : null)
           || rows.find((row) => String(row?.kd_KdNR || '').trim() === focusCustomerId)
-          || (String(selectedCustomerForFocus?.id || '').trim() === focusCustomerId
-            ? recentCustomerToRow(selectedCustomerForFocus)
-            : null)
         )
         : null;
       const focusedCustomerIsValid = focusedCustomer
         && String(focusedCustomer?.kd_KdNR || '').trim() === focusCustomerId
-        && (!supplierOnlyVal || Boolean(focusedCustomer?.isSupplier));
-      let displayRows = focusedCustomerIsValid
-        ? [focusedCustomer, ...filtered.filter((row) => String(row?.kd_KdNR || '').trim() !== focusCustomerId)]
-        : filtered;
-      if (useRecentRows || useRecentOrder) displayRows = displayRows.slice(0, RECENT_CUSTOMERS_LIMIT);
+        && (!supplierOnly || Boolean(focusedCustomer?.isSupplier));
+      const displayRows = focusedCustomerIsValid
+        ? [focusedCustomer, ...rows.filter((row) => String(row?.kd_KdNR || '').trim() !== focusCustomerId)]
+        : rows;
       setItems(displayRows);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
@@ -205,14 +162,12 @@ export default function CustomersList() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [supplierOnly, t]);
 
   React.useEffect(() => {
     const syncSelectedCustomer = () => setSelectedCustomerState(getSelectedCustomer());
     const syncRecentCustomers = () => {
-      const showingRecentList = searchFieldRef.current === 'recent'
-        || (!String(qRef.current || '').trim() && !orderQuantityRef.current);
-      if (!showingRecentList) return;
+      if (searchFieldRef.current !== 'recent') return;
       load({
         page: 1,
         q: qRef.current,
@@ -220,7 +175,6 @@ export default function CustomersList() {
         reminderOnly: reminderOnlyRef.current,
         orderQuantity: orderQuantityRef.current,
         hideInactive: hideInactiveRef.current,
-        supplierOnly: supplierOnlyRef.current,
       });
     };
 
@@ -241,7 +195,7 @@ export default function CustomersList() {
     const listState = location.state?.listState;
     const afterSelect = location.state?.afterSelect || null;
     const selectedCustomerId = getSelectedCustomer()?.id;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined || listState.supplierOnly !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
@@ -254,7 +208,6 @@ export default function CustomersList() {
         : listState.includeInactive !== undefined
           ? !Boolean(listState.includeInactive)
           : false;
-      const restoredSupplierOnly = Boolean(listState.supplierOnly);
       hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
@@ -262,8 +215,6 @@ export default function CustomersList() {
       setReminderOnly(restoredReminderOnly);
       setOrderQuantity(restoredOrderQuantity);
       setHideInactive(restoredHideInactive);
-      setSupplierOnly(restoredSupplierOnly);
-      supplierOnlyRef.current = restoredSupplierOnly;
       load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: afterSelect ? { afterSelect } : null });
       return;
@@ -278,7 +229,6 @@ export default function CustomersList() {
       setReminderOnly(false);
       setOrderQuantity(false);
       setHideInactive(false);
-      setSupplierOnly(false);
       load({
         page: 1,
         q: '',
@@ -326,7 +276,7 @@ export default function CustomersList() {
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly, load]);
+  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, load]);
 
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
@@ -363,7 +313,7 @@ export default function CustomersList() {
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {reminderOnly ? t('customers_reminders_title') : t('customers_title')}
+          {reminderOnly ? t('customers_reminders_title') : t(supplierOnly ? 'suppliers_title' : 'customers_title')}
         </Typography>
         {!isRecentListView && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -397,7 +347,9 @@ export default function CustomersList() {
             size="small"
             placeholder={isRecentMode
               ? t('customers_search_mode_recent')
-              : searchField === 'article' ? t('customers_search_articles') : t('customers_search')}
+              : searchField === 'article'
+                ? t(supplierOnly ? 'suppliers_search_articles' : 'customers_search_articles')
+                : t(supplierOnly ? 'suppliers_search' : 'customers_search')}
             value={q}
             disabled={isRecentMode}
             onChange={(e) => setQ(e.target.value)}
@@ -414,11 +366,12 @@ export default function CustomersList() {
             value={searchField}
             onChange={(e) => {
               const nextField = e.target.value;
-              if (supplierOnly && nextField === 'recent') return;
               setSearchField(nextField);
               if (nextField === 'recent') {
                 setQ('');
                 setReminderOnly(false);
+                setOrderQuantity(false);
+                setHideInactive(false);
               }
               if (nextField === 'sales' && ownShortCode) {
                 setQ(ownShortCode);
@@ -463,7 +416,7 @@ export default function CustomersList() {
             <FormControlLabel
               value="article"
               control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
-              label={t('customers_search_mode_article')}
+              label={t(supplierOnly ? 'suppliers_search_mode_article' : 'customers_search_mode_article')}
             />
             <FormControlLabel
               value="recent"
@@ -478,7 +431,7 @@ export default function CustomersList() {
                 display: 'grid',
                 gridTemplateColumns: {
                   xs: 'repeat(2, minmax(0, 1fr))',
-                  md: 'repeat(4, minmax(0, 1fr))',
+                  md: 'repeat(2, minmax(0, 1fr))',
                 },
                 alignItems: 'center',
               }}
@@ -491,7 +444,7 @@ export default function CustomersList() {
                     onChange={(event) => setOrderQuantity(event.target.checked)}
                   />
                 )}
-                label={t('customers_sort_order_quantity')}
+                label={t(supplierOnly ? 'suppliers_sort_order_quantity' : 'customers_sort_order_quantity')}
                 sx={{
                   m: 0,
                   justifySelf: 'start',
@@ -515,27 +468,6 @@ export default function CustomersList() {
                   '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />
-              <FormControlLabel
-                control={(
-                  <Switch
-                    size="small"
-                    checked={supplierOnly}
-                    onChange={(event) => {
-                      const next = event.target.checked;
-                      setSupplierOnly(next);
-                      supplierOnlyRef.current = next;
-                      if (next && searchField === 'recent') setSearchField('name');
-                    }}
-                  />
-                )}
-                label={t('customers_filter_suppliers')}
-                sx={{
-                  m: 0,
-                  justifySelf: 'start',
-                  minWidth: 0,
-                  '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
-                }}
-              />
             </Box>
           )}
         </CardContent>
@@ -552,7 +484,9 @@ export default function CustomersList() {
 
       {!loading && !error && items.length === 0 && (
         <Typography sx={{ opacity: 0.7 }}>
-          {isRecentListView ? t('customers_recent_empty') : t('customers_empty')}
+          {isRecentListView
+            ? t(supplierOnly ? 'suppliers_recent_empty' : 'customers_recent_empty')
+            : t(supplierOnly ? 'suppliers_empty' : 'customers_empty')}
         </Typography>
       )}
 
@@ -600,10 +534,11 @@ export default function CustomersList() {
                   }
                   navigate(`/customers/${encodeURIComponent(id)}`, {
                     state: {
-                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly },
+                      detailView: supplierOnly ? 'supplier' : 'customer',
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
                       afterSelect: location.state?.afterSelect || null,
                       returnTo: createReturnTo(location, {
-                        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, supplierOnly },
+                        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
                         afterSelect: location.state?.afterSelect || null,
                       }),
                     },
@@ -615,11 +550,6 @@ export default function CustomersList() {
                     <Typography variant="body1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {name || String(id ?? '')}
                     </Typography>
-                    {supplierOnly && (
-                      <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {t('supplier_label')}
-                      </Typography>
-                    )}
                     {Number(row?.reminderInvoicesCount) > 0 && (
                       <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         ({Number(row.reminderInvoicesCount)})
