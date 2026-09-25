@@ -4,7 +4,12 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { getDatabaseConnectionForIdentityById, getMandantsForIdentity } = require('../db/databases');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
-const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
+const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
+const {
+  getConfiguredBaseFilePath,
+  resolveLatestOrderPdf,
+  resolveLatestPurchaseOrderPdf,
+} = require('../order-pdf');
 const config = require('../config');
 const logger = require('../logger');
 
@@ -203,6 +208,75 @@ router.get('/timeline/:timelineId/order-pdf', requireMandant, asyncHandler(async
     throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
       code: 'ORDER_PDF_NOT_FOUND',
       orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
+  });
+}));
+
+router.get('/timeline/:timelineId/be-pdf', requireMandant, asyncHandler(async (req, res, next) => {
+  const timelineId = Number.parseInt(String(req.params.timelineId || '').trim(), 10);
+  if (!Number.isSafeInteger(timelineId) || timelineId <= 0) {
+    throw createHttpError(400, 'Invalid timeline id.', { code: 'INVALID_TIMELINE_ID' });
+  }
+
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1
+      [tl_CompanyId] AS companyId,
+      [tl_BeNumber] AS beNumber
+    FROM ${TIMELINE_TABLE}
+    WHERE [tl_ID] = ?
+      AND [tl_CreatedAt] >= DATEADD(DAY, -14, SYSUTCDATETIME())
+  `, [timelineId]);
+  const timelineEntry = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!timelineEntry) {
+    throw createHttpError(404, 'Timeline entry not found.', {
+      code: 'TIMELINE_ENTRY_NOT_FOUND',
+      id: timelineId,
+    });
+  }
+
+  const beNumber = asText(timelineEntry.beNumber);
+  if (!beNumber) {
+    throw createHttpError(404, 'BE number is not available yet.', {
+      code: 'TIMELINE_BE_NUMBER_NOT_AVAILABLE',
+      id: timelineId,
+    });
+  }
+
+  const timelineCompanyId = Number(timelineEntry.companyId);
+  const sourceCompanyId = parseMandantIdFromBeNumber(beNumber) ?? timelineCompanyId;
+  if (!Number.isSafeInteger(sourceCompanyId) || sourceCompanyId < 0) {
+    throw createHttpError(404, 'BE source mandant is not available.', {
+      code: 'TIMELINE_BE_SOURCE_NOT_AVAILABLE',
+      id: timelineId,
+      beNumber,
+    });
+  }
+
+  const sourceDatabase = await getDatabaseConnectionForIdentityById(req.userIdentity, sourceCompanyId);
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Purchase order PDF storage is not configured.', {
+      code: 'PURCHASE_ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const pdf = await resolveLatestPurchaseOrderPdf({
+    companyName: sourceDatabase.name,
+    orderNumber: beNumber,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `Purchase order PDF not found: ${beNumber}`, {
+      code: 'PURCHASE_ORDER_PDF_NOT_FOUND',
+      orderNumber: beNumber,
     });
   }
 

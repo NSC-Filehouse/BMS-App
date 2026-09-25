@@ -17,7 +17,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
-import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
+import { getBePdfErrorMessage, getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
@@ -102,6 +102,8 @@ export default function TempOrderDetail() {
   const [mandants, setMandants] = React.useState([]);
   const [orderPdfLoading, setOrderPdfLoading] = React.useState(false);
   const [orderPdfError, setOrderPdfError] = React.useState('');
+  const [bePdfLoading, setBePdfLoading] = React.useState('');
+  const [bePdfError, setBePdfError] = React.useState('');
 
   React.useEffect(() => {
     let alive = true;
@@ -175,6 +177,35 @@ export default function TempOrderDetail() {
     }
   }, [id, item?.orderIndex, t]);
 
+  const openBePdf = React.useCallback(async (event, position) => {
+    event.preventDefault();
+    const orderId = String(id || '').trim();
+    const beNumber = String(position?.beNumber || '').trim();
+    if (!orderId || !beNumber) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setBePdfError(t('order_pdf_popup_blocked'));
+      return;
+    }
+
+    setBePdfLoading(beNumber);
+    setBePdfError('');
+    try {
+      const blob = await apiRequestBlob(
+        `/temp-orders/${encodeURIComponent(orderId)}/be-pdf/${encodeURIComponent(beNumber)}`,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setBePdfError(getBePdfErrorMessage(e, t));
+    } finally {
+      setBePdfLoading('');
+    }
+  }, [id, t]);
+
   const deleteOrder = async () => {
     try {
       setError('');
@@ -234,6 +265,11 @@ export default function TempOrderDetail() {
           {orderPdfError && (
             <Typography variant="caption" sx={{ color: 'error.main', display: 'block' }}>
               {orderPdfError}
+            </Typography>
+          )}
+          {bePdfError && (
+            <Typography variant="caption" sx={{ color: 'error.main', display: 'block' }}>
+              {bePdfError}
             </Typography>
           )}
         </Box>
@@ -310,7 +346,28 @@ export default function TempOrderDetail() {
                     {t('product_article_index')}: {pos.articleIndex || '-'}
                   </Typography>
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                    {t('product_be_number')}: {pos.beNumber || '-'} | {t('product_warehouse')}: {pos.warehouse || '-'}
+                    {t('product_be_number')}:{' '}
+                    {pos.beNumber ? (
+                      <Box
+                        component="button"
+                        type="button"
+                        onClick={(event) => openBePdf(event, pos)}
+                        disabled={bePdfLoading === String(pos.beNumber)}
+                        aria-label={t('open_be_pdf')}
+                        sx={{
+                          p: 0,
+                          border: 0,
+                          bgcolor: 'transparent',
+                          color: 'primary.main',
+                          textDecoration: 'underline',
+                          cursor: bePdfLoading === String(pos.beNumber) ? 'wait' : 'pointer',
+                          font: 'inherit',
+                        }}
+                      >
+                        {pos.beNumber}
+                      </Box>
+                    ) : '-'}
+                    {' | '}{t('product_warehouse')}: {pos.warehouse || '-'}
                   </Typography>
                   {findForeignMandantName(pos.beNumber, mandants, activeMandant) && (
                     <Typography variant="caption" sx={{ color: '#C56A00', overflowWrap: 'anywhere' }}>

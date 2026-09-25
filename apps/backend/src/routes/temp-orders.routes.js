@@ -36,7 +36,11 @@ const {
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
-const { getConfiguredBaseFilePath, resolveLatestOrderPdf } = require('../order-pdf');
+const {
+  getConfiguredBaseFilePath,
+  resolveLatestOrderPdf,
+  resolveLatestPurchaseOrderPdf,
+} = require('../order-pdf');
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -1523,6 +1527,71 @@ router.get('/temp-orders/:id/order-pdf', requireMandant, asyncHandler(async (req
     throw createHttpError(404, `Order PDF not found: ${orderNumber}`, {
       code: 'ORDER_PDF_NOT_FOUND',
       orderNumber,
+    });
+  }
+
+  const safeFileName = pdf.fileName.replace(/["\\\r\n]/g, '_');
+  res.sendFile(pdf.filePath, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${safeFileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error && !res.headersSent) next(error);
+  });
+}));
+
+router.get('/temp-orders/:id/be-pdf/:beNumber', requireMandant, asyncHandler(async (req, res, next) => {
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const userShortCode = asText(userIdentity.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  const beNumber = asText(req.params.beNumber);
+  if (!Number.isFinite(id) || !beNumber) {
+    throw createHttpError(400, `Invalid temp order or BE number: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, '[o].[ta_CreatedBy]');
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1
+      [p].[tap_be_number] AS beNumber
+    FROM ${TEMP_ORDER_TABLE} AS [o]
+    INNER JOIN ${TEMP_ORDER_POSITION_TABLE} AS [p]
+      ON [p].[tap_ta_id] = [o].[ta_id]
+    WHERE [o].[ta_id] = ?
+      AND [o].[ta_company_id] = ?
+      AND COALESCE([p].[tap_be_number], '') = ?
+      ${ownerFilter.whereSql}
+  `, [id, companyId, beNumber, ...ownerFilter.params]);
+  const position = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!position) {
+    throw createHttpError(404, `BE not found: ${beNumber}`, {
+      code: 'TEMP_ORDER_BE_NOT_FOUND',
+      id,
+      beNumber,
+    });
+  }
+
+  const sourceDatabase = await resolvePositionDatabase(req, beNumber);
+  if (!getConfiguredBaseFilePath()) {
+    throw createHttpError(503, 'Purchase order PDF storage is not configured.', {
+      code: 'PURCHASE_ORDER_PDF_STORAGE_NOT_CONFIGURED',
+    });
+  }
+  const pdf = await resolveLatestPurchaseOrderPdf({
+    companyName: sourceDatabase.name,
+    orderNumber: beNumber,
+  });
+  if (!pdf) {
+    throw createHttpError(404, `BE PDF not found: ${beNumber}`, {
+      code: 'BE_PDF_NOT_FOUND',
+      orderNumber: beNumber,
     });
   }
 

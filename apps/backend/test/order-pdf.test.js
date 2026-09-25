@@ -74,6 +74,37 @@ test('builds the supplier purchase-order document path and matches the legacy fi
   }
 });
 
+test('resolves a BE position below the main purchase-order directory and prefers the newest matching PDF', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bms-purchase-position-pdf-'));
+  try {
+    const directory = buildDocumentPdfDirectory({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001',
+      documentFolder: '02 Bestellung',
+    });
+    await fs.promises.mkdir(directory, { recursive: true });
+    const olderName = '3-02-17-00001-01 Eingang alt.pdf';
+    const newerName = '3-02-17-00001-01 Eingang neu.pdf';
+    await fs.promises.writeFile(path.join(directory, olderName), 'old');
+    await fs.promises.writeFile(path.join(directory, newerName), 'new');
+    const olderDate = new Date('2026-01-01T00:00:00.000Z');
+    const newerDate = new Date('2026-01-02T00:00:00.000Z');
+    await fs.promises.utimes(path.join(directory, olderName), olderDate, olderDate);
+    await fs.promises.utimes(path.join(directory, newerName), newerDate, newerDate);
+
+    const result = await resolveLatestPurchaseOrderPdf({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-17-00001-01',
+    });
+    assert.equal(result.fileName, newerName);
+    assert.equal(await fs.promises.readFile(result.filePath, 'utf8'), 'new');
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts a drive-letter root used by the local fallback configuration', () => {
   assert.equal(
     buildOrderPdfDirectory({

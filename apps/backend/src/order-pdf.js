@@ -90,10 +90,13 @@ async function resolveLatestOrderPdf({ companyName, orderNumber, baseFilePath = 
 }
 
 async function resolveLatestPurchaseOrderPdf({ companyName, orderNumber, baseFilePath = getConfiguredBaseFilePath() } = {}) {
+  const requestedOrderNumber = String(orderNumber || '').trim();
+  const positionMatch = requestedOrderNumber.match(/^(.*)-(\d{2})$/);
+  const directoryOrderNumber = positionMatch ? positionMatch[1] : requestedOrderNumber;
   const directory = buildDocumentPdfDirectory({
     baseFilePath,
     companyName,
-    orderNumber,
+    orderNumber: directoryOrderNumber,
     documentFolder: '02 Bestellung',
   });
   if (!directory) return null;
@@ -106,17 +109,29 @@ async function resolveLatestPurchaseOrderPdf({ companyName, orderNumber, baseFil
     throw error;
   }
 
-  const prefix = `${String(orderNumber).trim()}-`;
+  const prefix = requestedOrderNumber;
   const candidates = entries
     .filter((entry) => (
       entry && entry.isFile() && entry.name.toLowerCase().endsWith('.pdf')
       && entry.name.toLowerCase().startsWith(prefix.toLowerCase())
-    ))
-    .sort((left, right) => left.name.localeCompare(right.name, 'de'));
-  const match = candidates[0] || null;
-  return match
-    ? { fileName: match.name, filePath: path.win32.join(directory, match.name) }
-    : null;
+      && (/^[\s_.(-]/.test(entry.name.slice(prefix.length)) || entry.name.length === prefix.length + 4)
+    ));
+  const candidatesWithStats = await Promise.all(candidates.map(async (entry) => {
+    const filePath = path.win32.join(directory, entry.name);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      return { fileName: entry.name, filePath, modifiedAt: Number(stat.mtimeMs) || 0 };
+    } catch (error) {
+      if (error && error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }));
+  return candidatesWithStats
+    .filter(Boolean)
+    .sort((left, right) => (
+      right.modifiedAt - left.modifiedAt
+      || right.fileName.localeCompare(left.fileName, 'de')
+    ))[0] || null;
 }
 
 module.exports = {

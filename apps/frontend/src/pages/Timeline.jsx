@@ -15,7 +15,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
-import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
+import { getBePdfErrorMessage, getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
 
@@ -91,9 +91,10 @@ function renderTimelineMessage(item, locale, t) {
   );
 }
 
-function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
+function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId, openBePdf, bePdfLoadingId) {
   const timelineId = String(item?.id || '');
-  const isPdfLoading = orderPdfLoadingId === timelineId;
+  const isOrderPdfLoading = orderPdfLoadingId === timelineId;
+  const isBePdfLoading = bePdfLoadingId === timelineId;
   const userShortCode = item.userShortCode || '-';
   const amount = formatAmount(item.amountKg, locale);
   const unit = String(item.unit || 'kg').toUpperCase();
@@ -136,7 +137,7 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
               component="button"
               type="button"
               onClick={(event) => openOrderPdf(event, item)}
-              disabled={isPdfLoading}
+              disabled={isOrderPdfLoading}
               aria-label={t('open_order_pdf')}
               sx={{
                 p: 0,
@@ -144,7 +145,7 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
                 bgcolor: 'transparent',
                 color: 'primary.main',
                 textDecoration: 'underline',
-                cursor: isPdfLoading ? 'wait' : 'pointer',
+                cursor: isOrderPdfLoading ? 'wait' : 'pointer',
                 font: 'inherit',
                 fontWeight: 700,
               }}
@@ -169,7 +170,28 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId) {
           wordBreak: 'break-word',
         }}
       >
-        <Box component="span">BE {beNumber}</Box>
+        {item.beNumber ? (
+          <Box
+            component="button"
+            type="button"
+            onClick={(event) => openBePdf(event, item)}
+            disabled={isBePdfLoading}
+            aria-label={t('open_be_pdf')}
+            sx={{
+              p: 0,
+              border: 0,
+              bgcolor: 'transparent',
+              color: 'primary.main',
+              textDecoration: 'underline',
+              cursor: isBePdfLoading ? 'wait' : 'pointer',
+              font: 'inherit',
+            }}
+          >
+            BE {beNumber}
+          </Box>
+        ) : (
+          <Box component="span">BE {beNumber}</Box>
+        )}
       </Box>
     </Box>
   );
@@ -215,6 +237,8 @@ export default function Timeline() {
   const [searchInput, setSearchInput] = React.useState('');
   const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
   const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
+  const [bePdfLoadingId, setBePdfLoadingId] = React.useState('');
+  const [bePdfErrors, setBePdfErrors] = React.useState({});
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const effectiveQuery = String(searchInput || '').trim().toLowerCase();
   const filteredItems = React.useMemo(() => {
@@ -301,6 +325,42 @@ export default function Timeline() {
       }));
     } finally {
       setOrderPdfLoadingId('');
+    }
+  }, [t]);
+
+  const openBePdf = React.useCallback(async (event, item) => {
+    event.preventDefault();
+    const timelineId = String(item?.id || '').trim();
+    if (!timelineId || !String(item?.beNumber || '').trim()) return;
+
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      setBePdfErrors((previous) => ({
+        ...previous,
+        [timelineId]: t('order_pdf_popup_blocked'),
+      }));
+      return;
+    }
+
+    setBePdfLoadingId(timelineId);
+    setBePdfErrors((previous) => {
+      const next = { ...previous };
+      delete next[timelineId];
+      return next;
+    });
+    try {
+      const blob = await apiRequestBlob(`/timeline/${encodeURIComponent(timelineId)}/be-pdf`);
+      const objectUrl = URL.createObjectURL(blob);
+      popup.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      popup.close();
+      setBePdfErrors((previous) => ({
+        ...previous,
+        [timelineId]: getBePdfErrorMessage(e, t),
+      }));
+    } finally {
+      setBePdfLoadingId('');
     }
   }, [t]);
 
@@ -402,12 +462,12 @@ export default function Timeline() {
                       )}
                       <Typography component="div" variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {item.type === 'order'
-                          ? renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId)
+                          ? renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId, openBePdf, bePdfLoadingId)
                           : renderTimelineMessage(item, locale, t)}
                       </Typography>
-                      {orderPdfErrors[String(item.id || '')] && (
+                      {(orderPdfErrors[String(item.id || '')] || bePdfErrors[String(item.id || '')]) && (
                         <Typography variant="caption" sx={{ color: 'error.main' }}>
-                          {orderPdfErrors[String(item.id || '')]}
+                          {orderPdfErrors[String(item.id || '')] || bePdfErrors[String(item.id || '')]}
                         </Typography>
                       )}
                       {item.type !== 'order' && (
