@@ -1442,7 +1442,7 @@ export default function CustomerDetail() {
                       <Typography variant="caption">{t('payment_terms_label')}: {order.paymentText || '-'}</Typography>
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
                         <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
-                          {`${pIdx + 1}. ${pos.article || '-'}; ${pos.amount ?? '-'} ${pos.unit || ''}; ${formatDateOnly(pos.deliveryDate)}; ${t(isSupplier ? 'purchase_price_per_tonne' : 'order_sale_price_per_tonne')}: ${formatMoney(isSupplier ? pos.purchasePricePerTonne : pos.salePricePerTonne)}`}
+                          {`${pIdx + 1}. ${pos.amount ?? '-'} ${pos.unit || ''}; ${pos.article || '-'}; ${formatDateOnly(pos.deliveryDate)}; ${t(isSupplier ? 'purchase_order_price_per_tonne' : 'order_sale_price_per_tonne')}: ${formatMoney(isSupplier ? pos.purchasePricePerTonne : pos.salePricePerTonne)}`}
                         </Typography>
                       ))}
                     </CardContent>
