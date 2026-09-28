@@ -115,22 +115,8 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId, op
           wordBreak: 'break-word',
         }}
       >
-        <Box component="span" color="text.secondary">{formatDateTime(item.createdAt)}</Box>
-        <TimelineSeparator />
         <Box component="span" sx={{ fontWeight: 700 }}>{userShortCode}</Box>
-      </Box>
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'baseline',
-          columnGap: 0.75,
-          rowGap: 0.25,
-          minWidth: 0,
-          overflowWrap: 'anywhere',
-          wordBreak: 'break-word',
-        }}
-      >
+        {item.orderIndex && <TimelineSeparator />}
         {item.orderIndex && (
           <>
             <Box
@@ -155,6 +141,20 @@ function renderOrderMessage(item, locale, t, openOrderPdf, orderPdfLoadingId, op
             <TimelineSeparator />
           </>
         )}
+        <Box component="span" color="text.secondary">{formatDateTime(item.createdAt)}</Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          columnGap: 0.75,
+          rowGap: 0.25,
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        }}
+      >
         <Box component="span">{amount} {unit}</Box>
         <TimelineSeparator />
         <Box component="span" sx={{ minWidth: 0 }}>{product}</Box>

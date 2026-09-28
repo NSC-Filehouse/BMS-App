@@ -30,6 +30,9 @@ BEGIN
     [op_source_type] NVARCHAR(30) NOT NULL,
     [op_source_key] NVARCHAR(255) NOT NULL,
     [op_source_file_name] NVARCHAR(255) NULL,
+    [op_source_mail_body] NVARCHAR(MAX) NULL,
+    [op_source_mail_body_type] NVARCHAR(20) NULL,
+    [op_source_pdf] VARBINARY(MAX) NULL,
     [op_is_demo] BIT NOT NULL CONSTRAINT [DF_tblOptionen_is_demo] DEFAULT (0),
     [op_review_status] NVARCHAR(20) NOT NULL CONSTRAINT [DF_tblOptionen_review_status] DEFAULT (N'pending'),
     [op_business_status] NVARCHAR(20) NOT NULL CONSTRAINT [DF_tblOptionen_business_status] DEFAULT (N'open'),
@@ -51,6 +54,14 @@ GO
 IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_is_demo') IS NULL
   ALTER TABLE [BMSApp].[tblOptionen]
     ADD [op_is_demo] BIT NOT NULL CONSTRAINT [DF_tblOptionen_is_demo] DEFAULT (0);
+GO
+
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body') IS NULL
+  ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_mail_body] NVARCHAR(MAX) NULL;
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body_type') IS NULL
+  ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_mail_body_type] NVARCHAR(20) NULL;
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_pdf') IS NULL
+  ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_pdf] VARBINARY(MAX) NULL;
 GO
 
 IF OBJECT_ID(N'BMSApp.tblOptionenPositionen', N'U') IS NULL
