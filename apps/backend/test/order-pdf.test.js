@@ -129,6 +129,37 @@ test('falls back from a missing BE position PDF to the main BE PDF', async () =>
   }
 });
 
+test('does not open a Speditionsauftrag or Lieferschein and falls back to the BE PDF', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bms-purchase-document-type-pdf-'));
+  try {
+    const directory = buildDocumentPdfDirectory({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-26-00666',
+      documentFolder: '02 Bestellung',
+    });
+    await fs.promises.mkdir(directory, { recursive: true });
+    const beName = '3-02-26-00666_BE_20260812_081410.pdf';
+    const liName = '3-02-26-00666-02_LI_20260819_101317.pdf';
+    const spName = '3-02-26-00666-02_SP_20260819_101323.pdf';
+    await Promise.all([
+      fs.promises.writeFile(path.join(directory, beName), 'be'),
+      fs.promises.writeFile(path.join(directory, liName), 'li'),
+      fs.promises.writeFile(path.join(directory, spName), 'sp'),
+    ]);
+
+    const result = await resolveLatestPurchaseOrderPdf({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-02-26-00666-02',
+    });
+    assert.equal(result.fileName, beName);
+    assert.equal(await fs.promises.readFile(result.filePath, 'utf8'), 'be');
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts a drive-letter root used by the local fallback configuration', () => {
   assert.equal(
     buildOrderPdfDirectory({

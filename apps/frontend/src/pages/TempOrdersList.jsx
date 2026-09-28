@@ -352,7 +352,7 @@ export default function TempOrdersList() {
                   <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1, minWidth: 0 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                        AD: {row.createdBy || '-'}
+                        {row.createdBy || '-'}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         {row.clientName || row.id}

@@ -51,6 +51,25 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function isExcludedPurchaseDocument(fileName) {
+  const stem = String(fileName || '').replace(/\.pdf$/i, '');
+  return /(?:^|[_\s-])(SP|LI)(?:[_\s.-]|$)/i.test(stem)
+    || /\b(Speditionsauftrag|Lieferschein)\b/i.test(stem);
+}
+
+function isExplicitBeDocument(fileName) {
+  const stem = String(fileName || '').replace(/\.pdf$/i, '');
+  return /(?:^|[_\s-])BE(?:[_\s.-]|$)/i.test(stem);
+}
+
+function matchesPurchasePdfPrefix(entry, prefix) {
+  return entry
+    && entry.isFile()
+    && entry.name.toLowerCase().endsWith('.pdf')
+    && entry.name.toLowerCase().startsWith(prefix.toLowerCase())
+    && (/^[\s_.(-]/.test(entry.name.slice(prefix.length)) || entry.name.length === prefix.length + 4);
+}
+
 function findTimestampedAbFile(entries, orderNumber) {
   const escapedOrderNumber = escapeRegExp(orderNumber);
   const pattern = new RegExp(`^${escapedOrderNumber}_AB_(\\d{8})_(\\d{6})\\.pdf$`, 'i');
@@ -113,11 +132,14 @@ async function resolveLatestPurchaseOrderPdf({ companyName, orderNumber, baseFil
   if (directoryOrderNumber !== requestedOrderNumber) prefixes.push(directoryOrderNumber);
   let candidates = [];
   for (const prefix of prefixes) {
-    candidates = entries.filter((entry) => (
-      entry && entry.isFile() && entry.name.toLowerCase().endsWith('.pdf')
-      && entry.name.toLowerCase().startsWith(prefix.toLowerCase())
-      && (/^[\s_.(-]/.test(entry.name.slice(prefix.length)) || entry.name.length === prefix.length + 4)
-    ));
+    const matchingEntries = entries.filter((entry) => matchesPurchasePdfPrefix(entry, prefix));
+    const eligibleEntries = matchingEntries.filter((entry) => !isExcludedPurchaseDocument(entry.name));
+    if (eligibleEntries.length) {
+      const explicitBeEntries = eligibleEntries.filter((entry) => isExplicitBeDocument(entry.name));
+      candidates = explicitBeEntries.length ? explicitBeEntries : eligibleEntries;
+    } else {
+      candidates = [];
+    }
     if (candidates.length) break;
   }
   const candidatesWithStats = await Promise.all(candidates.map(async (entry) => {
