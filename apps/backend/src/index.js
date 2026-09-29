@@ -29,6 +29,7 @@ const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
 const { startTempOrderReworkPushWorker } = require('./db/temp-order-rework-push');
 const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
+const { startDailyVlMailWorker } = require('./db/daily-vl-mail');
 const { startPurchaseOrderMailWorker } = require('./db/purchase-order-mail-outbox');
 
 const { notFound } = require('./middlewares/notFound.middleware');
@@ -153,5 +154,6 @@ app.listen(config.port, config.host, () => {
   startUnfinalizedOrderReminderWorker();
   startTempOrderReworkPushWorker();
   startVlCompletionMailWorker();
+  startDailyVlMailWorker();
   startPurchaseOrderMailWorker();
 });

@@ -169,6 +169,19 @@ function renderClassicVl(vlItems) {
   }).join('');
 }
 
+function formatDailyVlMailBody({ vlItems, mandantName, mandantShortName }) {
+  const safeMandant = asText(mandantShortName) || asText(mandantName) || '-';
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:8px;background:#ffffff;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.35;">
+    <div style="width:100%;">
+      <div style="margin:0 0 8px;padding:2px 4px;background:#000000;color:#ffffff;">${escapeHtml(safeMandant)} - Verfügbare Mengen Neu</div>
+      <div style="padding-left:4px;">${renderClassicVl(vlItems)}</div>
+    </div>
+  </body>
+</html>`;
+}
+
 function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, mandantShortName, completedAt }) {
   const safeMandant = asText(mandantShortName) || asText(mandantName) || '-';
   const list = Array.isArray(positions) ? positions : [];
@@ -191,6 +204,7 @@ function formatVlCompletionMailBody({ order, positions, vlItems, mandantName, ma
 
 module.exports = {
   VL_COMPLETION_MAIL_SUBJECT,
+  formatDailyVlMailBody,
   formatVlCompletionMailBody,
   classicLineParts,
   sortVlItems,

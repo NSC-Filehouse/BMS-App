@@ -16,6 +16,17 @@ function toPositiveIntOrNull(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+function parseIntegerList(value, fallback = '') {
+  const source = String(value || fallback || '');
+  const parsed = source
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((item) => Number.isSafeInteger(item));
+  return [...new Set(parsed)];
+}
+
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 const config = {
@@ -89,6 +100,25 @@ const config = {
     intervalSeconds: toInt(process.env.BMS_VL_COMPLETION_MAIL_INTERVAL_SECONDS, 60),
   },
 
+  dailyVlMail: {
+    enabled: toBool(process.env.BMS_DAILY_VL_MAIL_ENABLED, false),
+    recipient: String(
+      process.env.BMS_DAILY_VL_MAIL_RECIPIENT || 'verfuegbarkeitsliste@mlplastics.de',
+    ).trim().toLowerCase(),
+    westpolyCompanyId: toInt(process.env.BMS_DAILY_VL_MAIL_WESTPOLY_COMPANY_ID, 9),
+    westpolyRecipients: String(
+      process.env.BMS_DAILY_VL_MAIL_WESTPOLY_RECIPIENTS
+        || 'kimaz@mlplastics.de,m.winkler@mlholding.org,altendorf@westpoly.de,goede@mlholding.org',
+    ).split(',').map((item) => item.trim().toLowerCase()).filter(Boolean),
+    intervalSeconds: toInt(process.env.BMS_DAILY_VL_MAIL_INTERVAL_SECONDS, 30),
+    // Keep the fallback aligned with VITE_MANDANT_EXCLUDE_IDS; Test is always
+    // excluded explicitly in daily-vl-mail.js.
+    excludedMandantIds: parseIntegerList(
+      process.env.BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS || process.env.VITE_MANDANT_EXCLUDE_IDS,
+      '1,6,8,13,14,15,16,17,18',
+    ),
+  },
+
   unfinalizedOrderReminder: {
     intervalMinutes: toPositiveIntOrNull(process.env.BMS_UNFINALIZED_ORDER_REMINDER_INTERVAL_MINUTES),
     userEmail: String(process.env.BMS_UNFINALIZED_ORDER_REMINDER_USER_EMAIL || '').trim().toLowerCase(),
@@ -138,6 +168,7 @@ const config = {
       vlMailOutbox: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_OUTBOX || 'VlMailOutbox').trim(),
       vlMailOrderState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_ORDER_STATE || 'VlMailOrderState').trim(),
       vlMailWorkerState: (process.env.BMS_SQL_APP_TABLE_VL_MAIL_WORKER_STATE || 'VlMailWorkerState').trim(),
+      dailyVlMailOutbox: (process.env.BMS_SQL_APP_TABLE_DAILY_VL_MAIL_OUTBOX || 'DailyVlMailOutbox').trim(),
       vlSalePushState: (process.env.BMS_SQL_APP_TABLE_VL_SALE_PUSH_STATE || 'VlSalePushState').trim(),
     },
     columns: {
