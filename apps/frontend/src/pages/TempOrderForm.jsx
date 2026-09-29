@@ -31,12 +31,15 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
-import { useI18n } from '../utils/i18n.jsx';
+import { API_BASE_URL, APP_BASE_PATH } from '../config.js';
+import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn } from '../utils/navigation.js';
 import { getDefaultContactName, normalizeContactRanking } from '../utils/contactRanking.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
 import { clearOrderCart } from '../utils/orderCart.js';
+import { clearTempOrderDraft, loadTempOrderDraft, saveTempOrderDraft } from '../utils/tempOrderDraft.js';
+import { checkResumeSession } from '../utils/resumeSession.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
@@ -367,11 +370,103 @@ export default function TempOrderForm() {
     deliveryAddressManual: false,
     deliveryAddressNewlyCreated: false,
   });
+  const [draftUserId, setDraftUserId] = React.useState('');
+  const [serverModifiedAt, setServerModifiedAt] = React.useState('');
+  const [draftOriginalModifiedAt, setDraftOriginalModifiedAt] = React.useState('');
+  const draftUserIdRef = React.useRef('');
+  const [initialDataReady, setInitialDataReady] = React.useState(false);
+  const [draftDecisionReady, setDraftDecisionReady] = React.useState(false);
+  const [pendingDraft, setPendingDraft] = React.useState(null);
+  const [restoredFilesMissing, setRestoredFilesMissing] = React.useState(false);
+  const [restoredServerChanged, setRestoredServerChanged] = React.useState(false);
+  const draftDecisionKeyRef = React.useRef('');
+  const draftReadyKeyRef = React.useRef('');
+  const draftTouchedRef = React.useRef(false);
+  const draftBaselineRef = React.useRef('');
+  const draftSavedRef = React.useRef(false);
+  const draftSnapshotRef = React.useRef(null);
+  const draftContext = React.useMemo(() => ({
+    userId: draftUserId,
+    mandant: activeMandant,
+    orderId: isEdit ? `edit:${id}` : 'new',
+  }), [activeMandant, draftUserId, id, isEdit]);
+  const draftScopeKey = `${draftUserId}\u001f${activeMandant}\u001f${draftContext.orderId}`;
   const [packagingOptions, setPackagingOptions] = React.useState([]);
   const packagingTouchedRef = React.useRef(false);
   const packagingCacheRef = React.useRef(new Map());
   const packagingRequestsRef = React.useRef(new Map());
   const addPosPackagingBeNumberRef = React.useRef('');
+  const draftData = {
+    form,
+    positions,
+    removeAttachmentIds,
+    hadPendingAttachments: restoredFilesMissing || pendingAttachmentFiles.length > 0,
+    serverModifiedAt: draftOriginalModifiedAt,
+    ui: {
+      customerQuery,
+      selectedCustomer,
+      editingArticleKey,
+      editingArticleValue,
+      newDeliveryAddressOpen,
+      newDeliveryAddressDraft,
+      newDeliveryAddressCustomer,
+      addPosOpen,
+      addPosQuery,
+      addPosProduct,
+      addPosQty,
+      addPosSalePrice,
+      addPosDeliveryDate,
+      addPosDeliveryDateAuto,
+      addPosWpzId,
+      addPosWpzOriginal,
+      addPosWpzComment,
+      addPosOriginalPackagingType,
+      addPosOriginalPackagingTypeId,
+    },
+  };
+  const draftSerialized = JSON.stringify(draftData);
+
+  React.useEffect(() => {
+    draftSavedRef.current = false;
+    draftSnapshotRef.current = null;
+    setPendingDraft(null);
+    setDraftDecisionReady(false);
+    setRestoredFilesMissing(false);
+    setRestoredServerChanged(false);
+  }, [draftScopeKey]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const identify = async () => {
+      const headers = new Headers();
+      const language = getStoredLanguage();
+      if (language) headers.set('x-lang', language);
+      const result = await checkResumeSession(() => {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        return fetch(`${API_BASE_URL}/me`, { headers, cache: 'no-store', signal: controller.signal })
+          .finally(() => window.clearTimeout(timeout));
+      });
+      if (alive && result.status === 'authenticated') {
+        const nextUserId = result.userId;
+        if (draftUserIdRef.current && draftUserIdRef.current.toLowerCase() !== nextUserId.toLowerCase()) {
+          window.location.assign(`${APP_BASE_PATH}/`);
+          return;
+        }
+        draftUserIdRef.current = nextUserId;
+        setDraftUserId(nextUserId);
+      }
+    };
+    void identify();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void identify();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -732,6 +827,9 @@ export default function TempOrderForm() {
 
   React.useEffect(() => {
     let alive = true;
+    let loadFailed = false;
+    setInitialDataReady(false);
+    if (!isEdit) setDraftOriginalModifiedAt('');
     const run = async () => {
       if (isEdit) {
         try {
@@ -739,6 +837,8 @@ export default function TempOrderForm() {
           const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}`);
           if (!alive) return;
           const d = res?.data || {};
+          setServerModifiedAt(String(d.lastModifiedDate || ''));
+          setDraftOriginalModifiedAt(String(d.lastModifiedDate || ''));
           const loadedStatus = normalizeTempOrderStatus(d.orderStatus, d.completed);
           if (!isTempOrderEditableStatus(loadedStatus, d.completed)) {
             navigate(`/temp-orders/${encodeURIComponent(id)}`, {
@@ -811,6 +911,7 @@ export default function TempOrderForm() {
             }),
           })));
         } catch (e) {
+          loadFailed = true;
           if (alive) setError(e?.message || t('loading_error'));
         } finally {
           if (alive) setLoading(false);
@@ -932,9 +1033,138 @@ export default function TempOrderForm() {
         comment: source.comment || '',
       }));
     };
-    run();
+    void run().catch((e) => {
+      loadFailed = true;
+      if (alive) setError(e?.message || t('loading_error'));
+    }).finally(() => {
+      if (alive && !loadFailed) setInitialDataReady(true);
+    });
     return () => { alive = false; };
   }, [id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
+
+  React.useEffect(() => {
+    if (!initialDataReady || !draftUserId) return;
+    if (draftDecisionKeyRef.current === draftScopeKey) return;
+    draftDecisionKeyRef.current = draftScopeKey;
+    draftReadyKeyRef.current = '';
+    setDraftDecisionReady(false);
+    const savedDraft = loadTempOrderDraft(draftContext);
+    if (savedDraft) {
+      setPendingDraft(savedDraft);
+    } else {
+      const needsSourceRecovery = !isEdit && (isCartCreate || isCopyCreate || Boolean(source?.beNumber));
+      draftBaselineRef.current = needsSourceRecovery ? '' : draftSerialized;
+      draftTouchedRef.current = needsSourceRecovery;
+      draftReadyKeyRef.current = draftScopeKey;
+      setDraftDecisionReady(true);
+    }
+  }, [draftContext, draftScopeKey, draftSerialized, draftUserId, initialDataReady, isCartCreate, isCopyCreate, isEdit, source?.beNumber]);
+
+  const restoreDraft = React.useCallback(() => {
+    if (!pendingDraft) return;
+    packagingTouchedRef.current = true;
+    setForm((previous) => ({ ...previous, ...pendingDraft.form }));
+    setPositions(pendingDraft.positions);
+    setRemoveAttachmentIds(Array.isArray(pendingDraft.removeAttachmentIds) ? pendingDraft.removeAttachmentIds : []);
+    setRestoredFilesMissing(Boolean(pendingDraft.hadPendingAttachments));
+    setDraftOriginalModifiedAt(String(pendingDraft.serverModifiedAt || ''));
+    setRestoredServerChanged(Boolean(isEdit && pendingDraft.serverModifiedAt && serverModifiedAt
+      && pendingDraft.serverModifiedAt !== serverModifiedAt));
+    const restoredUi = pendingDraft.ui || {};
+    setCustomerQuery(String(restoredUi.customerQuery || pendingDraft.form.clientName || ''));
+    if (restoredUi.selectedCustomer) setSelectedCustomer(restoredUi.selectedCustomer);
+    setEditingArticleKey(String(restoredUi.editingArticleKey || ''));
+    setEditingArticleValue(String(restoredUi.editingArticleValue || ''));
+    if (restoredUi.newDeliveryAddressDraft) setNewDeliveryAddressDraft(restoredUi.newDeliveryAddressDraft);
+    if (restoredUi.newDeliveryAddressCustomer) setNewDeliveryAddressCustomer(restoredUi.newDeliveryAddressCustomer);
+    setNewDeliveryAddressOpen(Boolean(restoredUi.newDeliveryAddressOpen));
+    if (restoredUi.newDeliveryAddressOpen) {
+      void apiRequest('/delivery-address-country-types')
+        .then((response) => setDeliveryAddressCountryOptions(Array.isArray(response?.data) ? response.data : []))
+        .catch(() => setNewDeliveryAddressError(t('delivery_address_load_error')));
+    }
+    setAddPosOpen(Boolean(restoredUi.addPosOpen));
+    setAddPosQuery(String(restoredUi.addPosQuery || ''));
+    setAddPosProduct(restoredUi.addPosProduct || null);
+    setAddPosQty(restoredUi.addPosQty ?? '');
+    setAddPosSalePrice(restoredUi.addPosSalePrice ?? '');
+    setAddPosDeliveryDate(restoredUi.addPosDeliveryDate || tomorrow());
+    setAddPosDeliveryDateAuto(restoredUi.addPosDeliveryDateAuto !== false);
+    setAddPosWpzId(restoredUi.addPosWpzId ?? null);
+    setAddPosWpzOriginal(restoredUi.addPosWpzOriginal !== false);
+    setAddPosWpzComment(restoredUi.addPosWpzComment || 'Original verwenden');
+    setAddPosOriginalPackagingType(restoredUi.addPosOriginalPackagingType || '');
+    setAddPosOriginalPackagingTypeId(restoredUi.addPosOriginalPackagingTypeId ?? null);
+    const customerId = String(pendingDraft.form.clientReferenceId || '').trim();
+    if (customerId) {
+      if (!isEdit) {
+        storeSelectedCustomer({
+          id: customerId,
+          name: pendingDraft.form.clientName || '',
+          address: pendingDraft.form.clientAddress || '',
+          representative: pendingDraft.form.clientRepresentative || '',
+        });
+      }
+      void loadDeliveryAddresses(customerId);
+      void loadCustomerRepresentatives(customerId, pendingDraft.form.clientRepresentative || '', pendingDraft.form.clientRepresentativeId ?? '');
+      void loadCustomerPaymentDefault(customerId, null, {
+        id: pendingDraft.form.specialPaymentId,
+        text: pendingDraft.form.specialPaymentText,
+      });
+    }
+    draftBaselineRef.current = JSON.stringify({
+      form: pendingDraft.form,
+      positions: pendingDraft.positions,
+      removeAttachmentIds: Array.isArray(pendingDraft.removeAttachmentIds) ? pendingDraft.removeAttachmentIds : [],
+      hadPendingAttachments: Boolean(pendingDraft.hadPendingAttachments),
+      serverModifiedAt: String(pendingDraft.serverModifiedAt || ''),
+      ui: restoredUi,
+    });
+    setPendingDraft(null);
+    draftTouchedRef.current = true;
+    draftReadyKeyRef.current = draftScopeKey;
+    setDraftDecisionReady(true);
+  }, [draftScopeKey, isEdit, loadCustomerPaymentDefault, loadCustomerRepresentatives, loadDeliveryAddresses, pendingDraft, serverModifiedAt, t]);
+
+  const discardDraft = React.useCallback(() => {
+    clearTempOrderDraft(draftContext);
+    draftBaselineRef.current = draftSerialized;
+    setPendingDraft(null);
+    draftTouchedRef.current = false;
+    draftReadyKeyRef.current = draftScopeKey;
+    setDraftDecisionReady(true);
+  }, [draftContext, draftScopeKey, draftSerialized]);
+
+  React.useEffect(() => {
+    const shouldSave = draftDecisionReady && draftReadyKeyRef.current === draftScopeKey
+      && draftTouchedRef.current
+      && !pendingDraft && !draftSavedRef.current
+      && draftSerialized !== draftBaselineRef.current;
+    draftSnapshotRef.current = shouldSave ? { context: draftContext, data: draftData } : null;
+    if (!shouldSave) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!draftSavedRef.current) saveTempOrderDraft(draftContext, draftData);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [draftContext, draftDecisionReady, draftScopeKey, draftSerialized, pendingDraft]);
+
+  React.useEffect(() => {
+    const flushDraft = () => {
+      if (document.visibilityState !== 'hidden' && document.visibilityState !== 'prerender') return;
+      const snapshot = draftSnapshotRef.current;
+      if (snapshot) saveTempOrderDraft(snapshot.context, snapshot.data);
+    };
+    const onPageHide = () => {
+      const snapshot = draftSnapshotRef.current;
+      if (snapshot) saveTempOrderDraft(snapshot.context, snapshot.data);
+    };
+    document.addEventListener('visibilitychange', flushDraft);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', flushDraft);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, []);
 
   React.useEffect(() => {
     const missingPositions = (Array.isArray(positions) ? positions : [])
@@ -1226,7 +1456,7 @@ export default function TempOrderForm() {
   }, [loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives]);
 
   React.useEffect(() => {
-    if (isEdit || isCopyCreate || form.clientReferenceId) return;
+    if (isEdit || isCopyCreate || !draftDecisionReady || form.clientReferenceId) return;
     let alive = true;
     (async () => {
       const storedCustomer = getStoredSelectedCustomer();
@@ -1253,7 +1483,7 @@ export default function TempOrderForm() {
       }
     })();
     return () => { alive = false; };
-  }, [form.clientReferenceId, isCopyCreate, isEdit, onChooseCustomer]);
+  }, [draftDecisionReady, form.clientReferenceId, isCopyCreate, isEdit, onChooseCustomer]);
 
   const deleteOrder = React.useCallback(async () => {
     if (!isEdit || !id) return;
@@ -1262,6 +1492,9 @@ export default function TempOrderForm() {
       setError('');
       setSuccess('');
       await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      draftSavedRef.current = true;
+      draftSnapshotRef.current = null;
+      clearTempOrderDraft(draftContext);
       setSuccess(t('temp_order_deleted'));
       navigateToReturn(navigate, location.state?.returnTo, '/temp-orders');
     } catch (e) {
@@ -1270,7 +1503,7 @@ export default function TempOrderForm() {
       setDeletingOrder(false);
       setDeleteLastConfirmOpen(false);
     }
-  }, [id, isEdit, location.state, navigate, t]);
+  }, [draftContext, id, isEdit, location.state, navigate, t]);
 
   const onRemovePosition = React.useCallback((idx) => {
     if (!Array.isArray(positions) || idx < 0 || idx >= positions.length) return;
@@ -1449,6 +1682,9 @@ export default function TempOrderForm() {
         ? await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: requestBody })
         : await apiRequest('/temp-orders', { method: 'POST', body: requestBody });
 
+      draftSavedRef.current = true;
+      draftSnapshotRef.current = null;
+      clearTempOrderDraft(draftContext);
       setSuccess(t('temp_order_saved'));
       const newId = res?.data?.id;
       if (newId) {
@@ -1470,7 +1706,39 @@ export default function TempOrderForm() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
+    <Box
+      sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}
+      onChangeCapture={() => { draftTouchedRef.current = true; }}
+      onClickCapture={() => { if (initialDataReady && draftDecisionReady) draftTouchedRef.current = true; }}
+    >
+      <Dialog open={Boolean(pendingDraft)} disableEscapeKeyDown>
+        <DialogTitle>{t('temp_order_draft_restore_title')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {t('temp_order_draft_restore_text', {
+              date: pendingDraft ? new Date(pendingDraft.savedAt).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE') : '',
+            })}
+          </Typography>
+          {pendingDraft?.form?.clientName && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              {t('order_customer')}: {pendingDraft.form.clientName}
+            </Typography>
+          )}
+          {pendingDraft?.hadPendingAttachments && (
+            <Typography variant="body2" sx={{ mt: 1 }}>{t('temp_order_draft_attachment_hint')}</Typography>
+          )}
+          {isEdit && pendingDraft?.serverModifiedAt && serverModifiedAt
+            && pendingDraft.serverModifiedAt !== serverModifiedAt && (
+              <Typography variant="body2" sx={{ mt: 1, color: 'warning.main' }}>
+                {t('temp_order_draft_server_changed')}
+              </Typography>
+            )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={discardDraft}>{t('temp_order_draft_discard')}</Button>
+          <Button variant="contained" onClick={restoreDraft}>{t('temp_order_draft_restore')}</Button>
+        </DialogActions>
+      </Dialog>
       <input
         ref={attachmentInputRef}
         type="file"
@@ -1506,6 +1774,8 @@ export default function TempOrderForm() {
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+      {restoredFilesMissing && <Alert severity="info" sx={{ mb: 2 }}>{t('temp_order_draft_attachment_hint')}</Alert>}
+      {restoredServerChanged && <Alert severity="warning" sx={{ mb: 2 }}>{t('temp_order_draft_server_changed')}</Alert>}
 
       {!loading && (
         <Card sx={{ width: '100%', minWidth: 0 }}>

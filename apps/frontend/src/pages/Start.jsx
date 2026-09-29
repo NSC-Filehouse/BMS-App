@@ -10,11 +10,12 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { setMandant, getMandant, clearMandant } from '../utils/mandant.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { getLastRoute } from '../utils/resumeNavigation.js';
 
 export default function Start({ selectionMode = false }) {
   const [mandants, setMandants] = React.useState([]);
@@ -23,6 +24,7 @@ export default function Start({ selectionMode = false }) {
   const [email, setEmail] = React.useState('');
   const [meName, setMeName] = React.useState({ given: '', surname: '' });
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const noPermissionText = t('start_no_permission_text');
 
@@ -67,6 +69,18 @@ export default function Start({ selectionMode = false }) {
         }
 
         if (!selectionMode) {
+          const previousRoute = new URLSearchParams(location.search).get('resume') === '0'
+            ? null
+            : getLastRoute({
+              userId: meRes?.identityResolved ? meRes.samAccountName : '',
+              allowedMandants: allowed,
+            });
+          if (previousRoute) {
+            setMandant(previousRoute.mandant);
+            setSelected(previousRoute.mandant);
+            navigate(previousRoute.route, { replace: true });
+            return;
+          }
           const mainMandant = allowed.find((mandant) => mandant.isMain);
           if (!mainMandant) {
             navigate('/mandants/select', { replace: true });
@@ -87,7 +101,7 @@ export default function Start({ selectionMode = false }) {
     })();
 
     return () => { alive = false; };
-  }, [navigate, selectionMode, t]);
+  }, [location.search, navigate, selectionMode, t]);
 
   return (
     <Box sx={{ maxWidth: 720, width: '100%', minWidth: 0, mx: 'auto' }}>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
+  Alert,
   Badge,
   Box,
   Drawer,
@@ -40,12 +41,14 @@ import { getStoredLanguage, useI18n } from '../utils/i18n.jsx';
 import { getOrderCartCount, ORDER_CART_CHANGED } from '../utils/orderCart.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
 import { createReturnTo } from '../utils/navigation.js';
+import { checkResumeSession } from '../utils/resumeSession.js';
+import { rememberLastRoute } from '../utils/resumeNavigation.js';
 
 const drawerWidth = 260;
 
-function redirectToStart() {
+function redirectToStart({ skipResume = false } = {}) {
   if (typeof window === 'undefined') return;
-  window.location.assign(`${APP_BASE_PATH}/`);
+  window.location.assign(`${APP_BASE_PATH}/${skipResume ? '?resume=0' : ''}`);
 }
 
 function NavItem({ to, label, icon, onClick, preserveReturn = false }) {
@@ -75,8 +78,13 @@ export default function Layout() {
   const [reminderCustomersCount, setReminderCustomersCount] = React.useState(0);
   const [cartCount, setCartCount] = React.useState(() => getOrderCartCount());
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
+  const [sessionUserKey, setSessionUserKey] = React.useState('');
+  const sessionUserKeyRef = React.useRef('');
+  const [connectionProblem, setConnectionProblem] = React.useState(false);
+  const retryResumeCheckRef = React.useRef(null);
   const mandant = getMandant();
   const navigate = useNavigate();
+  const currentLocation = useLocation();
   const { t } = useI18n();
   const { features } = useFeatureAccess();
   const hasSelectedCustomer = Boolean(selectedCustomer?.id);
@@ -117,7 +125,14 @@ export default function Layout() {
     (async () => {
       try {
         const requests = [
-          apiRequest('/me'),
+          apiRequest('/me').then((res) => {
+            if (alive && res?.identityResolved && res?.samAccountName) {
+              const nextUserKey = String(res.samAccountName).trim();
+              sessionUserKeyRef.current = nextUserKey;
+              setSessionUserKey(nextUserKey);
+            }
+            return res;
+          }),
           apiRequest('/mandants'),
           mandant ? apiRequest('/customers/reminders-summary') : Promise.resolve({ data: { count: 0 } }),
         ];
@@ -142,6 +157,14 @@ export default function Layout() {
   }, [mandant]);
 
   React.useEffect(() => {
+    rememberLastRoute({
+      userId: sessionUserKey,
+      mandant,
+      route: `${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}`,
+    });
+  }, [sessionUserKey, mandant, currentLocation.pathname, currentLocation.search, currentLocation.hash]);
+
+  React.useEffect(() => {
     let active = true;
     let inFlight = false;
 
@@ -149,30 +172,52 @@ export default function Layout() {
       if (!active || inFlight) return;
       inFlight = true;
       try {
-        const headers = new Headers();
-        const lang = getStoredLanguage();
-        if (lang) headers.set('x-lang', lang);
+        const outcomes = [];
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (!active || document.visibilityState !== 'visible') return;
+          if (attempt > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, attempt === 1 ? 1200 : 2500));
+            if (!active || document.visibilityState !== 'visible') return;
+          }
 
-        const res = await fetch(`${API_BASE_URL}/me`, { headers, cache: 'no-store' });
-        const contentType = String(res.headers.get('content-type') || '').toLowerCase();
-        const isJson = contentType.includes('application/json');
-
-        if (!res.ok || res.redirected || !isJson) {
-          redirectToStart();
-          return;
+          const headers = new Headers();
+          const lang = getStoredLanguage();
+          if (lang) headers.set('x-lang', lang);
+          const result = await checkResumeSession(() => {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 8000);
+            return fetch(`${API_BASE_URL}/me`, {
+              headers,
+              cache: 'no-store',
+              signal: controller.signal,
+            }).finally(() => window.clearTimeout(timeout));
+          });
+          if (!active || document.visibilityState !== 'visible') return;
+          if (result.status === 'authenticated') {
+            if (sessionUserKeyRef.current
+              && sessionUserKeyRef.current.toLowerCase() !== result.userId.toLowerCase()) {
+              redirectToStart();
+              return;
+            }
+            sessionUserKeyRef.current = result.userId;
+            setSessionUserKey(result.userId);
+            setConnectionProblem(false);
+            return;
+          }
+          outcomes.push(result.status);
         }
 
-        const me = await res.json().catch(() => null);
-        const identity = me?.principalName || me?.mail || me?.email;
-        if (!identity) {
+        if (outcomes.length === 3 && outcomes.every((status) => status === 'unauthenticated')) {
           redirectToStart();
+        } else if (active) {
+          setConnectionProblem(true);
         }
-      } catch {
-        redirectToStart();
       } finally {
         inFlight = false;
       }
     };
+
+    retryResumeCheckRef.current = probeSession;
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -183,6 +228,7 @@ export default function Layout() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       active = false;
+      retryResumeCheckRef.current = null;
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
@@ -390,6 +436,20 @@ export default function Layout() {
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0, width: '100%', p: 2, pt: 10 }}>
+        {connectionProblem && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 1 }}
+            action={(
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Button color="inherit" size="small" onClick={() => retryResumeCheckRef.current?.()}>{t('resume_retry')}</Button>
+                <Button color="inherit" size="small" onClick={() => redirectToStart({ skipResume: true })}>{t('resume_sign_in')}</Button>
+              </Box>
+            )}
+          >
+            {t('resume_connection_problem')}
+          </Alert>
+        )}
         <Outlet />
       </Box>
     </Box>
