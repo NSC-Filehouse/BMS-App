@@ -51,16 +51,20 @@ BEGIN
 END;
 GO
 
-IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_is_demo') IS NULL
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_MandantID') IS NULL
+  AND COL_LENGTH(N'BMSApp.tblOptionen', N'op_is_demo') IS NULL
   ALTER TABLE [BMSApp].[tblOptionen]
     ADD [op_is_demo] BIT NOT NULL CONSTRAINT [DF_tblOptionen_is_demo] DEFAULT (0);
 GO
 
-IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body') IS NULL
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_MandantID') IS NULL
+  AND COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body') IS NULL
   ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_mail_body] NVARCHAR(MAX) NULL;
-IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body_type') IS NULL
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_MandantID') IS NULL
+  AND COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_mail_body_type') IS NULL
   ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_mail_body_type] NVARCHAR(20) NULL;
-IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_pdf') IS NULL
+IF COL_LENGTH(N'BMSApp.tblOptionen', N'op_MandantID') IS NULL
+  AND COL_LENGTH(N'BMSApp.tblOptionen', N'op_source_pdf') IS NULL
   ALTER TABLE [BMSApp].[tblOptionen] ADD [op_source_pdf] VARBINARY(MAX) NULL;
 GO
 

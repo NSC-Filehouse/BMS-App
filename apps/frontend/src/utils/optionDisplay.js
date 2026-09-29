@@ -12,6 +12,11 @@ export function optionDate(value) {
 }
 
 export function optionQuantity(position, t) {
+  if (position?.quantityMinKg !== null && position?.quantityMinKg !== undefined) {
+    const minKg = optionNumber(position.quantityMinKg);
+    const maxKg = optionNumber(position.quantityMaxKg);
+    return `${minKg}${maxKg && maxKg !== minKg ? `–${maxKg}` : ''} kg`;
+  }
   const min = optionNumber(position?.quantityMin);
   const max = optionNumber(position?.quantityMax);
   if (position?.quantityUnit) {
@@ -26,8 +31,13 @@ export function optionQuantity(position, t) {
 }
 
 export function optionPrice(position, t) {
+  if (position?.pricePerTonne !== null && position?.pricePerTonne !== undefined) {
+    return `${optionNumber(position.pricePerTonne, 2)} €/t`;
+  }
   const value = optionNumber(position?.price, 2);
   if (!value) return '';
   const currency = position?.currency === 'EUR' ? '€' : (position?.currency || '');
-  return `${value} ${currency} / ${position?.priceUnit || t('option_price_unit_unconfirmed')}`.trim();
+  return position?.priceUnit
+    ? `${value} ${currency} / ${position.priceUnit}`.trim()
+    : `${value} ${currency} (${t('option_price_unit_unconfirmed')})`.trim();
 }
