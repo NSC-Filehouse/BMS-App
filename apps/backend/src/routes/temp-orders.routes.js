@@ -44,6 +44,7 @@ const {
 
 const router = express.Router();
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_BATCH_SIZE_BYTES = 100 * 1024 * 1024;
 const MAX_CUSTOMER_ORDER_NUMBER_LENGTH = 20;
 const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   'application/pdf',
@@ -61,7 +62,6 @@ const MULTIPART_MOJIBAKE_PATTERN = /(?:Ã.|Â.|â.|ð|Ð|Ñ)/;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    files: 1,
     fileSize: MAX_ATTACHMENT_SIZE_BYTES,
   },
   fileFilter: (req, file, cb) => {
@@ -77,8 +77,20 @@ const upload = multer({
 });
 
 function attachmentUploadMiddleware(req, res, next) {
-  upload.single('attachment')(req, res, (err) => {
+  const contentLength = Number(req.headers['content-length']);
+  if (Number.isFinite(contentLength) && contentLength > MAX_ATTACHMENT_BATCH_SIZE_BYTES + (2 * 1024 * 1024)) {
+    next(createHttpError(413, 'Combined attachment upload is too large.', { code: 'ATTACHMENT_BATCH_TOO_LARGE' }));
+    return;
+  }
+
+  upload.array('attachment')(req, res, (err) => {
     if (!err) {
+      const files = Array.isArray(req.files) ? req.files : [];
+      const totalSize = files.reduce((sum, file) => sum + Number(file?.size || 0), 0);
+      if (totalSize > MAX_ATTACHMENT_BATCH_SIZE_BYTES) {
+        next(createHttpError(413, 'Combined attachment upload is too large.', { code: 'ATTACHMENT_BATCH_TOO_LARGE' }));
+        return;
+      }
       next();
       return;
     }
@@ -91,6 +103,7 @@ function attachmentUploadMiddleware(req, res, next) {
 }
 const VIEW_SQL = productAvailabilitySource('availability');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
+const TEMP_ORDER_ATTACHMENT_TABLE = appTableSql('tempOrderAttachment');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
 const TEMP_ORDER_TABLE_NAME = appTableName('tempOrder');
 const TEMP_ORDER_POSITION_TABLE_NAME = appTableName('tempOrderPosition');
@@ -516,24 +529,88 @@ function getRequestBody(req) {
 
 function normalizeAttachmentInput(req) {
   const body = getRequestBody(req);
-  const removeAttachment = asBit(body?.removeAttachment, 0) === 1;
-  const file = req.file || null;
-  if (!file) {
-    return {
-      shouldReplace: false,
-      shouldRemove: removeAttachment,
-      buffer: null,
-      fileName: null,
-      mimeType: null,
-    };
+  const rawRemovalIds = parseJsonField(body?.removeAttachmentIds, []);
+  const requestedRemovalIds = Array.isArray(rawRemovalIds) ? rawRemovalIds : [];
+  const removeAttachmentIds = [...new Set(requestedRemovalIds.map(Number))];
+  if (removeAttachmentIds.some((attachmentId) => !Number.isSafeInteger(attachmentId) || attachmentId <= 0)) {
+    throw createHttpError(400, 'Invalid attachment id.', { code: 'INVALID_ATTACHMENT_ID' });
   }
+  const files = (Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []))
+    .map((file) => ({
+      buffer: file.buffer,
+      fileName: normalizeAttachmentFileName(file.originalname) || 'attachment',
+      mimeType: asText(file.mimetype) || 'application/octet-stream',
+      sizeBytes: Number(file.size || file.buffer?.length || 0),
+    }));
   return {
-    shouldReplace: true,
-    shouldRemove: false,
-    buffer: file.buffer,
-    fileName: normalizeAttachmentFileName(file.originalname) || 'attachment',
-    mimeType: asText(file.mimetype) || 'application/octet-stream',
+    files,
+    removeAttachmentIds,
+    removeLegacySingle: asBit(body?.removeAttachment, 0) === 1,
   };
+}
+
+function mapTempOrderAttachment(row) {
+  return {
+    id: Number(row.id),
+    fileName: normalizeAttachmentFileName(row.fileName) || 'attachment',
+    mimeType: asText(row.mimeType) || 'application/octet-stream',
+    sizeBytes: Number(row.sizeBytes || 0),
+    createdAt: row.createdAt || null,
+  };
+}
+
+async function loadTempOrderAttachments(orderId) {
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT
+      [tfa_ID] AS id,
+      [tfa_FileName] AS fileName,
+      [tfa_MimeType] AS mimeType,
+      [tfa_SizeBytes] AS sizeBytes,
+      [tfa_CreatedAt] AS createdAt
+    FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
+    WHERE [tfa_ta_id] = ?
+      AND [tfa_DeletedAt] IS NULL
+    ORDER BY [tfa_ID] ASC
+  `, [orderId]);
+  return (Array.isArray(rows) ? rows : []).map(mapTempOrderAttachment);
+}
+
+async function mapTempOrderWithAttachments(order, orderId) {
+  const attachments = await loadTempOrderAttachments(orderId);
+  return {
+    ...order,
+    attachments,
+    hasAttachment: attachments.length > 0,
+    attachmentFileName: attachments.map((attachment) => attachment.fileName).join(', '),
+    attachmentMimeType: attachments.length === 1 ? attachments[0].mimeType : null,
+  };
+}
+
+async function insertTempOrderAttachments(query, { orderId, files, userShortCode, createdAt }) {
+  const attachmentFiles = Array.isArray(files) ? files : [];
+  const insertBatchSize = 100;
+  for (let offset = 0; offset < attachmentFiles.length; offset += insertBatchSize) {
+    const batch = attachmentFiles.slice(offset, offset + insertBatchSize);
+    const valueSql = batch
+      .map(() => '(?, ?, ?, CAST(? AS VARBINARY(MAX)), ?, 0, ?, ?)')
+      .join(', ');
+    const params = batch.flatMap((file) => [
+      orderId,
+      file.fileName,
+      file.mimeType,
+      file.buffer,
+      file.sizeBytes,
+      userShortCode,
+      createdAt,
+    ]);
+    await query(`
+      INSERT INTO ${TEMP_ORDER_ATTACHMENT_TABLE} (
+        [tfa_ta_id], [tfa_FileName], [tfa_MimeType], [tfa_Content], [tfa_SizeBytes],
+        [tfa_IsLegacy], [tfa_CreatedBy], [tfa_CreatedAt]
+      )
+      VALUES ${valueSql}
+    `, params);
+  }
 }
 
 function resolveLang(req) {
@@ -717,6 +794,16 @@ async function getTableColumns(database, tableName, schemaName = APP_SCHEMA_NAME
   return (Array.isArray(rows) ? rows : [])
     .map((r) => asText(r.col))
     .filter(Boolean);
+}
+
+async function getTempOrderHeaderSelectSql() {
+  const excluded = new Set(['ta_attachment', 'ta_attachmentfilename', 'ta_attachmentmimetype']);
+  const columns = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
+  const selected = columns.filter((column) => !excluded.has(column.toLowerCase()));
+  if (!selected.length) {
+    throw createHttpError(503, 'Temp order table columns could not be read.', { code: 'TEMP_ORDER_SCHEMA_MISSING' });
+  }
+  return selected.map(toId).join(', ');
 }
 
 function resolveColumn(columns, candidates) {
@@ -1442,9 +1529,10 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   }
 
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+  const headerSelectSql = await getTempOrderHeaderSelectSql();
 
   const sql = `
-    SELECT TOP 1 *
+    SELECT TOP 1 ${headerSelectSql}
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
@@ -1458,7 +1546,10 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
   sendEnvelope(res, {
     status: 200,
     data: {
-      ...mapTempOrderWithPositions(row, await loadOrderPositions(row.ta_id)),
+      ...await mapTempOrderWithAttachments(
+        mapTempOrderWithPositions(row, await loadOrderPositions(row.ta_id)),
+        row.ta_id,
+      ),
       mail: await loadOrderMailState(row.ta_id),
     },
     meta: { mandant: req.mandant, id },
@@ -1610,6 +1701,48 @@ router.get('/temp-orders/:id/be-pdf/:beNumber', requireMandant, asyncHandler(asy
   });
 }));
 
+router.get('/temp-orders/:id/attachments/:attachmentId', requireMandant, asyncHandler(async (req, res) => {
+  const userIdentity = req.userIdentity;
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const userShortCode = asText(userIdentity.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  const attachmentId = Number(req.params.attachmentId);
+  if (!Number.isSafeInteger(id) || !Number.isSafeInteger(attachmentId) || attachmentId <= 0) {
+    throw createHttpError(400, 'Invalid temp order or attachment id.', { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, '[o].[ta_CreatedBy]');
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1
+      [a].[tfa_Content] AS attachment,
+      [a].[tfa_FileName] AS fileName,
+      [a].[tfa_MimeType] AS mimeType
+    FROM ${TEMP_ORDER_ATTACHMENT_TABLE} AS [a]
+    INNER JOIN ${TEMP_ORDER_TABLE} AS [o]
+      ON [o].[ta_id] = [a].[tfa_ta_id]
+    WHERE [o].[ta_id] = ?
+      AND [o].[ta_company_id] = ?
+      AND [a].[tfa_ID] = ?
+      AND [a].[tfa_DeletedAt] IS NULL
+      ${ownerFilter.whereSql}
+  `, [id, companyId, attachmentId, ...ownerFilter.params]);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row || row.attachment === null || row.attachment === undefined) {
+    throw createHttpError(404, 'temp order attachment not found.', { code: 'RESOURCE_NOT_FOUND', id, attachmentId });
+  }
+
+  res.setHeader('Content-Type', asText(row.mimeType) || 'application/octet-stream');
+  res.setHeader('Content-Disposition', buildContentDisposition(row.fileName, `temp-order-${id}-attachment-${attachmentId}`));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(row.attachment);
+}));
+
+// Preserve the former single-attachment URL for clients that still use it.
 router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -1620,22 +1753,25 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
 
   const companyId = Number(req.database?.firmaId || 0);
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
+  if (!Number.isSafeInteger(id)) {
     throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
   }
 
-  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
-
-  const sql = `
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess, '[o].[ta_CreatedBy]');
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1
-      [ta_Attachment] AS attachment,
-      [ta_AttachmentFileName] AS fileName,
-      [ta_AttachmentMimeType] AS mimeType
-    FROM ${TEMP_ORDER_TABLE}
-    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      [a].[tfa_Content] AS attachment,
+      [a].[tfa_FileName] AS fileName,
+      [a].[tfa_MimeType] AS mimeType
+    FROM ${TEMP_ORDER_ATTACHMENT_TABLE} AS [a]
+    INNER JOIN ${TEMP_ORDER_TABLE} AS [o]
+      ON [o].[ta_id] = [a].[tfa_ta_id]
+    WHERE [o].[ta_id] = ?
+      AND [o].[ta_company_id] = ?
+      AND [a].[tfa_DeletedAt] IS NULL
       ${ownerFilter.whereSql}
-  `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, ...ownerFilter.params]);
+    ORDER BY [a].[tfa_ID] ASC
+  `, [id, companyId, ...ownerFilter.params]);
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
   if (!row || row.attachment === null || row.attachment === undefined) {
     throw createHttpError(404, `temp order attachment not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
@@ -1643,6 +1779,7 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
 
   res.setHeader('Content-Type', asText(row.mimeType) || 'application/octet-stream');
   res.setHeader('Content-Disposition', buildContentDisposition(row.fileName, `temp-order-${id}-attachment`));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(row.attachment);
 }));
 
@@ -1844,9 +1981,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     orderLevel.deliveryAddressChanged,
     0,
     TEMP_ORDER_STATUS.DRAFT,
-    attachment.buffer,
-    attachment.fileName,
-    attachment.mimeType,
+    null,
+    null,
+    null,
     userShortCode,
     nowIso,
     userShortCode,
@@ -1870,6 +2007,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (!createdRow) {
       throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
     }
+
+    await insertTempOrderAttachments(query, {
+      orderId: createdRow.ta_id,
+      files: attachment.files,
+      userShortCode,
+      createdAt: nowIso,
+    });
 
     for (let i = 0; i < normalizedPositions.length; i += 1) {
       const pos = normalizedPositions[i];
@@ -1923,7 +2067,10 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   sendEnvelope(res, {
     status: 201,
-    data: mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)),
+    data: await mapTempOrderWithAttachments(
+      mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)),
+      created.ta_id,
+    ),
     meta: { mandant: req.mandant },
     error: null,
   });
@@ -2059,10 +2206,11 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     }
   }
   let finalized;
+  const tempOrderHeaderSelectSql = await getTempOrderHeaderSelectSql();
   try {
     finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
       const orderResult = await query(`
-        SELECT TOP 1 *
+        SELECT TOP 1 ${tempOrderHeaderSelectSql}
         FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
         WHERE [ta_id] = ? AND [ta_company_id] = ?
           ${ownerFilter.whereSql}
@@ -2124,6 +2272,21 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       `, [id]);
       const positions = positionsResult.rows || [];
       const mappedOrder = mapTempOrderRow(orderRow);
+      const attachmentResult = await query(`
+        SELECT
+          [tfa_ID] AS id,
+          [tfa_FileName] AS fileName,
+          [tfa_MimeType] AS mimeType,
+          [tfa_SizeBytes] AS sizeBytes,
+          [tfa_CreatedAt] AS createdAt
+        FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
+        WHERE [tfa_ta_id] = ?
+          AND [tfa_DeletedAt] IS NULL
+        ORDER BY [tfa_ID] ASC
+      `, [id]);
+      mappedOrder.attachments = (attachmentResult.rows || []).map(mapTempOrderAttachment);
+      mappedOrder.hasAttachment = mappedOrder.attachments.length > 0;
+      mappedOrder.attachmentFileName = mappedOrder.attachments.map((attachment) => attachment.fileName).join(', ');
       for (const position of positions) {
         const resolvedPackaging = resolvedMissingPackaging.get(Number(position.id));
         const originalPackagingType = asText(position.originalPackagingType)
@@ -2376,7 +2539,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
     creditMailResults.push(await processCreditLimitMailOutboxById(outboxId));
   }
   const rows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 *
+    SELECT TOP 1 ${await getTempOrderHeaderSelectSql()}
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
@@ -2386,7 +2549,10 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   sendEnvelope(res, {
     status: 200,
     data: {
-      ...mapTempOrderWithPositions(row, await loadOrderPositions(id)),
+      ...await mapTempOrderWithAttachments(
+        mapTempOrderWithPositions(row, await loadOrderPositions(id)),
+        id,
+      ),
       mail: await loadOrderMailState(id),
     },
     meta: {
@@ -2658,12 +2824,6 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     '[ta_LastModifiedBy] = ?',
     '[ta_LastModifiedDate] = ?',
   ];
-  if (attachment.shouldReplace) {
-    orderAssignments.push('[ta_Attachment] = CAST(? AS VARBINARY(MAX))', '[ta_AttachmentFileName] = ?', '[ta_AttachmentMimeType] = ?');
-  }
-  if (attachment.shouldRemove) {
-    orderAssignments.push('[ta_Attachment] = NULL', '[ta_AttachmentFileName] = NULL', '[ta_AttachmentMimeType] = NULL');
-  }
   const updateSql = `
     UPDATE ${TEMP_ORDER_TABLE}
     SET ${orderAssignments.join(',\n        ')}
@@ -2693,9 +2853,6 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     userShortCode,
     new Date().toISOString(),
   ];
-  if (attachment.shouldReplace) {
-    updateParams.push(attachment.buffer, attachment.fileName, attachment.mimeType);
-  }
   updateParams.push(id, companyId, ...ownerFilter.params);
   const nowIso = new Date().toISOString();
   await withSqlTransaction(config.sql.database, async ({ query }) => {
@@ -2717,6 +2874,45 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (!Number(updateResult.rowsAffected[0] || 0)) {
       throw createHttpError(409, 'Temp order could not be updated.', { code: 'TEMP_ORDER_STATUS_LOCKED', id });
     }
+
+    if (attachment.removeLegacySingle) {
+      await query(`
+        UPDATE ${TEMP_ORDER_ATTACHMENT_TABLE}
+        SET [tfa_DeletedAt] = SYSUTCDATETIME(),
+            [tfa_DeletedBy] = ?
+        WHERE [tfa_ID] = (
+          SELECT TOP 1 [tfa_ID]
+          FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
+          WHERE [tfa_ta_id] = ?
+            AND [tfa_DeletedAt] IS NULL
+          ORDER BY [tfa_ID] ASC
+        )
+      `, [userShortCode, id]);
+    } else if (attachment.removeAttachmentIds.length) {
+      const placeholders = attachment.removeAttachmentIds.map(() => '?').join(', ');
+      const deletedAttachments = await query(`
+        UPDATE ${TEMP_ORDER_ATTACHMENT_TABLE}
+        SET [tfa_DeletedAt] = SYSUTCDATETIME(),
+            [tfa_DeletedBy] = ?
+        OUTPUT INSERTED.[tfa_ID] AS id
+        WHERE [tfa_ta_id] = ?
+          AND [tfa_DeletedAt] IS NULL
+          AND [tfa_ID] IN (${placeholders})
+      `, [userShortCode, id, ...attachment.removeAttachmentIds]);
+      if ((deletedAttachments.rows || []).length !== attachment.removeAttachmentIds.length) {
+        throw createHttpError(404, 'One or more attachments could not be found for this temp order.', {
+          code: 'TEMP_ORDER_ATTACHMENT_NOT_FOUND',
+          id,
+        });
+      }
+    }
+
+    await insertTempOrderAttachments(query, {
+      orderId: id,
+      files: attachment.files,
+      userShortCode,
+      createdAt: nowIso,
+    });
 
     const retainedIds = normalizedPositions
       .map((position) => Number(position.id))
@@ -2845,7 +3041,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   });
 
   const rows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 *
+    SELECT TOP 1 ${await getTempOrderHeaderSelectSql()}
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
       ${ownerFilter.whereSql}
@@ -2857,7 +3053,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
 
   sendEnvelope(res, {
     status: 200,
-    data: mapTempOrderWithPositions(row, await loadOrderPositions(id)),
+    data: await mapTempOrderWithAttachments(
+      mapTempOrderWithPositions(row, await loadOrderPositions(id)),
+      id,
+    ),
     meta: { mandant: req.mandant, id },
     error: null,
   });
@@ -2908,6 +3107,14 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     DELETE FROM ${ORDER_MAIL_OUTBOX_TABLE}
     WHERE [om_OrderID] = ?
   `, [id]);
+  await runSQLQuerySqlServer(config.sql.database, `
+    DELETE FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
+    WHERE [tfa_ta_id] = ?
+      AND EXISTS (
+        SELECT 1 FROM ${TEMP_ORDER_TABLE}
+        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
+      )
+  `, [id, id]);
   await runSQLQuerySqlServer(config.sql.database, `
     DELETE FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?

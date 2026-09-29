@@ -121,6 +121,7 @@ const config = {
       pushSubscription: (process.env.BMS_SQL_APP_TABLE_PUSH_SUBSCRIPTION || 'PushSubscription').trim(),
       pushMandantSetting: (process.env.BMS_SQL_APP_TABLE_PUSH_MANDANT_SETTING || 'PushMandantSetting').trim(),
       tempOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER || 'tbl_Temp_Auftrag').trim(),
+      tempOrderAttachment: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_ATTACHMENT || 'tbl_Temp_Auftrag_Anhang').trim(),
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
       tempPurchaseOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER || 'tbl_Temp_Bestellung').trim(),

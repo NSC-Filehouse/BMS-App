@@ -151,6 +151,10 @@ const errorTexts = {
     de: 'Die Datei ist zu gross. Maximal 10 MB sind erlaubt.',
     en: 'The file is too large. Maximum allowed size is 10 MB.',
   },
+  ATTACHMENT_BATCH_TOO_LARGE: {
+    de: 'Die Anhänge sind zusammen zu gross. Insgesamt sind maximal 100 MB erlaubt.',
+    en: 'The combined attachments are too large. The total limit is 100 MB.',
+  },
   TEMP_ORDER_FINALIZED: {
     de: 'Der Auftrag wurde bereits an BMS gesendet und kann nicht mehr geaendert oder geloescht werden.',
     en: 'The order has already been sent to BMS and can no longer be edited or deleted.',

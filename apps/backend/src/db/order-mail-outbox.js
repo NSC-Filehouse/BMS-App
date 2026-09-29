@@ -12,6 +12,7 @@ const {
 
 const OUTBOX_TABLE = appTableSql('orderMailOutbox');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
+const TEMP_ORDER_ATTACHMENT_TABLE = appTableSql('tempOrderAttachment');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
 const RESERVATION_TABLE = '[dbo].[tblBest_Pos_Reserviert]';
 let workerTimer = null;
@@ -127,18 +128,20 @@ async function findNextOutboxId() {
   return Array.isArray(rows) && rows.length ? Number(rows[0].id) : null;
 }
 
-async function loadAttachment(orderId) {
+async function loadAttachments(orderId) {
   const rows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1
-      [ta_Attachment] AS buffer,
-      [ta_AttachmentFileName] AS fileName,
-      [ta_AttachmentMimeType] AS mimeType
-    FROM ${TEMP_ORDER_TABLE}
-    WHERE [ta_id] = ?
+    SELECT
+      [tfa_Content] AS buffer,
+      [tfa_FileName] AS fileName,
+      [tfa_MimeType] AS mimeType
+    FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
+    WHERE [tfa_ta_id] = ?
+      AND [tfa_DeletedAt] IS NULL
+    ORDER BY [tfa_ID] ASC
   `, [orderId]);
-  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
-  if (!row?.buffer || !row?.fileName) return null;
-  return { buffer: row.buffer, fileName: row.fileName, mimeType: row.mimeType };
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.buffer && row?.fileName)
+    .map((row) => ({ buffer: row.buffer, fileName: row.fileName, mimeType: row.mimeType }));
 }
 
 function nextRetryDate(attemptCount) {
@@ -234,7 +237,7 @@ async function processOrderMailOutboxById(outboxId) {
       recipient: effectiveRecipient,
       subject: item.subject,
       body: item.body,
-      attachment: await loadAttachment(item.orderId),
+      attachments: await loadAttachments(item.orderId),
       clientMessageId: `bms-app:order:${item.orderId}`,
       isBodyHtml: true,
     });

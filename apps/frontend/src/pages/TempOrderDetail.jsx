@@ -15,6 +15,8 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DownloadIcon from '@mui/icons-material/Download';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getBePdfErrorMessage, getOrderPdfErrorMessage } from '../utils/orderPdf.js';
@@ -104,6 +106,7 @@ export default function TempOrderDetail() {
   const [orderPdfError, setOrderPdfError] = React.useState('');
   const [bePdfLoading, setBePdfLoading] = React.useState('');
   const [bePdfError, setBePdfError] = React.useState('');
+  const [attachmentDownloading, setAttachmentDownloading] = React.useState('');
 
   React.useEffect(() => {
     let alive = true;
@@ -203,6 +206,32 @@ export default function TempOrderDetail() {
       setBePdfError(getBePdfErrorMessage(e, t));
     } finally {
       setBePdfLoading('');
+    }
+  }, [id, t]);
+
+  const downloadAttachment = React.useCallback(async (attachment) => {
+    const orderId = String(id || '').trim();
+    const attachmentId = String(attachment?.id || '').trim();
+    if (!orderId || !attachmentId) return;
+
+    setAttachmentDownloading(attachmentId);
+    setError('');
+    try {
+      const blob = await apiRequestBlob(
+        `/temp-orders/${encodeURIComponent(orderId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = String(attachment.fileName || `temp-order-${orderId}-attachment`).replace(/[\\/\r\n]/g, '_');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      setError(e?.message || t('loading_error'));
+    } finally {
+      setAttachmentDownloading('');
     }
   }, [id, t]);
 
@@ -309,6 +338,37 @@ export default function TempOrderDetail() {
             <InfoRow label={t('order_created')} value={formatDateOnly(item.createdAt)} />
             <InfoRow label={t('order_comment')} value={item.comment} />
             {item.returnComment && <InfoRow label={t('temp_order_return_comment')} value={item.returnComment} />}
+            <Divider sx={{ my: 1 }} />
+            <Typography variant="subtitle2" sx={{ mb: 0.25 }}>
+              {t('temp_order_attachment_label')} ({Array.isArray(item.attachments) ? item.attachments.length : 0})
+            </Typography>
+            {Array.isArray(item.attachments) && item.attachments.length ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 1 }}>
+                {item.attachments.map((attachment) => (
+                  <Box
+                    key={attachment.id}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minWidth: 0 }}
+                  >
+                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, overflowWrap: 'anywhere' }}>
+                      <AttachFileIcon fontSize="small" />
+                      {attachment.fileName}
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<DownloadIcon />}
+                      disabled={attachmentDownloading === String(attachment.id)}
+                      onClick={() => downloadAttachment(attachment)}
+                    >
+                      {t('temp_order_attachment_download')}
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {t('temp_order_attachment_none')}
+              </Typography>
+            )}
             <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
             <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />

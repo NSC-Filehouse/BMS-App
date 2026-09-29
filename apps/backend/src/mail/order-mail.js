@@ -16,6 +16,13 @@ function asText(value) {
   return String(value).trim();
 }
 
+function normalizeMailAttachments(attachments, attachment) {
+  const candidates = Array.isArray(attachments)
+    ? attachments
+    : (attachment ? [attachment] : []);
+  return candidates.filter((item) => item?.buffer && item?.fileName);
+}
+
 function stripOuterQuotes(value) {
   const text = asText(value);
   if (text.length >= 2 && ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'")))) {
@@ -179,7 +186,12 @@ function formatOrderMailBody({
     line('Abweichende Lieferadresse', yesNo(order?.deliveryAddressChanged)),
     line('Abweichende Zahlungsbedingung', yesNo(order?.specialPaymentCondition)),
     line('Zahlungsbedingung', order?.specialPaymentText),
-    line('Anhang', order?.hasAttachment ? (order?.attachmentFileName || 'vorhanden') : 'Kein Anhang'),
+    line(
+      'Anhang',
+      Array.isArray(order?.attachments) && order.attachments.length
+        ? order.attachments.map((attachment) => attachment.fileName).filter(Boolean).join(', ')
+        : (order?.hasAttachment ? (order?.attachmentFileName || 'vorhanden') : 'Kein Anhang'),
+    ),
     '',
     `POSITIONEN (${list.length})`,
   ];
@@ -300,6 +312,7 @@ async function sendOrderMailViaEws({
   bccRecipients,
   subject,
   body,
+  attachments,
   attachment,
   isBodyHtml = false,
 }) {
@@ -359,12 +372,12 @@ async function sendOrderMailViaEws({
     message.BccRecipients.Add(new EWS.EmailAddress(cleanEwsText(address)));
   }
 
-  if (attachment?.buffer && attachment?.fileName) {
+  for (const attachmentItem of normalizeMailAttachments(attachments, attachment)) {
     const fileAttachment = message.Attachments.AddFileAttachment(
-      cleanEwsText(attachment.fileName),
-      Buffer.from(attachment.buffer).toString('base64'),
+      cleanEwsText(attachmentItem.fileName),
+      Buffer.from(attachmentItem.buffer).toString('base64'),
     );
-    if (attachment.mimeType) fileAttachment.ContentType = cleanEwsText(attachment.mimeType);
+    if (attachmentItem.mimeType) fileAttachment.ContentType = cleanEwsText(attachmentItem.mimeType);
     fileAttachment.IsInline = false;
   }
 
@@ -393,6 +406,7 @@ async function sendOrderMail({
   bccRecipients,
   subject,
   body,
+  attachments,
   attachment,
   clientMessageId,
   isBodyHtml = false,
@@ -410,6 +424,7 @@ async function sendOrderMail({
     normalizeRecipients(bccRecipient, bccRecipients),
     [...targetRecipients, ...targetCcRecipients],
   );
+  const mailAttachments = normalizeMailAttachments(attachments, attachment);
 
   const mailServiceValidation = validateMailServiceConfig(mailServiceConfig);
   const ewsValidation = validateEwsConfig(orderMailConfig);
@@ -441,13 +456,11 @@ async function sendOrderMail({
         ...(targetBccRecipients.length
           ? { bcc: targetBccRecipients.map((address) => ({ address })) }
           : {}),
-        attachments: attachment?.buffer && attachment?.fileName
-          ? [{
-              fileName: attachment.fileName,
-              contentType: attachment.mimeType,
-              content: attachment.buffer,
-            }]
-          : [],
+        attachments: mailAttachments.map((attachmentItem) => ({
+          fileName: attachmentItem.fileName,
+          contentType: attachmentItem.mimeType,
+          content: attachmentItem.buffer,
+        })),
       });
       return { transport: 'mailservice', accepted: true, response };
     } catch (error) {
@@ -473,7 +486,7 @@ async function sendOrderMail({
       bccRecipients: targetBccRecipients,
       subject,
       body,
-      attachment,
+      attachments: mailAttachments,
       isBodyHtml,
     });
     return {

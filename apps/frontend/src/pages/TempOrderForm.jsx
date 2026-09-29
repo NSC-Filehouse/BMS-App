@@ -24,6 +24,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import UndoIcon from '@mui/icons-material/Undo';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
@@ -274,9 +275,9 @@ export default function TempOrderForm() {
   const [validationMessages, setValidationMessages] = React.useState([]);
   const [deleteLastConfirmOpen, setDeleteLastConfirmOpen] = React.useState(false);
   const [deletingOrder, setDeletingOrder] = React.useState(false);
-  const [attachmentFile, setAttachmentFile] = React.useState(null);
-  const [attachmentMeta, setAttachmentMeta] = React.useState({ hasAttachment: false, fileName: '', mimeType: '' });
-  const [removeAttachment, setRemoveAttachment] = React.useState(false);
+  const [savedAttachments, setSavedAttachments] = React.useState([]);
+  const [pendingAttachmentFiles, setPendingAttachmentFiles] = React.useState([]);
+  const [removeAttachmentIds, setRemoveAttachmentIds] = React.useState([]);
   const attachmentInputRef = React.useRef(null);
   const deliveryAddressRequestRef = React.useRef(0);
   const deliveryDateCheckRequestRef = React.useRef(0);
@@ -750,13 +751,9 @@ export default function TempOrderForm() {
             });
             return;
           }
-          setAttachmentFile(null);
-          setRemoveAttachment(false);
-          setAttachmentMeta({
-            hasAttachment: Boolean(d.hasAttachment),
-            fileName: d.attachmentFileName || '',
-            mimeType: d.attachmentMimeType || '',
-          });
+          setPendingAttachmentFiles([]);
+          setRemoveAttachmentIds([]);
+          setSavedAttachments(Array.isArray(d.attachments) ? d.attachments : []);
           setForm({
             clientReferenceId: d.clientReferenceId || '',
             customerOrderNumber: d.customerOrderNumber || '',
@@ -886,9 +883,9 @@ export default function TempOrderForm() {
             wpzComment: x.wpzComment || 'Original verwenden',
           }),
         })));
-        setAttachmentFile(null);
-        setRemoveAttachment(false);
-        setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
+        setPendingAttachmentFiles([]);
+        setRemoveAttachmentIds([]);
+        setSavedAttachments([]);
         return;
       }
 
@@ -921,15 +918,15 @@ export default function TempOrderForm() {
             }),
           })));
         }
-        setAttachmentFile(null);
-        setRemoveAttachment(false);
-        setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
+        setPendingAttachmentFiles([]);
+        setRemoveAttachmentIds([]);
+        setSavedAttachments([]);
         return;
       }
 
-      setAttachmentFile(null);
-      setRemoveAttachment(false);
-      setAttachmentMeta({ hasAttachment: false, fileName: '', mimeType: '' });
+      setPendingAttachmentFiles([]);
+      setRemoveAttachmentIds([]);
+      setSavedAttachments([]);
       setForm((prev) => ({
         ...prev,
         comment: source.comment || '',
@@ -1315,15 +1312,10 @@ export default function TempOrderForm() {
     setEditingArticleValue('');
   }, [editingArticleValue, t]);
 
-  const visibleAttachmentName = attachmentFile
-    ? attachmentFile.name
-    : (!removeAttachment && attachmentMeta.hasAttachment ? attachmentMeta.fileName : '');
-
   const handleAttachmentPick = React.useCallback((event) => {
-    const file = event?.target?.files?.[0] || null;
-    setAttachmentFile(file);
-    if (file) {
-      setRemoveAttachment(false);
+    const files = Array.from(event?.target?.files || []);
+    if (files.length) {
+      setPendingAttachmentFiles((previous) => [...previous, ...files]);
     }
     if (event?.target) {
       event.target.value = '';
@@ -1450,10 +1442,8 @@ export default function TempOrderForm() {
         }
         requestBody.append(key, typeof value === 'boolean' ? String(value) : String(value));
       });
-      requestBody.append('removeAttachment', removeAttachment ? 'true' : 'false');
-      if (attachmentFile) {
-        requestBody.append('attachment', attachmentFile);
-      }
+      requestBody.append('removeAttachmentIds', JSON.stringify(removeAttachmentIds));
+      pendingAttachmentFiles.forEach((file) => requestBody.append('attachment', file));
 
       const res = isEdit
         ? await apiRequest(`/temp-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: requestBody })
@@ -1485,6 +1475,7 @@ export default function TempOrderForm() {
         ref={attachmentInputRef}
         type="file"
         accept=".pdf,image/*,.heic,.heif"
+        multiple
         hidden
         onChange={handleAttachmentPick}
       />
@@ -1519,56 +1510,73 @@ export default function TempOrderForm() {
       {!loading && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, mt: -0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
                 {t('temp_order_attachment_label')}
               </Typography>
-              {visibleAttachmentName ? (
-                <>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      minWidth: 0,
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {visibleAttachmentName}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => {
-                      if (attachmentFile) {
-                        setAttachmentFile(null);
-                        return;
-                      }
-                      if (attachmentMeta.hasAttachment && !removeAttachment) {
-                        setRemoveAttachment(true);
-                      }
-                    }}
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </>
+              {savedAttachments.length || pendingAttachmentFiles.length ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, flex: 1 }}>
+                  {savedAttachments.map((attachment) => {
+                    const attachmentId = Number(attachment.id);
+                    const removed = removeAttachmentIds.includes(attachmentId);
+                    return (
+                      <Box key={`saved-${attachment.id}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            minWidth: 0,
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            color: removed ? 'text.disabled' : 'text.primary',
+                            textDecoration: removed ? 'line-through' : 'none',
+                          }}
+                          title={attachment.fileName}
+                        >
+                          {attachment.fileName}{removed ? ` (${t('temp_order_attachment_removed')})` : ''}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          color={removed ? 'primary' : 'error'}
+                          aria-label={removed ? t('undo_label') : t('delete_label')}
+                          onClick={() => setRemoveAttachmentIds((previous) => (
+                            removed
+                              ? previous.filter((value) => value !== attachmentId)
+                              : [...previous, attachmentId]
+                          ))}
+                        >
+                          {removed ? <UndoIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
+                  {pendingAttachmentFiles.map((file, index) => (
+                    <Box key={`pending-${index}-${file.name}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={file.name}
+                      >
+                        {file.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        aria-label={t('delete_label')}
+                        onClick={() => setPendingAttachmentFiles((previous) => previous.filter((_, fileIndex) => fileIndex !== index))}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
               ) : (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 0 }}>
                   {t('temp_order_attachment_none')}
                 </Typography>
               )}
             </Box>
-            {removeAttachment && attachmentMeta.hasAttachment && !attachmentFile && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: -1, flexWrap: 'wrap', minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: 'error.main', minWidth: 0, overflowWrap: 'anywhere' }}>
-                  {t('temp_order_attachment_removed')}
-                </Typography>
-                <Button size="small" onClick={() => setRemoveAttachment(false)}>
-                  {t('undo_label')}
-                </Button>
-              </Box>
-            )}
 
             <Autocomplete
               options={customerOptions}
