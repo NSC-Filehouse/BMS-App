@@ -157,6 +157,8 @@ stehen. In Entwicklungs- und Testumgebungen bleibt der Standard `false`, damit
 der dort gestartete Backend-Prozess nicht an den echten Verteiler sendet. Ein
 eindeutiger Datenbankeintrag pro Datum und Mandant verhindert Doppelversand;
 nicht zugestellte Mails werden mit begrenzten Wiederholungen erneut versucht.
+Enthält die aktuelle VL keine Einträge, wird der Mandant für diesen Tag als
+übersprungen markiert und erhält keine Mail.
 
 ## Filehouse MailService für den Mailversand
 

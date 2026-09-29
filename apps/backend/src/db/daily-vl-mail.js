@@ -85,6 +85,46 @@ async function hasDailyVlMail(runDate, companyId) {
   return Array.isArray(rows) && rows.length > 0;
 }
 
+async function insertDailyVlMail({
+  runDate,
+  companyId,
+  database,
+  recipients,
+  subject,
+  body,
+  status,
+  lastError = null,
+}) {
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    INSERT INTO ${DAILY_VL_OUTBOX_TABLE} (
+      [vld_RunDate], [vld_CompanyID], [vld_CompanyName], [vld_CompanyShortName],
+      [vld_RecipientsJson], [vld_Subject], [vld_Body], [vld_Status], [vld_AttemptCount], [vld_LastError]
+    )
+    OUTPUT INSERTED.[vld_ID] AS id
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, 0, ?
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM ${DAILY_VL_OUTBOX_TABLE} WITH (UPDLOCK, HOLDLOCK)
+      WHERE [vld_RunDate] = ? AND [vld_CompanyID] = ?
+    )
+  `, [
+    runDate,
+    companyId,
+    database.name,
+    database.shortName,
+    JSON.stringify(recipients),
+    subject,
+    body,
+    status,
+    lastError,
+    runDate,
+    companyId,
+  ]);
+  return rows?.length
+    ? { status: status === 'pending' ? 'queued' : status }
+    : { status: 'already_queued' };
+}
+
 async function queueDailyVlMail(runDate, identity, mandant) {
   const companyId = Number(mandant.firmaId);
   if (isExcludedMandant(companyId)) return { status: 'excluded' };
@@ -97,38 +137,35 @@ async function queueDailyVlMail(runDate, identity, mandant) {
 
   const database = await getDatabaseConnectionForIdentityById(identity, companyId);
   const vlItems = await loadCurrentVl(database);
+  const subjectName = asText(database.name || mandant.name);
+  if (!subjectName) throw new Error(`Mandant ${companyId} hat keinen Namen für den Betreff.`);
+  const outboxBase = {
+    runDate,
+    companyId,
+    database,
+    recipients,
+    subject: `VL_${subjectName}`,
+  };
+
+  if (!Array.isArray(vlItems) || vlItems.length === 0) {
+    const result = await insertDailyVlMail({
+      ...outboxBase,
+      body: '',
+      status: 'skipped',
+      lastError: 'Keine Daten in der aktuellen VL.',
+    });
+    if (result.status === 'skipped') {
+      logger.info(`Tages-VL für ${subjectName} (${companyId}) ist leer; kein Versand.`);
+    }
+    return result;
+  }
+
   const body = formatDailyVlMailBody({
     vlItems,
     mandantName: database.name,
     mandantShortName: database.shortName,
   });
-  const subjectName = asText(database.name || mandant.name);
-  if (!subjectName) throw new Error(`Mandant ${companyId} hat keinen Namen für den Betreff.`);
-
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
-    INSERT INTO ${DAILY_VL_OUTBOX_TABLE} (
-      [vld_RunDate], [vld_CompanyID], [vld_CompanyName], [vld_CompanyShortName],
-      [vld_RecipientsJson], [vld_Subject], [vld_Body], [vld_Status], [vld_AttemptCount]
-    )
-    OUTPUT INSERTED.[vld_ID] AS id
-    SELECT ?, ?, ?, ?, ?, ?, ?, N'pending', 0
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM ${DAILY_VL_OUTBOX_TABLE} WITH (UPDLOCK, HOLDLOCK)
-      WHERE [vld_RunDate] = ? AND [vld_CompanyID] = ?
-    )
-  `, [
-    runDate,
-    companyId,
-    database.name,
-    database.shortName,
-    JSON.stringify(recipients),
-    `VL_${subjectName}`,
-    body,
-    runDate,
-    companyId,
-  ]);
-  return { status: rows?.length ? 'queued' : 'already_queued' };
+  return insertDailyVlMail({ ...outboxBase, body, status: 'pending' });
 }
 
 async function queueTodayVlMails(runDate) {
