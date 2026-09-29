@@ -35,6 +35,7 @@ import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
+import { getCustomerDisplayName } from '../utils/customerDisplayName.js';
 import {
   CUSTOMER_SELECTION_CHANGED,
   getSelectedCustomer,
@@ -54,12 +55,6 @@ import {
   getMapPreference,
   setMapPreference,
 } from '../utils/mapPreference.js';
-
-function getCustomerName(row) {
-  const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
-  const name2 = row?.kd_Name2 ? String(row.kd_Name2).trim() : '';
-  return name1 || name2 || '';
-}
 
 function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
@@ -561,7 +556,7 @@ export default function CustomerDetail() {
         if (customer) {
           recordRecentCustomer({
             id: customer.kd_KdNR || id,
-            name: getCustomerName(customer),
+            name: getCustomerDisplayName(customer),
             address: buildAddress(customer),
             representative: customer.kd_Aussendienst || '',
           });
@@ -577,7 +572,7 @@ export default function CustomerDetail() {
     return () => { alive = false; };
   }, [id, t]);
 
-  const name = getCustomerName(item);
+  const name = getCustomerDisplayName(item);
   const requestedDetailView = location.state?.detailView;
   const isSupplier = requestedDetailView === 'customer'
     ? false

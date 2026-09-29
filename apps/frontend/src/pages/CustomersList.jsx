@@ -24,6 +24,7 @@ import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
+import { getCustomerDisplayName } from '../utils/customerDisplayName.js';
 import {
   CUSTOMER_SELECTION_CHANGED,
   getSelectedCustomer,
@@ -35,12 +36,6 @@ import {
   recordRecentCustomer,
   RECENT_CUSTOMERS_CHANGED,
 } from '../utils/recentCustomers.js';
-
-function getCustomerName(row) {
-  const name1 = row?.kd_Name1 ? String(row.kd_Name1).trim() : '';
-  const name2 = row?.kd_Name2 ? String(row.kd_Name2).trim() : '';
-  return name1 || name2 || '';
-}
 
 function buildAddress(row) {
   const street = row?.kd_Strasse ? String(row.kd_Strasse).trim() : '';
@@ -281,14 +276,14 @@ export default function CustomersList({ supplierOnly = false }) {
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
       id: row?.kd_KdNR,
-      name: getCustomerName(row),
+      name: getCustomerDisplayName(row),
       address: buildAddress(row),
       representative: row?.kd_Aussendienst || '',
     });
     setSelectedCustomerState(next);
     recordRecentCustomer({
       id: row?.kd_KdNR,
-      name: getCustomerName(row),
+      name: getCustomerDisplayName(row),
       address: buildAddress(row),
       representative: row?.kd_Aussendienst || '',
     });
@@ -494,7 +489,7 @@ export default function CustomersList({ supplierOnly = false }) {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {items.map((row) => {
             const id = row?.kd_KdNR;
-            const name = getCustomerName(row);
+            const name = getCustomerDisplayName(row);
             const isSelected = selectedCustomer?.id && String(selectedCustomer.id) === String(id);
             return (
               <Card
