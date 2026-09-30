@@ -171,6 +171,14 @@ const errorTexts = {
     de: 'Die Datenbankmigration fuer das Senden an BMS fehlt.',
     en: 'The database migration for sending orders to BMS is missing.',
   },
+  TEMP_ORDER_CUSTOMER_REQUIREMENTS_MISSING: {
+    de: (d) => `Der Auftrag kann nicht an BMS gesendet werden. Beim Kunden fehlen: ${(Array.isArray(d?.missingFields) ? d.missingFields : []).map((field) => (
+      field === 'invoiceEmail' ? 'Rechnungs-E-Mail-Adresse' : field === 'vatId' ? 'Umsatzsteuer-ID' : ''
+    )).filter(Boolean).join(', ')}. Bitte die Angaben im BMS-Kundenstamm ergänzen.`,
+    en: (d) => `The order cannot be sent to BMS because the customer is missing: ${(Array.isArray(d?.missingFields) ? d.missingFields : []).map((field) => (
+      field === 'invoiceEmail' ? 'invoice email address' : field === 'vatId' ? 'VAT ID' : ''
+    )).filter(Boolean).join(', ')}. Please update the customer master data in BMS.`,
+  },
   TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING: {
     de: 'Die Datenbankmigration fuer Verpackungsaenderungen fehlt.',
     en: 'The database migration for packaging changes is missing.',

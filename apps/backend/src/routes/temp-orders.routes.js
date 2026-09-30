@@ -624,6 +624,30 @@ function normalizeTotal(rows) {
   return row.total ?? row.TOTAL ?? row.Total ?? Object.values(row)[0] ?? null;
 }
 
+async function loadCustomerOrderRequirements(database, customerId) {
+  const id = asText(customerId);
+  if (!id) {
+    return { available: true, customerFound: false, missingFields: [] };
+  }
+
+  const rows = await runSQLQueryAccess(database, `
+    SELECT TOP 1
+      [kd_RG_Email] AS invoiceEmail,
+      [kd_UST_Ident_Nr] AS vatId
+    FROM [dbo].[tblKunden]
+    WHERE [kd_KdNR] = ?
+  `, [id]);
+  const customer = Array.isArray(rows) ? rows[0] : null;
+  if (!customer) {
+    return { available: true, customerFound: false, missingFields: [] };
+  }
+
+  const missingFields = [];
+  if (!asText(customer.invoiceEmail)) missingFields.push('invoiceEmail');
+  if (!asText(customer.vatId)) missingFields.push('vatId');
+  return { available: true, customerFound: true, missingFields };
+}
+
 function mapTempOrderRow(row) {
   const orderStatus = normalizeStoredTempOrderStatus(row.ta_Status, row.ta_completed);
   return {
@@ -1543,6 +1567,13 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
 
+  let customerRequirements = { available: false, customerFound: false, missingFields: [] };
+  try {
+    customerRequirements = await loadCustomerOrderRequirements(req.database, row.ta_ClientReferenceId);
+  } catch (error) {
+    logger.warn(`Kundendaten-Pruefung fuer Temp-Auftrag ${id} konnte nicht geladen werden: ${error?.message || error}`);
+  }
+
   sendEnvelope(res, {
     status: 200,
     data: {
@@ -1551,6 +1582,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         row.ta_id,
       ),
       mail: await loadOrderMailState(row.ta_id),
+      customerRequirements,
     },
     meta: { mandant: req.mandant, id },
     error: null,
@@ -2241,6 +2273,21 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           code: 'TEMP_ORDER_STATUS_LOCKED',
           id,
           orderStatus,
+        });
+      }
+
+      const customerId = asText(orderRow.ta_ClientReferenceId);
+      const customerRequirements = await loadCustomerOrderRequirements(req.database, customerId);
+      if (!customerRequirements.customerFound) {
+        throw createHttpError(404, `Customer not found: ${customerId || '(missing customer number)'}.`, {
+          code: 'CUSTOMER_NOT_FOUND',
+          id: customerId,
+        });
+      }
+      if (customerRequirements.missingFields.length) {
+        throw createHttpError(422, 'Customer master data is incomplete for BMS order hand-off.', {
+          code: 'TEMP_ORDER_CUSTOMER_REQUIREMENTS_MISSING',
+          missingFields: customerRequirements.missingFields,
         });
       }
 

@@ -24,6 +24,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
+import { CUSTOMER_ORDER_REQUIREMENTS } from '../utils/customerOrderRequirements.js';
 import {
   TEMP_ORDER_STATUS,
   getTempOrderStatusColor,
@@ -136,6 +137,20 @@ export default function TempOrderDetail() {
       setLoading(false);
     }
   }, [id, t]);
+
+  const customerRequirements = item?.customerRequirements || null;
+  const customerRequirementsAvailable = Boolean(customerRequirements?.available);
+  const customerFound = Boolean(customerRequirements?.customerFound);
+  const missingCustomerRequirements = Array.isArray(customerRequirements?.missingFields)
+    ? customerRequirements.missingFields
+    : [];
+  const customerRequirementsComplete = customerRequirementsAvailable
+    && customerFound
+    && missingCustomerRequirements.length === 0;
+  const missingCustomerRequirementLabels = missingCustomerRequirements
+    .map((field) => t(CUSTOMER_ORDER_REQUIREMENTS[field]?.labelKey || ''))
+    .filter(Boolean)
+    .join(', ');
 
   React.useEffect(() => {
     load();
@@ -310,6 +325,23 @@ export default function TempOrderDetail() {
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
+            {orderIsEditable && !customerRequirementsComplete && (
+              <Alert
+                severity={customerRequirementsAvailable && customerFound && missingCustomerRequirements.length ? 'warning' : 'info'}
+                sx={{ mb: 1.5 }}
+                action={(
+                  <Button color="inherit" size="small" onClick={() => { void load(); }} disabled={loading}>
+                    {t('temp_order_customer_requirements_retry')}
+                  </Button>
+                )}
+              >
+                {!customerRequirementsAvailable
+                  ? t('temp_order_customer_requirements_check_error')
+                  : !customerFound
+                    ? t('temp_order_customer_not_found')
+                    : t('temp_order_customer_requirements_missing', { fields: missingCustomerRequirementLabels })}
+              </Alert>
+            )}
             <InfoRow label={t('order_customer')} value={item.clientName} />
             <InfoRow label={t('customer_order_number_label')} value={item.customerOrderNumber} />
             <InfoRow label={t('address_label')} value={item.clientAddress} />
@@ -467,7 +499,12 @@ export default function TempOrderDetail() {
               }}
             >
               {orderIsEditable && (
-                <Button variant="contained" sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }} onClick={() => setFinalizeOpen(true)}>
+                <Button
+                  variant="contained"
+                  sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
+                  onClick={() => setFinalizeOpen(true)}
+                  disabled={!customerRequirementsComplete}
+                >
                   {t('temp_order_send_to_bms')}
                 </Button>
               )}

@@ -48,6 +48,10 @@ import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
+  CUSTOMER_ORDER_REQUIREMENTS,
+  getMissingCustomerOrderRequirements,
+} from '../utils/customerOrderRequirements.js';
+import {
   getSelectedCustomer as getStoredSelectedCustomer,
   setSelectedCustomer as storeSelectedCustomer,
   clearSelectedCustomer as clearStoredSelectedCustomer,
@@ -284,10 +288,16 @@ export default function TempOrderForm() {
   const attachmentInputRef = React.useRef(null);
   const deliveryAddressRequestRef = React.useRef(0);
   const deliveryDateCheckRequestRef = React.useRef(0);
+  const customerRequirementsRequestRef = React.useRef(0);
 
   const [customerQuery, setCustomerQuery] = React.useState('');
   const [customerOptions, setCustomerOptions] = React.useState([]);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [customerOrderRequirements, setCustomerOrderRequirements] = React.useState({
+    customerId: '',
+    status: 'idle',
+    missingFields: [],
+  });
   const [representativeOptions, setRepresentativeOptions] = React.useState([]);
   const [customerPaymentDefaultId, setCustomerPaymentDefaultId] = React.useState('');
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
@@ -788,15 +798,28 @@ export default function TempOrderForm() {
     const customerId = String(clientReferenceId || '').trim();
     const preferred = String(preferredName || '').trim();
     const preferredIdNumber = Number(preferredId);
+    const requestId = customerRequirementsRequestRef.current + 1;
+    customerRequirementsRequestRef.current = requestId;
     if (!customerId) {
+      setCustomerOrderRequirements({ customerId: '', status: 'idle', missingFields: [] });
       setRepresentativeOptions([]);
       setCustomerReminderInvoicesCount(0);
       setForm((prev) => ({ ...prev, clientRepresentative: '', clientRepresentativeId: '' }));
       return [];
     }
 
+    setCustomerOrderRequirements({ customerId, status: 'checking', missingFields: [] });
+
     try {
       const detail = await apiRequest(`/customers/${encodeURIComponent(customerId)}`);
+      if (customerRequirementsRequestRef.current === requestId) {
+        const missingFields = getMissingCustomerOrderRequirements(detail?.data || {});
+        setCustomerOrderRequirements({
+          customerId,
+          status: missingFields.length ? 'missing' : 'complete',
+          missingFields,
+        });
+      }
       const options = normalizeRepresentativeOptions(detail?.data?.representatives, preferred);
       setRepresentativeOptions(options);
       setCustomerReminderInvoicesCount(Number(detail?.data?.reminderInvoicesCount) || 0);
@@ -813,6 +836,9 @@ export default function TempOrderForm() {
       }));
       return options;
     } catch {
+      if (customerRequirementsRequestRef.current === requestId) {
+        setCustomerOrderRequirements({ customerId, status: 'error', missingFields: [] });
+      }
       const fallbackOptions = normalizeRepresentativeOptions([], preferred);
       setRepresentativeOptions(fallbackOptions);
       setCustomerReminderInvoicesCount(0);
@@ -1376,8 +1402,10 @@ export default function TempOrderForm() {
   }, [customerQuery]);
 
   const onChooseCustomer = React.useCallback(async (customer, opts = {}) => {
+    customerRequirementsRequestRef.current += 1;
     setSelectedCustomer(customer);
     if (!customer) {
+      setCustomerOrderRequirements({ customerId: '', status: 'idle', missingFields: [] });
       clearStoredSelectedCustomer();
       setDeliveryAddressOptions([]);
       setRepresentativeOptions([]);
@@ -1395,6 +1423,7 @@ export default function TempOrderForm() {
     }
 
     const clientReferenceId = String(customer.kd_KdNR || '').trim();
+    setCustomerOrderRequirements({ customerId: clientReferenceId, status: 'checking', missingFields: [] });
     const clientName = String(customer.kd_Name1 || customer.kd_Name2 || '').trim();
     const clientAddress = buildAddress(customer);
 
@@ -1857,6 +1886,26 @@ export default function TempOrderForm() {
               onInputChange={(e, value) => setCustomerQuery(value)}
               renderInput={(params) => <TextField {...params} label={t('customer_select')} fullWidth />}
             />
+
+            {customerOrderRequirements.customerId === String(form.clientReferenceId || '').trim()
+              && customerOrderRequirements.status === 'checking' && (
+                <Alert severity="info">{t('temp_order_customer_requirements_checking')}</Alert>
+            )}
+            {customerOrderRequirements.customerId === String(form.clientReferenceId || '').trim()
+              && customerOrderRequirements.status === 'missing' && (
+                <Alert severity="warning">
+                  {t('temp_order_customer_requirements_missing', {
+                    fields: customerOrderRequirements.missingFields
+                      .map((field) => t(CUSTOMER_ORDER_REQUIREMENTS[field]?.labelKey || ''))
+                      .filter(Boolean)
+                      .join(', '),
+                  })}
+                </Alert>
+            )}
+            {customerOrderRequirements.customerId === String(form.clientReferenceId || '').trim()
+              && customerOrderRequirements.status === 'error' && (
+                <Alert severity="info">{t('temp_order_customer_requirements_check_error')}</Alert>
+            )}
 
             <TextField label={t('order_customer')} value={form.clientName} onChange={(e) => setForm((p) => ({ ...p, clientName: e.target.value }))} fullWidth />
             {customerReminderInvoicesCount > 0 && (
