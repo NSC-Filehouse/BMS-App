@@ -4,7 +4,11 @@ function normalizeProductName(value) {
 
 function polymer(value) {
   const text = String(value || '').toUpperCase();
-  if (/LDPE/.test(text)) return 'LDPE';
+  // Check the more specific linear PE families before LDPE, which is a
+  // substring of both LLDPE and mLLDPE.
+  if (/\bM[\s-]*LLDPE\b/.test(text)) return 'MLLDPE';
+  if (/\bLLDPE\b/.test(text)) return 'LLDPE';
+  if (/\bLDPE\b/.test(text)) return 'LDPE';
   if (/HDPE|PEHD/.test(text)) return 'HDPE';
   if (/PPHP|PPH\b|PP[ -]?HOMO/.test(text)) return 'PP_HOMO';
   if (/PPC|PP[ -]?COPO/.test(text)) return 'PP_COPO';

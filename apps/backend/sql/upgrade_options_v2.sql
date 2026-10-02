@@ -44,6 +44,7 @@ BEGIN TRY
     [op_NachverhandelbarQuelle] NVARCHAR(500) NULL,
     [op_QuelleTyp] NVARCHAR(30) NOT NULL,
     [op_QuelleSchluessel] NVARCHAR(255) NOT NULL,
+    [op_DuplikatSchluessel] CHAR(64) NULL,
     [op_QuelleDateiname] NVARCHAR(255) NULL,
     [op_QuelleMailtext] NVARCHAR(MAX) NULL,
     [op_QuelleMailformat] NVARCHAR(20) NULL,
@@ -66,6 +67,9 @@ BEGIN TRY
   );
   CREATE INDEX [IX_tblOptionen_MandantGueltig] ON [BMSApp].[tblOptionen]
     ([op_MandantID], [op_GeloeschtAm], [op_Pruefstatus], [op_Geschaeftsstatus], [op_GueltigBis]);
+  CREATE UNIQUE INDEX [UX_tblOptionen_Mandant_Duplikat] ON [BMSApp].[tblOptionen]
+    ([op_MandantID], [op_DuplikatSchluessel])
+    WHERE [op_DuplikatSchluessel] IS NOT NULL AND [op_IstDemo]=(0);
 
   CREATE TABLE [BMSApp].[tblOptionenPositionen] (
     [opp_id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_tblOptionenPositionen] PRIMARY KEY,
