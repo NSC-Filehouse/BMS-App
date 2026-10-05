@@ -111,11 +111,11 @@ const config = {
         || 'kimaz@mlplastics.de,m.winkler@mlholding.org,altendorf@westpoly.de,goede@mlholding.org',
     ).split(',').map((item) => item.trim().toLowerCase()).filter(Boolean),
     intervalSeconds: toInt(process.env.BMS_DAILY_VL_MAIL_INTERVAL_SECONDS, 30),
-    // Keep the fallback aligned with VITE_MANDANT_EXCLUDE_IDS; Test is always
-    // excluded explicitly in daily-vl-mail.js.
+    // Keep the other tenant exclusions aligned with VITE_MANDANT_EXCLUDE_IDS.
+    // MLCompound (ID 16) is explicitly included by daily-vl-mail.js.
     excludedMandantIds: parseIntegerList(
       process.env.BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS || process.env.VITE_MANDANT_EXCLUDE_IDS,
-      '1,6,8,13,14,15,16,17,18',
+      '1,6,8,13,14,15,17,18',
     ),
   },
 

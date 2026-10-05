@@ -13,6 +13,7 @@ const { formatDailyVlMailBody } = require('../mail/vl-completion-mail');
 
 const DAILY_VL_OUTBOX_TABLE = appTableSql('dailyVlMailOutbox');
 const TEST_MANDANT_ID = 0;
+const ML_COMPOUND_MANDANT_ID = 16;
 const MAX_SEND_COUNT = 25;
 const TIME_ZONE = 'Europe/Berlin';
 
@@ -73,7 +74,8 @@ function isExcludedMandant(companyId) {
   const numericId = Number(companyId);
   return !Number.isSafeInteger(numericId)
     || numericId === TEST_MANDANT_ID
-    || config.dailyVlMail.excludedMandantIds.includes(numericId);
+    || (numericId !== ML_COMPOUND_MANDANT_ID
+      && config.dailyVlMail.excludedMandantIds.includes(numericId));
 }
 
 async function hasDailyVlMail(runDate, companyId) {

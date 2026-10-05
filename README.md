@@ -132,8 +132,9 @@ von dieser Zuordnung ausgenommen.
 
 Der Backend-Worker erstellt montags bis freitags ab 07:00 Uhr (Zeitzone
 `Europe/Berlin`) eine aktuelle klassische VL-Mail pro sichtbarem Verkaufsmandant
-für NSC. Mandant `0` (Test) und die Mandanten aus der bestehenden
-`VITE_MANDANT_EXCLUDE_IDS`-Filterung werden ausgelassen. Die Outlook-Gruppe hat
+für NSC. Mandant `0` (Test) und die ausgeschlossenen Mandanten werden ausgelassen;
+MLCompound (Mandant-ID `16`) ist für diesen Tagesversand ausdrücklich einbezogen,
+auch wenn die allgemeine Mandantenfilterung die ID ausschließt. Die Outlook-Gruppe hat
 `verfuegbarkeitsliste@mlplastics.de` als primäre SMTP-Adresse; ihre weiteren
 SMTP-Aliasse zeigen auf dieselbe Gruppe. Für Westpoly (Mandant-ID `9`) wird
 stattdessen an `kimaz@mlplastics.de`, `m.winkler@mlholding.org`,
@@ -147,7 +148,7 @@ gesteuert bzw. angepasst werden:
 ```dotenv
 BMS_DAILY_VL_MAIL_ENABLED=true
 BMS_DAILY_VL_MAIL_RECIPIENT=verfuegbarkeitsliste@mlplastics.de
-BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS=1,6,8,13,14,15,16,17,18
+BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS=1,6,8,13,14,15,17,18
 BMS_DAILY_VL_MAIL_WESTPOLY_COMPANY_ID=9
 BMS_DAILY_VL_MAIL_WESTPOLY_RECIPIENTS=kimaz@mlplastics.de,m.winkler@mlholding.org,altendorf@westpoly.de,goede@mlholding.org
 ```
