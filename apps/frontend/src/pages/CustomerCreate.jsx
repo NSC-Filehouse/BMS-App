@@ -296,9 +296,9 @@ export default function CustomerCreate() {
       </CardContent></Card>}
       {preflight?.warnungen?.length > 0 && <Alert severity="warning" sx={{ my: 2 }}><Typography fontWeight={600}>{w.warnings}</Typography>{messages(preflight.warnungen)}<FormControlLabel label={w.warningsAccept} control={<Checkbox checked={warningsAccepted} onChange={(event) => setWarningsAccepted(event.target.checked)} disabled={busy || Boolean(frozen)} />} /></Alert>}
       {preflight?.hinweise?.length > 0 && <Alert severity="info" sx={{ my: 2 }}><Typography fontWeight={600}>{w.hints}</Typography>{preflight.hinweise.map((entry) => <Typography key={entry.kundennummer} variant="body2">{entry.kundennummer} – {entry.vergleich?.name1?.vorhanden || ''}</Typography>)}</Alert>}
-      <Box sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', py: 2, mt: 2, zIndex: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ py: 2, mt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
         {busy && <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><CircularProgress size={18} /><Typography variant="body2">{frozen ? w.sending : w.checking}</Typography></Stack>}
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="flex-end">
           <Button onClick={back} disabled={busy || Boolean(frozen)}>{w.discard}</Button>
           <Button variant="contained" disabled={busy || (Boolean(frozen) && !context.writeEnabled)} onClick={() => run(Boolean(context.writeEnabled))}>
             {frozen ? w.retry : context.writeEnabled ? w.send : w.check}
