@@ -93,7 +93,7 @@ async function loadDeveloperCreatedCustomers(mandant) {
       ) [r]
       WHERE [m].[Mandant]=? AND [m].[Status]=N'angelegt'
         AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
-        AND [o].[CustomerNumber] IS NOT NULL AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'MFR',N'NSC')
+        AND [o].[CustomerNumber] IS NOT NULL AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'AKI',N'MFR',N'NSC')
         AND COALESCE([r].[Status], N'') <> N'completed'
       ORDER BY [o].[CreatedAt] DESC, [o].[OperationId] DESC`, [mandant]);
   } catch (error) { requireHistorySchema(error); }
@@ -123,7 +123,7 @@ async function loadRollbackTarget(operationId, mandant) {
       INNER JOIN [BMSApp].[CustomerCreationMandant] [m] ON [m].[OperationId]=[o].[OperationId]
       WHERE [o].[OperationId]=? AND [m].[Mandant]=? AND [m].[Status]=N'angelegt'
         AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
-        AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'MFR',N'NSC')`, [operationId, mandant]);
+        AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'AKI',N'MFR',N'NSC')`, [operationId, mandant]);
     return rows[0] || null;
   } catch (error) { requireHistorySchema(error); }
 }

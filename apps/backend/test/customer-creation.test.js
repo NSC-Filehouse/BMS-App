@@ -24,12 +24,14 @@ test('creation is restricted to the active personal main tenant, without full-ac
   assert.equal(canCreateCustomer({ ...identity, mainCompanyId: 0 }, { firmaId: 0, shortName: 'TES' }, settings), false);
   assert.equal(canCreateCustomer(identity, database, { ...settings, enabled: false }), false);
 });
-test('rollback is restricted to the exact active MFR and NSC identities', () => {
+test('rollback is restricted to the exact active AKI, MFR and NSC identities', () => {
   assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'MFR', personNumber: 130, userId: 'm.frank' }), true);
   assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), true);
-  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'AKI', personNumber: 1, userId: 'kimaz' }), false);
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'AKI', personNumber: 1, userId: 'kimaz' }), true);
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'AKI', personNumber: 130, userId: 'kimaz' }), false);
   assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'NSC', personNumber: 130, userId: 'n.schroeder' }), false);
   assert.equal(isCustomerRollbackDeveloper({ active: false, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), false);
+  assert.equal(isCustomerRollbackDeveloper({ active: false, shortCode: 'AKI', personNumber: 1, userId: 'kimaz' }), false);
 });
 test('rollback requires an explicit executable flag in the ERP preview', () => {
   assert.equal(isCustomerRollbackPreviewExecutable({ ausfuehrbar: true }), true);

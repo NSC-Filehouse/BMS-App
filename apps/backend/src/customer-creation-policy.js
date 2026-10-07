@@ -9,8 +9,9 @@ const CUSTOMER_CREATION_DEVELOPERS = [
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
 // Rollback is a higher-risk capability than customer creation. Keep its
-// allowlist separate so AKI's creation permission does not grant deletion.
+// allowlist separate and limit it to these exact active developer identities.
 const CUSTOMER_ROLLBACK_DEVELOPERS = [
+  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
@@ -51,7 +52,7 @@ function isCustomerRollbackDeveloper(identity) {
 }
 function assertCustomerRollbackDeveloper(identity) {
   if (!isCustomerRollbackDeveloper(identity)) {
-    throw createHttpError(403, 'Der App-Rückbau ist nur für MFR und NSC freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
+    throw createHttpError(403, 'Der App-Rückbau ist nur für AKI, MFR und NSC freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
   }
 }
 function isCustomerRollbackPreviewExecutable(preview) {
