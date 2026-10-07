@@ -53,10 +53,130 @@ function buildAddress(row) {
   return [street, [plz, ort].filter(Boolean).join(' '), lk].filter(Boolean).join(', ');
 }
 
+const ROLLBACK_PREVIEW_LABELS = {
+  vorgangId: ['Vorgangs-ID', 'Operation ID'],
+  art: ['Vorgangsart', 'Operation type'],
+  kundennummer: ['Kundennummer', 'Customer number'],
+  aktion: ['Umfang', 'Scope'],
+  fristBis: ['Rückbaufrist', 'Rollback deadline'],
+  ausfuehrbar: ['Rückbau möglich', 'Rollback possible'],
+  mandanten: ['Betroffene Mandanten', 'Affected mandants'],
+  mandant: ['Mandant', 'Mandant'],
+  zeilen: ['Betroffene Datenzeilen', 'Affected data rows'],
+  tabelle: ['Tabelle', 'Table'],
+  schluessel: ['Datensatzschlüssel', 'Record key'],
+  hindernisse: ['Hindernisse', 'Blockers'],
+  aenderungen: ['Änderungen seit Anlage', 'Changes since creation'],
+  geaenderteFelder: ['Geänderte Felder', 'Changed fields'],
+  belege: ['Belege', 'Documents'],
+  status: ['Status', 'Status'],
+  code: ['Code', 'Code'],
+  nachricht: ['Hinweis', 'Message'],
+  abhilfe: ['Empfohlene Maßnahme', 'Suggested action'],
+  ergebnis: ['Ergebnis', 'Result'],
+  vorhanden: ['Vorhanden', 'Existing value'],
+  eingabe: ['Eingabe', 'Submitted value'],
+  wert: ['Wert', 'Value'],
+  grund: ['Grund', 'Reason'],
+  geprueftAm: ['Geprüft am', 'Checked at'],
+};
+
+function rollbackPreviewLabel(key, lang) {
+  const known = ROLLBACK_PREVIEW_LABELS[key];
+  if (known) return known[lang === 'en' ? 1 : 0];
+  return String(key || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/^./, (letter) => letter.toLocaleUpperCase(lang === 'en' ? 'en' : 'de'));
+}
+
+function rollbackPreviewScalar(value, key, lang) {
+  if (value === null || value === undefined || value === '') return '–';
+  if (typeof value === 'boolean') return value ? (lang === 'en' ? 'Yes' : 'Ja') : (lang === 'en' ? 'No' : 'Nein');
+  if (typeof value === 'string') {
+    const normalized = value.toLocaleLowerCase('de-DE');
+    const knownValues = {
+      art: { anlegen: ['Kundenanlage', 'Customer creation'], kopieren: ['Kundenkopie', 'Customer copy'], nachtragenAnsprechpartner: ['Ansprechpartner ergänzen', 'Add contact'], nachtragenLieferanschrift: ['Lieferanschrift ergänzen', 'Add delivery address'] },
+      aktion: { komplett: ['Vollständig', 'Complete'], teilweise: ['Teilweise', 'Partial'] },
+    };
+    const translated = knownValues[key]?.[normalized];
+    if (translated) return translated[lang === 'en' ? 1 : 0];
+  }
+  if (typeof value === 'string' && /(frist|datum|date|zeit|checked|created|updated|geprueft|angelegt|geändert|geaendert)/i.test(key || '')) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE');
+  }
+  return String(value);
+}
+
+function rollbackPreviewEntryTitle(entry, parentKey, index, lang) {
+  if (parentKey === 'mandanten' && entry?.mandant) return `${rollbackPreviewLabel('mandant', lang)}: ${entry.mandant}`;
+  if (parentKey === 'zeilen' && entry?.tabelle) {
+    const key = entry.schluessel ? ` · ${rollbackPreviewLabel('schluessel', lang)}: ${rollbackPreviewScalar(entry.schluessel, 'schluessel', lang)}` : '';
+    return `${rollbackPreviewLabel('tabelle', lang)}: ${entry.tabelle}${key}`;
+  }
+  return `${rollbackPreviewLabel(parentKey, lang)} ${index + 1}`;
+}
+
+function RollbackPreviewDetails({ value, fieldKey = '', lang = 'de', depth = 0 }) {
+  if (value === null || value === undefined || value === '') {
+    return <Typography variant="body2">–</Typography>;
+  }
+  if (typeof value !== 'object') {
+    return <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{rollbackPreviewScalar(value, fieldKey, lang)}</Typography>;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <Typography variant="body2">–</Typography>;
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {value.map((entry, index) => {
+          const isRecord = entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+          const title = isRecord ? rollbackPreviewEntryTitle(entry, fieldKey, index, lang) : null;
+          const record = isRecord && (fieldKey === 'mandanten' || fieldKey === 'zeilen')
+            ? Object.fromEntries(Object.entries(entry).filter(([key]) => !((fieldKey === 'mandanten' && key === 'mandant') || (fieldKey === 'zeilen' && ['tabelle', 'schluessel'].includes(key)))))
+            : entry;
+          return (
+            <Box key={`${fieldKey}-${index}`} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.25, minWidth: 0 }}>
+              {title && <Typography variant="subtitle2" sx={{ mb: 1, overflowWrap: 'anywhere' }}>{title}</Typography>}
+              <RollbackPreviewDetails value={record} fieldKey={fieldKey} lang={lang} depth={depth + 1} />
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  }
+  const entries = Object.entries(value);
+  if (entries.length === 0) return <Typography variant="body2">–</Typography>;
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, minWidth: 0 }}>
+      {entries.map(([key, child]) => (
+        <Box key={key} sx={{ display: 'grid', gridTemplateColumns: depth > 0 ? 'minmax(110px, 0.35fr) minmax(0, 1fr)' : 'minmax(130px, 0.32fr) minmax(0, 1fr)', gap: 1, alignItems: 'start', minWidth: 0 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{rollbackPreviewLabel(key, lang)}</Typography>
+          <RollbackPreviewDetails value={child} fieldKey={key} lang={lang} depth={depth + 1} />
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function RollbackPreviewSummary({ preview, lang }) {
+  const fields = ['art', 'kundennummer', 'aktion', 'vorgangId', 'fristBis', 'ausfuehrbar'];
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+      {fields.filter((key) => preview[key] !== null && preview[key] !== undefined && preview[key] !== '').map((key) => (
+        <Box key={key} sx={{ minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary">{rollbackPreviewLabel(key, lang)}</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{rollbackPreviewScalar(preview[key], key, lang)}</Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 export default function CustomersList({ supplierOnly = false }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [items, setItems] = React.useState([]);
   const PAGE_SIZE = 12;
   const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
@@ -758,11 +878,14 @@ export default function CustomersList({ supplierOnly = false }) {
               <Alert severity={previewExecutable ? 'success' : 'warning'}>
                 {previewExecutable ? t('customer_rollback_preview_allowed') : t('customer_rollback_preview_blocked')}
               </Alert>
-              {rollbackDialog.preview.fristBis && (
-                <Typography variant="body2">
-                  {t('customer_rollback_deadline', { date: new Date(rollbackDialog.preview.fristBis).toLocaleString() })}
-                </Typography>
-              )}
+              <RollbackPreviewSummary preview={rollbackDialog.preview} lang={lang} />
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t('customer_rollback_preview_details')}</Typography>
+                <RollbackPreviewDetails
+                  value={Object.fromEntries(Object.entries(rollbackDialog.preview).filter(([key]) => !['art', 'kundennummer', 'aktion', 'vorgangId', 'fristBis', 'ausfuehrbar'].includes(key)))}
+                  lang={lang}
+                />
+              </Box>
               {!canRollback && <Alert severity="info">{t('customer_rollback_write_disabled')}</Alert>}
               {rollbackDialog.resumable ? (
                 <Alert severity="info">{t('customer_rollback_partial')}</Alert>
@@ -782,12 +905,6 @@ export default function CustomersList({ supplierOnly = false }) {
                 />
               )}
               {rollbackError && <Alert severity="error">{rollbackError}</Alert>}
-              <Box component="details" sx={{ '& pre': { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto', p: 1.5, bgcolor: 'action.hover', borderRadius: 1 } }}>
-                <Typography component="summary" sx={{ cursor: 'pointer', fontWeight: 600 }}>
-                  {t('customer_rollback_preview_json')}
-                </Typography>
-                <Box component="pre">{JSON.stringify(rollbackDialog.preview, null, 2)}</Box>
-              </Box>
             </Box>
           ) : null}
         </DialogContent>
