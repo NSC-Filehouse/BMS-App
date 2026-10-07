@@ -17,7 +17,7 @@ const TEXT = {
     private: 'Privatperson', privateHelp: 'Privatpersonen dürfen ohne USt-ID angelegt werden.', thirdCountry: 'Dieses Land gehört nicht zur EU. Eine USt-ID ist optional.', vatRequired: 'Bei Firmen aus EU-Ländern ist die USt-ID Pflicht.',
     invoiceSame: 'Rechnungsanschrift entspricht der Hauptanschrift', invoiceEmail: 'Rechnungs-E-Mail', invoiceHelp: 'Wird für die spätere Auftragsübergabe benötigt.', bankEnabled: 'Bankverbindung angeben', postboxEnabled: 'Postfach angeben', ownAddress: 'Eigene Anschrift', moreVat: 'Weitere USt-IDs', add: 'Hinzufügen', remove: 'Entfernen',
     discard: 'Verwerfen', check: 'Eingaben prüfen', send: 'An BMS senden', retry: 'Denselben Vorgang wiederholen', back: 'Zur Kundenübersicht', openCustomer: 'Kunde öffnen', required: 'Bitte dieses Pflichtfeld ausfüllen.', empty: 'Keine Vorgabe / leer',
-    test: 'Echte Kundenanlagen sind noch gesperrt. Du kannst das Formular und die schreibfreie Vorprüfung testen.', target: 'Zentrale Anlage', copy: 'Kopie nach', noCopy: 'Keine zusätzliche Kopie erforderlich.', checking: 'Eingaben werden geprüft …', sending: 'Kunde wird angelegt …',
+    test: 'Echte Kundenanlagen sind noch gesperrt. Du kannst das Formular und die schreibfreie Vorprüfung testen.', target: 'Zentrale Anlage', copy: 'Kopie nach', checking: 'Eingaben werden geprüft …', sending: 'Kunde wird angelegt …',
     tesApiLimit: 'Die Maske ist in TES verfügbar. Die BMS-Kunden-API unterstützt jedoch keine Kundenkopie nach TES; eine Anlage für diesen Mandanten ist über die Schnittstelle nicht möglich.',
     checkOk: 'Die Vorprüfung ist erfolgreich. Es wurde noch kein Kunde angelegt.', incomplete: 'Bitte die markierten Angaben ergänzen oder korrigieren.', warnings: 'Warnungen', warningsAccept: 'Ich habe die Warnungen geprüft.', warningReview: 'Bitte die Warnungen prüfen und anschließend erneut senden.',
     duplicates: 'Mögliche Dubletten', noOverride: 'Diese Dublette lässt sich nicht übersteuern. Bitte den vorhandenen Kunden verwenden.', distinct: 'Dies ist eine andere Firma / Person', reason: 'Begründung (mindestens 10 Zeichen)', hints: 'Weitere Hinweise', existing: 'Vorhanden', entered: 'Eingabe',
@@ -30,7 +30,7 @@ const TEXT = {
     private: 'Private individual', privateHelp: 'Private individuals may be created without a VAT ID.', thirdCountry: 'This country is outside the EU. A VAT ID is optional.', vatRequired: 'EU companies must provide a VAT ID.',
     invoiceSame: 'Invoice address is the same as the main address', invoiceEmail: 'Invoice email', invoiceHelp: 'Required for subsequent order submission.', bankEnabled: 'Enter bank details', postboxEnabled: 'Enter PO box', ownAddress: 'Separate address', moreVat: 'Additional VAT IDs', add: 'Add', remove: 'Remove',
     discard: 'Discard', check: 'Check details', send: 'Send to BMS', retry: 'Retry the same operation', back: 'Back to customers', openCustomer: 'Open customer', required: 'Please fill in this required field.', empty: 'Default / empty',
-    test: 'Customer creation is currently disabled. You can test the form and the read-only preflight check.', target: 'Central creation', copy: 'Copy to', noCopy: 'No additional copy required.', checking: 'Checking details …', sending: 'Creating customer …',
+    test: 'Customer creation is currently disabled. You can test the form and the read-only preflight check.', target: 'Central creation', copy: 'Copy to', checking: 'Checking details …', sending: 'Creating customer …',
     tesApiLimit: 'The form is available in TES, but the BMS customer API cannot copy customers to TES. This interface cannot create a customer for that tenant.',
     checkOk: 'The preflight check succeeded. No customer has been created yet.', incomplete: 'Please complete or correct the highlighted details.', warnings: 'Warnings', warningsAccept: 'I have reviewed the warnings.', warningReview: 'Please review the warnings and submit again.',
     duplicates: 'Possible duplicates', noOverride: 'This duplicate cannot be overridden. Please use the existing customer.', distinct: 'This is a different company / person', reason: 'Reason (at least 10 characters)', hints: 'Further information', existing: 'Existing', entered: 'Entered',
@@ -224,7 +224,6 @@ export default function CustomerCreate() {
       {messages(result.data.warnungen)}
       <Stack direction="row" spacing={1}><Button variant="contained" onClick={back}>{w.back}</Button>{copied && <Button onClick={() => navigate(`/customers/${encodeURIComponent(result.data.kundennummer)}`, { state: { returnTo: location.state?.returnTo } })}>{w.openCustomer}</Button>}</Stack>
     </Stack> : <>
-      <Alert severity="info" sx={{ mb: 2 }}>{w.target}: <b>{context.stammMandant}</b>. {context.targetMandant === context.stammMandant ? w.noCopy : `${w.copy}: ${context.targetMandant}.`}</Alert>
       {context.targetMandant === 'TES' && <Alert severity="warning" sx={{ mb: 2 }}>{w.tesApiLimit}</Alert>}
       {!context.writeEnabled && <Alert severity="info" sx={{ mb: 2 }}>{w.test}</Alert>}
       {frozen && <Alert severity="warning" sx={{ mb: 2 }}>{w.unknown} {w.key}: {frozen.id}</Alert>}
