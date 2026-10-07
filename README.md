@@ -4,7 +4,7 @@
 
 Das blaue Plus neben der Seitennavigation öffnet die Kundenanlage. Es erscheint
 im persönlichen Hauptmandanten des angemeldeten Mitarbeiters. Umfassender
-Mandantenzugriff ersetzt diese Regel nicht. Die Entwickler MFR und NSC dürfen
+Mandantenzugriff ersetzt diese Regel nicht. Die Entwickler AKI, MFR und NSC dürfen
 das Plus in allen für sie zugänglichen Mandanten einschließlich `TES` verwenden.
 Die Kunden-API kann weiterhin nicht nach `TES` kopieren; dort lässt sich die
 Maske öffnen, aber die Schnittstelle unterstützt keine Anlage mit TES als Ziel.

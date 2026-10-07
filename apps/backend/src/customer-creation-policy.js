@@ -4,6 +4,7 @@ const { createHttpError } = require('./utils');
 // Match the active FX identity on all three fields so a reused short code does
 // not grant developer access to customer creation in every tenant.
 const CUSTOMER_CREATION_DEVELOPERS = [
+  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
