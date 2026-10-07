@@ -3,8 +3,11 @@
 ## Kunden über die BMS-Kunden-API anlegen
 
 Das blaue Plus neben der Seitennavigation öffnet die Kundenanlage. Es erscheint
-nur im persönlichen Hauptmandanten des angemeldeten Mitarbeiters. Umfassender
-Mandantenzugriff ersetzt diese Regel nicht; der Testmandant `TES` ist ausgeschlossen.
+im persönlichen Hauptmandanten des angemeldeten Mitarbeiters. Umfassender
+Mandantenzugriff ersetzt diese Regel nicht. Die Entwickler MFR und NSC dürfen
+das Plus in allen für sie zugänglichen Mandanten einschließlich `TES` verwenden.
+Die Kunden-API kann weiterhin nicht nach `TES` kopieren; dort lässt sich die
+Maske öffnen, aber die Schnittstelle unterstützt keine Anlage mit TES als Ziel.
 Die API legt zentral in `PLA` an und kopiert bei Bedarf in den aktiven Mandanten.
 Außendienst und Ersteller werden serverseitig aus der SSO-Identität gesetzt;
 Innendienst wird mit demselben Kürzel vorbelegt und kann ausgewählt werden.

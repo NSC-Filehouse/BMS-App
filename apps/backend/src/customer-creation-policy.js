@@ -1,19 +1,36 @@
 const { createHash } = require('node:crypto');
 const { createHttpError } = require('./utils');
 
+// Match the active FX identity on all three fields so a reused short code does
+// not grant developer access to customer creation in every tenant.
+const CUSTOMER_CREATION_DEVELOPERS = [
+  { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
+  { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
+];
 const text = (value) => value === null || value === undefined ? null : String(value).trim() || null;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function canCreateCustomer(identity, database, settings) {
+  const shortCode = String(identity?.shortCode || '').trim().toUpperCase();
+  const companyId = Number(database?.firmaId);
+  const mandant = String(database?.shortName || '').trim().toUpperCase();
+  if (settings.enabled !== true || identity?.active !== true
+    || !Number.isSafeInteger(companyId) || companyId < 0
+    || !Boolean(text(identity.shortCode)) || !Boolean(text(identity.userId))
+    || !/^[A-Z0-9]{1,10}$/.test(mandant)) return false;
+
+  const personNumber = Number(identity.personNumber);
+  const userId = String(identity.userId || '').trim().toLowerCase();
+  if (CUSTOMER_CREATION_DEVELOPERS.some((user) => (
+    user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId
+  ))) return true;
   return settings.enabled === true && identity?.active === true
     && Number.isInteger(identity.mainCompanyId) && identity.mainCompanyId > 0
-    && Number(database?.firmaId) === identity.mainCompanyId
-    && Boolean(text(identity.shortCode)) && Boolean(text(identity.userId))
-    && /^[A-Z0-9]{1,10}$/.test(String(database?.shortName || ''))
-    && database.shortName !== 'TES';
+    && companyId === identity.mainCompanyId
+    && mandant !== 'TES';
 }
 function assertCanCreateCustomer(identity, database, settings) {
   if (!canCreateCustomer(identity, database, settings)) {
-    throw createHttpError(403, 'Kunden können nur im persönlichen Hauptmandanten angelegt werden.', { code: 'CUSTOMER_CREATION_FORBIDDEN' });
+    throw createHttpError(403, 'Die Kundenanlage ist für diesen Benutzer und Mandanten nicht freigegeben.', { code: 'CUSTOMER_CREATION_FORBIDDEN' });
   }
 }
 function pick(source, fields) {
