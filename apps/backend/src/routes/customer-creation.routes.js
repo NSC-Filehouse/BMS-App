@@ -54,10 +54,6 @@ router.post('/customer-creation', requireMandant, asyncHandler(async (req, res) 
   if (response.status !== 201) throwApiProblem(response);
   sendEnvelope(res, { status: 201, data: response.data, meta: { operationId: req.header('Idempotency-Key'), state: response.state, replay: Boolean(response.replay) } });
 }));
-router.get('/customer-creation/history', requireMandant, asyncHandler(async (req, res) => {
-  allowed(req);
-  sendEnvelope(res, { data: await history.loadCreationHistory(req.database.firmaId) });
-}));
 router.get('/customer-creation/operations/:id', requireMandant, asyncHandler(async (req, res) => {
   allowed(req);
   if (!UUID.test(req.params.id)) throw createHttpError(400, 'Ungültige Vorgangs-ID.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });

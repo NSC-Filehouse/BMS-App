@@ -65,13 +65,6 @@ async function finishCreation(operationId, response, state) {
   });
 }
 
-async function loadCreationHistory(companyId) {
-  try {
-    return await runSQLQuerySqlServer(DATABASE, `SELECT TOP (50) [OperationId],[UserShortCode],[TargetMandant],[StammMandant],
-      [CustomerNumber],[CustomerName],[Status],[ErrorCode],[ErpOperationId],[CreatedAt],[UpdatedAt]
-      FROM [BMSApp].[CustomerCreation] WHERE [TargetCompanyId]=? ORDER BY [CreatedAt] DESC`, [companyId]);
-  } catch (error) { requireHistorySchema(error); }
-}
 async function loadCreationOperation(operationId, userId, companyId) {
   const rows = await runSQLQuerySqlServer(DATABASE, `SELECT [o].[OperationId],[o].[Status],[o].[HttpStatus],
       (SELECT TOP (1) [DataJson] FROM [BMSApp].[CustomerCreationSnapshot] WHERE [OperationId]=[o].[OperationId] AND [Kind]=N'response' ORDER BY [Id] DESC) AS [ResponseJson]
@@ -93,4 +86,4 @@ async function isAppCreatedPrivateCustomer(database, customerId, name, countryIs
     throw error;
   }
 }
-module.exports = { reserveCreation, finishCreation, loadCreationHistory, loadCreationOperation, isAppCreatedPrivateCustomer };
+module.exports = { reserveCreation, finishCreation, loadCreationOperation, isAppCreatedPrivateCustomer };

@@ -22,7 +22,7 @@ const TEXT = {
     checkOk: 'Die Vorprüfung ist erfolgreich. Es wurde noch kein Kunde angelegt.', incomplete: 'Bitte die markierten Angaben ergänzen oder korrigieren.', warnings: 'Warnungen', warningsAccept: 'Ich habe die Warnungen geprüft.', warningReview: 'Bitte die Warnungen prüfen und anschließend erneut senden.',
     duplicates: 'Mögliche Dubletten', noOverride: 'Diese Dublette lässt sich nicht übersteuern. Bitte den vorhandenen Kunden verwenden.', distinct: 'Dies ist eine andere Firma / Person', reason: 'Begründung (mindestens 10 Zeichen)', hints: 'Weitere Hinweise', existing: 'Vorhanden', entered: 'Eingabe',
     created: 'Kunde erfolgreich angelegt', partial: 'Kunde zentral angelegt; mindestens eine Kopie ist fehlgeschlagen. Die zentrale Anlage nicht erneut auslösen.', number: 'Kundennummer', unknown: 'Ergebnis unklar. Der Kunde kann bereits angelegt sein. Die Eingaben bleiben gesperrt; wiederhole ausschließlich denselben Vorgang.',
-    history: 'Anlagehistorie dieses Mandanten', noHistory: 'Noch keine Anlagevorgänge.', refresh: 'Aktualisieren', error: 'Die Aktion konnte nicht abgeschlossen werden.', loadError: 'Die Kundenanlage konnte nicht geladen werden.', successStatus: 'angelegt', alreadyStatus: 'bereits vorhanden', failedStatus: 'fehlgeschlagen', status: 'Status',
+    error: 'Die Aktion konnte nicht abgeschlossen werden.', loadError: 'Die Kundenanlage konnte nicht geladen werden.', successStatus: 'angelegt', alreadyStatus: 'bereits vorhanden', failedStatus: 'fehlgeschlagen', status: 'Status',
     automatic: 'Wird automatisch aus dem angemeldeten Benutzer gesetzt.', defaults: 'Matchcode und nicht angegebene optionale Werte ergänzt die BMS.', key: 'Vorgangs-ID', row: 'Eintrag',
   },
   en: {
@@ -35,7 +35,7 @@ const TEXT = {
     checkOk: 'The preflight check succeeded. No customer has been created yet.', incomplete: 'Please complete or correct the highlighted details.', warnings: 'Warnings', warningsAccept: 'I have reviewed the warnings.', warningReview: 'Please review the warnings and submit again.',
     duplicates: 'Possible duplicates', noOverride: 'This duplicate cannot be overridden. Please use the existing customer.', distinct: 'This is a different company / person', reason: 'Reason (at least 10 characters)', hints: 'Further information', existing: 'Existing', entered: 'Entered',
     created: 'Customer created successfully', partial: 'Customer created centrally; at least one copy failed. Do not create the central customer again.', number: 'Customer number', unknown: 'Outcome unknown. The customer may already exist. Fields remain locked; retry only the same operation.',
-    history: 'Creation history for this tenant', noHistory: 'No creation operations yet.', refresh: 'Refresh', error: 'The action could not be completed.', loadError: 'Customer creation could not be loaded.', successStatus: 'created', alreadyStatus: 'already exists', failedStatus: 'failed', status: 'Status',
+    error: 'The action could not be completed.', loadError: 'Customer creation could not be loaded.', successStatus: 'created', alreadyStatus: 'already exists', failedStatus: 'failed', status: 'Status',
     automatic: 'Automatically assigned to the signed-in user.', defaults: 'BMS supplies the match code and omitted optional defaults.', key: 'Operation ID', row: 'Entry',
   },
 };
@@ -62,12 +62,8 @@ export default function CustomerCreate() {
   const [expanded, setExpanded] = React.useState({ company: true, invoice: true, sales: true });
   const [frozen, setFrozen] = React.useState(null);
   const [result, setResult] = React.useState(null);
-  const [historyRows, setHistoryRows] = React.useState(null);
-  const [historyError, setHistoryError] = React.useState('');
-  const [historyLoading, setHistoryLoading] = React.useState(false);
   const operationRef = React.useRef(null);
   if (!operationRef.current) operationRef.current = createCustomerOperationId();
-  const checkedRef = React.useRef(null);
   const storageKey = context ? `bms.customerCreation.pending.${encodeURIComponent(mandant)}.${context.ownUserId}` : '';
   const back = () => navigateToReturn(navigate, location.state?.returnTo, '/customers');
 
@@ -107,7 +103,7 @@ export default function CustomerCreate() {
 
   const update = (path, value) => {
     setDraft((previous) => setCreationValue(previous, path, value));
-    setErrors({}); setError(''); setNotice(''); setPreflight(null); setConfirmations({}); setWarningsAccepted(false); checkedRef.current = null;
+    setErrors({}); setError(''); setNotice(''); setPreflight(null); setConfirmations({}); setWarningsAccepted(false);
   };
   const focusErrors = (values) => {
     if (draft?.invoiceSame) {
@@ -146,13 +142,9 @@ export default function CustomerCreate() {
         .map(([kundennummer, entry]) => ({ kundennummer, begruendung: entry.reason.trim() }));
       const body = pending?.body || buildCustomerCreationBody(draft, confirmationList);
       const id = pending?.id || operationRef.current;
-      const signature = JSON.stringify(body);
       if (!pending) {
-        let checked = checkedRef.current?.signature === signature ? checkedRef.current.data : null;
-        if (!checked || !send) {
-          checked = (await apiRequest('/customer-creation/check', { method: 'POST', headers: { 'Idempotency-Key': id }, body: JSON.stringify(body) })).data;
-          setPreflight(checked); checkedRef.current = { signature, data: checked };
-        }
+        const checked = (await apiRequest('/customer-creation/check', { method: 'POST', headers: { 'Idempotency-Key': id }, body: JSON.stringify(body) })).data;
+        setPreflight(checked);
         if (checked.ergebnis !== 'anlegbar') {
           const values = {};
           for (const entry of checked.fehler || []) if (entry.feld) values[entry.feld] = entry.abhilfe || entry.nachricht;
@@ -177,17 +169,10 @@ export default function CustomerCreate() {
         || (!state && (failure.status >= 500 || !failure.status || failure.code === 'AUTH_REQUIRED'));
       if (pending && uncertain) setFrozen(pending);
       else if (pending) {
-        setFrozen(null); sessionStorage.removeItem(storageKey); operationRef.current = createCustomerOperationId(); checkedRef.current = null;
+        setFrozen(null); sessionStorage.removeItem(storageKey); operationRef.current = createCustomerOperationId();
       }
       handleFailure(failure);
     } finally { busyRef.current = false; setBusy(false); }
-  };
-  const loadHistory = async () => {
-    if (historyLoading) return;
-    setHistoryLoading(true); setHistoryError('');
-    try { setHistoryRows((await apiRequest('/customer-creation/history')).data || []); }
-    catch (failure) { setHistoryError(failure.message); }
-    finally { setHistoryLoading(false); }
   };
   const field = (path, options = {}) => {
     const key = path.split('.').at(-1);
@@ -302,10 +287,10 @@ export default function CustomerCreate() {
           {Object.entries(candidate.vergleich || {}).map(([key, comparison]) => <Typography key={key} variant="body2">{CREATION_LABELS[key]?.[languageIndex] || key}: {w.existing}: {String(comparison?.vorhanden ?? '–')} · {w.entered}: {String(comparison?.eingabe ?? '–')}</Typography>)}
           {preflight.uebersteuerbar && candidate.uebersteuerbar && <>
             <FormControlLabel label={w.distinct} control={<Checkbox checked={Boolean(confirmations[candidate.kundennummer]?.confirmed)} disabled={busy || Boolean(frozen)} onChange={(event) => {
-              setConfirmations((previous) => ({ ...previous, [candidate.kundennummer]: { ...previous[candidate.kundennummer], confirmed: event.target.checked } })); checkedRef.current = null;
+              setConfirmations((previous) => ({ ...previous, [candidate.kundennummer]: { ...previous[candidate.kundennummer], confirmed: event.target.checked } }));
             }} />} />
             <TextField label={w.reason} fullWidth size="small" multiline minRows={2} value={confirmations[candidate.kundennummer]?.reason || ''} disabled={busy || Boolean(frozen)} inputProps={{ minLength: 10, maxLength: 500 }}
-              onChange={(event) => { setConfirmations((previous) => ({ ...previous, [candidate.kundennummer]: { ...previous[candidate.kundennummer], reason: event.target.value } })); checkedRef.current = null; }} />
+              onChange={(event) => setConfirmations((previous) => ({ ...previous, [candidate.kundennummer]: { ...previous[candidate.kundennummer], reason: event.target.value } }))} />
           </>}
         </Box>)}
       </CardContent></Card>}
@@ -315,23 +300,11 @@ export default function CustomerCreate() {
         {busy && <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><CircularProgress size={18} /><Typography variant="body2">{frozen ? w.sending : w.checking}</Typography></Stack>}
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           <Button onClick={back} disabled={busy || Boolean(frozen)}>{w.discard}</Button>
-          <Button variant="outlined" disabled={busy || Boolean(frozen)} onClick={() => run(false)}>{w.check}</Button>
-          <Button variant="contained" disabled={busy || !context.writeEnabled} onClick={() => run(true)}>{frozen ? w.retry : w.send}</Button>
+          <Button variant="contained" disabled={busy || (Boolean(frozen) && !context.writeEnabled)} onClick={() => run(Boolean(context.writeEnabled))}>
+            {frozen ? w.retry : context.writeEnabled ? w.send : w.check}
+          </Button>
         </Stack>
       </Box>
     </>}
-    <Accordion sx={{ mt: 3 }} onChange={(_, open) => { if (open && historyRows === null) loadHistory(); }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography fontWeight={600}>{w.history}</Typography></AccordionSummary>
-      <AccordionDetails>
-        <Button disabled={historyLoading} onClick={loadHistory}>{w.refresh}</Button>
-        {historyLoading && <CircularProgress size={20} />}{historyError && <Alert severity="error">{historyError}</Alert>}
-        {historyRows?.length === 0 && <Typography>{w.noHistory}</Typography>}
-        {(historyRows || []).map((entry) => <Box key={entry.OperationId} sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography>{entry.CustomerNumber || '–'} {entry.CustomerName || ''}</Typography>
-          <Typography variant="body2">{new Date(entry.CreatedAt).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE')} · {entry.UserShortCode} · {w.status}: {entry.Status}{entry.ErrorCode ? ` · ${entry.ErrorCode}` : ''}</Typography>
-          <Typography variant="caption">{w.key}: {entry.ErpOperationId || entry.OperationId}</Typography>
-        </Box>)}
-      </AccordionDetails>
-    </Accordion>
   </Box>;
 }
