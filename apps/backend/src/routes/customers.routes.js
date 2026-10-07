@@ -28,6 +28,7 @@ const {
   loadCustomerSalesRepresentatives,
 } = require('../db/customer-sales-representatives');
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
+const { resolveCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const {
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
@@ -775,6 +776,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     salesRepresentatives,
     reminderInvoicesCount,
     activities,
+    customerRequirements: await resolveCustomerOrderRequirements(req.database, item),
   };
 
   sendEnvelope(res, {

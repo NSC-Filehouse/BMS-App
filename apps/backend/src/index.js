@@ -11,6 +11,7 @@ const logger = require('./logger');
 
 const mandantsRouter = require('./routes/mandants.routes');
 const customersRouter = require('./routes/customers.routes');
+const customerCreationRouter = require('./routes/customer-creation.routes');
 const productsRouter = require('./routes/products.routes');
 const ordersRouter = require('./routes/orders.routes');
 const tempOrdersRouter = require('./routes/temp-orders.routes');
@@ -133,6 +134,7 @@ app.get(`${config.apiBasePath}/sql-diagnostics`, async (req, res, next) => {
 // Routes
 app.use(config.apiBasePath, mandantsRouter);
 app.use(config.apiBasePath, customersRouter);
+app.use(config.apiBasePath, customerCreationRouter);
 app.use(config.apiBasePath, productsRouter);
 app.use(config.apiBasePath, ordersRouter);
 app.use(config.apiBasePath, tempOrdersRouter);

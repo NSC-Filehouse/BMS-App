@@ -1,5 +1,74 @@
 # BMS-App (Monorepo Scaffold)
 
+## Kunden über die BMS-Kunden-API anlegen
+
+Das blaue Plus neben der Seitennavigation öffnet die Kundenanlage. Es erscheint
+nur im persönlichen Hauptmandanten des angemeldeten Mitarbeiters. Umfassender
+Mandantenzugriff ersetzt diese Regel nicht; der Testmandant `TES` ist ausgeschlossen.
+Die API legt zentral in `PLA` an und kopiert bei Bedarf in den aktiven Mandanten.
+Außendienst und Ersteller werden serverseitig aus der SSO-Identität gesetzt;
+Innendienst wird mit demselben Kürzel vorbelegt und kann ausgewählt werden.
+
+Die Maske enthält die beschreibbaren Kundenfelder einschließlich separater
+Rechnungsanschrift, weiterer USt-IDs, Bankdaten, Ansprechpartner und Lieferanschriften.
+Rechnungs-E-Mail und Hauptanschrift sind Pflicht. Eine USt-ID ist für EU-Firmen
+Pflicht; Privatpersonen und Firmen außerhalb der EU dürfen sie weglassen.
+Die EU-Zuordnung kommt aus der ERP-Länderliste. Diese Ausnahmen werden auch bei
+der späteren Auftragsprüfung berücksichtigt. Die Privatpersonen-Einstufung wird
+in der App-Historie aufbewahrt, da die ERP-API den Ausnahmegrund nicht speichert.
+Die Ausnahme gilt nur für den mit Mandant, Nummer, Name und Land zugeordneten,
+über die App angelegten Kunden, nicht für einen vorhandenen Kopie-Datensatz.
+
+Die idempotente Migration `apps/backend/sql/add_customer_creation.sql` ist auf
+`DB04 / BMS` begrenzt und legt ausschließlich drei Tabellen im bestehenden
+Schema `BMSApp` an: `CustomerCreation`, `CustomerCreationMandant` und
+`CustomerCreationSnapshot`. Sie speichern Vorgang, Benutzer, Mandantenresultate
+und vollständige JSON-Snapshots einschließlich Ansprechpartner und Anschriften.
+Die Migration wurde am 06.10.2026 mit dem angemeldeten Windows-Benutzer ausgeführt.
+Der App-SQL-Login wurde danach mit zurückgerollten Schreibversuchen auf diesen
+Tabellen geprüft. Es wurden keine ERP-Kunden angelegt.
+
+Der kommentierte Konfigurationsblock steht in den lokal ignorierten Dateien
+`apps/backend/.env` und `apps/backend/.env.prod`. `.env.prod` ist die gepflegte
+Serverkonfiguration und wird auf dem Server als `.env` übernommen:
+
+```dotenv
+BMS_CUSTOMER_API_ENABLED=true
+BMS_CUSTOMER_API_WRITE_ENABLED=false
+BMS_CUSTOMER_API_BASE_ADDRESS=https://db03.domkimaz.de.local:3301/api/v1/kunden
+BMS_CUSTOMER_API_KEY=<nur im Backend hinterlegen>
+BMS_CUSTOMER_API_KEY_HEADER_NAME=X-Api-Key
+BMS_CUSTOMER_API_CA_FILE=
+BMS_CUSTOMER_API_TIMEOUT_MS=30000
+BMS_CUSTOMER_API_STAMM_MANDANT=PLA
+```
+
+Node.js ab 22.19 nutzt für diesen HTTPS-Client zusätzlich den Windows-Zertifikatsspeicher.
+Bei älteren Versionen oder fehlender Unternehmens-CA kann `BMS_CUSTOMER_API_CA_FILE`
+eine PEM-Datei mit den vertrauenswürdigen CA-Zertifikaten angeben. Die
+Zertifikatsprüfung bleibt aktiv. Der API-Schlüssel wird nicht an den Browser gegeben.
+
+Mit gesperrten Schreibzugriffen funktionieren Formular, Stammdatenlisten,
+Historie und die schreibfreie Vorprüfung über `/pruefung`. `An BMS senden`
+bleibt deaktiviert; auch der Backend-Endpunkt weist echte Anlagen vor dem
+Historieneintrag und dem API-Aufruf ab. Erst für einen mit dem ERP-Entwickler
+abgestimmten Test darf `BMS_CUSTOMER_API_WRITE_ENABLED=true` gesetzt und das
+Backend neu gestartet werden. Der Test braucht einen Benutzer mit passendem
+persönlichen Hauptmandanten; `TES` ist kein Anlageziel.
+
+Jeder Sendevorgang hat einen festen UUID-Schlüssel. Bei unklarem Ergebnis
+bleiben Eingaben und Schlüssel erhalten, auch nach einem Reload desselben
+Browser-Tabs. Nur derselbe Vorgang darf wiederholt werden. Bei einer
+fehlgeschlagenen Kopie bleibt die zentrale Anlage erfolgreich dokumentiert;
+eine neue zentrale Anlage darf daraus nicht ausgelöst werden. Bei verlorener
+Browser-Sitzung zuerst die Anlagehistorie bzw. den ERP-Vorgang prüfen. Dubletten
+und Warnungen werden vor der Anlage angezeigt; übersteuerbare Dubletten
+benötigen eine einzelne Bestätigung mit Begründung.
+
+Für die Auslieferung Frontend bauen, Code und `.env.prod` auf DB03 übernehmen
+und die App-Dienste neu starten. Diese Bereitstellung und der abgestimmte echte
+Anlagetest sind noch offen.
+
 Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm workspaces) mit:
 
 - **Backend**: Node.js + Express, Access (ODBC) über UNC-Pfade, Mandant per `x-mandant` Header

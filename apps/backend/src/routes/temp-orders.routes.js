@@ -8,6 +8,7 @@ const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { getUserIdentityByShortCode } = require('../db/users');
 const { appSchemaName, appTableDisplayName, appTableName, appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
+const { loadCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
 const {
   loadOpenTempOrderRows,
@@ -622,30 +623,6 @@ function normalizeTotal(rows) {
   const row = Array.isArray(rows) ? rows[0] : rows;
   if (!row || typeof row !== 'object') return null;
   return row.total ?? row.TOTAL ?? row.Total ?? Object.values(row)[0] ?? null;
-}
-
-async function loadCustomerOrderRequirements(database, customerId) {
-  const id = asText(customerId);
-  if (!id) {
-    return { available: true, customerFound: false, missingFields: [] };
-  }
-
-  const rows = await runSQLQueryAccess(database, `
-    SELECT TOP 1
-      [kd_RG_Email] AS invoiceEmail,
-      [kd_UST_Ident_Nr] AS vatId
-    FROM [dbo].[tblKunden]
-    WHERE [kd_KdNR] = ?
-  `, [id]);
-  const customer = Array.isArray(rows) ? rows[0] : null;
-  if (!customer) {
-    return { available: true, customerFound: false, missingFields: [] };
-  }
-
-  const missingFields = [];
-  if (!asText(customer.invoiceEmail)) missingFields.push('invoiceEmail');
-  if (!asText(customer.vatId)) missingFields.push('vatId');
-  return { available: true, customerFound: true, missingFields };
 }
 
 function mapTempOrderRow(row) {

@@ -10,6 +10,10 @@ export const CUSTOMER_ORDER_REQUIREMENTS = Object.freeze({
 });
 
 export function getMissingCustomerOrderRequirements(customer = {}) {
+  const authoritative = customer?.customerRequirements;
+  if (authoritative?.available && authoritative?.customerFound && Array.isArray(authoritative.missingFields)) {
+    return authoritative.missingFields.filter((field) => Object.hasOwn(CUSTOMER_ORDER_REQUIREMENTS, field));
+  }
   return Object.entries(CUSTOMER_ORDER_REQUIREMENTS)
     .filter(([, requirement]) => !String(customer?.[requirement.field] ?? '').trim())
     .map(([key]) => key);

@@ -12,6 +12,7 @@ import {
   FormControlLabel,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -19,6 +20,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import AddIcon from '@mui/icons-material/Add';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
@@ -60,6 +62,7 @@ export default function CustomersList({ supplierOnly = false }) {
   const [orderQuantity, setOrderQuantity] = React.useState(false);
   const [hideInactive, setHideInactive] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
+  const [canCreateCustomer, setCanCreateCustomer] = React.useState(false);
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
@@ -245,6 +248,11 @@ export default function CustomersList({ supplierOnly = false }) {
 
   React.useEffect(() => {
     let alive = true;
+    if (!supplierOnly) {
+      apiRequest('/customer-creation/capabilities')
+        .then((response) => { if (alive) setCanCreateCustomer(Boolean(response?.data?.allowed)); })
+        .catch(() => { if (alive) setCanCreateCustomer(false); });
+    }
     (async () => {
       try {
         const res = await apiRequest('/me');
@@ -256,7 +264,7 @@ export default function CustomersList({ supplierOnly = false }) {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [supplierOnly]);
 
   React.useEffect(() => {
     if (q.trim()) setItems([]);
@@ -310,6 +318,7 @@ export default function CustomersList({ supplierOnly = false }) {
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {reminderOnly ? t('customers_reminders_title') : t(supplierOnly ? 'suppliers_title' : 'customers_title')}
         </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         {!isRecentListView && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
@@ -333,6 +342,19 @@ export default function CustomersList({ supplierOnly = false }) {
             </IconButton>
           </Box>
         )}
+        {!supplierOnly && canCreateCustomer && (
+          <Tooltip title={t('customer_create_title')}>
+            <IconButton color="primary" aria-label={t('customer_create_title')}
+              onClick={() => navigate('/customers/new', { state: {
+                returnTo: createReturnTo(location, { ...location.state,
+                  listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
+                }),
+              } })}>
+              <AddIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        </Box>
       </Box>
 
       <Card sx={{ mb: 2 }}>

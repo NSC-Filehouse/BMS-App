@@ -50,6 +50,17 @@ const config = {
     vapidPrivateKey: String(process.env.PUSH_VAPID_PRIVATE_KEY || '').trim(),
   },
 
+  customerApi: {
+    enabled: toBool(process.env.BMS_CUSTOMER_API_ENABLED, false),
+    writeEnabled: toBool(process.env.BMS_CUSTOMER_API_WRITE_ENABLED, false),
+    baseAddress: String(process.env.BMS_CUSTOMER_API_BASE_ADDRESS || '').trim(),
+    apiKey: String(process.env.BMS_CUSTOMER_API_KEY || '').trim(),
+    apiKeyHeaderName: String(process.env.BMS_CUSTOMER_API_KEY_HEADER_NAME || 'X-Api-Key').trim(),
+    caFile: String(process.env.BMS_CUSTOMER_API_CA_FILE || '').trim(),
+    timeoutMs: toInt(process.env.BMS_CUSTOMER_API_TIMEOUT_MS, 30000),
+    stammMandant: String(process.env.BMS_CUSTOMER_API_STAMM_MANDANT || 'PLA').trim().toUpperCase(),
+  },
+
   mailService: {
     enabled: toBool(process.env.FILEHOUSE_MAIL_SERVICE_ENABLED, true),
     baseAddress: String(process.env.FILEHOUSE_MAIL_SERVICE_BASE_ADDRESS || '').trim(),

@@ -10,6 +10,7 @@ import { FeatureGuard, FeatureProvider } from './components/FeatureAccess.jsx';
 import Start from './pages/Start.jsx';
 
 import CustomersList from './pages/CustomersList.jsx';
+import CustomerCreate from './pages/CustomerCreate.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
 import EmployeeDetail from './pages/EmployeeDetail.jsx';
 
@@ -79,6 +80,10 @@ function AppRoutes() {
               <EmployeeDetail />
             </MandantGuard>
           }
+        />
+        <Route
+          path="/customers/new"
+          element={<MandantGuard><CustomerCreate /></MandantGuard>}
         />
         <Route
           path="/customers/:id"
