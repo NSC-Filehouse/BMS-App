@@ -29,6 +29,8 @@ const {
 } = require('../db/customer-sales-representatives');
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 const { resolveCustomerOrderRequirements } = require('../db/customer-order-requirements');
+const customerCreationHistory = require('../db/customer-creation-history');
+const { assertCustomerRollbackDeveloper } = require('../customer-creation-policy');
 const {
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
@@ -181,6 +183,14 @@ function buildWhereClause(q, searchField, options = {}) {
 
   if (options.reminderOnly) {
     clauses.push(`COALESCE([rc].[reminderInvoicesCount], 0) > 0`);
+  }
+
+  if (Array.isArray(options.appCreatedCustomerNumbers)) {
+    clauses.push(`EXISTS (
+      SELECT 1 FROM OPENJSON(?) [app_created]
+      WHERE [app_created].[value] = CONVERT(NVARCHAR(100), ${col('[kd_KdNR]')})
+    )`);
+    params.push(JSON.stringify(options.appCreatedCustomerNumbers));
   }
 
   if (!text) {
@@ -605,6 +615,13 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const includeInactive = String(req.query.includeInactive || '').trim() === '1';
   const supplierOnly = String(req.query.supplierOnly || '').trim() === '1';
+  const appCreatedOnly = String(req.query.appCreated || '').trim() === '1';
+  let appCreatedMetadata = [];
+  if (appCreatedOnly) {
+    assertCustomerRollbackDeveloper(req.userIdentity);
+    if (supplierOnly) throw createHttpError(400, 'Der App-Anlagenfilter ist nur in der Kundenansicht verfügbar.', { code: 'CUSTOMER_CREATION_FILTER_INVALID' });
+    appCreatedMetadata = await customerCreationHistory.loadDeveloperCreatedCustomers(req.database.shortName);
+  }
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
     pageSize: 25,
@@ -634,6 +651,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     customerAlias: 'k',
     reminderOnly,
     supplierOnly,
+    ...(appCreatedOnly ? { appCreatedCustomerNumbers: appCreatedMetadata.map((entry) => String(entry.customerNumber || '').trim()).filter(Boolean) } : {}),
   });
   const queryParams = [
     ...(hasRecentCustomerOrder ? [recentCustomerIdsJson] : []),
@@ -677,10 +695,22 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `;
   const rows = await runSQLQueryAccess(req.database, dataSql, [...queryParams, offset, pageSize]);
+  let responseRows = rows;
+  if (appCreatedOnly) {
+    const metadataByCustomerNumber = new Map();
+    for (const entry of appCreatedMetadata) {
+      const key = String(entry.customerNumber || '').trim();
+      if (key && !metadataByCustomerNumber.has(key)) metadataByCustomerNumber.set(key, entry);
+    }
+    responseRows = (Array.isArray(rows) ? rows : []).map((row) => ({
+      ...row,
+      appCreation: metadataByCustomerNumber.get(String(row?.kd_KdNR || '').trim()) || null,
+    }));
+  }
 
   sendEnvelope(res, {
     status: 200,
-    data: rows,
+    data: responseRows,
     meta: {
       mandant: req.mandant,
       databaseName: req.database?.databaseName || null,
@@ -693,6 +723,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
       reminderOnly,
       includeInactive,
       supplierOnly,
+      appCreatedOnly,
       activityWindowYears: 2,
       sort: hasRecentCustomerOrder ? 'recent' : safeSort.key,
       dir: hasRecentCustomerOrder ? 'ASC' : safeDir,

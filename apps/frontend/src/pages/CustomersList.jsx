@@ -5,7 +5,12 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
+  Button,
   InputAdornment,
   Radio,
   RadioGroup,
@@ -21,6 +26,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
+import UndoIcon from '@mui/icons-material/Undo';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
@@ -61,8 +67,16 @@ export default function CustomersList({ supplierOnly = false }) {
   const [reminderOnly, setReminderOnly] = React.useState(false);
   const [orderQuantity, setOrderQuantity] = React.useState(false);
   const [hideInactive, setHideInactive] = React.useState(false);
+  const [appCreatedOnly, setAppCreatedOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [canCreateCustomer, setCanCreateCustomer] = React.useState(false);
+  const [canViewAppCreated, setCanViewAppCreated] = React.useState(false);
+  const [canPreviewRollback, setCanPreviewRollback] = React.useState(false);
+  const [canRollback, setCanRollback] = React.useState(false);
+  const [rollbackDialog, setRollbackDialog] = React.useState(null);
+  const [rollbackBusy, setRollbackBusy] = React.useState(false);
+  const [rollbackError, setRollbackError] = React.useState('');
+  const [rollbackNotice, setRollbackNotice] = React.useState('');
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const metaRef = React.useRef(meta);
   const qRef = React.useRef(q);
@@ -70,6 +84,7 @@ export default function CustomersList({ supplierOnly = false }) {
   const reminderOnlyRef = React.useRef(reminderOnly);
   const orderQuantityRef = React.useRef(orderQuantity);
   const hideInactiveRef = React.useRef(hideInactive);
+  const appCreatedOnlyRef = React.useRef(appCreatedOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
   const touchRef = React.useRef({ x: 0, y: 0 });
@@ -99,6 +114,10 @@ export default function CustomersList({ supplierOnly = false }) {
     hideInactiveRef.current = hideInactive;
   }, [hideInactive]);
 
+  React.useEffect(() => {
+    appCreatedOnlyRef.current = appCreatedOnly;
+  }, [appCreatedOnly]);
+
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
@@ -113,6 +132,7 @@ export default function CustomersList({ supplierOnly = false }) {
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? false;
     const hideInactiveVal = opts.hideInactive ?? hideInactiveRef.current ?? false;
+    const appCreatedOnlyVal = opts.appCreatedOnly ?? appCreatedOnlyRef.current ?? false;
     const useRecentOrder = searchFieldVal === 'recent' && !qVal.trim();
     const recentCustomerIds = useRecentOrder
       ? getRecentCustomers().map((customer) => String(customer.id || '').trim()).filter(Boolean)
@@ -126,14 +146,14 @@ export default function CustomersList({ supplierOnly = false }) {
     const requestedFocusCustomerId = opts.focusCustomerId !== undefined
       ? opts.focusCustomerId
       : selectedCustomerForFocus?.id;
-    const focusCustomerId = qVal.trim() || useRecentOrder
+    const focusCustomerId = qVal.trim() || useRecentOrder || appCreatedOnlyVal
       ? ''
       : String(requestedFocusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnly ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
+        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnly ? '1' : '0'}&appCreated=${appCreatedOnlyVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
@@ -173,6 +193,7 @@ export default function CustomersList({ supplierOnly = false }) {
         reminderOnly: reminderOnlyRef.current,
         orderQuantity: orderQuantityRef.current,
         hideInactive: hideInactiveRef.current,
+        appCreatedOnly: appCreatedOnlyRef.current,
       });
     };
 
@@ -193,7 +214,7 @@ export default function CustomersList({ supplierOnly = false }) {
     const listState = location.state?.listState;
     const afterSelect = location.state?.afterSelect || null;
     const selectedCustomerId = getSelectedCustomer()?.id;
-    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined)) {
+    if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined || listState.appCreatedOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
       const restoredSearchField = String(listState.searchField || 'name');
@@ -206,6 +227,7 @@ export default function CustomersList({ supplierOnly = false }) {
         : listState.includeInactive !== undefined
           ? !Boolean(listState.includeInactive)
           : false;
+      const restoredAppCreatedOnly = Boolean(listState.appCreatedOnly);
       hydratedFromStateRef.current = true;
       skipSearchReloadRef.current = true;
       setQ(restoredQ);
@@ -213,7 +235,8 @@ export default function CustomersList({ supplierOnly = false }) {
       setReminderOnly(restoredReminderOnly);
       setOrderQuantity(restoredOrderQuantity);
       setHideInactive(restoredHideInactive);
-      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, focusCustomerId: selectedCustomerId });
+      setAppCreatedOnly(restoredAppCreatedOnly);
+      load({ page: restoredPage, q: restoredQ, searchField: restoredSearchField, reminderOnly: restoredReminderOnly, orderQuantity: restoredOrderQuantity, hideInactive: restoredHideInactive, appCreatedOnly: restoredAppCreatedOnly, focusCustomerId: selectedCustomerId });
       navigate(location.pathname, { replace: true, state: afterSelect ? { afterSelect } : null });
       return;
     }
@@ -227,6 +250,7 @@ export default function CustomersList({ supplierOnly = false }) {
       setReminderOnly(false);
       setOrderQuantity(false);
       setHideInactive(false);
+      setAppCreatedOnly(false);
       load({
         page: 1,
         q: '',
@@ -234,6 +258,7 @@ export default function CustomersList({ supplierOnly = false }) {
         reminderOnly: false,
         orderQuantity: false,
         hideInactive: false,
+        appCreatedOnly: false,
         focusCustomerId: currentSelectedCustomer?.id,
       });
       navigate(location.pathname, { replace: true, state: null });
@@ -243,15 +268,27 @@ export default function CustomersList({ supplierOnly = false }) {
     if (hydratedFromStateRef.current) return;
     hydratedFromStateRef.current = true;
     skipSearchReloadRef.current = true;
-    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: false, hideInactive: false, focusCustomerId: selectedCustomerId });
+    load({ page: 1, q: '', searchField: 'name', reminderOnly: false, orderQuantity: false, hideInactive: false, appCreatedOnly: false, focusCustomerId: selectedCustomerId });
   }, [load, location.pathname, location.state, navigate]);
 
   React.useEffect(() => {
     let alive = true;
     if (!supplierOnly) {
       apiRequest('/customer-creation/capabilities')
-        .then((response) => { if (alive) setCanCreateCustomer(Boolean(response?.data?.allowed)); })
-        .catch(() => { if (alive) setCanCreateCustomer(false); });
+        .then((response) => {
+          if (!alive) return;
+          setCanCreateCustomer(Boolean(response?.data?.allowed));
+          setCanViewAppCreated(Boolean(response?.data?.canViewAppCreated));
+          setCanPreviewRollback(Boolean(response?.data?.canPreviewRollback));
+          setCanRollback(Boolean(response?.data?.canRollback));
+        })
+        .catch(() => {
+          if (!alive) return;
+          setCanCreateCustomer(false);
+          setCanViewAppCreated(false);
+          setCanPreviewRollback(false);
+          setCanRollback(false);
+        });
     }
     (async () => {
       try {
@@ -275,11 +312,11 @@ export default function CustomersList({ supplierOnly = false }) {
         return;
       }
       if (searchField === 'recent' || qVal.length === 0 || qVal.length >= SEARCH_MIN) {
-        load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, hideInactive });
+        load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly });
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, load]);
+  }, [q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly, load]);
 
   const selectCustomerRow = React.useCallback((row) => {
     const next = setSelectedCustomer({
@@ -308,9 +345,80 @@ export default function CustomersList({ supplierOnly = false }) {
       reminderOnly: searchFieldRef.current === 'recent' ? false : reminderOnlyRef.current,
       orderQuantity: orderQuantityRef.current,
       hideInactive: hideInactiveRef.current,
+      appCreatedOnly: appCreatedOnlyRef.current,
       focusCustomerId: next?.id,
     });
   }, [load, location.state, navigate]);
+
+  const openRollback = async (row) => {
+    const entry = row?.appCreation;
+    if (!entry?.operationId) return;
+    setRollbackError('');
+    setRollbackNotice('');
+    const resumable = ['partial', 'unknown', 'sending'].includes(String(entry.rollbackStatus || '').toLowerCase());
+    if (resumable && entry.rollbackId && entry.rollbackPreviewJson) {
+      try {
+        setRollbackDialog({
+          row,
+          rollbackId: entry.rollbackId,
+          preview: JSON.parse(entry.rollbackPreviewJson),
+          reason: entry.rollbackReason || '',
+          resumable: true,
+          loading: false,
+        });
+        return;
+      } catch {
+        setRollbackError('');
+      }
+    }
+    setRollbackDialog({ row, loading: true, resumable: false, reason: '' });
+    try {
+      const response = await apiRequest(`/customer-creation/operations/${encodeURIComponent(entry.operationId)}/rueckbau-vorschau`);
+      setRollbackDialog({
+        row,
+        rollbackId: response?.data?.rollbackId,
+        preview: response?.data?.preview,
+        reason: response?.data?.reason || '',
+        resumable: Boolean(response?.data?.resumable),
+        loading: false,
+      });
+    } catch (error) {
+      setRollbackError(error?.message || t('customer_rollback_preview_failed'));
+      setRollbackDialog(null);
+    }
+  };
+
+  const submitRollback = async () => {
+    if (!rollbackDialog?.rollbackId || !rollbackDialog?.row?.appCreation?.operationId) return;
+    setRollbackBusy(true);
+    setRollbackError('');
+    try {
+      const response = await apiRequest(
+        `/customer-creation/operations/${encodeURIComponent(rollbackDialog.row.appCreation.operationId)}/rueckbau/${encodeURIComponent(rollbackDialog.rollbackId)}`,
+        { method: 'POST', body: JSON.stringify({ begruendung: rollbackDialog.reason }) },
+      );
+      const state = String(response?.meta?.state || response?.data?.status || '').toLowerCase();
+      await load({ page: metaRef.current.page || 1, appCreatedOnly: true });
+      if (state === 'partial' || state === 'teilweisezurueckgebaut') {
+        setRollbackDialog((current) => current ? { ...current, resumable: true } : current);
+        setRollbackNotice(t('customer_rollback_partial'));
+      } else {
+        setRollbackDialog(null);
+        setRollbackNotice(t('customer_rollback_complete'));
+      }
+    } catch (error) {
+      setRollbackError(error?.message || t('customer_rollback_failed'));
+      await load({ page: metaRef.current.page || 1, appCreatedOnly: true });
+    } finally {
+      setRollbackBusy(false);
+    }
+  };
+
+  const previewExecutable = rollbackDialog?.preview?.ausfuehrbar === true;
+  const reasonLength = String(rollbackDialog?.reason || '').trim().length;
+  const canSubmitRollback = Boolean(rollbackDialog?.rollbackId && canRollback
+    && (rollbackDialog.resumable || previewExecutable)
+    && (rollbackDialog.resumable || (reasonLength >= 10 && reasonLength <= 500)));
 
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -323,7 +431,7 @@ export default function CustomersList({ supplierOnly = false }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
               aria-label="zurueck"
-              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, hideInactive })}
+              onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly })}
               disabled={(meta.page || 1) <= 1}
             >
               <ArrowBackIcon />
@@ -333,7 +441,7 @@ export default function CustomersList({ supplierOnly = false }) {
             </Typography>
             <IconButton
               aria-label="weiter"
-              onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, hideInactive })}
+              onClick={() => load({ page: (meta.page || 1) + 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly })}
               disabled={meta.total !== null && meta.total !== undefined
                 ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total
                 : false}
@@ -347,7 +455,7 @@ export default function CustomersList({ supplierOnly = false }) {
             <IconButton color="primary" aria-label={t('customer_create_title')}
               onClick={() => navigate('/customers/new', { state: {
                 returnTo: createReturnTo(location, { ...location.state,
-                  listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
+                  listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly },
                 }),
               } })}>
               <AddIcon />
@@ -487,10 +595,32 @@ export default function CustomersList({ supplierOnly = false }) {
               />
             </Box>
           )}
+          {!supplierOnly && canViewAppCreated && (
+            <FormControlLabel
+              control={(
+                <Switch
+                  size="small"
+                  checked={appCreatedOnly}
+                  onChange={(event) => {
+                    setAppCreatedOnly(event.target.checked);
+                    setRollbackNotice('');
+                  }}
+                />
+              )}
+              label={t('customer_created_via_app_filter')}
+              sx={{
+                m: 0,
+                width: '100%',
+                '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
+              }}
+            />
+          )}
         </CardContent>
       </Card>
 
       <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+      {rollbackNotice && <Alert severity="success" sx={{ mb: 2 }}>{rollbackNotice}</Alert>}
+      {rollbackError && <Alert severity="error" sx={{ mb: 2 }}>{rollbackError}</Alert>}
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
@@ -501,7 +631,9 @@ export default function CustomersList({ supplierOnly = false }) {
 
       {!loading && !error && items.length === 0 && (
         <Typography sx={{ opacity: 0.7 }}>
-          {isRecentListView
+          {appCreatedOnly
+            ? t('customer_created_via_app_empty')
+            : isRecentListView
             ? t(supplierOnly ? 'suppliers_recent_empty' : 'customers_recent_empty')
             : t(supplierOnly ? 'suppliers_empty' : 'customers_empty')}
         </Typography>
@@ -513,6 +645,9 @@ export default function CustomersList({ supplierOnly = false }) {
             const id = row?.kd_KdNR;
             const name = getCustomerDisplayName(row);
             const isSelected = selectedCustomer?.id && String(selectedCustomer.id) === String(id);
+            const appCreation = row?.appCreation;
+            const rollbackState = String(appCreation?.rollbackStatus || '').toLowerCase();
+            const canResumeRollback = ['partial', 'unknown', 'sending'].includes(rollbackState);
             return (
               <Card
                 key={id ?? name}
@@ -552,10 +687,10 @@ export default function CustomersList({ supplierOnly = false }) {
                   navigate(`/customers/${encodeURIComponent(id)}`, {
                     state: {
                       detailView: supplierOnly ? 'supplier' : 'customer',
-                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
+                      fromCustomers: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly },
                       afterSelect: location.state?.afterSelect || null,
                       returnTo: createReturnTo(location, {
-                        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive },
+                        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly },
                         afterSelect: location.state?.afterSelect || null,
                       }),
                     },
@@ -564,17 +699,42 @@ export default function CustomersList({ supplierOnly = false }) {
               >
                 <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, pr: 2 }}>
-                    <Typography variant="body1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                      {name || String(id ?? '')}
-                    </Typography>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {name || String(id ?? '')}
+                      </Typography>
+                      {appCreatedOnly && appCreation && (
+                        <Typography variant="caption" sx={{ opacity: 0.72, display: 'block' }}>
+                          {t('customer_created_via_app_by', { shortCode: appCreation.createdBy })}
+                          {appCreation.createdAt ? ` · ${new Date(appCreation.createdAt).toLocaleDateString()}` : ''}
+                          {appCreation.rollbackStatus === 'partial' ? ` · ${t('customer_rollback_partial_status')}` : ''}
+                          {appCreation.rollbackStatus === 'unknown' ? ` · ${t('customer_rollback_unknown_status')}` : ''}
+                        </Typography>
+                      )}
+                    </Box>
                     {Number(row?.reminderInvoicesCount) > 0 && (
                       <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         ({Number(row.reminderInvoicesCount)})
                       </Typography>
                     )}
                   </Box>
-                  <Box sx={{ width: 38, display: 'flex', justifyContent: 'center' }}>
-                    {isSelected ? <CheckCircleIcon color="primary" /> : <ChevronRightIcon />}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, flexShrink: 0 }}>
+                    {appCreatedOnly && appCreation && canPreviewRollback && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<UndoIcon />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openRollback(row);
+                        }}
+                      >
+                        {canResumeRollback ? t('customer_rollback_continue') : t('customer_rollback_preview_action')}
+                      </Button>
+                    )}
+                    <Box sx={{ width: 30, display: 'flex', justifyContent: 'center' }}>
+                      {isSelected ? <CheckCircleIcon color="primary" /> : <ChevronRightIcon />}
+                    </Box>
                   </Box>
                 </CardContent>
               </Card>
@@ -583,6 +743,66 @@ export default function CustomersList({ supplierOnly = false }) {
         </Box>
       )}
       </Box>
+      <Dialog
+        open={Boolean(rollbackDialog)}
+        onClose={() => { if (!rollbackBusy) setRollbackDialog(null); }}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>{t('customer_rollback_preview_title')}</DialogTitle>
+        <DialogContent dividers>
+          {rollbackDialog?.loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : rollbackDialog?.preview ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Alert severity={previewExecutable ? 'success' : 'warning'}>
+                {previewExecutable ? t('customer_rollback_preview_allowed') : t('customer_rollback_preview_blocked')}
+              </Alert>
+              {rollbackDialog.preview.fristBis && (
+                <Typography variant="body2">
+                  {t('customer_rollback_deadline', { date: new Date(rollbackDialog.preview.fristBis).toLocaleString() })}
+                </Typography>
+              )}
+              {!canRollback && <Alert severity="info">{t('customer_rollback_write_disabled')}</Alert>}
+              {rollbackDialog.resumable ? (
+                <Alert severity="info">{t('customer_rollback_partial')}</Alert>
+              ) : (
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  maxRows={5}
+                  required
+                  label={t('customer_rollback_reason')}
+                  value={rollbackDialog.reason || ''}
+                  inputProps={{ maxLength: 500 }}
+                  helperText={t('customer_rollback_reason_hint')}
+                  error={reasonLength > 0 && reasonLength < 10}
+                  onChange={(event) => setRollbackDialog((current) => current ? { ...current, reason: event.target.value } : current)}
+                />
+              )}
+              {rollbackError && <Alert severity="error">{rollbackError}</Alert>}
+              <Box component="details" sx={{ '& pre': { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto', p: 1.5, bgcolor: 'action.hover', borderRadius: 1 } }}>
+                <Typography component="summary" sx={{ cursor: 'pointer', fontWeight: 600 }}>
+                  {t('customer_rollback_preview_json')}
+                </Typography>
+                <Box component="pre">{JSON.stringify(rollbackDialog.preview, null, 2)}</Box>
+              </Box>
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setRollbackDialog(null)} disabled={rollbackBusy}>{t('customer_rollback_close')}</Button>
+          <Button
+            variant="contained"
+            startIcon={rollbackBusy ? <CircularProgress size={16} color="inherit" /> : <UndoIcon />}
+            onClick={submitRollback}
+            disabled={rollbackBusy || !canSubmitRollback}
+          >
+            {rollbackDialog?.resumable ? t('customer_rollback_continue') : t('customer_rollback_execute')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

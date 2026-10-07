@@ -8,6 +8,12 @@ const CUSTOMER_CREATION_DEVELOPERS = [
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
+// Rollback is a higher-risk capability than customer creation. Keep its
+// allowlist separate so AKI's creation permission does not grant deletion.
+const CUSTOMER_ROLLBACK_DEVELOPERS = [
+  { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
+  { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
+];
 const text = (value) => value === null || value === undefined ? null : String(value).trim() || null;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function canCreateCustomer(identity, database, settings) {
@@ -33,6 +39,23 @@ function assertCanCreateCustomer(identity, database, settings) {
   if (!canCreateCustomer(identity, database, settings)) {
     throw createHttpError(403, 'Die Kundenanlage ist für diesen Benutzer und Mandanten nicht freigegeben.', { code: 'CUSTOMER_CREATION_FORBIDDEN' });
   }
+}
+function isCustomerRollbackDeveloper(identity) {
+  if (identity?.active !== true) return false;
+  const shortCode = String(identity?.shortCode || '').trim().toUpperCase();
+  const personNumber = Number(identity?.personNumber);
+  const userId = String(identity?.userId || '').trim().toLowerCase();
+  return CUSTOMER_ROLLBACK_DEVELOPERS.some((user) => (
+    user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId
+  ));
+}
+function assertCustomerRollbackDeveloper(identity) {
+  if (!isCustomerRollbackDeveloper(identity)) {
+    throw createHttpError(403, 'Der App-Rückbau ist nur für MFR und NSC freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
+  }
+}
+function isCustomerRollbackPreviewExecutable(preview) {
+  return preview?.ausfuehrbar === true;
 }
 function pick(source, fields) {
   return Object.fromEntries(fields.map((field) => [field, text(source?.[field])]));
@@ -104,4 +127,13 @@ function normalizeCreationRequest(input, identity, database, settings, countries
 function isUncertainResponse(status, code) {
   return status >= 500 || status === 408 || code === 'IDEMPOTENZ.VORGANG_LAEUFT';
 }
-module.exports = { UUID, canCreateCustomer, assertCanCreateCustomer, normalizeCreationRequest, isUncertainResponse };
+module.exports = {
+  UUID,
+  canCreateCustomer,
+  assertCanCreateCustomer,
+  isCustomerRollbackDeveloper,
+  assertCustomerRollbackDeveloper,
+  isCustomerRollbackPreviewExecutable,
+  normalizeCreationRequest,
+  isUncertainResponse,
+};

@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { canCreateCustomer, normalizeCreationRequest } = require('../src/customer-creation-policy');
+const {
+  canCreateCustomer,
+  normalizeCreationRequest,
+  isCustomerRollbackDeveloper,
+  isCustomerRollbackPreviewExecutable,
+} = require('../src/customer-creation-policy');
 const { createCustomerApiClient } = require('../src/bms-customer-api');
 const { executeCustomerCreation } = require('../src/customer-creation-service');
 const id = '44d1d586-c395-46b9-8b0b-8b3da41e6d64';
@@ -18,6 +23,19 @@ test('creation is restricted to the active personal main tenant, without full-ac
   assert.equal(canCreateCustomer({ ...identity, mainCompanyId: null }, database, settings), false);
   assert.equal(canCreateCustomer({ ...identity, mainCompanyId: 0 }, { firmaId: 0, shortName: 'TES' }, settings), false);
   assert.equal(canCreateCustomer(identity, database, { ...settings, enabled: false }), false);
+});
+test('rollback is restricted to the exact active MFR and NSC identities', () => {
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'MFR', personNumber: 130, userId: 'm.frank' }), true);
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), true);
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'AKI', personNumber: 1, userId: 'kimaz' }), false);
+  assert.equal(isCustomerRollbackDeveloper({ active: true, shortCode: 'NSC', personNumber: 130, userId: 'n.schroeder' }), false);
+  assert.equal(isCustomerRollbackDeveloper({ active: false, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), false);
+});
+test('rollback requires an explicit executable flag in the ERP preview', () => {
+  assert.equal(isCustomerRollbackPreviewExecutable({ ausfuehrbar: true }), true);
+  assert.equal(isCustomerRollbackPreviewExecutable({ ausfuehrbar: false }), false);
+  assert.equal(isCustomerRollbackPreviewExecutable({ status: 'ausfuehrbar' }), false);
+  assert.equal(isCustomerRollbackPreviewExecutable(null), false);
 });
 test('creator, sales representative and copy destination cannot be supplied by the browser', () => {
   const input = { ...body(), quelle: { angelegtVon: 'OTHER' }, kopierenNach: ['POL'], vertrieb: { aussendienst: 'OTHER' }, kennzeichen: { interCompany: true, distribution: false } };
@@ -73,6 +91,9 @@ test('disabled writes never reach the network; errors never expose credentials',
   let calls = 0;
   const client = createCustomerApiClient({ ...settings, writeEnabled: false }, async () => { calls++; });
   await assert.rejects(client.request('', { write: true }), (error) => error.details.code === 'CUSTOMER_CREATION_WRITE_DISABLED');
+  await assert.rejects(client.request('/vorgaenge/erp-op/rueckbau', {
+    method: 'POST', body: { begruendung: 'Testbegründung', quelle: { angelegtVon: 'MFR' } }, write: true,
+  }), (error) => error.details.code === 'CUSTOMER_CREATION_WRITE_DISABLED');
   assert.equal(calls, 0);
   const broken = createCustomerApiClient(settings, async () => { throw new Error(settings.apiKey); });
   await assert.rejects(broken.request('/pruefung'), (error) => !error.message.includes(settings.apiKey) && !JSON.stringify(error).includes(settings.apiKey));

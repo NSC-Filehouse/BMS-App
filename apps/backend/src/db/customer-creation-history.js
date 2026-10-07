@@ -1,5 +1,6 @@
 const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { createHttpError } = require('../utils');
+const { isCustomerRollbackPreviewExecutable } = require('../customer-creation-policy');
 
 // Deliberately fixed to the authorized central database and app-owned schema.
 const DATABASE = 'BMS';
@@ -72,6 +73,143 @@ async function loadCreationOperation(operationId, userId, companyId) {
   const row = rows[0];
   return row ? { operationId: row.OperationId, state: row.Status, status: row.HttpStatus, response: row.ResponseJson ? JSON.parse(row.ResponseJson) : null } : null;
 }
+
+async function loadDeveloperCreatedCustomers(mandant) {
+  try {
+    return await runSQLQuerySqlServer(DATABASE, `
+      SELECT [o].[OperationId] AS [operationId], [o].[ErpOperationId] AS [erpOperationId],
+        [o].[UserShortCode] AS [createdBy], [o].[CustomerNumber] AS [customerNumber],
+        [o].[CustomerName] AS [customerName], [o].[CreatedAt] AS [createdAt],
+        [o].[Status] AS [creationStatus], [r].[RollbackId] AS [rollbackId],
+        [r].[Status] AS [rollbackStatus], [r].[Reason] AS [rollbackReason],
+        [r].[PreviewJson] AS [rollbackPreviewJson]
+      FROM [BMSApp].[CustomerCreation] [o]
+      INNER JOIN [BMSApp].[CustomerCreationMandant] [m] ON [m].[OperationId]=[o].[OperationId]
+      OUTER APPLY (
+        SELECT TOP (1) [x].[RollbackId], [x].[Status], [x].[Reason], [x].[PreviewJson], [x].[ResponseJson]
+        FROM [BMSApp].[CustomerCreationRollback] [x]
+        WHERE [x].[OperationId]=[o].[OperationId]
+        ORDER BY [x].[CreatedAt] DESC,[x].[RollbackId] DESC
+      ) [r]
+      WHERE [m].[Mandant]=? AND [m].[Status]=N'angelegt'
+        AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
+        AND [o].[CustomerNumber] IS NOT NULL AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'MFR',N'NSC')
+        AND COALESCE([r].[Status], N'') <> N'completed'
+      ORDER BY [o].[CreatedAt] DESC, [o].[OperationId] DESC`, [mandant]);
+  } catch (error) { requireHistorySchema(error); }
+}
+
+async function loadLatestResumableRollback(operationId) {
+  try {
+    const rows = await runSQLQuerySqlServer(DATABASE, `
+      SELECT TOP (1) [RollbackId] AS [rollbackId], [OperationId] AS [operationId],
+        [Mandant] AS [mandant], [Status] AS [status], [Reason] AS [reason],
+        [PreviewJson] AS [previewJson]
+      FROM [BMSApp].[CustomerCreationRollback]
+      WHERE [OperationId]=? AND [Status] IN (N'partial',N'unknown',N'sending')
+      ORDER BY [CreatedAt] DESC,[RollbackId] DESC`, [operationId]);
+    const row = rows[0];
+    return row ? { ...row, preview: row.previewJson ? JSON.parse(row.previewJson) : null } : null;
+  } catch (error) { requireHistorySchema(error); }
+}
+
+async function loadRollbackTarget(operationId, mandant) {
+  try {
+    const rows = await runSQLQuerySqlServer(DATABASE, `
+      SELECT TOP (1) [o].[OperationId] AS [operationId], [o].[ErpOperationId] AS [erpOperationId],
+        [o].[UserShortCode] AS [createdBy], [o].[CustomerNumber] AS [customerNumber],
+        [o].[CustomerName] AS [customerName], [o].[CreatedAt] AS [createdAt], [m].[Mandant] AS [mandant]
+      FROM [BMSApp].[CustomerCreation] [o]
+      INNER JOIN [BMSApp].[CustomerCreationMandant] [m] ON [m].[OperationId]=[o].[OperationId]
+      WHERE [o].[OperationId]=? AND [m].[Mandant]=? AND [m].[Status]=N'angelegt'
+        AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
+        AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'MFR',N'NSC')`, [operationId, mandant]);
+    return rows[0] || null;
+  } catch (error) { requireHistorySchema(error); }
+}
+
+async function saveRollbackPreview({ rollbackId, operationId, mandant, identity, preview }) {
+  try {
+    await runSQLQuerySqlServer(DATABASE, `
+      INSERT INTO [BMSApp].[CustomerCreationRollback]
+        ([RollbackId],[OperationId],[Mandant],[StartedByUserId],[StartedByShortCode],
+         [LastActorUserId],[LastActorShortCode],[Status],[PreviewJson])
+      VALUES (?,?,?,?,?,?,?,N'preview',?)`, [
+      rollbackId, operationId, mandant, identity.userId, identity.shortCode,
+      identity.userId, identity.shortCode, JSON.stringify(preview),
+    ]);
+  } catch (error) { requireHistorySchema(error); }
+}
+
+async function reserveRollback({ rollbackId, operationId, identity, reason, leaseSeconds = 180 }) {
+  try {
+    return await withSqlTransaction(DATABASE, async ({ query }) => {
+      // Serialize all rollback attempts for one ERP creation, including copies
+      // in other mandants. The ERP operation may remove all of them at once.
+      await query(`SELECT [OperationId] FROM [BMSApp].[CustomerCreation] WITH (UPDLOCK,HOLDLOCK) WHERE [OperationId]=?`, [operationId]);
+      const completed = await query(`SELECT TOP (1) [RollbackId],[HttpStatus],[ResponseJson]
+        FROM [BMSApp].[CustomerCreationRollback] WITH (UPDLOCK,HOLDLOCK)
+        WHERE [OperationId]=? AND [Status]=N'completed' ORDER BY [CreatedAt] DESC,[RollbackId] DESC`, [operationId]);
+      if (completed.rows[0] && String(completed.rows[0].RollbackId).toLowerCase() !== String(rollbackId).toLowerCase()) {
+        return {
+          replay: true,
+          status: completed.rows[0].HttpStatus,
+          data: completed.rows[0].ResponseJson ? JSON.parse(completed.rows[0].ResponseJson) : null,
+          state: 'completed',
+        };
+      }
+      const active = await query(`SELECT TOP (1) [RollbackId],[Status] FROM [BMSApp].[CustomerCreationRollback] WITH (UPDLOCK,HOLDLOCK)
+        WHERE [OperationId]=? AND [Status] IN (N'partial',N'unknown',N'sending') AND [RollbackId]<>?
+        ORDER BY [CreatedAt] DESC,[RollbackId] DESC`, [operationId, rollbackId]);
+      if (active.rows[0]) {
+        throw createHttpError(409, 'Für diesen Anlagevorgang läuft bereits ein Rückbau. Bitte denselben Rückbauvorgang fortsetzen.', {
+          code: 'CUSTOMER_ROLLBACK_EXISTING_IN_PROGRESS', rollbackId: active.rows[0].RollbackId, state: active.rows[0].Status,
+        });
+      }
+      const result = await query(`
+        SELECT *, CASE WHEN [LockedAt] > DATEADD(SECOND,-?,SYSUTCDATETIME()) THEN 1 ELSE 0 END AS [IsLocked]
+        FROM [BMSApp].[CustomerCreationRollback] WITH (UPDLOCK,HOLDLOCK) WHERE [RollbackId]=?`, [leaseSeconds, rollbackId]);
+      const row = result.rows[0];
+      if (!row || String(row.OperationId).toLowerCase() !== String(operationId).toLowerCase()) {
+        throw createHttpError(404, 'Rückbauvorschau nicht gefunden. Bitte erst eine neue Vorschau laden.', { code: 'CUSTOMER_ROLLBACK_PREVIEW_NOT_FOUND' });
+      }
+      if (row.Status === 'completed') {
+        const stored = row.ResponseJson ? JSON.parse(row.ResponseJson) : null;
+        return { replay: true, status: row.HttpStatus, data: stored, state: row.Status };
+      }
+      if (!['preview', 'partial', 'unknown', 'sending'].includes(row.Status)) {
+        throw createHttpError(409, 'Dieser Rückbau ist abgeschlossen oder gesperrt. Bitte eine neue Vorschau laden.', { code: 'CUSTOMER_ROLLBACK_NOT_RESUMABLE', state: row.Status });
+      }
+      if (row.Status === 'sending' && row.IsLocked) {
+        throw createHttpError(409, 'Der Rückbau läuft noch. Bitte denselben Vorgang später erneut fortsetzen.', { code: 'CUSTOMER_ROLLBACK_RUNNING' });
+      }
+      const preview = JSON.parse(row.PreviewJson || '{}');
+      if (!['partial', 'unknown', 'sending'].includes(row.Status) && !isCustomerRollbackPreviewExecutable(preview)) {
+        throw createHttpError(409, 'Die ERP-Vorschau gibt den Rückbau nicht frei.', { code: 'CUSTOMER_ROLLBACK_PREVIEW_BLOCKED' });
+      }
+      const requestedReason = String(reason || '').trim();
+      if (requestedReason.length < 10 || requestedReason.length > 500) {
+        throw createHttpError(422, 'Die Begründung muss 10 bis 500 Zeichen enthalten.', { code: 'CUSTOMER_ROLLBACK_REASON_INVALID' });
+      }
+      if (row.Reason && row.Reason !== requestedReason) {
+        throw createHttpError(409, 'Zum Fortsetzen muss dieselbe Begründung wie beim ersten Rückbauversuch verwendet werden.', { code: 'CUSTOMER_ROLLBACK_REASON_CHANGED' });
+      }
+      await query(`UPDATE [BMSApp].[CustomerCreationRollback] SET [Reason]=COALESCE([Reason],?),
+        [LastActorUserId]=?,[LastActorShortCode]=?,[Status]=N'sending',[LockedAt]=SYSUTCDATETIME(),
+        [AttemptCount]=[AttemptCount]+1,[UpdatedAt]=SYSUTCDATETIME() WHERE [RollbackId]=?`,
+      [requestedReason, identity.userId, identity.shortCode, rollbackId]);
+      return { replay: false, data: preview };
+    });
+  } catch (error) { requireHistorySchema(error); }
+}
+
+async function finishRollback(rollbackId, response, state) {
+  await runSQLQuerySqlServer(DATABASE, `UPDATE [BMSApp].[CustomerCreationRollback]
+    SET [Status]=?,[HttpStatus]=?,[ErrorCode]=?,[ResponseJson]=?,[LockedAt]=NULL,[UpdatedAt]=SYSUTCDATETIME()
+    WHERE [RollbackId]=?`, [state, response.status || null, response.data?.code || null,
+    JSON.stringify(response.data ?? null), rollbackId]);
+}
+
 async function isAppCreatedPrivateCustomer(database, customerId, name, countryIso) {
   try {
     const rows = await runSQLQuerySqlServer(DATABASE, `SELECT TOP (1) [o].[CustomerName]
@@ -86,4 +224,15 @@ async function isAppCreatedPrivateCustomer(database, customerId, name, countryIs
     throw error;
   }
 }
-module.exports = { reserveCreation, finishCreation, loadCreationOperation, isAppCreatedPrivateCustomer };
+module.exports = {
+  reserveCreation,
+  finishCreation,
+  loadCreationOperation,
+  loadDeveloperCreatedCustomers,
+  loadLatestResumableRollback,
+  loadRollbackTarget,
+  saveRollbackPreview,
+  reserveRollback,
+  finishRollback,
+  isAppCreatedPrivateCustomer,
+};
