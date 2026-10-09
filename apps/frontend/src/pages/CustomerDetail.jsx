@@ -272,7 +272,7 @@ function DocumentScopeControls({
   );
 }
 
-function DocumentAccordionSummary({ title, controls }) {
+function DocumentAccordionSummary({ title, controls, action }) {
   return (
     <AccordionSummary
       expandIcon={<ExpandCollapseIndicator accordion />}
@@ -294,9 +294,20 @@ function DocumentAccordionSummary({ title, controls }) {
           pr: 0.5,
         }}
       >
-        <Typography variant="subtitle1" sx={{ minWidth: 0, lineHeight: 1.3 }}>
-          {title}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, px: action ? 0.5 : 0 }}>
+          <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
+            {title}
+          </Typography>
+          {action && (
+            <Box
+              sx={{ flexShrink: 0 }}
+              onClick={(event) => event.stopPropagation()}
+              onFocus={(event) => event.stopPropagation()}
+            >
+              {action}
+            </Box>
+          )}
+        </Box>
         {controls && (
           <Box
             sx={{ alignSelf: 'flex-start', minWidth: 0 }}
@@ -698,6 +709,11 @@ export default function CustomerDetail() {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
     }
   }, [address, id, isSupplier, location.state, name, navigate, salesRep]);
+  const handleOpenCustomerVl = React.useCallback(() => {
+    if (isSupplier || !item) return;
+    setSelectedCustomer({ id, name, address, representative: salesRep });
+    navigate('/vl');
+  }, [address, id, isSupplier, item, name, navigate, salesRep]);
   const handleContactRankingChange = React.useCallback(async (contact, value) => {
     if (!contact?.id) return;
     const ranking = value === '' ? null : Number(value);
@@ -1374,6 +1390,16 @@ export default function CustomerDetail() {
             <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', orderEndpoint)}>
               <DocumentAccordionSummary
                 title={isSupplier ? t('customer_docs_purchase_orders') : t('customer_docs_orders')}
+                action={!isSupplier && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{ minWidth: 34, px: 0.75, py: 0.1, lineHeight: 1.4 }}
+                    onClick={handleOpenCustomerVl}
+                  >
+                    {t('vl_title')}
+                  </Button>
+                )}
                 controls={docs.orders.expanded && (
                   <DocumentScopeControls
                     t={t}
