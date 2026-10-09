@@ -41,6 +41,7 @@ import {
 } from '../utils/customerSelection.js';
 import {
   getRecentCustomers,
+  getRecentCustomersStorageKey,
   RECENT_CUSTOMERS_LIMIT,
   recordRecentCustomer,
   RECENT_CUSTOMERS_CHANGED,
@@ -209,6 +210,7 @@ export default function CustomersList({ supplierOnly = false }) {
   const appCreatedOnlyRef = React.useRef(appCreatedOnly);
   const hydratedFromStateRef = React.useRef(false);
   const skipSearchReloadRef = React.useRef(false);
+  const loadRequestIdRef = React.useRef(0);
   const touchRef = React.useRef({ x: 0, y: 0 });
   const swipedRef = React.useRef(false);
 
@@ -243,43 +245,53 @@ export default function CustomersList({ supplierOnly = false }) {
   const totalPages = meta.total !== null && meta.total !== undefined
     ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
     : null;
-  const isRecentMode = searchField === 'recent';
-  const isRecentListView = isRecentMode;
+  const isRecentMode = reminderOnly && searchField === 'recent';
+  const isRecentListView = !q.trim() && !reminderOnly && !appCreatedOnly;
 
   const load = React.useCallback(async (opts = {}) => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
     const currentMeta = metaRef.current || {};
     const requestedPage = opts.page ?? currentMeta.page ?? 1;
     const qVal = opts.q ?? qRef.current ?? '';
-    const searchFieldVal = opts.searchField ?? searchFieldRef.current ?? 'name';
+    const requestedSearchField = opts.searchField ?? searchFieldRef.current ?? 'name';
+    const searchFieldVal = requestedSearchField === 'recent' ? 'name' : requestedSearchField;
     const reminderOnlyVal = opts.reminderOnly ?? reminderOnlyRef.current ?? false;
     const orderQuantityVal = opts.orderQuantity ?? orderQuantityRef.current ?? false;
     const hideInactiveVal = opts.hideInactive ?? hideInactiveRef.current ?? false;
     const appCreatedOnlyVal = opts.appCreatedOnly ?? appCreatedOnlyRef.current ?? false;
-    const useRecentOrder = searchFieldVal === 'recent' && !qVal.trim();
+    const useRecentOrder = !qVal.trim() && !reminderOnlyVal && !appCreatedOnlyVal;
+    const recentScope = supplierOnly ? 'suppliers' : 'customers';
     const recentCustomerIds = useRecentOrder
-      ? getRecentCustomers().map((customer) => String(customer.id || '').trim()).filter(Boolean)
+      ? getRecentCustomers(recentScope).map((customer) => String(customer.id || '').trim()).filter(Boolean)
       : [];
     const pageSize = useRecentOrder ? RECENT_CUSTOMERS_LIMIT : PAGE_SIZE;
     const page = useRecentOrder ? 1 : requestedPage;
     const useOrderQuantity = !reminderOnlyVal && !useRecentOrder && orderQuantityVal;
     const sortVal = useOrderQuantity ? 'orderCountLast2Years' : 'kd_Name1';
     const dirVal = useOrderQuantity ? 'DESC' : 'ASC';
+    const searchPending = !reminderOnlyVal
+      && Boolean(qVal.trim())
+      && qVal.trim().length < SEARCH_MIN;
     const selectedCustomerForFocus = getSelectedCustomer();
     const requestedFocusCustomerId = opts.focusCustomerId !== undefined
       ? opts.focusCustomerId
       : selectedCustomerForFocus?.id;
-    const focusCustomerId = qVal.trim() || useRecentOrder || appCreatedOnlyVal
+    const focusCustomerId = appCreatedOnlyVal || (reminderOnlyVal && qVal.trim())
       ? ''
       : String(requestedFocusCustomerId || '').trim();
     try {
       setLoading(true);
       setError('');
       const [res, focusedCustomerRes] = await Promise.all([
-        apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${hideInactiveVal ? '0' : '1'}&supplierOnly=${supplierOnly ? '1' : '0'}&appCreated=${appCreatedOnlyVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
+        searchPending
+          ? Promise.resolve({ data: [], meta: { page, pageSize, total: 0 } })
+          : apiRequest(`/customers?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(qVal)}&searchField=${encodeURIComponent(searchFieldVal)}&reminderOnly=${reminderOnlyVal ? '1' : '0'}&includeInactive=${useRecentOrder || !hideInactiveVal ? '1' : '0'}&supplierOnly=${supplierOnly ? '1' : '0'}&appCreated=${appCreatedOnlyVal ? '1' : '0'}&sort=${sortVal}&dir=${dirVal}${useRecentOrder ? `&recentCustomerIds=${encodeURIComponent(JSON.stringify(recentCustomerIds))}` : ''}`),
         focusCustomerId
           ? apiRequest(`/customers/${encodeURIComponent(focusCustomerId)}`).catch(() => null)
           : Promise.resolve(null),
       ]);
+      if (requestId !== loadRequestIdRef.current) return;
       const rows = res?.data || [];
       const focusedCustomer = focusCustomerId
         ? (
@@ -298,16 +310,23 @@ export default function CustomersList({ supplierOnly = false }) {
       setItems(displayRows);
       setMeta(res?.meta || { page, pageSize, total: null });
     } catch (e) {
-      setError(e?.message || t('loading_error'));
+      if (requestId === loadRequestIdRef.current) {
+        setError(e?.message || t('loading_error'));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) setLoading(false);
     }
   }, [supplierOnly, t]);
 
   React.useEffect(() => {
     const syncSelectedCustomer = () => setSelectedCustomerState(getSelectedCustomer());
-    const syncRecentCustomers = () => {
-      if (searchFieldRef.current !== 'recent') return;
+    const syncRecentCustomers = (event) => {
+      const currentScope = supplierOnly ? 'suppliers' : 'customers';
+      if (event?.detail?.scope && event.detail.scope !== currentScope) return;
+      if (event?.type === 'storage'
+        && event.key
+        && event.key !== getRecentCustomersStorageKey(currentScope)) return;
+      if (qRef.current.trim() || reminderOnlyRef.current || appCreatedOnlyRef.current) return;
       load({
         page: 1,
         q: qRef.current,
@@ -329,7 +348,7 @@ export default function CustomersList({ supplierOnly = false }) {
       window.removeEventListener('storage', syncSelectedCustomer);
       window.removeEventListener('storage', syncRecentCustomers);
     };
-  }, [load]);
+  }, [load, supplierOnly]);
 
   React.useEffect(() => {
     const focusSelected = Boolean(location.state?.focusSelected);
@@ -339,7 +358,8 @@ export default function CustomersList({ supplierOnly = false }) {
     if (listState && (listState.page || listState.q !== undefined || listState.searchField !== undefined || listState.reminderOnly !== undefined || listState.orderQuantity !== undefined || listState.hideInactive !== undefined || listState.includeInactive !== undefined || listState.appCreatedOnly !== undefined)) {
       const restoredQ = String(listState.q || '');
       const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
-      const restoredSearchField = String(listState.searchField || 'name');
+      const requestedSearchField = String(listState.searchField || 'name');
+      const restoredSearchField = requestedSearchField === 'recent' ? 'name' : requestedSearchField;
       const restoredReminderOnly = Boolean(listState.reminderOnly);
       const restoredOrderQuantity = listState.orderQuantity !== undefined
         ? Boolean(listState.orderQuantity)
@@ -426,15 +446,18 @@ export default function CustomersList({ supplierOnly = false }) {
   }, [supplierOnly]);
 
   React.useEffect(() => {
+    if (skipSearchReloadRef.current) {
+      skipSearchReloadRef.current = false;
+      return undefined;
+    }
+    loadRequestIdRef.current += 1;
     if (q.trim()) setItems([]);
     const handle = setTimeout(() => {
       const qVal = q.trim();
-      if (skipSearchReloadRef.current) {
-        skipSearchReloadRef.current = false;
-        return;
-      }
-      if (searchField === 'recent' || qVal.length === 0 || qVal.length >= SEARCH_MIN) {
+      if (qVal.length === 0 || qVal.length >= SEARCH_MIN || !reminderOnly) {
         load({ page: 1, q: qVal, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly });
+      } else {
+        setLoading(false);
       }
     }, 300);
     return () => clearTimeout(handle);
@@ -453,24 +476,26 @@ export default function CustomersList({ supplierOnly = false }) {
       name: getCustomerDisplayName(row),
       address: buildAddress(row),
       representative: row?.kd_Aussendienst || '',
-    });
+    }, supplierOnly ? 'suppliers' : 'customers');
     const afterSelect = location.state?.afterSelect;
     if (afterSelect?.to) {
       navigate(afterSelect.to, { replace: true, state: afterSelect.state || null });
       return;
     }
 
+    if (isRecentListView) return;
+
     load({
-      page: searchFieldRef.current === 'recent' ? 1 : (metaRef.current.page || 1),
-      q: searchFieldRef.current === 'recent' ? '' : qRef.current,
+      page: metaRef.current.page || 1,
+      q: qRef.current,
       searchField: searchFieldRef.current,
-      reminderOnly: searchFieldRef.current === 'recent' ? false : reminderOnlyRef.current,
+      reminderOnly: reminderOnlyRef.current,
       orderQuantity: orderQuantityRef.current,
       hideInactive: hideInactiveRef.current,
       appCreatedOnly: appCreatedOnlyRef.current,
       focusCustomerId: next?.id,
     });
-  }, [load, location.state, navigate]);
+  }, [isRecentListView, load, location.state, navigate]);
 
   const openRollback = async (row) => {
     const entry = row?.appCreation;
@@ -617,15 +642,17 @@ export default function CustomersList({ supplierOnly = false }) {
             value={searchField}
             onChange={(e) => {
               const nextField = e.target.value;
-              setSearchField(nextField);
-              if (nextField === 'recent') {
+              if (nextField === 'sales' && ownShortCode) {
+                setSearchField(nextField);
+                setQ(ownShortCode);
+              } else if (nextField === 'recent') {
+                setSearchField('name');
                 setQ('');
                 setReminderOnly(false);
                 setOrderQuantity(false);
                 setHideInactive(false);
-              }
-              if (nextField === 'sales' && ownShortCode) {
-                setQ(ownShortCode);
+              } else {
+                setSearchField(nextField);
               }
             }}
             sx={{
@@ -634,7 +661,7 @@ export default function CustomersList({ supplierOnly = false }) {
               gap: 0,
               justifyContent: 'space-between',
               '& .MuiFormControlLabel-root': {
-                flex: { xs: '1 1 50%', md: '1 1 16.6667%' },
+                flex: { xs: '1 1 50%', md: `1 1 ${reminderOnly ? '16.6667%' : '20%'}` },
                 margin: 0,
                 minWidth: 0,
               },
@@ -669,13 +696,15 @@ export default function CustomersList({ supplierOnly = false }) {
               control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
               label={t(supplierOnly ? 'suppliers_search_mode_article' : 'customers_search_mode_article')}
             />
-            <FormControlLabel
-              value="recent"
-              control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
-              label={t('customers_search_mode_recent')}
-            />
+            {reminderOnly && (
+              <FormControlLabel
+                value="recent"
+                control={<Radio size="small" sx={{ p: 0.35, mr: 0.2 }} />}
+                label={t('customers_search_mode_recent')}
+              />
+            )}
           </RadioGroup>
-          {!reminderOnly && !isRecentMode && (
+          {!reminderOnly && !isRecentListView && (
             <Box
               sx={{
                 width: '100%',
@@ -760,8 +789,10 @@ export default function CustomersList({ supplierOnly = false }) {
           {appCreatedOnly
             ? t('customer_created_via_app_empty')
             : isRecentListView
-            ? t(supplierOnly ? 'suppliers_recent_empty' : 'customers_recent_empty')
-            : t(supplierOnly ? 'suppliers_empty' : 'customers_empty')}
+              ? t(supplierOnly ? 'suppliers_recent_empty' : 'customers_recent_empty')
+            : !reminderOnly && q.trim().length >= SEARCH_MIN
+              ? t(supplierOnly ? 'suppliers_search_empty' : 'customers_search_empty')
+              : t(supplierOnly ? 'suppliers_empty' : 'customers_empty')}
         </Typography>
       )}
 
@@ -867,6 +898,12 @@ export default function CustomersList({ supplierOnly = false }) {
             );
           })}
         </Box>
+      )}
+      {!loading && !error && !reminderOnly && !appCreatedOnly
+        && q.trim().length >= SEARCH_MIN && Number(meta.total) === 0 && items.length > 0 && (
+        <Typography sx={{ opacity: 0.7, mt: 1 }}>
+          {t(supplierOnly ? 'suppliers_search_empty' : 'customers_search_empty')}
+        </Typography>
       )}
       </Box>
       <Dialog

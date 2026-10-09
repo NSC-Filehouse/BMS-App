@@ -5,9 +5,15 @@ export const RECENT_CUSTOMERS_LIMIT = 25;
 const MAX_RECENT_CUSTOMERS = RECENT_CUSTOMERS_LIMIT;
 export const RECENT_CUSTOMERS_CHANGED = 'bms:recent-customers-changed';
 
-function key() {
+function key(scope = 'customers') {
   const mandant = getMandant() || 'default';
-  return `${PREFIX}.${mandant}`;
+  return scope === 'suppliers'
+    ? `${PREFIX}.suppliers.${mandant}`
+    : `${PREFIX}.${mandant}`;
+}
+
+export function getRecentCustomersStorageKey(scope = 'customers') {
+  return key(scope);
 }
 
 function normalizeCustomer(customer) {
@@ -34,9 +40,9 @@ function normalizeCustomer(customer) {
   };
 }
 
-function readStoredCustomers() {
+function readStoredCustomers(scope = 'customers') {
   try {
-    const raw = localStorage.getItem(key());
+    const raw = localStorage.getItem(key(scope));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -55,40 +61,40 @@ function readStoredCustomers() {
   }
 }
 
-function dispatchChanged(customers) {
+function dispatchChanged(customers, scope) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(RECENT_CUSTOMERS_CHANGED, {
-    detail: customers,
+    detail: { customers, scope },
   }));
 }
 
-export function getRecentCustomers() {
-  return readStoredCustomers();
+export function getRecentCustomers(scope = 'customers') {
+  return readStoredCustomers(scope);
 }
 
-export function recordRecentCustomer(customer) {
+export function recordRecentCustomer(customer, scope = 'customers') {
   const normalized = normalizeCustomer(customer);
-  if (!normalized) return readStoredCustomers();
+  if (!normalized) return readStoredCustomers(scope);
 
   const next = [
     { ...normalized, lastViewedAt: new Date().toISOString() },
-    ...readStoredCustomers().filter((entry) => entry.id !== normalized.id),
+    ...readStoredCustomers(scope).filter((entry) => entry.id !== normalized.id),
   ].slice(0, MAX_RECENT_CUSTOMERS);
 
   try {
-    localStorage.setItem(key(), JSON.stringify(next));
+    localStorage.setItem(key(scope), JSON.stringify(next));
   } catch {
     // Ignore unavailable or full browser storage.
   }
-  dispatchChanged(next);
+  dispatchChanged(next, scope);
   return next;
 }
 
-export function clearRecentCustomers() {
+export function clearRecentCustomers(scope = 'customers') {
   try {
-    localStorage.removeItem(key());
+    localStorage.removeItem(key(scope));
   } catch {
     // Ignore unavailable browser storage.
   }
-  dispatchChanged([]);
+  dispatchChanged([], scope);
 }

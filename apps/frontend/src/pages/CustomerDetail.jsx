@@ -490,6 +490,7 @@ export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedDetailView = location.state?.detailView;
   const { t } = useI18n();
 
   const [item, setItem] = React.useState(null);
@@ -555,12 +556,19 @@ export default function CustomerDetail() {
         const customer = res?.data || null;
         setItem(customer);
         if (customer) {
+          const recentScope = requestedDetailView === 'supplier'
+            ? 'suppliers'
+            : requestedDetailView === 'customer'
+              ? 'customers'
+              : customer.isSupplier
+                ? 'suppliers'
+                : 'customers';
           recordRecentCustomer({
             id: customer.kd_KdNR || id,
             name: getCustomerDisplayName(customer),
             address: buildAddress(customer),
             representative: customer.kd_Aussendienst || '',
-          });
+          }, recentScope);
         }
       } catch (e) {
         if (!alive) return;
@@ -571,10 +579,9 @@ export default function CustomerDetail() {
     })();
 
     return () => { alive = false; };
-  }, [id, t]);
+  }, [id, requestedDetailView, t]);
 
   const name = getCustomerDisplayName(item);
-  const requestedDetailView = location.state?.detailView;
   const isSupplier = requestedDetailView === 'customer'
     ? false
     : requestedDetailView === 'supplier'
