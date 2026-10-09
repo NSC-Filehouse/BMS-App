@@ -58,10 +58,16 @@ test('separates histories by mandant and tolerates invalid storage', () => {
   assert.deepEqual(getRecentCustomers(), []);
 });
 
-test('keeps customer and supplier histories separate', () => {
-  recordRecentCustomer({ id: 'C', name: 'Kunde' }, 'customers');
-  recordRecentCustomer({ id: 'S', name: 'Lieferant' }, 'suppliers');
+test('preserves legacy recents once and separates later supplier activity', () => {
+  recordRecentCustomer({ id: 'C', name: 'Kunde' });
+  assert.deepEqual(getRecentCustomers('suppliers').map((customer) => customer.id), ['C']);
 
-  assert.deepEqual(getRecentCustomers('customers').map((customer) => customer.id), ['C']);
-  assert.deepEqual(getRecentCustomers('suppliers').map((customer) => customer.id), ['S']);
+  recordRecentCustomer({ id: 'S', name: 'Lieferant' }, 'suppliers');
+  recordRecentCustomer({ id: 'C2', name: 'Neuer Kunde' });
+
+  assert.deepEqual(getRecentCustomers('customers').map((customer) => customer.id), ['C2', 'C']);
+  assert.deepEqual(getRecentCustomers('suppliers').map((customer) => customer.id), ['S', 'C']);
+
+  clearRecentCustomers('suppliers');
+  assert.deepEqual(getRecentCustomers('suppliers'), []);
 });

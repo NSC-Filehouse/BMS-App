@@ -42,7 +42,18 @@ function normalizeCustomer(customer) {
 
 function readStoredCustomers(scope = 'customers') {
   try {
-    const raw = localStorage.getItem(key(scope));
+    const storageKey = key(scope);
+    let raw = localStorage.getItem(storageKey);
+    if (!raw && scope === 'suppliers') {
+      raw = localStorage.getItem(key('customers'));
+      if (raw) {
+        try {
+          localStorage.setItem(storageKey, raw);
+        } catch {
+          // Keep the legacy history usable if migration storage is unavailable.
+        }
+      }
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -92,7 +103,11 @@ export function recordRecentCustomer(customer, scope = 'customers') {
 
 export function clearRecentCustomers(scope = 'customers') {
   try {
-    localStorage.removeItem(key(scope));
+    if (scope === 'suppliers') {
+      localStorage.setItem(key(scope), '[]');
+    } else {
+      localStorage.removeItem(key(scope));
+    }
   } catch {
     // Ignore unavailable browser storage.
   }
