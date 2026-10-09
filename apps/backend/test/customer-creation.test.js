@@ -13,8 +13,12 @@ const identity = { active: true, userId: 'test-user', shortCode: 'TST', mainComp
 const database = { firmaId: 3, shortName: 'FRU' };
 const settings = { enabled: true, writeEnabled: true, stammMandant: 'PLA', baseAddress: 'https://example.com/api/v1/kunden', apiKey: 'test-secret', timeoutMs: 30000 };
 const countries = [{ schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false }];
-const body = () => ({ stammdaten: { name1: 'Müller GmbH', anschrift: { strasse: 'Straße 1', plz: '12345', ort: 'München', land: 'DE' }, steuer: { ustIdNr: 'DE123456789' } }, rechnungsanschrift: { email: 'invoice@example.com' } });
-const normalize = (input = body()) => normalizeCreationRequest(input, identity, database, settings, countries, id);
+const salutations = [
+  { schluessel: 'H', bezeichnung: 'Herr' }, { schluessel: 'F', bezeichnung: 'Frau' },
+  { schluessel: 'FI', bezeichnung: 'Firma' }, { schluessel: 'D', bezeichnung: 'Divers' },
+];
+const body = () => ({ stammdaten: { name1: 'Müller GmbH', anrede: 'FI', anschrift: { strasse: 'Straße 1', plz: '12345', ort: 'München', land: 'DE' }, steuer: { ustIdNr: 'DE123456789' } }, rechnungsanschrift: { email: 'invoice@example.com' } });
+const normalize = (input = body()) => normalizeCreationRequest(input, identity, database, settings, countries, salutations, id);
 
 test('creation is restricted to the active personal main tenant, without full-access exceptions', () => {
   assert.equal(canCreateCustomer(identity, database, settings), true);
@@ -56,12 +60,30 @@ test('EU companies cannot use VAT omission reasons to bypass app requirements', 
   const input = body(); input.stammdaten.steuer = { ustIdNrFehltGrund: 'KLEINUNTERNEHMER' };
   assert.throws(() => normalize(input), (error) => error.details.fehler.some((entry) => entry.feld === 'stammdaten.steuer.ustIdNr'));
 });
-test('private individuals may omit VAT and are classified for app history', () => {
-  const input = body(); input.privatePerson = true; input.stammdaten.steuer.ustIdNr = '';
+test('Herr and Frau salutations identify private individuals for VAT and app history', () => {
+  const input = body(); input.stammdaten.anrede = 'H'; input.stammdaten.steuer.ustIdNr = '';
   const result = normalize(input);
   assert.equal(result.privatePerson, true);
   assert.equal(result.payload.stammdaten.steuer.ustIdNrFehltGrund, 'PRIVATPERSON');
   assert.equal(result.payload.privatePerson, undefined);
+  assert.equal(result.payload.stammdaten.anrede, 'H');
+  input.stammdaten.anrede = 'F';
+  assert.equal(normalize(input).privatePerson, true);
+});
+test('a pre-change uncertain request can still retry using its frozen checkbox value', () => {
+  const input = body(); input.privatePerson = true; input.stammdaten.steuer.ustIdNr = '';
+  const result = normalize(input);
+  assert.equal(result.privatePerson, true);
+  assert.equal(result.payload.stammdaten.steuer.ustIdNrFehltGrund, 'PRIVATPERSON');
+  const priorCompany = body(); priorCompany.stammdaten.anrede = 'H'; priorCompany.privatePerson = false;
+  assert.equal(normalize(priorCompany).privatePerson, false);
+});
+test('Firma is a company, and other ERP salutations are rejected for customer type', () => {
+  assert.equal(normalize().privatePerson, false);
+  const input = body(); input.stammdaten.anrede = 'D';
+  assert.throws(() => normalize(input), (error) => error.details.fehler.some((entry) => entry.feld === 'stammdaten.anrede'));
+  const missing = body(); missing.stammdaten.anrede = '';
+  assert.throws(() => normalize(missing), (error) => error.details.fehler.some((entry) => entry.feld === 'stammdaten.anrede'));
 });
 test('non-EU customers may omit VAT and use DRITTLAND', () => {
   const input = body(); input.stammdaten.anschrift.land = 'US'; input.stammdaten.steuer.ustIdNr = '';
@@ -72,12 +94,12 @@ test('unknown countries and missing invoice email remain blocking', () => {
   assert.throws(() => normalize(input), (error) => error.details.fehler.length === 2);
 });
 test('a central-main-tenant creation does not copy to itself', () => {
-  const result = normalizeCreationRequest(body(), { ...identity, mainCompanyId: 2 }, { firmaId: 2, shortName: 'PLA' }, settings, countries, id);
+  const result = normalizeCreationRequest(body(), { ...identity, mainCompanyId: 2 }, { firmaId: 2, shortName: 'PLA' }, settings, countries, salutations, id);
   assert.deepEqual(result.payload.kopierenNach, []);
 });
 test('operation UUID and classification are covered by request identity', () => {
-  assert.throws(() => normalizeCreationRequest(body(), identity, database, settings, countries, 'not-uuid'));
-  assert.notEqual(normalize().hash, normalize({ ...body(), privatePerson: true }).hash);
+  assert.throws(() => normalizeCreationRequest(body(), identity, database, settings, countries, salutations, 'not-uuid'));
+  assert.notEqual(normalize().hash, normalize({ ...body(), stammdaten: { ...body().stammdaten, anrede: 'H' } }).hash);
 });
 test('API client sends exact idempotency header and rejects redirects', async () => {
   let call;

@@ -14,6 +14,15 @@ export const CREATION_LABELS = {
   ranking: ['Ranking', 'Rank'], geburtstag: ['Geburtstag', 'Birthday'], wunschnummer: ['Wunschnummer (optional)', 'Requested number (optional)'],
 };
 export const CREATION_LISTS = { land: 'laender', anrede: 'anreden', sprache: 'sprachen', innendienst: 'mitarbeiter', verkaufsbuero: 'verkaufsbueros', zahlungsbedingungId: 'zahlungsbedingungen', branchen: 'branchen', kategorien: 'kategorien' };
+const CUSTOMER_SALUTATIONS = new Map([['herr', 'private'], ['frau', 'private'], ['firma', 'company']]);
+export function getCustomerSalutationType(anrede, entries = []) {
+  const selected = entries.find((entry) => String(entry.schluessel) === String(anrede));
+  return CUSTOMER_SALUTATIONS.get(String(selected?.bezeichnung || '').trim().toLocaleLowerCase('de-DE')) || null;
+}
+export function getCustomerSalutationEntries(entries = []) {
+  const byLabel = new Map(entries.map((entry) => [String(entry.bezeichnung || '').trim().toLocaleLowerCase('de-DE'), entry]));
+  return ['Herr', 'Frau', 'Firma'].map((label) => byLabel.get(label.toLocaleLowerCase('de-DE'))).filter(Boolean);
+}
 export function createEmptyAddress(extra = {}) { return { ...extra, strasse: '', plz: '', ort: '', land: 'DE', region: '' }; }
 export function createEmptyContact() {
   return { anrede: '', titel: '', vorname: '', name: '', abteilung: '', position: '', telefon: '', fax: '', mobil: '', email: '', sprache: '', ranking: '', notiz: '', geburtstag: '', eigeneAnschrift: null };
@@ -21,7 +30,7 @@ export function createEmptyContact() {
 export function createCustomerDraft(context) {
   const paymentDefault = context.lists.zahlungsbedingungen.eintraege.find((entry) => entry.vorgabe);
   return {
-    privatePerson: false, invoiceSame: true, bankEnabled: false,
+    invoiceSame: true, bankEnabled: false,
     stammdaten: {
       name1: '', name2: '', matchcode: '', anrede: '', sprache: 'de', anschrift: createEmptyAddress(), postfach: null,
       kontakt: { telefon: '', fax: '', email: '', homepage: '' }, steuer: { ustIdNr: '', weitereUstIdNrn: [] },
@@ -35,6 +44,7 @@ export function createCustomerDraft(context) {
 }
 export function buildCustomerCreationBody(draft, confirmations = []) {
   const { invoiceSame, bankEnabled, ...body } = structuredClone(draft);
+  delete body.privatePerson;
   if (invoiceSame) {
     const base = body.stammdaten;
     body.rechnungsanschrift = {
@@ -51,10 +61,13 @@ export function validateCustomerDraft(draft, context) {
   const errors = {};
   const required = (value, path) => { if (!String(value || '').trim()) errors[path] = 'required'; };
   required(body.stammdaten.name1, 'stammdaten.name1');
+  required(body.stammdaten.anrede, 'stammdaten.anrede');
+  const customerType = getCustomerSalutationType(body.stammdaten.anrede, context.lists.anreden.eintraege);
+  if (body.stammdaten.anrede && !customerType) errors['stammdaten.anrede'] = 'required';
   const country = context.lists.laender.eintraege.find((entry) => entry.schluessel === body.stammdaten.anschrift.land);
   for (const key of ['strasse', 'plz', 'ort', 'land']) required(body.stammdaten.anschrift[key], `stammdaten.anschrift.${key}`);
   if (!country) errors['stammdaten.anschrift.land'] = 'required';
-  if (!draft.privatePerson && country?.euLand !== false) required(body.stammdaten.steuer.ustIdNr, 'stammdaten.steuer.ustIdNr');
+  if (customerType !== 'private' && country?.euLand !== false) required(body.stammdaten.steuer.ustIdNr, 'stammdaten.steuer.ustIdNr');
   required(body.rechnungsanschrift.email, 'rechnungsanschrift.email');
   if (!draft.invoiceSame) for (const key of ['name1', 'strasse', 'plz', 'ort', 'land']) required(body.rechnungsanschrift[key], `rechnungsanschrift.${key}`);
   body.ansprechpartner.forEach((contact, index) => {

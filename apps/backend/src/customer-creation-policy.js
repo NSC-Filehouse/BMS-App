@@ -65,13 +65,25 @@ function address(source, extra = []) {
   return pick(source, [...extra, 'strasse', 'plz', 'ort', 'land', 'region']);
 }
 function nullableBoolean(value) { return typeof value === 'boolean' ? value : null; }
-function normalizeCreationRequest(input, identity, database, settings, countries, operationId) {
+function customerTypeForSalutation(value, salutations = []) {
+  const selected = salutations.find((entry) => String(entry.schluessel) === String(value));
+  const label = String(selected?.bezeichnung || '').trim().toLocaleLowerCase('de-DE');
+  if (label === 'herr' || label === 'frau') return 'private';
+  if (label === 'firma') return 'company';
+  return null;
+}
+function normalizeCreationRequest(input, identity, database, settings, countries, salutations, operationId) {
   assertCanCreateCustomer(identity, database, settings);
   if (!UUID.test(String(operationId || ''))) throw createHttpError(400, 'Ungültiger Vorgangsschlüssel.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });
   const countryValue = String(input?.stammdaten?.anschrift?.land || '').trim().toUpperCase();
   const country = countries.find((entry) => entry.schluessel === countryValue);
-  const privatePerson = input?.privatePerson === true;
   const base = input?.stammdaten || {};
+  const anrede = text(base.anrede);
+  const customerType = customerTypeForSalutation(anrede, salutations);
+  // Keep already pending operations retryable across the UI change. New requests
+  // derive this flag exclusively from the selected ERP salutation.
+  const legacyRequest = typeof input?.privatePerson === 'boolean';
+  const privatePerson = legacyRequest ? input.privatePerson : customerType === 'private';
   const vat = text(base.steuer?.ustIdNr);
   const steuer = {
     ustIdNr: vat,
@@ -111,6 +123,10 @@ function normalizeCreationRequest(input, identity, database, settings, countries
   const fehler = [];
   const requireField = (value, field) => { if (!text(value)) fehler.push({ code: 'FELD.FEHLT', feld: field, nachricht: 'Pflichtfeld fehlt.', abhilfe: 'Bitte dieses Feld ausfüllen.' }); };
   requireField(payload.stammdaten.name1, 'stammdaten.name1');
+  if (!legacyRequest) {
+    if (!anrede) requireField(payload.stammdaten.anrede, 'stammdaten.anrede');
+    else if (!customerType) fehler.push({ code: 'SCHLUESSEL.UNBEKANNT', feld: 'stammdaten.anrede', nachricht: 'Bitte Herr, Frau oder Firma auswählen.', abhilfe: 'Bitte eine der drei Anreden aus der Liste wählen.' });
+  }
   for (const field of ['strasse', 'land', 'plz', 'ort']) requireField(payload.stammdaten.anschrift[field], `stammdaten.anschrift.${field}`);
   if (countryValue && !country) fehler.push({ code: 'SCHLUESSEL.UNBEKANNT', feld: 'stammdaten.anschrift.land', nachricht: 'Bitte ein Land aus der Liste wählen.' });
   if (!vat && !privatePerson && country?.euLand !== false) requireField(vat, 'stammdaten.steuer.ustIdNr');

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCustomerDraft, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, setCreationValue } from '../src/utils/customerCreation.js';
+import { createCustomerDraft, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, setCreationValue } from '../src/utils/customerCreation.js';
 import { getMissingCustomerOrderRequirements } from '../src/utils/customerOrderRequirements.js';
-const context = { ownShortCode: 'TST', lists: { laender: { eintraege: [{ schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false }] }, zahlungsbedingungen: { eintraege: [{ schluessel: '57', vorgabe: true }] } } };
-function filled() { const draft = createCustomerDraft(context); draft.stammdaten.name1 = 'Müller'; Object.assign(draft.stammdaten.anschrift, { strasse: 'Straße 1', plz: '12345', ort: 'München' }); draft.stammdaten.steuer.ustIdNr = 'DE123456789'; draft.rechnungsanschrift.email = 'invoice@example.com'; return draft; }
+const context = { ownShortCode: 'TST', lists: { laender: { eintraege: [{ schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false }] }, anreden: { eintraege: [{ schluessel: 'H', bezeichnung: 'Herr' }, { schluessel: 'F', bezeichnung: 'Frau' }, { schluessel: 'FI', bezeichnung: 'Firma' }, { schluessel: 'D', bezeichnung: 'Divers' }] }, zahlungsbedingungen: { eintraege: [{ schluessel: '57', vorgabe: true }] } } };
+function filled() { const draft = createCustomerDraft(context); draft.stammdaten.name1 = 'Müller'; draft.stammdaten.anrede = 'FI'; Object.assign(draft.stammdaten.anschrift, { strasse: 'Straße 1', plz: '12345', ort: 'München' }); draft.stammdaten.steuer.ustIdNr = 'DE123456789'; draft.rechnungsanschrift.email = 'invoice@example.com'; return draft; }
 test('same invoice address supplies the complete address plus separate invoice email', () => {
   const request = buildCustomerCreationBody(filled());
   assert.equal(request.rechnungsanschrift.name1, 'Müller'); assert.equal(request.rechnungsanschrift.strasse, 'Straße 1');
@@ -16,8 +16,17 @@ test('invoice address follows edits to the main address only when linked', () =>
 test('VAT is required for EU companies but not private individuals or non-EU customers', () => {
   const draft = filled(); draft.stammdaten.steuer.ustIdNr = '';
   assert.ok(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr']);
-  draft.privatePerson = true; assert.equal(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr'], undefined);
-  draft.privatePerson = false; draft.stammdaten.anschrift.land = 'US'; assert.equal(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr'], undefined);
+  draft.stammdaten.anrede = 'H'; assert.equal(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr'], undefined);
+  draft.stammdaten.anrede = 'F'; assert.equal(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr'], undefined);
+  draft.stammdaten.anrede = 'FI'; draft.stammdaten.anschrift.land = 'US'; assert.equal(validateCustomerDraft(draft, context)['stammdaten.steuer.ustIdNr'], undefined);
+});
+test('main customer salutation offers only Herr, Frau and Firma and is mandatory', () => {
+  const draft = filled();
+  assert.deepEqual(getCustomerSalutationEntries(context.lists.anreden.eintraege).map((entry) => entry.bezeichnung), ['Herr', 'Frau', 'Firma']);
+  draft.privatePerson = true;
+  assert.equal(buildCustomerCreationBody(draft).privatePerson, undefined);
+  draft.stammdaten.anrede = '';
+  assert.equal(validateCustomerDraft(draft, context)['stammdaten.anrede'], 'required');
 });
 test('repeated contacts and delivery addresses get indexed mandatory field errors', () => {
   const draft = filled(); draft.ansprechpartner = [{ name: '', eigeneAnschrift: { land: 'DE' } }]; draft.lieferanschriften = [{ land: 'DE' }];

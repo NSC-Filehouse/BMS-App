@@ -9,12 +9,12 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
 import { navigateToReturn } from '../utils/navigation.js';
-import { CREATION_LABELS, CREATION_LISTS, createCustomerDraft, createCustomerOperationId, createEmptyAddress, createEmptyContact, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, setCreationValue, getCreationValue } from '../utils/customerCreation.js';
+import { CREATION_LABELS, CREATION_LISTS, createCustomerDraft, createCustomerOperationId, createEmptyAddress, createEmptyContact, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, getCustomerSalutationType, setCreationValue, getCreationValue } from '../utils/customerCreation.js';
 
 const TEXT = {
   de: {
     title: 'Kunde anlegen', company: 'Firma / Person und Hauptanschrift', contact: 'Kontakt zur Firma', tax: 'Steuerdaten', invoice: 'Rechnungsanschrift und Rechnungsversand', sales: 'Vertrieb', payment: 'Zahlung und Bank', more: 'Zuordnung und weitere Angaben', people: 'Ansprechpartner', delivery: 'Lieferanschriften', postbox: 'Postfach',
-    private: 'Privatperson', privateHelp: 'Privatpersonen dürfen ohne USt-ID angelegt werden.', thirdCountry: 'Dieses Land gehört nicht zur EU. Eine USt-ID ist optional.', vatRequired: 'Bei Firmen aus EU-Ländern ist die USt-ID Pflicht.',
+    privateHelp: 'Privatpersonen dürfen ohne USt-ID angelegt werden.', thirdCountry: 'Dieses Land gehört nicht zur EU. Eine USt-ID ist optional.', vatRequired: 'Bei Firmen aus EU-Ländern ist die USt-ID Pflicht.',
     invoiceSame: 'Rechnungsanschrift entspricht der Hauptanschrift', invoiceEmail: 'Rechnungs-E-Mail', invoiceHelp: 'Wird für die spätere Auftragsübergabe benötigt.', bankEnabled: 'Bankverbindung angeben', postboxEnabled: 'Postfach angeben', ownAddress: 'Eigene Anschrift', moreVat: 'Weitere USt-IDs', add: 'Hinzufügen', remove: 'Entfernen',
     discard: 'Verwerfen', check: 'Eingaben prüfen', send: 'An BMS senden', retry: 'Denselben Vorgang wiederholen', back: 'Zur Kundenübersicht', openCustomer: 'Kunde öffnen', required: 'Bitte dieses Pflichtfeld ausfüllen.', empty: 'Keine Vorgabe / leer',
     test: 'Echte Kundenanlagen sind noch gesperrt. Du kannst das Formular und die schreibfreie Vorprüfung testen.', target: 'Zentrale Anlage', copy: 'Kopie nach', checking: 'Eingaben werden geprüft …', sending: 'Kunde wird angelegt …',
@@ -27,7 +27,7 @@ const TEXT = {
   },
   en: {
     title: 'Create customer', company: 'Company / person and main address', contact: 'Company contact', tax: 'Tax details', invoice: 'Invoice address and delivery', sales: 'Sales', payment: 'Payment and bank', more: 'Classification and further details', people: 'Contacts', delivery: 'Delivery addresses', postbox: 'PO box',
-    private: 'Private individual', privateHelp: 'Private individuals may be created without a VAT ID.', thirdCountry: 'This country is outside the EU. A VAT ID is optional.', vatRequired: 'EU companies must provide a VAT ID.',
+    privateHelp: 'Private individuals may be created without a VAT ID.', thirdCountry: 'This country is outside the EU. A VAT ID is optional.', vatRequired: 'EU companies must provide a VAT ID.',
     invoiceSame: 'Invoice address is the same as the main address', invoiceEmail: 'Invoice email', invoiceHelp: 'Required for subsequent order submission.', bankEnabled: 'Enter bank details', postboxEnabled: 'Enter PO box', ownAddress: 'Separate address', moreVat: 'Additional VAT IDs', add: 'Add', remove: 'Remove',
     discard: 'Discard', check: 'Check details', send: 'Send to BMS', retry: 'Retry the same operation', back: 'Back to customers', openCustomer: 'Open customer', required: 'Please fill in this required field.', empty: 'Default / empty',
     test: 'Customer creation is currently disabled. You can test the form and the read-only preflight check.', target: 'Central creation', copy: 'Copy to', checking: 'Checking details …', sending: 'Creating customer …',
@@ -178,6 +178,7 @@ export default function CustomerCreate() {
     const key = path.split('.').at(-1);
     const listName = options.list || CREATION_LISTS[key];
     let entries = context.lists[listName]?.eintraege || [];
+    if (path === 'stammdaten.anrede') entries = getCustomerSalutationEntries(entries);
     if (listName === 'kategorien') entries = entries.filter((entry) => !entry.lieferant);
     const isSelect = Boolean(listName) || key === 'ranking';
     const value = getCreationValue(draft, path) ?? (options.multiple ? [] : '');
@@ -212,6 +213,7 @@ export default function CustomerCreate() {
   if (loading) return <Box sx={{ textAlign: 'center', py: 6 }}><CircularProgress /></Box>;
   if (!context || !draft) return <Stack spacing={2}><Alert severity="error">{error || w.loadError}</Alert><Button onClick={back}>{w.back}</Button></Stack>;
   const country = context.lists.laender.eintraege.find((entry) => entry.schluessel === draft.stammdaten.anschrift.land);
+  const privatePerson = getCustomerSalutationType(draft.stammdaten.anrede, context.lists.anreden.eintraege) === 'private';
   const copied = context.targetMandant === context.stammMandant || result?.data?.kopien?.some((entry) => entry.mandant === context.targetMandant && ['angelegt', 'bereitsVorhanden'].includes(entry.status));
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', pb: 2 }}>
     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}><IconButton aria-label={w.back} disabled={busy} onClick={back}><ArrowBackIcon /></IconButton><Typography variant="h5">{w.title}</Typography></Stack>
@@ -230,15 +232,14 @@ export default function CustomerCreate() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="info" sx={{ mb: 2 }}>{notice}</Alert>}
       {section('company', w.company, <>
-        {toggle('privatePerson', w.private)}
-        {grid(...fields('stammdaten', ['name1', 'name2', 'matchcode', 'anrede', 'sprache'], ['name1']))}
+        {grid(...fields('stammdaten', ['name1', 'name2', 'matchcode', 'anrede', 'sprache'], ['name1', 'anrede']))}
         <Typography variant="body2" sx={{ my: 1, color: 'text.secondary' }}>{w.defaults}</Typography>
         {grid(...fields('stammdaten.anschrift', ['strasse', 'plz', 'ort', 'land', 'region'], ['strasse', 'plz', 'ort', 'land']))}
       </>)}
       {section('contact', w.contact, grid(...fields('stammdaten.kontakt', ['telefon', 'fax', 'email', 'homepage'])))}
       {section('tax', w.tax, <>
-        <Typography variant="body2" sx={{ mb: 2 }}>{draft.privatePerson ? w.privateHelp : country?.euLand === false ? w.thirdCountry : w.vatRequired}</Typography>
-        {field('stammdaten.steuer.ustIdNr', { required: !draft.privatePerson && country?.euLand !== false })}
+        <Typography variant="body2" sx={{ mb: 2 }}>{privatePerson ? w.privateHelp : country?.euLand === false ? w.thirdCountry : w.vatRequired}</Typography>
+        {field('stammdaten.steuer.ustIdNr', { required: !privatePerson && country?.euLand !== false })}
         <Typography variant="subtitle2" sx={{ mt: 2 }}>{w.moreVat}</Typography>
         {draft.stammdaten.steuer.weitereUstIdNrn.map((_, index) => <Box key={index} sx={{ mb: 2 }}>{grid(...fields(`stammdaten.steuer.weitereUstIdNrn[${index}]`, ['land', 'ustIdNr'], ['land', 'ustIdNr']), remove('stammdaten.steuer.weitereUstIdNrn', index))}</Box>)}
         {add('stammdaten.steuer.weitereUstIdNrn', { land: 'DE', ustIdNr: '' })}
