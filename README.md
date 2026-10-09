@@ -275,31 +275,37 @@ Wert geleert werden; danach gilt Customer Service aus
 Der Testmandant mit der ID `0` ist davon ausgenommen und sendet Auftragsmails
 an `m.frank@filehouse.net`.
 
-### Kreditlimit-Anfrage bei Limit 0
+### Kreditlimit-Anfrage beim Auftragsversand
 
 Vor dem ersten Einsatz muss zusätzlich die idempotente Migration
 `apps/backend/sql/add_credit_limit_request.sql` mit einem DDL-berechtigten
 SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden. Beim Klick auf
-„An BMS senden“ wird bei einem exakt auf `0` gesetzten Kreditlimit eine eigene
-Kreditlimit-Mail über dieselbe BMS-App-Mailstrecke erzeugt. Die Mail geht an
-Kimaz und Petschler, mit Meyer, dem mandantabhängigen Customer Service aus
-`INVOICE_ROUTER_ADDRESS_MAP` sowie den aus SanctionChecker übernommenen
+„An BMS senden“ prüft die App das Kreditlimit und zeigt bei Überschreitung den
+berechneten Kreditwunsch an. Der Benutzer entscheidet ausdrücklich, ob eine
+zusätzliche Kreditlimit-Mail gesendet wird; die Auftragsmail wird in beiden
+Fällen versendet. Der bestehende Vorschlag addiert den aktuellen Auftrag,
+offene BMS-App-Aufträge und offene ERP-Aufträge und rundet in den vorhandenen
+50-, 500-, 5.000- oder 50.000-EUR-Schritten auf. Offene Rechnungen fließen in
+die Überschreitungsprüfung ein, ändern aber den bestehenden Kreditwunsch nicht.
+
+Die Mail verwendet den Betreff `Kreditanfrage <Kundenname>` und enthält den
+Kreditwunsch, Kunden- und Mandantendaten, den Kunden-Außendienst, das bisherige
+Kreditlimit sowie die optionale Anmerkung. Die Anmerkung ist ein mehrzeiliges
+Textfeld; auf dem iPhone kann die Tastatur-Diktierfunktion den gesprochenen
+Text eintragen. Die Mail geht an Kimaz und Petschler, mit Meyer, dem
+mandantabhängigen Customer Service aus `INVOICE_ROUTER_ADDRESS_MAP` sowie den
 mandantabhängigen GF-Empfängern in CC. Die Zuordnung erfolgt über die
 Mandanten-ID hinter dem Pipe-Zeichen (`E-Mail-Adresse|Mandanten-ID`). Ein
 gesetzter `BMS_ORDER_MAIL_TEST_RECIPIENT` bleibt ein isolierter Testversand an
 nur diese Adresse; echte CC-Empfänger werden dann nicht angeschrieben.
 
-Die Merktabelle führt je Mandant und Kunde den letzten Anfragezeitpunkt und
-die letzte beantragte Summe. Dadurch wird eine erneute Anfrage innerhalb des
-konfigurierten Zeitfensters (standardmäßig sechs Monate) unterdrückt; mehrere
-Aufträge werden nach Ablauf des Fensters mit der dann aktuellen Auftragssumme
-neu bewertet. Der Betrag wird in 50-, 500-, 5.000- oder 50.000-EUR-Schritten
-aufgerundet. Fehlen Bankdaten, wird zusätzlich der Haupt-Außendienst des
-Kunden einmal pro Cooldown-Zeitraum per Mail zur Stammdatenpflege aufgefordert.
-Steht in `tblKunden.kd_Insolvenz` der Wert `1`, werden Kreditlimit- und
-Bankdaten-Automatik unterdrückt. Die normale Auftragsmail wird weiterhin
-gesendet und beginnt mit dem fett roten Hinweis „Kunde insolvent!“. Auch eine
-bereits wartende Kreditlimit-Mail wird vor dem Versand nochmals geprüft.
+Offene Kreditlimit-Mails aus der früheren Automatik werden nicht mehr vom
+Worker versendet. Die separate Bankdaten-Erinnerung bleibt bei einem
+Kreditlimit von `0` bestehen und wird weiterhin höchstens einmal pro
+Cooldown-Zeitraum an den Haupt-Außendienst gesendet. Steht in
+`tblKunden.kd_Insolvenz` der Wert `1`, werden Kreditlimit- und Bankdaten-Mail
+unterdrückt. Die normale Auftragsmail wird weiterhin gesendet und beginnt mit
+dem fett roten Hinweis „Kunde insolvent!“.
 
 ## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
 

@@ -3,16 +3,22 @@ const assert = require('node:assert/strict');
 
 const {
   calculateAvailableCredit,
+  calculateCreditLimitRequest,
   calculateTempOrderValue,
   formatCreditLimitRequestBody,
   hasBankDetails,
   isInsolventFlag,
+  isCreditLimitExceeded,
   isWithinCooldown,
   mapCustomerIdentity,
   roundCreditLimit,
 } = require('../src/credit-limit');
 const config = require('../src/config');
 const { queueCreditLimitMails } = require('../src/db/credit-limit-request-outbox');
+const {
+  ADVANCE_OR_IMMEDIATE_PAYMENT_TEXT_IDS,
+  isAdvanceOrImmediatePaymentTextId,
+} = require('../src/payment-term-classification');
 
 test('calculates available credit from unpaid invoices and keeps open orders separate', () => {
   assert.deepEqual(calculateAvailableCredit({
@@ -62,6 +68,32 @@ test('rounds requested credit limits using the graduated business steps', () => 
   assert.equal(roundCreditLimit(100001), 150000);
 });
 
+test('keeps the existing proposed-limit sum and rounding calculation', () => {
+  assert.deepEqual(calculateCreditLimitRequest({
+    currentOrderAmount: 323000,
+    openTempOrders: [{ amount: 1000 }],
+    openOrders: [{ amount: 2000 }],
+  }), {
+    currentOrderAmount: 323000,
+    openTempOrdersAmount: 1000,
+    openOrdersAmount: 2000,
+    exposureAmount: 326000,
+    requestedLimit: 350000,
+  });
+});
+
+test('detects limit overruns with unpaid invoices and recognizes advance-payment types', () => {
+  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, 901), true);
+  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, 900), false);
+  assert.equal(isCreditLimitExceeded({ amount: null, unpaidInvoicesAmount: 0 }, 1), true);
+  assert.equal(isAdvanceOrImmediatePaymentTextId(57), true);
+  assert.equal(isAdvanceOrImmediatePaymentTextId(40), true);
+  assert.equal(isAdvanceOrImmediatePaymentTextId(87), false);
+  assert.equal(isAdvanceOrImmediatePaymentTextId(108), false);
+  assert.equal(isAdvanceOrImmediatePaymentTextId(999), false);
+  assert.ok(ADVANCE_OR_IMMEDIATE_PAYMENT_TEXT_IDS.size > 0);
+});
+
 test('detects bank details and suppresses repeated requests during the cooldown', () => {
   assert.equal(hasBankDetails({ iban: 'DE123' }), true);
   assert.equal(hasBankDetails({ iban: '', bankName: '', accountNumber: '', bankInfo: '' }), false);
@@ -79,43 +111,46 @@ test('interprets the customer insolvency flag without treating string zero as tr
   assert.equal(mapCustomerIdentity({ customerId: 'K-1', insolvent: 0 }).insolvent, false);
 });
 
-test('credit-limit mail body contains the legal customer identity and exposure', () => {
+test('credit-limit mail body follows the requested customer and limit layout', () => {
   const body = formatCreditLimitRequestBody({
-    mandantName: 'Mandant GmbH',
-    mandantShortName: 'MFL',
-    companyId: 7,
-    orderId: 42,
+    mandantName: 'Frupack',
+    mandantShortName: 'FRU',
     customer: {
-      customerId: 'K-1',
-      legalName: 'ER&GE GmbH',
-      street: 'Hafenstraße 1',
-      postalCode: '20095',
-      city: 'Hamburg',
+      customerId: '96111',
+      legalName: 'UNIWELL Rohrsysteme GmbH & Co. KG',
+      street: 'Siegelfelderstraße 1',
+      postalCode: '96106',
+      city: 'Ebern',
       country: 'DE',
-      vatId: 'DE123456789',
+      vatId: '',
     },
-    currentOrderAmount: 323000,
-    openTempOrders: [{ amount: 1000 }],
-    openOrders: [{ amount: 2000 }],
-    unpaidInvoicesAmount: 500,
     requestedLimit: 350000,
-    requestedAt: '2026-09-11T10:00:00.000Z',
+    currentCreditLimit: 25000,
+    annotation: 'Bitte zeitnah prüfen.',
     salesRepresentative: {
-      fullName: 'Erika Mustermann',
-      shortCode: 'EPO',
+      fullName: 'Daniel Behrens',
+      shortCode: 'DBE',
     },
   });
 
-  assert.match(body, /ER&GE GmbH/);
-  assert.match(body, /Hafenstraße 1/);
-  assert.match(body, /DE123456789/);
+  assert.match(body, /Bitte um Prüfung und Einrichtung eines Kreditlimits\. 350\.000,00 EUR/);
+  assert.match(body, /Kundennummer: 96111/);
+  assert.match(body, /UNIWELL Rohrsysteme GmbH & Co\. KG/);
+  assert.match(body, /Siegelfelderstraße 1/);
+  assert.match(body, /96106 Ebern/);
+  assert.match(body, /Deutschland/);
+  assert.match(body, /USt-IdNr\.: Nicht vorhanden!/);
+  assert.match(body, /Mandant: Frupack \(FRU\)/);
+  assert.match(body, /Außendienst: Daniel Behrens \(DBE\)/);
+  assert.match(body, /Kreditwunsch: 350\.000,00 EUR/);
+  assert.match(body, /Bisheriges Kreditlimit: 25\.000,00 EUR/);
+  assert.match(body, /Anmerkungen: Bitte zeitnah prüfen\./);
   assert.match(body, /350\.000,00 EUR/);
-  assert.match(body, /326\.000,00 EUR/);
-  assert.match(body, /Mandant-ID: Mandant GmbH \(7\)/);
-  assert.match(body, /Außendienst: Erika Mustermann \(EPO\)/);
+  assert.doesNotMatch(body, /Kreditentscheidungshistorie/);
+  assert.doesNotMatch(body, /Mandant-ID|Auslösender BMS-App-Auftrag/);
 });
 
-test('queues one request and suppresses the next request for the same customer', async () => {
+test('queues a credit request only after explicit consent and does not apply request cooldown', async () => {
   const previousEnabled = config.creditLimitMail.enabled;
   const previousCooldown = config.creditLimitMail.cooldownMonths;
   const previousCustomerServiceAddressMap = config.orderMail.customerServiceAddressMap;
@@ -166,6 +201,8 @@ test('queues one request and suppresses the next request for the same customer',
       currentOrderAmount: 323000,
       openTempOrders: [],
       creditContext,
+      sendCreditRequest: true,
+      annotation: 'Bitte zeitnah prüfen.',
       primaryAdEmail: '',
       mandantName: 'Mandant GmbH',
       mandantShortName: 'MFL',
@@ -182,6 +219,9 @@ test('queues one request and suppresses the next request for the same customer',
     assert.equal(first.result.creditRequest.status, 'queued');
     assert.equal(first.result.creditRequest.requestedLimit, 350000);
     const insert = first.calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox'));
+    assert.equal(insert.params[3], 'credit_limit_request_user_confirmed');
+    assert.equal(insert.params[7], 'Kreditanfrage ER&GE GmbH');
+    assert.match(insert.params[8], /Anmerkungen: Bitte zeitnah prüfen\./);
     assert.deepEqual(JSON.parse(insert.params[4]), ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de']);
     assert.deepEqual(JSON.parse(insert.params[5]), [
       'Meyer@mlplastics.de',
@@ -201,8 +241,26 @@ test('queues one request and suppresses the next request for the same customer',
       lastExposureAmount: 323000,
       lastCreditMailStatus: 'sent',
     }]);
-    assert.equal(second.result.creditRequest.status, 'suppressed_cooldown');
-    assert.equal(second.calls.some((call) => call.sql.includes('INSERT INTO')), false);
+    assert.equal(second.result.creditRequest.status, 'queued');
+    assert.equal(second.calls.some((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox')), true);
+
+    const noConsent = await queueCreditLimitMails({
+      query: async (sql) => ({ rows: sql.includes('SELECT TOP 1') ? [] : [{ id: 1 }] }),
+      companyId: 7,
+      customerId: 'K-1',
+      orderId: 42,
+      currentOrderAmount: 323000,
+      openTempOrders: [],
+      creditContext,
+      primaryAdEmail: '',
+      mandantName: 'Mandant GmbH',
+      nowIso,
+      creditTo: ['Kimaz@mlplastics.de'],
+      creditCc: [],
+      testRecipient: '',
+    });
+    assert.equal(noConsent.creditRequest.status, 'not_applicable');
+    assert.deepEqual(noConsent.outboxIds, []);
 
     const insolvent = await queueCreditLimitMails({
       query: async () => { throw new Error('insolvent customers must not query the request state'); },

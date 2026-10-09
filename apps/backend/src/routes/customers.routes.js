@@ -10,6 +10,7 @@ const {
 } = require('../db/customer-access');
 const { productAvailabilitySource } = require('../db/product-availability');
 const { calculateAvailableCredit } = require('../credit-limit');
+const { isAdvanceOrImmediatePaymentTextId } = require('../payment-term-classification');
 const { resolveProductGroup: resolvePurchasedArticleGroup } = require('../product-grouping');
 const {
   getUserIdentityByShortCode,
@@ -803,6 +804,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
     ...supplierContext,
     canManageSupplier: Boolean(supplierContext.isSupplier && visibleCustomer.canManageSupplier),
     creditLimit,
+    isPrepaymentCustomer: isAdvanceOrImmediatePaymentTextId(item.kd_Zahltext),
     representatives,
     salesRepresentatives,
     reminderInvoicesCount,

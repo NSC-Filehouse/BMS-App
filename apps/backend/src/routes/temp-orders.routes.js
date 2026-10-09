@@ -17,8 +17,10 @@ const {
 } = require('../db/credit-limit-request-outbox');
 const {
   calculateTempOrderValue,
+  calculateCreditLimitRequest,
   hasBankDetails,
   isEmailAddress,
+  isCreditLimitExceeded,
   loadCustomerCreditContext,
 } = require('../credit-limit');
 const { getEmailsForUserCodes, getGfsForMandant } = require('../config/geschaeftsfuehrer');
@@ -2085,6 +2087,73 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   });
 }));
 
+router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler(async (req, res) => {
+  const userShortCode = asText(req.userIdentity?.shortCode);
+  if (!userShortCode) {
+    throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
+  }
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
+  const companyId = Number(req.database?.firmaId || 0);
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw createHttpError(400, `Invalid temp order id: ${req.params.id}`, { code: 'RESOURCE_NOT_FOUND' });
+  }
+
+  const orderRows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1 ${await getTempOrderHeaderSelectSql()}
+    FROM ${TEMP_ORDER_TABLE}
+    WHERE [ta_id] = ? AND [ta_company_id] = ?
+      ${ownerFilter.whereSql}
+  `, [id, companyId, ...ownerFilter.params]);
+  const order = Array.isArray(orderRows) ? orderRows[0] : null;
+  if (!order) {
+    throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+  }
+
+  const positions = await loadOrderPositions(id);
+  const currentOrderAmount = calculateTempOrderValue(positions);
+  const customerId = asText(order.ta_ClientReferenceId);
+  const creditContext = customerId ? await loadCustomerCreditContext(req.database, customerId) : null;
+  const openTempOrders = creditContext
+    ? await loadOpenTempOrderRows(async (sql, params) => ({
+      rows: await runSQLQuerySqlServer(config.sql.database, sql, params),
+    }), {
+      tableSql: TEMP_ORDER_TABLE,
+      positionTableSql: TEMP_ORDER_POSITION_TABLE,
+      companyId,
+      customerId,
+      excludeOrderId: id,
+    })
+    : [];
+  const requestValues = calculateCreditLimitRequest({
+    currentOrderAmount,
+    openTempOrders,
+    openOrders: creditContext?.openOrders || [],
+  });
+  const shouldPrompt = Boolean(
+    config.creditLimitMail.enabled
+    && creditContext
+    && !creditContext.customer.insolvent
+    && isTempOrderEditableStatus(normalizeStoredTempOrderStatus(order.ta_Status, order.ta_completed))
+    && isCreditLimitExceeded(creditContext.credit, requestValues.exposureAmount),
+  );
+
+  sendEnvelope(res, {
+    status: 200,
+    data: {
+      shouldPrompt,
+      requestedLimit: requestValues.requestedLimit,
+      projectedExposure: requestValues.exposureAmount,
+      currentCreditLimit: creditContext?.credit?.amount ?? null,
+      availableCreditAmount: creditContext?.credit?.availableAmount ?? null,
+      unpaidInvoicesAmount: creditContext?.credit?.unpaidInvoicesAmount ?? 0,
+    },
+    meta: { mandant: req.mandant, id },
+    error: null,
+  });
+}));
+
 router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -2113,7 +2182,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const nowIso = new Date().toISOString();
   let creditLimitContext = null;
   let primaryAdEmail = '';
-  let orderSalesRepresentative = null;
+  let creditSalesRepresentative = null;
   let orderMailSender = {
     fromAddress: null,
     fromDisplayName: null,
@@ -2139,10 +2208,6 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           const orderOwnerEmail = asText(orderOwner?.email).toLowerCase();
           const orderOwnerName = asText(orderOwner?.fullName)
             || [orderOwner?.givenName, orderOwner?.surname].filter(Boolean).join(' ');
-          orderSalesRepresentative = {
-            shortCode: createdBy,
-            fullName: orderOwnerName,
-          };
           if (isEmailAddress(orderOwnerEmail)) {
             orderMailSender = {
               ...orderMailSender,
@@ -2153,8 +2218,6 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
             logger.warn(`Auftrags-AD ${createdBy} fuer Temp-Auftrag ${id} hat keine gueltige E-Mail-Adresse; Standardabsender wird verwendet.`);
           }
         } catch (error) {
-          logger.warn(`Auftrags-AD fuer Kreditlimit-Mail von Temp-Auftrag ${id} konnte nicht aufgeloest werden.`);
-          orderSalesRepresentative = { shortCode: createdBy };
           if (config.orderMail.enabled) {
             logger.warn(`Auftrags-AD fuer Auftragsmail von Temp-Auftrag ${id} konnte nicht aufgeloest werden; Standardabsender wird verwendet.`);
           }
@@ -2166,11 +2229,25 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           creditLimitLookupStatus = 'customer_not_found';
         } else if (creditLimitContext.customer.insolvent) {
           creditLimitLookupStatus = 'insolvent';
-        } else if (!config.creditLimitMail.enabled || creditLimitContext.credit.amount !== 0) {
+        } else if (!config.creditLimitMail.enabled) {
           creditLimitLookupStatus = 'not_required';
         } else {
           creditLimitLookupStatus = 'eligible';
-          if (!hasBankDetails(creditLimitContext.customer)) {
+          const customerSalesRepCode = asText(creditLimitContext.customer.mainSalesRepresentative);
+          if (customerSalesRepCode) {
+            try {
+              const customerSalesRep = await getUserIdentityByShortCode(customerSalesRepCode, companyId);
+              creditSalesRepresentative = {
+                shortCode: customerSalesRepCode,
+                fullName: asText(customerSalesRep?.fullName)
+                  || [customerSalesRep?.givenName, customerSalesRep?.surname].filter(Boolean).join(' '),
+              };
+            } catch (error) {
+              creditSalesRepresentative = { shortCode: customerSalesRepCode };
+              logger.warn(`Kunden-AD ${customerSalesRepCode} fuer Kreditlimit-Mail von Temp-Auftrag ${id} konnte nicht aufgeloest werden.`);
+            }
+          }
+          if (creditLimitContext.credit.amount === 0 && !hasBankDetails(creditLimitContext.customer)) {
             try {
               const primaryAd = await getUserIdentityByShortCode(
                 creditLimitContext.customer.mainSalesRepresentative,
@@ -2453,7 +2530,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       }
 
       let creditNotifications = { outboxIds: [] };
-      if (creditLimitContext?.credit?.amount === 0) {
+      if (creditLimitContext && config.creditLimitMail.enabled) {
         const openTempOrders = await loadOpenTempOrderRows(query, {
           tableSql: TEMP_ORDER_TABLE,
           positionTableSql: TEMP_ORDER_POSITION_TABLE,
@@ -2475,7 +2552,9 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           primaryAdEmail,
           mandantName: req.mandant,
           mandantShortName: req.database?.shortName || null,
-          salesRepresentative: orderSalesRepresentative,
+          salesRepresentative: creditSalesRepresentative,
+          sendCreditRequest: req.body?.sendCreditLimitRequest === true,
+          annotation: req.body?.creditLimitAnnotation,
           nowIso,
           creditTo: config.creditLimitMail.to,
           creditCc: [

@@ -94,13 +94,12 @@ const config = {
 
   creditLimitMail: {
     enabled: toBool(process.env.BMS_CREDIT_LIMIT_MAIL_ENABLED, true),
-    // A repeated request for the same customer is suppressed for this period.
+    // The separate bank-data reminder is suppressed for this period.
     // Six months is the default; the value is deliberately configurable because
     // the business rule may differ by rollout phase.
     cooldownMonths: Math.max(1, toInt(process.env.BMS_CREDIT_LIMIT_MAIL_COOLDOWN_MONTHS, 6)),
     retryIntervalSeconds: toInt(process.env.BMS_CREDIT_LIMIT_MAIL_RETRY_INTERVAL_SECONDS, 60),
     maxAttempts: toInt(process.env.BMS_CREDIT_LIMIT_MAIL_MAX_ATTEMPTS, 10),
-    subject: '@BMS-App Kreditlimit Anfrage',
     bankDetailsSubject: '@BMS-App Bankdaten beim Kunden nachpflegen',
     to: ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de'],
     cc: ['Meyer@mlplastics.de'],

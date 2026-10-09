@@ -73,6 +73,30 @@ function roundCreditLimit(value) {
   return Math.ceil(amount / step) * step;
 }
 
+function calculateCreditLimitRequest({ currentOrderAmount, openTempOrders = [], openOrders = [] }) {
+  const openTempOrdersAmount = (Array.isArray(openTempOrders) ? openTempOrders : [])
+    .reduce((sum, item) => sum + toAmount(item?.amount), 0);
+  const openOrdersAmount = (Array.isArray(openOrders) ? openOrders : [])
+    .reduce((sum, item) => sum + toAmount(item?.amount), 0);
+  const exposureAmount = toAmount(currentOrderAmount) + openTempOrdersAmount + openOrdersAmount;
+  return {
+    currentOrderAmount: toAmount(currentOrderAmount),
+    openTempOrdersAmount,
+    openOrdersAmount,
+    exposureAmount,
+    requestedLimit: roundCreditLimit(exposureAmount),
+  };
+}
+
+function isCreditLimitExceeded(credit, exposureAmount) {
+  if (!credit) return false;
+  const limit = credit.amount === null || credit.amount === undefined || normalizeText(credit.amount) === ''
+    ? null
+    : Number(credit.amount);
+  const totalExposure = toAmount(exposureAmount) + toAmount(credit.unpaidInvoicesAmount);
+  return Number.isFinite(limit) ? totalExposure > limit : totalExposure > 0;
+}
+
 function formatEuro(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '-';
@@ -82,15 +106,31 @@ function formatEuro(value) {
   })} EUR`;
 }
 
-function formatDate(value) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return normalizeText(value) || '-';
-  return new Intl.DateTimeFormat('de-DE', {
-    timeZone: 'Europe/Berlin',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
+function formatCountryName(value) {
+  const country = normalizeText(value);
+  if (!country) return '';
+  const normalized = country.toUpperCase();
+  const knownCodes = {
+    A: 'Österreich',
+    AT: 'Österreich',
+    CH: 'Schweiz',
+    D: 'Deutschland',
+    DE: 'Deutschland',
+    DEU: 'Deutschland',
+    FR: 'Frankreich',
+    GB: 'Vereinigtes Königreich',
+    NL: 'Niederlande',
+    US: 'Vereinigte Staaten',
+  };
+  if (knownCodes[normalized]) return knownCodes[normalized];
+  if (/^[A-Z]{2}$/.test(normalized) && typeof Intl.DisplayNames === 'function') {
+    try {
+      return new Intl.DisplayNames(['de'], { type: 'region' }).of(normalized) || country;
+    } catch {
+      return country;
+    }
+  }
+  return country;
 }
 
 function line(label, value) {
@@ -242,49 +282,35 @@ function isWithinCooldown(lastRequestedAt, now = new Date(), cooldownMonths = 6)
 function formatCreditLimitRequestBody({
   mandantName,
   mandantShortName,
-  companyId,
-  orderId,
   customer,
-  currentOrderAmount,
-  openTempOrders = [],
-  openOrders = [],
-  unpaidInvoicesAmount = 0,
   requestedLimit,
-  previousRequestedLimit = null,
-  requestedAt,
+  currentCreditLimit,
+  annotation = '',
   salesRepresentative = null,
 }) {
-  const tempTotal = openTempOrders.reduce((sum, item) => sum + toAmount(item.amount), 0);
-  const openErpTotal = openOrders.reduce((sum, item) => sum + toAmount(item.amount), 0);
-  const orderExposure = toAmount(currentOrderAmount) + tempTotal + openErpTotal;
+  const vatId = normalizeText(customer?.vatId) || 'Nicht vorhanden!';
+  const note = normalizeText(annotation).slice(0, 5000);
+  const addressLines = [
+    normalizeText(customer?.street),
+    [customer?.postalCode, customer?.city].map(normalizeText).filter(Boolean).join(' '),
+    formatCountryName(customer?.country),
+  ].filter(Boolean);
   const lines = [
-    'Bitte um Prüfung und Einrichtung eines Kreditlimits.',
+    `Bitte um Prüfung und Einrichtung eines Kreditlimits. ${formatEuro(requestedLimit)}`,
     '',
-    'KUNDE / FIRMENIDENTITÄT',
-    line('Firmierung', customer?.legalName),
     line('Kundennummer', customer?.customerId),
-    line('Straße', customer?.street),
-    line('PLZ / Ort', [customer?.postalCode, customer?.city].filter(Boolean).join(' ')),
-    line('Land', customer?.country),
-    line('USt-IdNr.', customer?.vatId),
+    normalizeText(customer?.legalName) || '-',
+    ...addressLines,
+    `USt-IdNr.: ${vatId}`,
     '',
-    'ANFRAGE',
     line('Mandant', [mandantName, mandantShortName ? `(${mandantShortName})` : ''].filter(Boolean).join(' ')),
-    line('Mandant-ID', [mandantName, companyId === null || companyId === undefined ? '' : `(${companyId})`].filter(Boolean).join(' ')),
     line('Außendienst', formatIdentityWithShortCode(salesRepresentative)),
-    line('Auslösender BMS-App-Auftrag', orderId),
-    line('Ausgelöst am', formatDate(requestedAt)),
-    line('Wert des auslösenden Auftrags', formatEuro(currentOrderAmount)),
-    line('Weitere offene BMS-App-Aufträge', formatEuro(tempTotal)),
-    line('Weitere offene ERP-Aufträge', formatEuro(openErpTotal)),
-    line('Offene Rechnungen (Information)', formatEuro(unpaidInvoicesAmount)),
-    line('Gesamter berücksichtigter Auftragswert', formatEuro(orderExposure)),
-    line('Bisher zuletzt beantragtes Limit', previousRequestedLimit === null ? '-' : formatEuro(previousRequestedLimit)),
-    line('Gewünschtes Kreditlimit', formatEuro(requestedLimit)),
     '',
-    'Das gewünschte Kreditlimit wurde auf einen sinnvollen 50-/500-/5.000-/50.000-EUR-Schritt aufgerundet.',
-    '',
-    'Bitte die Kreditlimitentscheidung in den Kundenstammdaten hinterlegen und die BMS-App-Anfrage entsprechend berücksichtigen.',
+    line('Kreditwunsch', formatEuro(requestedLimit)),
+    line('Bisheriges Kreditlimit', currentCreditLimit === null || currentCreditLimit === undefined
+      ? 'Nicht hinterlegt'
+      : formatEuro(currentCreditLimit)),
+    `Anmerkungen: ${note || '-'}`,
   ];
   return lines.join('\r\n');
 }
@@ -310,12 +336,14 @@ function formatBankDetailsReminderBody({ mandantName, customer, orderId, missing
 
 module.exports = {
   calculateAvailableCredit,
+  calculateCreditLimitRequest,
   calculateTempOrderValue,
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
   hasBankDetails,
   isInsolventFlag,
   isEmailAddress,
+  isCreditLimitExceeded,
   isWithinCooldown,
   loadCustomerCreditContext,
   mapCustomerIdentity,

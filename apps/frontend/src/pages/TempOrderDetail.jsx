@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -102,6 +103,10 @@ export default function TempOrderDetail() {
   const [error, setError] = React.useState('');
   const [finalizeOpen, setFinalizeOpen] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
+  const [checkingCreditLimit, setCheckingCreditLimit] = React.useState(false);
+  const [creditLimitPreview, setCreditLimitPreview] = React.useState(null);
+  const [creditLimitAnnotation, setCreditLimitAnnotation] = React.useState('');
+  const [creditLimitCheckError, setCreditLimitCheckError] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
   const [orderPdfLoading, setOrderPdfLoading] = React.useState(false);
   const [orderPdfError, setOrderPdfError] = React.useState('');
@@ -260,11 +265,33 @@ export default function TempOrderDetail() {
     }
   };
 
-  const finalizeOrder = async () => {
+  const openFinalizeDialog = async () => {
+    setCheckingCreditLimit(true);
+    setCreditLimitPreview(null);
+    setCreditLimitAnnotation('');
+    setCreditLimitCheckError('');
+    try {
+      const preview = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/credit-limit-preview`);
+      setCreditLimitPreview(preview?.data?.shouldPrompt ? preview.data : null);
+    } catch (e) {
+      setCreditLimitCheckError(e?.message || t('credit_limit_check_failed'));
+    } finally {
+      setCheckingCreditLimit(false);
+      setFinalizeOpen(true);
+    }
+  };
+
+  const finalizeOrder = async (sendCreditLimitRequest = false) => {
     try {
       setFinalizing(true);
       setError('');
-      const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/finalize`, { method: 'POST' });
+      const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/finalize`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sendCreditLimitRequest: Boolean(sendCreditLimitRequest && creditLimitPreview?.shouldPrompt),
+          creditLimitAnnotation: sendCreditLimitRequest ? creditLimitAnnotation.trim() : '',
+        }),
+      });
       setItem(res?.data || null);
       setFinalizeOpen(false);
     } catch (e) {
@@ -502,10 +529,10 @@ export default function TempOrderDetail() {
                 <Button
                   variant="contained"
                   sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
-                  onClick={() => setFinalizeOpen(true)}
-                  disabled={!customerRequirementsComplete}
+                  onClick={openFinalizeDialog}
+                  disabled={!customerRequirementsComplete || checkingCreditLimit || finalizing}
                 >
-                  {t('temp_order_send_to_bms')}
+                  {checkingCreditLimit ? t('credit_limit_checking') : t('temp_order_send_to_bms')}
                 </Button>
               )}
               {orderIsEditable && (
@@ -564,15 +591,52 @@ export default function TempOrderDetail() {
       )}
 
       <Dialog open={finalizeOpen} onClose={() => (!finalizing ? setFinalizeOpen(false) : undefined)} fullWidth maxWidth="sm">
-        <DialogTitle>{t('temp_order_send_bms')}</DialogTitle>
+        <DialogTitle>{creditLimitPreview ? t('credit_limit_prompt_title') : t('temp_order_send_bms')}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">{t('temp_order_send_bms_confirm')}</Typography>
+          {creditLimitCheckError && <Alert severity="warning" sx={{ mb: 1.5 }}>{t('credit_limit_check_failed')}: {creditLimitCheckError}</Alert>}
+          {creditLimitPreview ? (
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              <Alert severity="warning">
+                {t('credit_limit_exceeded_prompt', {
+                  amount: formatPrice(creditLimitPreview.requestedLimit),
+                  limit: creditLimitPreview.currentCreditLimit == null
+                    ? t('credit_limit_missing_value')
+                    : formatPrice(creditLimitPreview.currentCreditLimit),
+                })}
+              </Alert>
+              <Typography variant="body2">{t('credit_limit_prompt_order_still_sends')}</Typography>
+              <TextField
+                label={t('credit_limit_annotation')}
+                value={creditLimitAnnotation}
+                onChange={(event) => setCreditLimitAnnotation(event.target.value)}
+                multiline
+                minRows={3}
+                maxRows={8}
+                fullWidth
+                helperText={t('credit_limit_annotation_dictation_hint')}
+                inputProps={{ maxLength: 5000, enterKeyHint: 'enter' }}
+              />
+            </Box>
+          ) : (
+            <Typography variant="body2">{t('temp_order_send_bms_confirm')}</Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setFinalizeOpen(false)} disabled={finalizing}>{t('back_label')}</Button>
-          <Button variant="contained" onClick={finalizeOrder} disabled={finalizing}>
-            {finalizing ? t('temp_order_sending_bms') : t('temp_order_send_bms')}
-          </Button>
+          {creditLimitPreview ? (
+            <>
+              <Button onClick={() => finalizeOrder(false)} disabled={finalizing}>
+                {finalizing ? t('temp_order_sending_bms') : t('credit_limit_no_send')}
+              </Button>
+              <Button variant="contained" onClick={() => finalizeOrder(true)} disabled={finalizing}>
+                {finalizing ? t('temp_order_sending_bms') : t('credit_limit_yes_send')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="contained" onClick={() => finalizeOrder(false)} disabled={finalizing}>
+              {finalizing ? t('temp_order_sending_bms') : t('temp_order_send_bms')}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

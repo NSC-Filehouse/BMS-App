@@ -509,6 +509,7 @@ export default function CustomerDetail() {
   const [activitiesError, setActivitiesError] = React.useState('');
   const [purchasedArticlesQuery, setPurchasedArticlesQuery] = React.useState('');
   const [mapChoiceOpen, setMapChoiceOpen] = React.useState(false);
+  const [creditInsurerOpen, setCreditInsurerOpen] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [contactRankingSavingId, setContactRankingSavingId] = React.useState(null);
@@ -634,15 +635,19 @@ export default function CustomerDetail() {
   const isInsolvent = Number(item?.kd_Insolvenz) === 1;
   const hasLawyer = Number(item?.kd_Anwalt) === 1;
   const creditLimit = item?.creditLimit || null;
+  const isPrepaymentCustomer = Boolean(item?.isPrepaymentCustomer);
+  const creditInsurerText = item?.kd_Kredit_Versicherer == null
+    ? ''
+    : String(item.kd_Kredit_Versicherer).trim();
   const creditLimitText = creditLimit?.status === 'expired'
     ? t('credit_limit_expired')
     : creditLimit?.status === 'active'
       ? `${t('credit_limit_label')}: ${formatEuro(creditLimit.amount)}`
       : t('credit_limit_missing');
   const availableCreditAmount = Number(creditLimit?.availableAmount);
-  const hasAvailableCredit = creditLimit?.status === 'active' && Number.isFinite(availableCreditAmount);
+  const hasAvailableCredit = !isPrepaymentCustomer && creditLimit?.status === 'active' && Number.isFinite(availableCreditAmount);
   const openOrdersAmount = Number(creditLimit?.openOrdersAmount);
-  const hasOpenOrdersAmount = Boolean(creditLimit) && Number.isFinite(openOrdersAmount);
+  const hasOpenOrdersAmount = !isPrepaymentCustomer && Boolean(creditLimit) && Number.isFinite(openOrdersAmount);
   const availableCreditColor = availableCreditAmount > 0
     ? 'success.main'
     : availableCreditAmount < 0
@@ -1272,15 +1277,25 @@ export default function CustomerDetail() {
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                   <AccountBalanceWalletIcon fontSize="small" />
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      minWidth: 0,
-                      fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
-                    }}
-                  >
-                    {creditLimitText}
-                  </Typography>
+                  {isPrepaymentCustomer && creditInsurerText ? (
+                    <Button
+                      variant="text"
+                      onClick={() => setCreditInsurerOpen(true)}
+                      sx={{ p: 0, minWidth: 0, justifyContent: 'flex-start', textTransform: 'none', fontWeight: 600 }}
+                    >
+                      {t('prepayment_customer')}
+                    </Button>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        minWidth: 0,
+                        fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
+                      }}
+                    >
+                      {isPrepaymentCustomer ? t('prepayment_customer') : creditLimitText}
+                    </Typography>
+                  )}
                 </Box>
                 {hasAvailableCredit && (
                   <Typography
@@ -2008,6 +2023,17 @@ export default function CustomerDetail() {
           <Button variant="contained" onClick={() => chooseMapProvider(MAP_PROVIDER_APPLE)}>
             {t('navigation_apple_maps')}
           </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={creditInsurerOpen} onClose={() => setCreditInsurerOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('prepayment_customer')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            {creditInsurerText}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreditInsurerOpen(false)}>{t('close_label')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

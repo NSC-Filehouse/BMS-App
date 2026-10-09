@@ -6,11 +6,12 @@ const { appTableSql } = require('./app-tables');
 const {
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
+  calculateCreditLimitRequest,
   hasBankDetails,
+  isCreditLimitExceeded,
   isInsolventFlag,
   isEmailAddress,
   isWithinCooldown,
-  roundCreditLimit,
   uniqueCaseInsensitive,
 } = require('../credit-limit');
 const {
@@ -21,7 +22,8 @@ const {
 
 const STATE_TABLE = appTableSql('creditLimitRequestState');
 const OUTBOX_TABLE = appTableSql('creditLimitMailOutbox');
-const CREDIT_LIMIT_TYPE = 'credit_limit_request';
+// Legacy automatic rows use "credit_limit_request" and are excluded below.
+const CREDIT_LIMIT_TYPE = 'credit_limit_request_user_confirmed';
 const BANK_DETAILS_TYPE = 'bank_details_reminder';
 let workerTimer = null;
 let workerRunning = false;
@@ -197,6 +199,8 @@ async function queueCreditLimitMails({
   mandantName,
   mandantShortName,
   salesRepresentative,
+  sendCreditRequest = false,
+  annotation = '',
   nowIso,
   creditTo,
   creditCc,
@@ -207,7 +211,7 @@ async function queueCreditLimitMails({
     creditRequest: { status: 'not_applicable' },
     bankReminder: { status: 'not_applicable' },
   };
-  if (!config.creditLimitMail.enabled || !creditContext?.credit || creditContext.credit.amount !== 0) {
+  if (!config.creditLimitMail.enabled || !creditContext?.credit) {
     return result;
   }
 
@@ -219,11 +223,22 @@ async function queueCreditLimitMails({
     };
   }
 
+  const bankReminderApplicable = creditContext.credit.amount === 0;
   const state = await loadStateForUpdate(query, companyId, customerId);
   const now = new Date(nowIso);
   const cooldownMonths = config.creditLimitMail.cooldownMonths;
-  const creditRequestDue = !isWithinCooldown(state?.lastRequestedAt, now, cooldownMonths);
-  const bankReminderDue = !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
+  const bankReminderDue = bankReminderApplicable
+    && !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
+  const creditRequestValues = calculateCreditLimitRequest({
+    currentOrderAmount,
+    openTempOrders,
+    openOrders: creditContext.openOrders,
+  });
+  const creditRequestDue = Boolean(sendCreditRequest)
+    && isCreditLimitExceeded(creditContext.credit, creditRequestValues.exposureAmount);
+  if (sendCreditRequest && !creditRequestDue) {
+    result.creditRequest = { status: 'not_required' };
+  }
   const configuredTestRecipient = asText(testRecipient);
   const effectiveCreditTo = configuredTestRecipient && isEmailAddress(configuredTestRecipient)
     ? [configuredTestRecipient]
@@ -238,38 +253,21 @@ async function queueCreditLimitMails({
     ? []
     : uniqueCaseInsensitive(configuredCreditCc.filter((address) => !effectiveCreditTo.some((to) => to.toLowerCase() === String(address).trim().toLowerCase())));
 
-  if (!creditRequestDue) {
-    result.creditRequest = {
-      status: 'suppressed_cooldown',
-      lastRequestedAt: state?.lastRequestedAt || null,
-      lastRequestedLimit: state?.lastRequestedLimit ?? null,
-    };
-  }
-
   let stateId = state?.id || 0;
   if ((creditRequestDue || (!hasBankDetails(creditContext.customer) && bankReminderDue && isEmailAddress(primaryAdEmail))) && !stateId) {
     stateId = await ensureState(query, companyId, customerId);
   }
 
   if (creditRequestDue) {
-    const tempTotal = (openTempOrders || []).reduce((sum, item) => sum + toAmount(item.amount), 0);
-    const erpTotal = (creditContext.openOrders || []).reduce((sum, item) => sum + toAmount(item.amount), 0);
-    const exposureAmount = toAmount(currentOrderAmount) + tempTotal + erpTotal;
-    const requestedLimit = roundCreditLimit(exposureAmount);
+    const { exposureAmount, requestedLimit } = creditRequestValues;
     const clientMessageId = `bms-app:credit-limit:${stablePart(companyId)}:${stablePart(customerId)}:${stablePart(orderId)}`;
     const body = formatCreditLimitRequestBody({
       mandantName,
       mandantShortName,
-      companyId,
-      orderId,
       customer: creditContext.customer,
-      currentOrderAmount,
-      openTempOrders,
-      openOrders: creditContext.openOrders,
-      unpaidInvoicesAmount: creditContext.credit.unpaidInvoicesAmount,
       requestedLimit,
-      previousRequestedLimit: state?.lastRequestedLimit ?? null,
-      requestedAt: nowIso,
+      currentCreditLimit: creditContext.credit.amount,
+      annotation,
       salesRepresentative,
     });
     const outboxId = await insertOutbox(query, {
@@ -280,7 +278,7 @@ async function queueCreditLimitMails({
       toRecipients: effectiveCreditTo,
       ccRecipients: effectiveCreditCc,
       bccRecipients: [],
-      subject: config.creditLimitMail.subject,
+      subject: `Kreditanfrage ${creditContext.customer.legalName || customerId}`,
       body,
       clientMessageId,
       nowIso,
@@ -306,7 +304,7 @@ async function queueCreditLimitMails({
     };
   }
 
-  if (!hasBankDetails(creditContext.customer)) {
+  if (bankReminderApplicable && !hasBankDetails(creditContext.customer)) {
     if (!isEmailAddress(primaryAdEmail)) {
       result.bankReminder = { status: 'skipped_missing_primary_ad_email' };
     } else if (!bankReminderDue) {
@@ -376,6 +374,7 @@ async function claimSpecificOutboxItem(outboxId) {
       INSERTED.[clm_Status] AS status,
       INSERTED.[clm_AttemptCount] AS attemptCount
     WHERE [clm_ID] = ?
+      AND [clm_Type] IN (N'${CREDIT_LIMIT_TYPE}', N'${BANK_DETAILS_TYPE}')
       AND [clm_AttemptCount] < ?
       AND (
         [clm_Status] IN (N'pending', N'failed')
@@ -391,6 +390,7 @@ async function findNextOutboxId() {
     SELECT TOP 1 [clm_ID] AS id
     FROM ${OUTBOX_TABLE} WITH (READPAST)
     WHERE [clm_AttemptCount] < ?
+      AND [clm_Type] IN (N'${CREDIT_LIMIT_TYPE}', N'${BANK_DETAILS_TYPE}')
       AND (
         [clm_Status] IN (N'pending', N'failed')
         OR ([clm_Status] = N'sending' AND [clm_LockedAt] < DATEADD(MINUTE, -10, SYSUTCDATETIME()))
