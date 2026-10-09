@@ -26,6 +26,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 import UndoIcon from '@mui/icons-material/Undo';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -190,6 +191,7 @@ export default function CustomersList({ supplierOnly = false }) {
   const [appCreatedOnly, setAppCreatedOnly] = React.useState(false);
   const [ownShortCode, setOwnShortCode] = React.useState('');
   const [canCreateCustomer, setCanCreateCustomer] = React.useState(false);
+  const [createCustomerDialogOpen, setCreateCustomerDialogOpen] = React.useState(false);
   const [canViewAppCreated, setCanViewAppCreated] = React.useState(false);
   const [canPreviewRollback, setCanPreviewRollback] = React.useState(false);
   const [canRollback, setCanRollback] = React.useState(false);
@@ -539,6 +541,14 @@ export default function CustomersList({ supplierOnly = false }) {
   const canSubmitRollback = Boolean(rollbackDialog?.rollbackId && canRollback
     && (rollbackDialog.resumable || previewExecutable)
     && (rollbackDialog.resumable || (reasonLength >= 10 && reasonLength <= 500)));
+  const openCustomerCreate = () => {
+    setCreateCustomerDialogOpen(false);
+    navigate('/customers/new', { state: {
+      returnTo: createReturnTo(location, { ...location.state,
+        listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly },
+      }),
+    } });
+  };
 
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
@@ -573,11 +583,7 @@ export default function CustomersList({ supplierOnly = false }) {
         {!supplierOnly && canCreateCustomer && (
           <Tooltip title={t('customer_create_title')}>
             <IconButton color="primary" aria-label={t('customer_create_title')}
-              onClick={() => navigate('/customers/new', { state: {
-                returnTo: createReturnTo(location, { ...location.state,
-                  listState: { page: meta.page || 1, q, searchField, reminderOnly, orderQuantity, hideInactive, appCreatedOnly },
-                }),
-              } })}>
+              onClick={() => setCreateCustomerDialogOpen(true)}>
               <AddIcon />
             </IconButton>
           </Tooltip>
@@ -863,6 +869,42 @@ export default function CustomersList({ supplierOnly = false }) {
         </Box>
       )}
       </Box>
+      <Dialog
+        open={createCustomerDialogOpen}
+        onClose={() => setCreateCustomerDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          {t('customer_create_dialog_title')}
+          <IconButton
+            aria-label={t('customer_create_dialog_close')}
+            onClick={() => setCreateCustomerDialogOpen(false)}
+            edge="end"
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
+            <Button variant="contained" fullWidth onClick={openCustomerCreate}>
+              {t('customer_create_dialog_app')}
+            </Button>
+            <Button
+              component="a"
+              href="https://bcs.app.mlholding.org/scan"
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="outlined"
+              fullWidth
+              onClick={() => setCreateCustomerDialogOpen(false)}
+            >
+              {t('customer_create_dialog_scan_card')}
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={Boolean(rollbackDialog)}
         onClose={() => { if (!rollbackBusy) setRollbackDialog(null); }}
