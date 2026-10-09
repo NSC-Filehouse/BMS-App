@@ -23,10 +23,10 @@ function apiReady() {
 }
 async function normalized(req) {
   allowed(req);
-  const [countries, salutations] = await Promise.all([
-    loadCustomerApiList('laender'), loadCustomerApiList('anreden'),
+  const [countries, salutations, employees] = await Promise.all([
+    loadCustomerApiList('laender'), loadCustomerApiList('anreden'), loadCustomerApiList('mitarbeiter'),
   ]);
-  return normalizeCreationRequest(req.body, req.userIdentity, req.database, settings(), countries.eintraege, salutations.eintraege, req.header('Idempotency-Key'));
+  return normalizeCreationRequest(req.body, req.userIdentity, req.database, settings(), countries.eintraege, salutations.eintraege, req.header('Idempotency-Key'), employees.eintraege);
 }
 function throwApiProblem(response) {
   throw createHttpError(response.status >= 500 ? 502 : response.status === 401 || response.status === 403 ? 502 : response.status,

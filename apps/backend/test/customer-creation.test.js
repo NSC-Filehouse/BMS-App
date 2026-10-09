@@ -12,13 +12,17 @@ const id = '44d1d586-c395-46b9-8b0b-8b3da41e6d64';
 const identity = { active: true, userId: 'test-user', shortCode: 'TST', mainCompanyId: 3 };
 const database = { firmaId: 3, shortName: 'FRU' };
 const settings = { enabled: true, writeEnabled: true, stammMandant: 'PLA', baseAddress: 'https://example.com/api/v1/kunden', apiKey: 'test-secret', timeoutMs: 30000 };
-const countries = [{ schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false }];
+const countries = [
+  { schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false },
+  { schluessel: 'BG', euLand: true }, { schluessel: 'PL', euLand: true },
+];
+const employees = [{ schluessel: 'TST' }, { schluessel: 'XYZ' }];
 const salutations = [
   { schluessel: 'H', bezeichnung: 'Herr' }, { schluessel: 'F', bezeichnung: 'Frau' },
   { schluessel: 'FI', bezeichnung: 'Firma' }, { schluessel: 'D', bezeichnung: 'Divers' },
 ];
 const body = () => ({ stammdaten: { name1: 'Müller GmbH', anrede: 'FI', anschrift: { strasse: 'Straße 1', plz: '12345', ort: 'München', land: 'DE' }, steuer: { ustIdNr: 'DE123456789' } }, rechnungsanschrift: { email: 'invoice@example.com' } });
-const normalize = (input = body()) => normalizeCreationRequest(input, identity, database, settings, countries, salutations, id);
+const normalize = (input = body()) => normalizeCreationRequest(input, identity, database, settings, countries, salutations, id, employees);
 
 test('creation is restricted to the active personal main tenant, without full-access exceptions', () => {
   assert.equal(canCreateCustomer(identity, database, settings), true);
@@ -43,15 +47,42 @@ test('rollback requires an explicit executable flag in the ERP preview', () => {
   assert.equal(isCustomerRollbackPreviewExecutable({ status: 'ausfuehrbar' }), false);
   assert.equal(isCustomerRollbackPreviewExecutable(null), false);
 });
-test('creator, sales representative and copy destination cannot be supplied by the browser', () => {
-  const input = { ...body(), quelle: { angelegtVon: 'OTHER' }, kopierenNach: ['POL'], vertrieb: { aussendienst: 'OTHER' }, kennzeichen: { interCompany: true, distribution: false } };
+test('creator, copy destination and removed optional fields cannot be supplied by the browser', () => {
+  const input = {
+    ...body(), quelle: { angelegtVon: 'OTHER' }, kopierenNach: ['POL'], vertrieb: { aussendienst: 'TST' },
+    kennzeichen: { keinSerienbrief: true, interCompany: true, distribution: false },
+    branchen: [3], kategorien: ['Lieferant'], wunschnummer: '99999', notiz: 'hidden field',
+  };
   const result = normalize(input).payload;
   assert.equal(result.quelle.angelegtVon, 'TST');
   assert.equal(result.vertrieb.aussendienst, 'TST');
   assert.equal(result.vertrieb.innendienst, 'TST');
   assert.deepEqual(result.kopierenNach, ['FRU']);
   assert.deepEqual(result.kennzeichen, { keinSerienbrief: null });
+  assert.deepEqual(result.branchen, []);
+  assert.deepEqual(result.kategorien, []);
+  assert.equal(result.wunschnummer, null);
+  assert.equal(result.notiz, null);
   assert.equal(result.stammdaten.name1, 'Müller GmbH');
+});
+test('selected outside representative must come from the ERP employee list', () => {
+  const input = { ...body(), vertrieb: { aussendienst: 'XYZ' } };
+  assert.equal(normalize(input).payload.vertrieb.aussendienst, 'XYZ');
+  input.vertrieb.aussendienst = 'OTHER';
+  assert.throws(() => normalize(input), (error) => error.details.fehler.some((entry) => entry.feld === 'vertrieb.aussendienst'));
+});
+test('Euro flag is derived from the country currency and ignores the browser value', () => {
+  const input = { ...body(), zahlung: { euro: false, bankeinzug: false } };
+  assert.equal(normalize(input).payload.zahlung.euro, true);
+  input.stammdaten.anschrift.land = 'US';
+  input.zahlung.euro = true;
+  assert.equal(normalize(input).payload.zahlung.euro, false);
+  input.stammdaten.anschrift.land = 'BG';
+  assert.equal(normalize(input).payload.zahlung.euro, true);
+  input.stammdaten.anschrift.land = 'PL';
+  assert.equal(normalize(input).payload.zahlung.euro, false);
+  delete input.zahlung;
+  assert.equal(normalize(input).payload.zahlung.euro, false);
 });
 test('an explicitly selected inside representative is retained', () => {
   assert.equal(normalize({ ...body(), vertrieb: { innendienst: 'XYZ' } }).payload.vertrieb.innendienst, 'XYZ');
@@ -94,11 +125,11 @@ test('unknown countries and missing invoice email remain blocking', () => {
   assert.throws(() => normalize(input), (error) => error.details.fehler.length === 2);
 });
 test('a central-main-tenant creation does not copy to itself', () => {
-  const result = normalizeCreationRequest(body(), { ...identity, mainCompanyId: 2 }, { firmaId: 2, shortName: 'PLA' }, settings, countries, salutations, id);
+  const result = normalizeCreationRequest(body(), { ...identity, mainCompanyId: 2 }, { firmaId: 2, shortName: 'PLA' }, settings, countries, salutations, id, employees);
   assert.deepEqual(result.payload.kopierenNach, []);
 });
 test('operation UUID and classification are covered by request identity', () => {
-  assert.throws(() => normalizeCreationRequest(body(), identity, database, settings, countries, salutations, 'not-uuid'));
+  assert.throws(() => normalizeCreationRequest(body(), identity, database, settings, countries, salutations, 'not-uuid', employees));
   assert.notEqual(normalize().hash, normalize({ ...body(), stammdaten: { ...body().stammdaten, anrede: 'H' } }).hash);
 });
 test('API client sends exact idempotency header and rejects redirects', async () => {

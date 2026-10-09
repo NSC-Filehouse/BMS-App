@@ -15,6 +15,13 @@ const CUSTOMER_ROLLBACK_DEVELOPERS = [
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
+// EUR countries, including the non-EU European states and French territories
+// that use the euro. Bulgaria joined the euro area on 2026-01-01.
+const EURO_CURRENCY_COUNTRY_CODES = new Set([
+  'AD', 'AT', 'AX', 'BE', 'BG', 'BL', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GF', 'GP',
+  'GR', 'HR', 'IE', 'IT', 'LT', 'LU', 'LV', 'MC', 'ME', 'MF', 'MQ', 'MT', 'NL',
+  'PM', 'PT', 'RE', 'SI', 'SK', 'SM', 'TF', 'VA', 'XK', 'YT',
+]);
 const text = (value) => value === null || value === undefined ? null : String(value).trim() || null;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function canCreateCustomer(identity, database, settings) {
@@ -65,6 +72,9 @@ function address(source, extra = []) {
   return pick(source, [...extra, 'strasse', 'plz', 'ort', 'land', 'region']);
 }
 function nullableBoolean(value) { return typeof value === 'boolean' ? value : null; }
+function countryUsesEuroCurrency(countryCode) {
+  return EURO_CURRENCY_COUNTRY_CODES.has(String(countryCode || '').trim().toUpperCase());
+}
 function customerTypeForSalutation(value, salutations = []) {
   const selected = salutations.find((entry) => String(entry.schluessel) === String(value));
   const label = String(selected?.bezeichnung || '').trim().toLocaleLowerCase('de-DE');
@@ -72,11 +82,12 @@ function customerTypeForSalutation(value, salutations = []) {
   if (label === 'firma') return 'company';
   return null;
 }
-function normalizeCreationRequest(input, identity, database, settings, countries, salutations, operationId) {
+function normalizeCreationRequest(input, identity, database, settings, countries, salutations, operationId, employees = []) {
   assertCanCreateCustomer(identity, database, settings);
   if (!UUID.test(String(operationId || ''))) throw createHttpError(400, 'Ungültiger Vorgangsschlüssel.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });
   const countryValue = String(input?.stammdaten?.anschrift?.land || '').trim().toUpperCase();
   const country = countries.find((entry) => entry.schluessel === countryValue);
+  const paymentInput = input?.zahlung || {};
   const base = input?.stammdaten || {};
   const anrede = text(base.anrede);
   const customerType = customerTypeForSalutation(anrede, salutations);
@@ -93,9 +104,15 @@ function normalizeCreationRequest(input, identity, database, settings, countries
       ? base.steuer.weitereUstIdNrn.map((entry) => pick(entry, ['land', 'ustIdNr'])) : null,
   };
   const ownCode = text(identity.shortCode);
+  const employeeCodes = new Map((employees || []).map((entry) => {
+    const code = text(entry?.schluessel);
+    return code ? [code.toUpperCase(), code] : null;
+  }).filter(Boolean));
+  const requestedOutsideCode = text(input?.vertrieb?.aussendienst) || ownCode;
+  const selectedOutsideCode = employeeCodes.get(String(requestedOutsideCode || '').toUpperCase()) || requestedOutsideCode;
   const payload = {
     quelle: { angelegtVon: ownCode, externeReferenz: `BMSAPP-${operationId}` },
-    wunschnummer: text(input?.wunschnummer),
+    wunschnummer: null,
     kopierenNach: database.shortName === settings.stammMandant ? [] : [database.shortName],
     bestaetigteNichtDubletten: Array.isArray(input?.bestaetigteNichtDubletten)
       ? input.bestaetigteNichtDubletten.map((entry) => pick(entry, ['kundennummer', 'begruendung'])) : null,
@@ -106,13 +123,18 @@ function normalizeCreationRequest(input, identity, database, settings, countries
       kontakt: pick(base.kontakt, ['telefon', 'fax', 'email', 'homepage']), steuer,
     },
     rechnungsanschrift: input?.rechnungsanschrift ? pick(input.rechnungsanschrift, ['anrede', 'name1', 'name2', 'abteilung', 'strasse', 'plz', 'ort', 'land', 'email', 'emailMahnung']) : null,
-    vertrieb: { aussendienst: ownCode, innendienst: text(input?.vertrieb?.innendienst) || ownCode, verkaufsbuero: text(input?.vertrieb?.verkaufsbuero) },
-    zahlung: input?.zahlung ? { zahlungsbedingungId: input.zahlung.zahlungsbedingungId === null || input.zahlung.zahlungsbedingungId === '' ? null : Number(input.zahlung.zahlungsbedingungId), euro: nullableBoolean(input.zahlung.euro), bankeinzug: nullableBoolean(input.zahlung.bankeinzug) } : null,
+    vertrieb: { aussendienst: selectedOutsideCode, innendienst: text(input?.vertrieb?.innendienst) || ownCode, verkaufsbuero: text(input?.vertrieb?.verkaufsbuero) },
+    zahlung: {
+      zahlungsbedingungId: paymentInput.zahlungsbedingungId === null || paymentInput.zahlungsbedingungId === '' || paymentInput.zahlungsbedingungId === undefined
+        ? null : Number(paymentInput.zahlungsbedingungId),
+      euro: countryUsesEuroCurrency(countryValue),
+      bankeinzug: nullableBoolean(paymentInput.bankeinzug),
+    },
     bank: input?.bank ? pick(input.bank, ['iban', 'bic', 'bank', 'kontoinhaber', 'info']) : null,
-    kennzeichen: { keinSerienbrief: nullableBoolean(input?.kennzeichen?.keinSerienbrief) },
-    branchen: Array.isArray(input?.branchen) ? input.branchen.map(Number) : [],
-    kategorien: Array.isArray(input?.kategorien) ? input.kategorien.map(text) : [],
-    notiz: text(input?.notiz),
+    kennzeichen: { keinSerienbrief: null },
+    branchen: [],
+    kategorien: [],
+    notiz: null,
     ansprechpartner: Array.isArray(input?.ansprechpartner) ? input.ansprechpartner.map((entry) => ({
       ...pick(entry, ['anrede', 'titel', 'vorname', 'name', 'abteilung', 'position', 'telefon', 'fax', 'mobil', 'email', 'sprache', 'notiz', 'geburtstag']),
       ranking: entry.ranking === null || entry.ranking === '' || entry.ranking === undefined ? null : Number(entry.ranking),
@@ -122,6 +144,9 @@ function normalizeCreationRequest(input, identity, database, settings, countries
   };
   const fehler = [];
   const requireField = (value, field) => { if (!text(value)) fehler.push({ code: 'FELD.FEHLT', feld: field, nachricht: 'Pflichtfeld fehlt.', abhilfe: 'Bitte dieses Feld ausfüllen.' }); };
+  if (!employeeCodes.has(String(selectedOutsideCode || '').toUpperCase())) {
+    fehler.push({ code: 'SCHLUESSEL.UNBEKANNT', feld: 'vertrieb.aussendienst', nachricht: 'Der ausgewählte Außendienst ist nicht in der ERP-Mitarbeiterliste enthalten.', abhilfe: 'Bitte einen Mitarbeiter aus der Liste wählen.' });
+  }
   requireField(payload.stammdaten.name1, 'stammdaten.name1');
   if (!legacyRequest) {
     if (!anrede) requireField(payload.stammdaten.anrede, 'stammdaten.anrede');
@@ -152,5 +177,6 @@ module.exports = {
   assertCustomerRollbackDeveloper,
   isCustomerRollbackPreviewExecutable,
   normalizeCreationRequest,
+  countryUsesEuroCurrency,
   isUncertainResponse,
 };

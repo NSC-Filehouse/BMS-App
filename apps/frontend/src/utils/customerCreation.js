@@ -1,19 +1,19 @@
 export const CREATION_LABELS = {
-  name1: ['Name / Firma', 'Name / company'], name2: ['Namenszusatz', 'Additional name'], matchcode: ['Matchcode', 'Match code'],
-  anrede: ['Anrede', 'Salutation'], sprache: ['Sprache', 'Language'], strasse: ['Straße und Hausnummer', 'Street and number'],
+  name1: ['Name1', 'Name1'], name2: ['Name2', 'Name2'], matchcode: ['MatchCode', 'MatchCode'],
+  anrede: ['Anrede', 'Salutation'], sprache: ['Sprache', 'Language'], strasse: ['Straße', 'Street'],
   plz: ['PLZ', 'Postal code'], ort: ['Ort', 'City'], land: ['Land', 'Country'], region: ['Region', 'Region'],
-  telefon: ['Telefon', 'Phone'], fax: ['Fax', 'Fax'], email: ['E-Mail', 'Email'], homepage: ['Homepage', 'Website'],
+  telefon: ['Telefon', 'Phone'], fax: ['Fax', 'Fax'], email: ['eMail', 'Email'], homepage: ['HomePage', 'Website'],
   ustIdNr: ['USt-ID', 'VAT ID'], emailMahnung: ['Mahnungs-E-Mail', 'Reminder email'], abteilung: ['Abteilung', 'Department'],
   aussendienst: ['Außendienst', 'Sales representative'], innendienst: ['Innendienst', 'Inside sales'], verkaufsbuero: ['Verkaufsbüro', 'Sales office'],
-  zahlungsbedingungId: ['Zahlungsbedingung', 'Payment terms'], euro: ['Euro', 'Euro'], bankeinzug: ['Bankeinzug', 'Direct debit'],
+  zahlungsbedingungId: ['Zahlungsbedingung', 'Payment terms'], bankeinzug: ['Bankeinzug', 'Direct debit'],
   iban: ['IBAN', 'IBAN'], bic: ['BIC', 'BIC'], bank: ['Bankname', 'Bank name'], kontoinhaber: ['Kontoinhaber', 'Account holder'],
   info: ['Bankinformation', 'Bank information'], notiz: ['Notiz', 'Note'], keinSerienbrief: ['Kein Serienbrief', 'No mail merge'],
-  branchen: ['Branchen', 'Industries'], kategorien: ['Kategorien', 'Categories'], postfach: ['Postfachnummer', 'PO box number'],
+  branchen: ['Branchen', 'Industries'], kategorien: ['Kategorie', 'Category'], postfach: ['Postfach', 'PO box'],
   standardanschrift: ['Postfach ist Standardanschrift', 'Use PO box as default address'], titel: ['Titel', 'Title'],
   vorname: ['Vorname', 'First name'], name: ['Nachname', 'Last name'], position: ['Position', 'Position'], mobil: ['Mobiltelefon', 'Mobile phone'],
   ranking: ['Ranking', 'Rank'], geburtstag: ['Geburtstag', 'Birthday'], wunschnummer: ['Wunschnummer (optional)', 'Requested number (optional)'],
 };
-export const CREATION_LISTS = { land: 'laender', anrede: 'anreden', sprache: 'sprachen', innendienst: 'mitarbeiter', verkaufsbuero: 'verkaufsbueros', zahlungsbedingungId: 'zahlungsbedingungen', branchen: 'branchen', kategorien: 'kategorien' };
+export const CREATION_LISTS = { land: 'laender', anrede: 'anreden', sprache: 'sprachen', aussendienst: 'mitarbeiter', innendienst: 'mitarbeiter', verkaufsbuero: 'verkaufsbueros', zahlungsbedingungId: 'zahlungsbedingungen', branchen: 'branchen', kategorien: 'kategorien' };
 const CUSTOMER_SALUTATIONS = new Map([['herr', 'private'], ['frau', 'private'], ['firma', 'company']]);
 export function getCustomerSalutationType(anrede, entries = []) {
   const selected = entries.find((entry) => String(entry.schluessel) === String(anrede));
@@ -37,9 +37,9 @@ export function createCustomerDraft(context) {
     },
     rechnungsanschrift: { anrede: '', name1: '', name2: '', abteilung: '', ...createEmptyAddress(), email: '', emailMahnung: '' },
     vertrieb: { aussendienst: context.ownShortCode, innendienst: context.ownShortCode, verkaufsbuero: '' },
-    zahlung: { zahlungsbedingungId: paymentDefault?.schluessel || '', euro: true, bankeinzug: false },
+    zahlung: { zahlungsbedingungId: paymentDefault?.schluessel || '', bankeinzug: false },
     bank: { iban: '', bic: '', bank: '', kontoinhaber: '', info: '' },
-    kennzeichen: { keinSerienbrief: false }, branchen: [], kategorien: [], notiz: '', wunschnummer: '', ansprechpartner: [], lieferanschriften: [],
+    ansprechpartner: [], lieferanschriften: [],
   };
 }
 export function buildCustomerCreationBody(draft, confirmations = []) {

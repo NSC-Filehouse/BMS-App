@@ -1,9 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCustomerDraft, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, setCreationValue } from '../src/utils/customerCreation.js';
+import { CREATION_LABELS, CREATION_LISTS, createCustomerDraft, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, setCreationValue } from '../src/utils/customerCreation.js';
 import { getMissingCustomerOrderRequirements } from '../src/utils/customerOrderRequirements.js';
 const context = { ownShortCode: 'TST', lists: { laender: { eintraege: [{ schluessel: 'DE', euLand: true }, { schluessel: 'US', euLand: false }] }, anreden: { eintraege: [{ schluessel: 'H', bezeichnung: 'Herr' }, { schluessel: 'F', bezeichnung: 'Frau' }, { schluessel: 'FI', bezeichnung: 'Firma' }, { schluessel: 'D', bezeichnung: 'Divers' }] }, zahlungsbedingungen: { eintraege: [{ schluessel: '57', vorgabe: true }] } } };
 function filled() { const draft = createCustomerDraft(context); draft.stammdaten.name1 = 'Müller'; draft.stammdaten.anrede = 'FI'; Object.assign(draft.stammdaten.anschrift, { strasse: 'Straße 1', plz: '12345', ort: 'München' }); draft.stammdaten.steuer.ustIdNr = 'DE123456789'; draft.rechnungsanschrift.email = 'invoice@example.com'; return draft; }
+test('creation labels follow ERP field names and both sales representatives use the employee list', () => {
+  assert.deepEqual(CREATION_LABELS.name1, ['Name1', 'Name1']);
+  assert.deepEqual(CREATION_LABELS.name2, ['Name2', 'Name2']);
+  assert.deepEqual(CREATION_LABELS.matchcode, ['MatchCode', 'MatchCode']);
+  assert.deepEqual(CREATION_LABELS.email, ['eMail', 'Email']);
+  assert.equal(CREATION_LISTS.aussendienst, 'mitarbeiter');
+  assert.equal(CREATION_LISTS.innendienst, 'mitarbeiter');
+});
+test('new draft defaults both sales representatives to the signed-in employee and omits removed controls', () => {
+  const draft = createCustomerDraft(context);
+  assert.equal(draft.vertrieb.aussendienst, 'TST');
+  assert.equal(draft.vertrieb.innendienst, 'TST');
+  assert.equal(draft.zahlung.euro, undefined);
+  for (const key of ['branchen', 'kategorien', 'wunschnummer', 'notiz', 'kennzeichen']) assert.equal(key in draft, false);
+  const request = buildCustomerCreationBody(filled());
+  assert.equal(request.zahlung.euro, undefined);
+  assert.equal(request.kategorien, undefined);
+});
 test('same invoice address supplies the complete address plus separate invoice email', () => {
   const request = buildCustomerCreationBody(filled());
   assert.equal(request.rechnungsanschrift.name1, 'Müller'); assert.equal(request.rechnungsanschrift.strasse, 'Straße 1');

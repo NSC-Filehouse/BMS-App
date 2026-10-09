@@ -9,11 +9,15 @@ das Plus in allen für sie zugänglichen Mandanten einschließlich `TES` verwend
 Die Kunden-API kann weiterhin nicht nach `TES` kopieren; dort lässt sich die
 Maske öffnen, aber die Schnittstelle unterstützt keine Anlage mit TES als Ziel.
 Die API legt zentral in `PLA` an und kopiert bei Bedarf in den aktiven Mandanten.
-Außendienst und Ersteller werden serverseitig aus der SSO-Identität gesetzt;
-Innendienst wird mit demselben Kürzel vorbelegt und kann ausgewählt werden.
+Der Ersteller wird serverseitig aus der SSO-Identität gesetzt. Außendienst und
+Innendienst werden mit demselben Kürzel vorbelegt und können in der Maske aus
+der ERP-Mitarbeiterliste ausgewählt werden. Das ERP-Feld `Euro` wird serverseitig
+aus dem Land der Hauptanschrift abgeleitet; die Maske zeigt dafür keine Checkbox.
 
 Die Maske enthält die beschreibbaren Kundenfelder einschließlich separater
 Rechnungsanschrift, weiterer USt-IDs, Bankdaten, Ansprechpartner und Lieferanschriften.
+Die Felder Branchen, Kategorien, Wunschnummer, Notiz und Serienbrief-Kennzeichen
+aus dem Bereich „Zuordnung und weitere Angaben“ werden nicht angeboten.
 Rechnungs-E-Mail und Hauptanschrift sind Pflicht. Eine USt-ID ist für EU-Firmen
 Pflicht; Privatpersonen und Firmen außerhalb der EU dürfen sie weglassen.
 Die EU-Zuordnung kommt aus der ERP-Länderliste. Diese Ausnahmen werden auch bei
