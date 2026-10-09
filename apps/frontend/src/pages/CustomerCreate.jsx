@@ -13,7 +13,7 @@ import { CREATION_LABELS, CREATION_LISTS, createCustomerDraft, createCustomerOpe
 const TEXT = {
   de: {
     title: 'Kunde anlegen', company: 'Firma / Person und Hauptanschrift', contact: 'Kontakt zur Firma', tax: 'Steuerdaten', invoice: 'Rechnungsanschrift und Rechnungsversand', sales: 'Vertrieb', payment: 'Zahlung und Bank', people: 'Ansprechpartner', delivery: 'Lieferanschriften', postbox: 'Postfach',
-    invoiceSame: 'Rechnungsanschrift entspricht der Hauptanschrift', invoiceEmail: 'Rechnungs-E-Mail', bankEnabled: 'Bankverbindung angeben', postboxEnabled: 'Postfach angeben', postboxCity: 'Ort Postfach', ownAddress: 'Eigene Anschrift', moreVat: 'Weitere USt-IDs', add: 'Hinzufügen', remove: 'Entfernen',
+    invoiceSame: 'Rechnungsanschrift entspricht der Hauptanschrift', invoiceEmail: 'Rechnungs-E-Mail', postboxCity: 'Ort Postfach', ownAddress: 'Eigene Anschrift', moreVat: 'Weitere USt-IDs', add: 'Hinzufügen', remove: 'Entfernen',
     discard: 'Verwerfen', check: 'Eingaben prüfen', send: 'An BMS senden', retry: 'Denselben Vorgang wiederholen', back: 'Zur Kundenübersicht', openCustomer: 'Kunde öffnen', required: 'Bitte dieses Pflichtfeld ausfüllen.', empty: 'Keine Vorgabe / leer',
     test: 'Echte Kundenanlagen sind noch gesperrt. Du kannst das Formular und die schreibfreie Vorprüfung testen.', target: 'Zentrale Anlage', copy: 'Kopie nach', checking: 'Eingaben werden geprüft …', sending: 'Kunde wird angelegt …',
     tesApiLimit: 'Die Maske ist in TES verfügbar. Die BMS-Kunden-API unterstützt jedoch keine Kundenkopie nach TES; eine Anlage für diesen Mandanten ist über die Schnittstelle nicht möglich.',
@@ -25,7 +25,7 @@ const TEXT = {
   },
   en: {
     title: 'Create customer', company: 'Company / person and main address', contact: 'Company contact', tax: 'Tax details', invoice: 'Invoice address and delivery', sales: 'Sales', payment: 'Payment and bank', people: 'Contacts', delivery: 'Delivery addresses', postbox: 'PO box',
-    invoiceSame: 'Invoice address is the same as the main address', invoiceEmail: 'Invoice email', bankEnabled: 'Enter bank details', postboxEnabled: 'Enter PO box', postboxCity: 'PO box city', ownAddress: 'Separate address', moreVat: 'Additional VAT IDs', add: 'Add', remove: 'Remove',
+    invoiceSame: 'Invoice address is the same as the main address', invoiceEmail: 'Invoice email', postboxCity: 'PO box city', ownAddress: 'Separate address', moreVat: 'Additional VAT IDs', add: 'Add', remove: 'Remove',
     discard: 'Discard', check: 'Check details', send: 'Send to BMS', retry: 'Retry the same operation', back: 'Back to customers', openCustomer: 'Open customer', required: 'Please fill in this required field.', empty: 'Default / empty',
     test: 'Customer creation is currently disabled. You can test the form and the read-only preflight check.', target: 'Central creation', copy: 'Copy to', checking: 'Checking details …', sending: 'Creating customer …',
     tesApiLimit: 'The form is available in TES, but the BMS customer API cannot copy customers to TES. This interface cannot create a customer for that tenant.',
@@ -246,12 +246,11 @@ export default function CustomerCreate() {
       {section('payment', w.payment, <>
         {field('zahlung.zahlungsbedingungId')}
         {toggle('zahlung.bankeinzug', CREATION_LABELS.bankeinzug[languageIndex])}
-        {toggle('bankEnabled', w.bankEnabled)}
-        {draft.bankEnabled && grid(...fields('bank', ['iban', 'bic', 'bank', 'kontoinhaber', 'info']))}
+        {grid(...fields('bank', ['iban', 'bic', 'bank', 'kontoinhaber', 'info']))}
       </>)}
       {section('postbox', w.postbox, <>
-        {toggle('stammdaten.postfach', w.postboxEnabled, { postfach: '', plz: '', ort: '', standardanschrift: false })}
-        {draft.stammdaten.postfach && <>{grid(field('stammdaten.postfach.postfach'), field('stammdaten.postfach.plz'), field('stammdaten.postfach.ort', { label: w.postboxCity }))}{toggle('stammdaten.postfach.standardanschrift', CREATION_LABELS.standardanschrift[languageIndex])}</>}
+        {grid(field('stammdaten.postfach.postfach'), field('stammdaten.postfach.plz'), field('stammdaten.postfach.ort', { label: w.postboxCity }))}
+        {toggle('stammdaten.postfach.standardanschrift', CREATION_LABELS.standardanschrift[languageIndex])}
       </>)}
       {section('people', w.people, <>
         {draft.ansprechpartner.map((person, index) => <Card key={index} variant="outlined" sx={{ mb: 2 }}><CardContent>

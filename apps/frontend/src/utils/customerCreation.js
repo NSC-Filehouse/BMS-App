@@ -30,9 +30,10 @@ export function createEmptyContact() {
 export function createCustomerDraft(context) {
   const paymentDefault = context.lists.zahlungsbedingungen.eintraege.find((entry) => entry.vorgabe);
   return {
-    invoiceSame: true, bankEnabled: false,
+    invoiceSame: true,
     stammdaten: {
-      name1: '', name2: '', matchcode: '', anrede: '', sprache: 'de', anschrift: createEmptyAddress(), postfach: null,
+      name1: '', name2: '', matchcode: '', anrede: '', sprache: 'de', anschrift: createEmptyAddress(),
+      postfach: { postfach: '', plz: '', ort: '', standardanschrift: false },
       kontakt: { telefon: '', fax: '', email: '', homepage: '' }, steuer: { ustIdNr: '', weitereUstIdNrn: [] },
     },
     rechnungsanschrift: { anrede: '', name1: '', name2: '', abteilung: '', ...createEmptyAddress(), email: '', emailMahnung: '' },
@@ -43,7 +44,7 @@ export function createCustomerDraft(context) {
   };
 }
 export function buildCustomerCreationBody(draft, confirmations = []) {
-  const { invoiceSame, bankEnabled, ...body } = structuredClone(draft);
+  const { invoiceSame, ...body } = structuredClone(draft);
   delete body.privatePerson;
   if (invoiceSame) {
     const base = body.stammdaten;
@@ -52,7 +53,11 @@ export function buildCustomerCreationBody(draft, confirmations = []) {
       strasse: base.anschrift.strasse, plz: base.anschrift.plz, ort: base.anschrift.ort, land: base.anschrift.land,
     };
   }
-  if (!bankEnabled) body.bank = null;
+  if (!Object.values(body.bank || {}).some((value) => String(value || '').trim())) body.bank = null;
+  const postbox = body.stammdaten.postfach;
+  if (!['postfach', 'plz', 'ort'].some((key) => String(postbox?.[key] || '').trim()) && !postbox?.standardanschrift) {
+    body.stammdaten.postfach = null;
+  }
   body.bestaetigteNichtDubletten = confirmations;
   return body;
 }
