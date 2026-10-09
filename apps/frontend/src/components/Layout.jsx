@@ -9,7 +9,6 @@ import {
   IconButton,
   List,
   ListItemButton,
-  ListItemIcon,
   ListItemText,
   Toolbar,
   Typography,
@@ -20,17 +19,7 @@ import {
 
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
-import PeopleIcon from '@mui/icons-material/People';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import DescriptionIcon from '@mui/icons-material/Description';
-import HistoryIcon from '@mui/icons-material/History';
-import SettingsIcon from '@mui/icons-material/Settings';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import { useFeatureAccess } from './FeatureAccess.jsx';
 
 import { apiRequest } from '../api/client.js';
@@ -51,7 +40,7 @@ function redirectToStart({ skipResume = false } = {}) {
   window.location.assign(`${APP_BASE_PATH}/${skipResume ? '?resume=0' : ''}`);
 }
 
-function NavItem({ to, label, icon, onClick, preserveReturn = false }) {
+function NavItem({ to, label, onClick, preserveReturn = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const selected = location.pathname === to || location.pathname.startsWith(`${to}/`);
@@ -64,7 +53,6 @@ function NavItem({ to, label, icon, onClick, preserveReturn = false }) {
         onClick?.();
       }}
     >
-      <ListItemIcon>{icon}</ListItemIcon>
       <ListItemText primary={label} />
     </ListItemButton>
   );
@@ -242,10 +230,19 @@ export default function Layout() {
       </Toolbar>
       <Divider />
       <List>
-        <NavItem to="/vl" label={t('vl_title')} icon={<FormatListBulletedIcon />} onClick={closeDrawer} />
-        <NavItem to="/timeline" label={t('timeline_title')} icon={<HistoryIcon />} onClick={closeDrawer} />
-        <NavItem to="/customers" label={t('customers_title')} icon={<PeopleIcon />} onClick={closeDrawer} />
-        <NavItem to="/suppliers" label={t('suppliers_title')} icon={<LocalShippingIcon />} onClick={closeDrawer} />
+        <NavItem to="/vl" label={t('vl_title')} onClick={closeDrawer} />
+        <NavItem to="/timeline" label={t('timeline_title')} onClick={closeDrawer} />
+        <NavItem to="/customers" label={t('customers_title')} onClick={closeDrawer} />
+        <NavItem to="/suppliers" label={t('suppliers_title')} onClick={closeDrawer} />
+        <NavItem to="/orders" label={t('orders_title')} onClick={closeDrawer} />
+        <NavItem to="/temp-orders" label={t('temp_orders_title')} onClick={closeDrawer} />
+        {features.options && <NavItem to="/options" label={t('options_title')} onClick={closeDrawer} />}
+        {features.forecast && <NavItem to="/forecast" label={t('forecast_title')} onClick={closeDrawer} />}
+        {features.purchaseOrders && <NavItem to="/temp-purchase-orders" label={t('temp_purchase_orders_title')} onClick={closeDrawer} />}
+        <NavItem to="/products" label={t('products_title')} onClick={closeDrawer} />
+      </List>
+      <Divider />
+      <List>
         {reminderCustomersCount > 0 && (
           <ListItemButton
             onClick={() => {
@@ -262,25 +259,13 @@ export default function Layout() {
               closeDrawer();
             }}
           >
-            <ListItemIcon>
-              <PeopleIcon color="error" />
-            </ListItemIcon>
             <ListItemText
               primary={`${t('customers_reminders_title')} (${reminderCustomersCount})`}
               primaryTypographyProps={{ sx: { color: 'error.main', fontWeight: 700 } }}
             />
           </ListItemButton>
         )}
-        <NavItem to="/temp-orders" label={t('temp_orders_title')} icon={<DescriptionIcon />} onClick={closeDrawer} />
-        {features.purchaseOrders && <NavItem to="/temp-purchase-orders" label={t('temp_purchase_orders_title')} icon={<ShoppingCartIcon />} onClick={closeDrawer} />}
-        {features.options && <NavItem to="/options" label={t('options_title')} icon={<LocalOfferIcon />} onClick={closeDrawer} />}
-        {features.forecast && <NavItem to="/forecast" label={t('forecast_title')} icon={<TrendingUpIcon />} onClick={closeDrawer} />}
-        <NavItem to="/orders" label={t('orders_title')} icon={<AssignmentIcon />} onClick={closeDrawer} />
-        <NavItem to="/products" label={t('products_title')} icon={<Inventory2Icon />} onClick={closeDrawer} />
-      </List>
-      <Divider />
-      <List>
-        <NavItem to="/settings" label={t('settings_title')} icon={<SettingsIcon />} onClick={closeDrawer} preserveReturn />
+        <NavItem to="/settings" label={t('settings_title')} onClick={closeDrawer} preserveReturn />
       </List>
       <Divider />
       <Box sx={{ p: 2 }}>
