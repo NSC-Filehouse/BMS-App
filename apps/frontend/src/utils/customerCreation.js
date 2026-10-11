@@ -33,7 +33,7 @@ export function createCustomerDraft(context) {
     invoiceSame: true,
     stammdaten: {
       name1: '', name2: '', matchcode: '', anrede: '', sprache: 'de', anschrift: createEmptyAddress(),
-      postfach: { postfach: '', plz: '', ort: '', standardanschrift: false },
+      postfach: null,
       kontakt: { telefon: '', fax: '', email: '', homepage: '' }, steuer: { ustIdNr: '', weitereUstIdNrn: [] },
     },
     rechnungsanschrift: { anrede: '', name1: '', name2: '', abteilung: '', ...createEmptyAddress(), email: '', emailMahnung: '' },

@@ -18,7 +18,7 @@ test('new draft defaults both sales representatives to the signed-in employee an
   assert.equal(draft.vertrieb.innendienst, 'TST');
   assert.equal(draft.zahlung.euro, undefined);
   assert.deepEqual(draft.bank, { iban: '', bic: '', bank: '', kontoinhaber: '', info: '' });
-  assert.deepEqual(draft.stammdaten.postfach, { postfach: '', plz: '', ort: '', standardanschrift: false });
+  assert.equal(draft.stammdaten.postfach, null);
   for (const key of ['branchen', 'kategorien', 'wunschnummer', 'notiz', 'kennzeichen']) assert.equal(key in draft, false);
   const request = buildCustomerCreationBody(filled());
   assert.equal(request.zahlung.euro, undefined);
@@ -31,9 +31,10 @@ test('same invoice address supplies the complete address plus separate invoice e
   assert.equal(request.rechnungsanschrift.name1, 'Müller'); assert.equal(request.rechnungsanschrift.strasse, 'Straße 1');
   assert.equal(request.rechnungsanschrift.email, 'invoice@example.com'); assert.equal(request.invoiceSame, undefined); assert.equal(request.bank, null); assert.equal(request.stammdaten.postfach, null);
 });
-test('bank and PO box details are sent when entered without enable checkboxes', () => {
+test('optional bank details and enabled PO box details are sent', () => {
   const draft = filled();
   draft.bank.iban = 'DE89370400440532013000';
+  draft.stammdaten.postfach = { postfach: '', plz: '', ort: '', standardanschrift: false };
   draft.stammdaten.postfach.postfach = '12345';
   const request = buildCustomerCreationBody(draft);
   assert.equal(request.bank.iban, 'DE89370400440532013000');
