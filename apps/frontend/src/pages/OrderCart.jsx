@@ -221,11 +221,17 @@ export default function OrderCart() {
         <IconButton
           aria-label="back"
           onClick={() => {
-            if (location.state?.returnTo?.pathname) {
-              navigateToReturn(navigate, location.state.returnTo, '/products');
+            let returnTo = location.state?.returnTo;
+            let cameFromVl = Boolean(location.state?.fromVl);
+            while (returnTo?.pathname === location.pathname) {
+              cameFromVl = cameFromVl || Boolean(returnTo.state?.fromVl);
+              returnTo = returnTo.state?.returnTo;
+            }
+            if (returnTo?.pathname) {
+              navigateToReturn(navigate, returnTo, '/products');
               return;
             }
-            if (location.state?.fromVl) {
+            if (cameFromVl) {
               navigate('/vl', { replace: true });
               return;
             }

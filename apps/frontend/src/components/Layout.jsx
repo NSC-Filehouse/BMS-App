@@ -398,17 +398,19 @@ export default function Layout() {
               </Typography>
             </ButtonBase>
           </Box>
-          <IconButton
-            color="inherit"
-            disabled={!mandant}
-            onClick={() => navigate('/order-cart', { state: { returnTo: createReturnTo(location) } })}
-            aria-label={t('cart_open')}
-            sx={{ ml: 0.5, mr: -1 }}
-          >
-            <Badge badgeContent={cartCount} color="error">
-              <ShoppingCartIcon />
-            </Badge>
-          </IconButton>
+          {location.pathname !== '/order-cart' && (
+            <IconButton
+              color="inherit"
+              disabled={!mandant}
+              onClick={() => navigate('/order-cart', { state: { returnTo: createReturnTo(location) } })}
+              aria-label={t('cart_open')}
+              sx={{ ml: 0.5, mr: -1 }}
+            >
+              <Badge badgeContent={cartCount} color="error">
+                <ShoppingCartIcon />
+              </Badge>
+            </IconButton>
+          )}
         </Toolbar>
       </AppBar>
 
