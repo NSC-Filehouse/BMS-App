@@ -227,7 +227,7 @@ export default function OrderCart() {
               cameFromVl = cameFromVl || Boolean(returnTo.state?.fromVl);
               returnTo = returnTo.state?.returnTo;
             }
-            if (returnTo?.pathname) {
+            if (returnTo?.pathname && returnTo.pathname !== '/') {
               navigateToReturn(navigate, returnTo, '/products');
               return;
             }

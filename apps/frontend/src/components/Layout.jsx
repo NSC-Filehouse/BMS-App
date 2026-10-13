@@ -76,6 +76,7 @@ export default function Layout() {
   const { t } = useI18n();
   const { features } = useFeatureAccess();
   const hasSelectedCustomer = Boolean(selectedCustomer?.id);
+  const showCartButton = !['/', '/mandants/select', '/order-cart'].includes(currentLocation.pathname);
 
   const toggleDrawer = () => setOpen(v => !v);
   const closeDrawer = () => setOpen(false);
@@ -398,11 +399,11 @@ export default function Layout() {
               </Typography>
             </ButtonBase>
           </Box>
-          {location.pathname !== '/order-cart' && (
+          {showCartButton && (
             <IconButton
               color="inherit"
               disabled={!mandant}
-              onClick={() => navigate('/order-cart', { state: { returnTo: createReturnTo(location) } })}
+              onClick={() => navigate('/order-cart', { state: { returnTo: createReturnTo(currentLocation) } })}
               aria-label={t('cart_open')}
               sx={{ ml: 0.5, mr: -1 }}
             >
