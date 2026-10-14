@@ -41,6 +41,7 @@ import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import { formatMfiValue, sortVlItems, sortVlPositions } from '../utils/mfi.js';
+import { FRUPACK_GROUP_SCOPE, getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId } from '../utils/vlScope.js';
 
 const PAGE_SIZE = 100;
 const GROUP_PAGE_SIZE = 40;
@@ -143,9 +144,11 @@ function SwipeableProductRow({
   onEmployeeClick,
   inCart,
   readOnly,
+  foreign,
+  showSource,
   t,
 }) {
-  const rowId = getItemId(item);
+  const rowId = getVlPositionKey(item);
   // VL actions are intentionally direct; horizontal swipe is disabled in both views.
   const swipeEnabled = false;
   const interactionRef = React.useRef({
@@ -226,7 +229,7 @@ function SwipeableProductRow({
       suppressClickRef.current = '';
       return;
     }
-    onTap(rowId);
+    onTap(item);
   };
 
   const availableAmount = getAvailableAmount(item);
@@ -244,7 +247,7 @@ function SwipeableProductRow({
     cursor: 'pointer',
     border: variant === 'grouped' ? '1px solid' : undefined,
     borderColor: inCart ? 'success.main' : (selected ? 'success.light' : 'divider'),
-    backgroundColor: inCart
+    backgroundColor: foreign ? '#E3F2FD' : inCart
       ? '#C8E6C9'
       : (selected
         ? '#E8F5E9'
@@ -253,7 +256,7 @@ function SwipeableProductRow({
     wordBreak: 'break-word',
     overflowWrap: 'anywhere',
     lineHeight: 1.35,
-    pr: 9.5,
+    pr: readOnly ? 0.75 : 9.5,
     '& .vl-row-action': {
       opacity: isFinePointer ? 0 : 1,
       pointerEvents: isFinePointer ? 'none' : 'auto',
@@ -379,7 +382,7 @@ function SwipeableProductRow({
                     onTouchStart={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onDetails(item.id);
+                      onDetails(item);
                     }}
                   >
                     {t('vl_details')}
@@ -414,6 +417,12 @@ function SwipeableProductRow({
               <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
             </Box>
           </Box>
+        )}
+
+        {showSource && (
+          <Typography variant="caption" sx={{ display: 'block', px: 0.75, color: foreign ? '#1565C0' : 'text.secondary' }}>
+            {item.sourceMandantName}
+          </Typography>
         )}
 
         {isFinePointer && !readOnly && (
@@ -479,6 +488,8 @@ export default function VlList() {
 
   const [viewMode, setViewMode] = React.useState(() => initialReturnState?.viewMode === 'grouped' ? 'grouped' : 'classic');
   const [vlMandants, setVlMandants] = React.useState([]);
+  const [canViewFrupackGroup, setCanViewFrupackGroup] = React.useState(false);
+  const [groupSourceNames, setGroupSourceNames] = React.useState([]);
   const [vlMandantId, setVlMandantId] = React.useState(() => String(initialReturnState?.vlMandantId || ''));
   const [vlMandantsLoaded, setVlMandantsLoaded] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(() => Boolean(initialReturnState?.searchOpen || initialReturnState?.searchInput));
@@ -505,6 +516,7 @@ export default function VlList() {
   const sentinelRef = React.useRef(null);
   const listRef = React.useRef(null);
   const loadingRef = React.useRef(false);
+  const activeRequestRef = React.useRef(null);
   const restorationRef = React.useRef(initialReturnState);
   const normalizedSearch = String(searchInput || '').trim();
   const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
@@ -512,11 +524,14 @@ export default function VlList() {
   const hasMore = visibleItemCount < total;
   const activeMandantName = getMandant().trim().toLowerCase();
   const activeVlMandantId = vlMandants.find((mandant) => mandant.name.toLowerCase() === activeMandantName)?.id;
+  const isGroupVl = vlMandantId === FRUPACK_GROUP_SCOPE;
   const isForeignVl = Boolean(
-    vlMandantId
+    !isGroupVl && vlMandantId
     && activeVlMandantId !== undefined
     && String(vlMandantId) !== String(activeVlMandantId),
   );
+  const isItemReadOnly = React.useCallback((item) => isVlPositionReadOnly(item, activeVlMandantId, isForeignVl),
+    [activeVlMandantId, isForeignVl]);
   const cartIds = React.useMemo(
     () => new Set(cartItems.map((item) => getItemId(item))),
     [cartItems],
@@ -533,9 +548,9 @@ export default function VlList() {
   }, []);
 
   React.useEffect(() => {
-    if (!isForeignVl) return;
-    setSelectedItems([]);
-  }, [isForeignVl]);
+    if (!vlMandantsLoaded) return;
+    setSelectedItems((items) => items.filter((item) => !isItemReadOnly(item)));
+  }, [isItemReadOnly, vlMandantsLoaded]);
 
   React.useEffect(() => {
     let alive = true;
@@ -549,11 +564,15 @@ export default function VlList() {
         const options = getSelectableMandants(mandantsResponse?.data, meResponse)
           .filter((mandant) => mandant.id !== null);
         setVlMandants(options);
+        const groupEnabled = Boolean(meResponse?.identityResolved && meResponse?.features?.frupackGroupVl
+          && mandantsResponse?.meta?.vlGroups?.some((group) => group.scope === FRUPACK_GROUP_SCOPE));
+        setCanViewFrupackGroup(groupEnabled);
         const requestedId = String(initialReturnState?.vlMandantId || '');
         const activeName = getMandant().trim().toLowerCase();
         const selected = options.find((mandant) => String(mandant.id) === requestedId)
           || options.find((mandant) => mandant.name.toLowerCase() === activeName);
-        setVlMandantId(selected ? String(selected.id) : '');
+        setVlMandantId(requestedId === FRUPACK_GROUP_SCOPE && groupEnabled
+          ? FRUPACK_GROUP_SCOPE : (selected ? String(selected.id) : ''));
       } catch {
         if (alive) setVlMandants([]);
       } finally {
@@ -578,6 +597,8 @@ export default function VlList() {
     if (!vlMandantsLoaded) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
+    const requestToken = {};
+    activeRequestRef.current = requestToken;
     setLoading(true);
     setError('');
     try {
@@ -588,10 +609,13 @@ export default function VlList() {
         dir: 'ASC',
       });
       if (query) params.set('q', query);
-      if (vlMandantId) params.set('vlMandantId', vlMandantId);
+      if (vlMandantId === FRUPACK_GROUP_SCOPE) params.set('vlScope', FRUPACK_GROUP_SCOPE);
+      else if (vlMandantId) params.set('vlMandantId', vlMandantId);
       const endpoint = viewMode === 'grouped' ? '/products/grouped' : '/products';
       const res = await apiRequest(`${endpoint}?${params.toString()}`);
+      if (activeRequestRef.current !== requestToken) return;
       const data = Array.isArray(res?.data) ? res.data : [];
+      setGroupSourceNames((res?.meta?.viewMandants || []).map((mandant) => mandant.name));
       const nextTotal = Number(res?.meta?.totalGroups ?? res?.meta?.total ?? 0);
       if (viewMode === 'grouped') setGroupedGroups((previous) => (replace ? data : [...previous, ...data]));
       else setClassicItems((previous) => (replace ? data : [...previous, ...data]));
@@ -600,10 +624,12 @@ export default function VlList() {
       setInitialLoaded(true);
       setRevealedRow({ id: '', side: '' });
     } catch (e) {
-      setError(e?.message || t('loading_error'));
+      if (activeRequestRef.current === requestToken) setError(e?.message || t('loading_error'));
     } finally {
-      setLoading(false);
-      loadingRef.current = false;
+      if (activeRequestRef.current === requestToken) {
+        setLoading(false);
+        loadingRef.current = false;
+      }
     }
   }, [t, viewMode, vlMandantId, vlMandantsLoaded]);
 
@@ -615,6 +641,12 @@ export default function VlList() {
 
   React.useEffect(() => {
     if (!vlMandantsLoaded) return undefined;
+    let cancelled = false;
+    const invalidateRequest = () => {
+      cancelled = true;
+      activeRequestRef.current = null;
+      loadingRef.current = false;
+    };
     const returnState = restorationRef.current;
     if (returnState) {
       restorationRef.current = null;
@@ -627,15 +659,17 @@ export default function VlList() {
       const targetPage = Math.max(Number(returnState.page) || 1, 1);
       const restorePages = async () => {
         for (let restorePage = 1; restorePage <= targetPage; restorePage += 1) {
+          if (cancelled) return;
           await loadPage(restorePage, effectiveQuery, restorePage === 1);
         }
+        if (cancelled) return;
         window.requestAnimationFrame(() => {
           if (listRef.current) listRef.current.scrollTop = Math.max(Number(returnState.scrollTop) || 0, 0);
         });
         navigate(location.pathname, { replace: true, state: null });
       };
       void restorePages();
-      return;
+      return invalidateRequest;
     }
     setClassicItems([]);
     setGroupedGroups([]);
@@ -646,6 +680,7 @@ export default function VlList() {
     setRevealedRow({ id: '', side: '' });
     if (listRef.current) listRef.current.scrollTop = 0;
     void loadPage(1, effectiveQuery, true);
+    return invalidateRequest;
   }, [effectiveQuery, loadPage, location.pathname, navigate, vlMandantId, vlMandantsLoaded]);
 
   React.useEffect(() => {
@@ -659,25 +694,26 @@ export default function VlList() {
   }, [loadNextPage]);
 
   const toggleSelection = React.useCallback((item) => {
-    const itemId = getItemId(item);
+    if (isItemReadOnly(item)) return;
+    const itemId = getVlPositionKey(item);
     if (!itemId) return;
     setSelectedItems((previous) => {
-      if (previous.some((entry) => getItemId(entry) === itemId)) {
-        return previous.filter((entry) => getItemId(entry) !== itemId);
+      if (previous.some((entry) => getVlPositionKey(entry) === itemId)) {
+        return previous.filter((entry) => getVlPositionKey(entry) !== itemId);
       }
       if (getAvailableAmount(item) <= 0) return previous;
       const group = getGroupInfo(item, lang);
       return [...previous, { ...item, groupKey: group.key, groupName: group.name }];
     });
     setBatchCartSuccess('');
-  }, [lang]);
+  }, [isItemReadOnly, lang]);
 
   const setGroupSelection = React.useCallback((positions, selected) => {
-    const entries = Array.isArray(positions) ? positions : [];
+    const entries = (Array.isArray(positions) ? positions : []).filter((item) => !isItemReadOnly(item));
     setSelectedItems((previous) => {
-      const next = new Map(previous.map((item) => [getItemId(item), item]));
+      const next = new Map(previous.filter((item) => !isItemReadOnly(item)).map((item) => [getVlPositionKey(item), item]));
       entries.forEach((item) => {
-        const id = getItemId(item);
+        const id = getVlPositionKey(item);
         if (!id) return;
         if (selected) {
           if (getAvailableAmount(item) <= 0) return;
@@ -690,14 +726,14 @@ export default function VlList() {
       return Array.from(next.values());
     });
     setBatchCartSuccess('');
-  }, [lang]);
+  }, [isItemReadOnly, lang]);
 
   const addItemsToCart = React.useCallback(async (items) => {
     if (isForeignVl) return;
     const sourceItems = (Array.isArray(items) ? items : [])
-      .filter((item) => !cartIds.has(getItemId(item)) && getAvailableAmount(item) > 0);
+      .filter((item) => !isItemReadOnly(item) && !cartIds.has(getItemId(item)) && getAvailableAmount(item) > 0);
     if (!sourceItems.length) return;
-    const selectedIds = new Set(sourceItems.map((item) => getItemId(item)));
+    const selectedIds = new Set(sourceItems.map((item) => getVlPositionKey(item)));
     try {
       setBatchCartAdding(true);
       setBatchCartError('');
@@ -706,9 +742,9 @@ export default function VlList() {
         ...item,
         id: getItemId(item),
         storageId: item.storageId || item.warehouseId,
-      })), { vlMandantId });
+      })), { vlMandantId: String(activeVlMandantId) });
       setCartItems(getOrderCartItems());
-      setSelectedItems((previous) => previous.filter((item) => !selectedIds.has(getItemId(item))));
+      setSelectedItems((previous) => previous.filter((item) => !selectedIds.has(getVlPositionKey(item))));
       setBatchCartSuccess(t('vl_batch_success', {
         count: sourceItems.length,
         positionLabel: getPositionLabel(sourceItems.length, t),
@@ -719,17 +755,17 @@ export default function VlList() {
     } finally {
       setBatchCartAdding(false);
     }
-  }, [cartIds, isForeignVl, t, vlMandantId]);
+  }, [activeVlMandantId, cartIds, isForeignVl, isItemReadOnly, t]);
 
   const getAddableSelectedItems = React.useCallback((item) => {
-    const itemId = getItemId(item);
-    const itemIsSelected = selectedItems.some((entry) => getItemId(entry) === itemId);
+    const itemId = getVlPositionKey(item);
+    const itemIsSelected = selectedItems.some((entry) => getVlPositionKey(entry) === itemId);
     if (!itemIsSelected) return [item];
-    return selectedItems.filter((entry) => !cartIds.has(getItemId(entry)));
-  }, [cartIds, selectedItems]);
+    return selectedItems.filter((entry) => !isItemReadOnly(entry) && !cartIds.has(getItemId(entry)));
+  }, [cartIds, isItemReadOnly, selectedItems]);
 
   const requestProductAction = React.useCallback((action, item) => {
-    if (isForeignVl) return;
+    if (isItemReadOnly(item)) return;
     const vlReturnState = getVlReturnState();
     const itemId = getItemId(item);
     if (action === 'cart' && cartIds.has(itemId)) {
@@ -751,17 +787,17 @@ export default function VlList() {
       state: {
         source: item,
         fromVl: true,
-        vlMandantId,
+        vlMandantId: getProductSourceMandantId(item, vlMandantId),
         vlReturnState,
         returnTo: createReturnTo(location, { vlReturnState }),
       },
     });
     else if (action === 'cart') void addItemsToCart(sourceItems);
-  }, [addItemsToCart, cartIds, getAddableSelectedItems, getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
+  }, [addItemsToCart, cartIds, getAddableSelectedItems, getVlReturnState, isItemReadOnly, location, navigate, vlMandantId]);
 
   const requestBatchCart = React.useCallback(() => {
     if (isForeignVl) return;
-    const sourceItems = selectedItems.filter((item) => !cartIds.has(getItemId(item)));
+    const sourceItems = selectedItems.filter((item) => !isItemReadOnly(item) && !cartIds.has(getItemId(item)));
     if (!sourceItems.length) return;
     if (!getSelectedCustomer()?.id) {
       setPendingCustomerAction({ type: 'batchCart', items: sourceItems });
@@ -769,7 +805,7 @@ export default function VlList() {
       return;
     }
     void addItemsToCart(sourceItems);
-  }, [addItemsToCart, cartIds, isForeignVl, selectedItems]);
+  }, [addItemsToCart, cartIds, isForeignVl, isItemReadOnly, selectedItems]);
 
   const chooseCustomer = React.useCallback(() => {
     if (!pendingCustomerAction) return;
@@ -779,15 +815,15 @@ export default function VlList() {
       state: {
         afterSelect: {
           to: '/vl',
-          state: { pendingCustomerAction },
+          state: { pendingCustomerAction, vlReturnState: getVlReturnState() },
         },
       },
     });
-  }, [navigate, pendingCustomerAction]);
+  }, [getVlReturnState, navigate, pendingCustomerAction]);
 
   React.useEffect(() => {
     const pending = location.state?.pendingCustomerAction;
-    if (isForeignVl || !pending || !getSelectedCustomer()?.id) return;
+    if (!vlMandantsLoaded || isForeignVl || !pending || !getSelectedCustomer()?.id) return;
     const nextState = { ...(location.state || {}) };
     delete nextState.pendingCustomerAction;
     navigate(location.pathname, {
@@ -795,15 +831,15 @@ export default function VlList() {
       state: Object.keys(nextState).length ? nextState : null,
     });
     if (pending.type === 'batchCart' && Array.isArray(pending.items)) {
-      setSelectedItems(pending.items);
+      setSelectedItems(pending.items.filter((item) => !isItemReadOnly(item)));
       void addItemsToCart(pending.items);
-    } else if (pending.type === 'reserve' && pending.product) {
+    } else if (pending.type === 'reserve' && pending.product && !isItemReadOnly(pending.product)) {
       const vlReturnState = pending.vlReturnState || getVlReturnState();
       navigate('/orders/new', {
         state: {
           source: pending.product,
           fromVl: true,
-          vlMandantId,
+          vlMandantId: getProductSourceMandantId(pending.product, vlMandantId),
           vlReturnState,
           returnTo: createReturnTo(location, { vlReturnState }),
         },
@@ -811,7 +847,7 @@ export default function VlList() {
     } else if (pending.type === 'cart' && pending.product) {
       void addItemsToCart([pending.product]);
     }
-  }, [addItemsToCart, getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
+  }, [addItemsToCart, getVlReturnState, isForeignVl, isItemReadOnly, location, navigate, vlMandantId, vlMandantsLoaded]);
 
   const handleAction = React.useCallback((action, item) => {
     setRevealedRow({ id: '', side: '' });
@@ -819,25 +855,26 @@ export default function VlList() {
     else requestProductAction(action, item);
   }, [requestProductAction, toggleSelection]);
 
-  const openProductDetail = React.useCallback((itemId) => {
-    navigate(`/products/${encodeURIComponent(itemId)}`, {
+  const openProductDetail = React.useCallback((item) => {
+    navigate(`/products/${encodeURIComponent(getItemId(item))}`, {
       state: {
         backgroundLocation: location,
         fromVl: true,
-        vlMandantId,
-        vlReadOnly: isForeignVl,
+        vlMandantId: getProductSourceMandantId(item, vlMandantId),
+        vlReadOnly: isItemReadOnly(item),
         vlReturnState: getVlReturnState(),
         returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }),
       },
     });
-  }, [getVlReturnState, isForeignVl, location, navigate, vlMandantId]);
+  }, [getVlReturnState, isItemReadOnly, location, navigate, vlMandantId]);
 
-  const handleRowTap = React.useCallback((itemId) => {
+  const handleRowTap = React.useCallback((item) => {
+    const itemId = getVlPositionKey(item);
     if (revealedRow.id && String(revealedRow.id) === String(itemId)) {
       setRevealedRow({ id: '', side: '' });
       return;
     }
-    openProductDetail(itemId);
+    openProductDetail(item);
   }, [openProductDetail, revealedRow]);
 
   const toggleGroup = React.useCallback((groupKey) => {
@@ -866,10 +903,10 @@ export default function VlList() {
 
   const renderGrouped = () => groupedGroups.map((group, groupIndex) => {
     const positions = sortVlPositions(group.positions);
-    const selectablePositions = positions.filter((item) => getAvailableAmount(item) > 0);
-    const selectedInGroup = positions.filter((item) => selectedItems.some((entry) => getItemId(entry) === getItemId(item)));
+    const selectablePositions = positions.filter((item) => !isItemReadOnly(item) && getAvailableAmount(item) > 0);
+    const selectedInGroup = positions.filter((item) => selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item)));
     const allSelected = selectablePositions.length > 0
-      && selectablePositions.every((item) => selectedItems.some((entry) => getItemId(entry) === getItemId(item)));
+      && selectablePositions.every((item) => selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item)));
     const isExpanded = Boolean(effectiveQuery) || expandedGroups[group.key] === true;
     return (
       <Box key={group.key} sx={{ display: 'grid', gap: 0.45 }}>
@@ -899,6 +936,7 @@ export default function VlList() {
           </IconButton>
           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
             <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>{group.name || '-'}</Typography>
+            {isGroupVl && <Typography variant="caption" color="text.secondary">{group.sourceMandantName}</Typography>}
             <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
               {t('vl_available_count', { count: positions.length, positionLabel: getPositionLabel(positions.length, t) })}
             </Typography>
@@ -914,7 +952,7 @@ export default function VlList() {
           <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>{t('vl_available_heading')}</Typography>
-              {!isForeignVl && (
+              {positions.some((item) => !isItemReadOnly(item)) && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                   <Button size="small" disabled={selectablePositions.length === 0} onClick={() => setGroupSelection(positions, !allSelected)}>
                     {allSelected ? t('vl_clear_selection') : t('vl_select_all')}
@@ -934,9 +972,9 @@ export default function VlList() {
             </Box>
             {positions.map((item, index) => (
               <SwipeableProductRow
-                key={getItemId(item)}
+                key={getVlPositionKey(item)}
                 item={item}
-                selected={selectedItems.some((entry) => getItemId(entry) === getItemId(item))}
+                selected={selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item))}
                 variant="grouped"
                 index={index}
                 isFinePointer={isFinePointer}
@@ -947,8 +985,10 @@ export default function VlList() {
                 onAction={handleAction}
                 onDetails={openProductDetail}
                 onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
-                inCart={!isForeignVl && cartIds.has(getItemId(item))}
-                readOnly={isForeignVl}
+                inCart={!isItemReadOnly(item) && cartIds.has(getItemId(item))}
+                readOnly={isItemReadOnly(item)}
+                foreign={isGroupVl && isItemReadOnly(item)}
+                showSource={isGroupVl}
                 t={t}
               />
             ))}
@@ -964,11 +1004,11 @@ export default function VlList() {
     const showHeader = group !== lastClassicGroup;
     if (showHeader) lastClassicGroup = group;
     return (
-      <Box key={getItemId(item)} sx={{ mb: 0.4 }}>
+      <Box key={getVlPositionKey(item)} sx={{ mb: 0.4 }}>
         {showHeader && <Typography variant="subtitle2" sx={{ mt: 1.2, mb: 0.35, fontWeight: 700 }}>{group}</Typography>}
         <SwipeableProductRow
           item={item}
-          selected={selectedItems.some((entry) => getItemId(entry) === getItemId(item))}
+          selected={selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item))}
           variant="classic"
           index={index}
           isFinePointer={isFinePointer}
@@ -979,8 +1019,10 @@ export default function VlList() {
           onAction={handleAction}
           onDetails={openProductDetail}
           onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
-          inCart={!isForeignVl && cartIds.has(getItemId(item))}
-          readOnly={isForeignVl}
+          inCart={!isItemReadOnly(item) && cartIds.has(getItemId(item))}
+          readOnly={isItemReadOnly(item)}
+          foreign={isGroupVl && isItemReadOnly(item)}
+          showSource={isGroupVl}
           t={t}
         />
       </Box>
@@ -1042,8 +1084,15 @@ export default function VlList() {
             {vlMandants.map((mandant) => (
               <MenuItem key={mandant.id} value={String(mandant.id)}>{mandant.name}</MenuItem>
             ))}
+            {canViewFrupackGroup && <MenuItem value={FRUPACK_GROUP_SCOPE}>{t('vl_frupack_group')}</MenuItem>}
           </TextField>
         </Box>
+
+        {isGroupVl && groupSourceNames.length > 0 && (
+          <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.35 }}>
+            {groupSourceNames.join(' · ')}
+          </Typography>
+        )}
 
         {!isForeignVl && selectedCount > 0 && (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, mt: 0.25, pl: 0.25 }}>

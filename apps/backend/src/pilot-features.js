@@ -17,6 +17,7 @@ function pilotFeaturesForIdentity(identity) {
     purchaseOrders: enabled,
     options: enabled,
     forecast: enabled,
+    frupackGroupVl: enabled,
   };
 }
 

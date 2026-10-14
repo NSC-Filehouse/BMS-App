@@ -3,6 +3,8 @@ const { asyncHandler, sendEnvelope } = require('../utils');
 const { getMandantsForIdentity, getDefaultMandantForIdentity } = require('../db/databases');
 const { getUserIdentityFromRequestContext } = require('../db/users');
 const { getUserContextFromRequest } = require('../user-context');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { FRUPACK_GROUP_SCOPE, selectFrupackMandants } = require('../vl-group');
 
 const router = express.Router();
 
@@ -22,6 +24,9 @@ router.get('/mandants', asyncHandler(async (req, res) => {
       count: mandants.length,
       mainMandantId: Number.isFinite(defaultMandantId) ? defaultMandantId : null,
       mainMandantName: defaultMandant?.name || null,
+      vlGroups: pilotFeaturesForIdentity(identity).frupackGroupVl && selectFrupackMandants(mandants).length
+        ? [{ scope: FRUPACK_GROUP_SCOPE, name: 'Frupack Gruppe' }]
+        : [],
     },
     error: null,
   });

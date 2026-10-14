@@ -2,7 +2,15 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getDatabaseConnectionForIdentityById } = require('../db/databases');
+const { getDatabaseConnectionForIdentityById, getMandantsForIdentity } = require('../db/databases');
+const {
+  assertFrupackGroupAccess,
+  selectFrupackMandants,
+  getVlScope,
+  getVlPositionKey,
+  sortGroupVlItems,
+  combineVlGroups,
+} = require('../vl-group');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
 const {
@@ -31,6 +39,9 @@ function asText(value) {
 }
 
 async function resolveVlDatabase(req, rawMandantId) {
+  if (getVlScope(req.query)) {
+    throw createHttpError(400, 'Fuer Produktdetails bitte den Herkunftsmandanten angeben.', { code: 'VL_SCOPE_INVALID' });
+  }
   const value = asText(rawMandantId);
   if (!value) return req.database;
 
@@ -288,7 +299,91 @@ function normalizeTotal(rows) {
   return row.total ?? row.TOTAL ?? row.Total ?? Object.values(row)[0] ?? null;
 }
 
+async function sendFrupackGroupVl(req, res, grouped) {
+  assertFrupackGroupAccess(req.userIdentity);
+  const mandants = selectFrupackMandants(await getMandantsForIdentity(req.userIdentity));
+  if (!mandants.length) {
+    throw createHttpError(403, 'Keine Frupack-Mandanten freigegeben.', { code: 'FRUPACK_GROUP_FORBIDDEN' });
+  }
+  const { page, pageSize, q } = parseListParams(req.query, {
+    page: 1, pageSize: grouped ? 40 : 100, sort: 'vl', dir: 'ASC',
+  });
+  const { whereSql, params } = buildWhereClause({
+    q, plastic: req.query?.plastic, sub: req.query?.sub, subEmpty: req.query?.subEmpty,
+  }, { textFields: grouped ? ['[article].[agA_Artikelname]', '[articleGroup].[ag_Gruppenname]'] : [] });
+  const query = grouped ? `
+    SELECT [availability].*,
+      [article].[agA_Artikelname] AS [masterArticleName],
+      [article].[agA_Artikelgruppe] AS [articleGroupId],
+      [articleGroup].[ag_Gruppenname] AS [articleGroupName]
+    FROM ${VIEW_SQL}
+    LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
+      ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
+    LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
+      ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
+    ${whereSql}
+  ` : `SELECT * FROM ${VIEW_SQL} ${whereSql}`;
+  const batches = await Promise.all(mandants.map(async (mandant) => {
+    try {
+      const database = await getDatabaseConnectionForIdentityById(req.userIdentity, mandant.firmaId);
+      const rows = await runSQLQueryAccess(database, query, params);
+      return { database, rows: rows || [] };
+    } catch {
+      // Avoid DB_NOT_AVAILABLE: the generic frontend handler would switch the
+      // active tenant. A failed group member instead invalidates this list.
+      throw createHttpError(503, `Frupack Gruppe konnte nicht vollstaendig geladen werden (${mandant.name}).`, {
+        code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: mandant.firmaId,
+      });
+    }
+  }));
+  const offset = (page - 1) * pageSize;
+  let allEntries;
+  if (grouped) {
+    const tenantGroups = await Promise.all(batches.map(async ({ database, rows }) => {
+      const items = rows.map((row) => mapProductRow(row, database));
+      const planning = await loadProductPlanning(req, database, items);
+      return { database, groups: groupProductRows(rows, database, planning) };
+    }));
+    allEntries = combineVlGroups(tenantGroups);
+  } else {
+    allEntries = sortGroupVlItems(batches.flatMap(({ database, rows }) => rows.map((row) => {
+      const item = mapProductRow(row, database);
+      return { ...item, positionKey: getVlPositionKey(item) };
+    })));
+  }
+  let data = allEntries.slice(offset, offset + pageSize);
+  if (!grouped) {
+    const planningEntries = await Promise.all(batches.map(async ({ database }) => ({
+      database,
+      planning: await loadProductPlanning(req, database,
+        data.filter((item) => Number(item.sourceMandantId) === Number(database.firmaId))),
+    })));
+    const planningByMandant = new Map(planningEntries.map(({ database, planning }) => [Number(database.firmaId), planning]));
+    data = data.map((item) => applyTempOrderPlanning(item, planningByMandant.get(Number(item.sourceMandantId))));
+  }
+  sendEnvelope(res, {
+    data,
+    meta: {
+      mandant: req.mandant,
+      activeMandantId: req.database.firmaId,
+      viewMandant: 'Frupack Gruppe',
+      viewMandantId: null,
+      vlScope: getVlScope(req.query),
+      viewMandants: mandants.map(({ firmaId, name }) => ({ id: firmaId, name })),
+      page, pageSize, count: data.length, total: allEntries.length,
+      ...(grouped ? {
+        totalGroups: allEntries.length,
+        totalPositions: allEntries.reduce((sum, group) => sum + group.positions.length, 0),
+      } : {}),
+      q, sort: 'vl', dir: 'ASC',
+      plastic: asText(req.query?.plastic), sub: asText(req.query?.sub),
+      subEmpty: String(req.query?.subEmpty || '') === '1',
+    },
+  });
+}
+
 router.get('/products', requireMandant, asyncHandler(async (req, res) => {
+  if (getVlScope(req.query)) return sendFrupackGroupVl(req, res, false);
   const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
@@ -353,6 +448,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) => {
+  if (getVlScope(req.query)) return sendFrupackGroupVl(req, res, true);
   const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   const { page, pageSize, q } = parseListParams(req.query, {
     page: 1,

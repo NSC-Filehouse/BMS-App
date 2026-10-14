@@ -26,6 +26,7 @@ import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
+import { getMandant } from '../utils/mandant.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -87,10 +88,11 @@ export default function ProductDetail({ modal = false }) {
   const location = useLocation();
   const { t } = useI18n();
   const vlMandantId = String(location.state?.vlMandantId || '').trim();
-  const readOnlyVl = Boolean(location.state?.vlReadOnly);
   const sourceQuery = vlMandantId ? `?vlMandantId=${encodeURIComponent(vlMandantId)}` : '';
 
   const [item, setItem] = React.useState(null);
+  const readOnlyVl = Boolean(location.state?.vlReadOnly)
+    || Boolean(item?.sourceMandantName && item.sourceMandantName.trim().toLowerCase() !== getMandant().trim().toLowerCase());
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [reserveOpen, setReserveOpen] = React.useState(false);
@@ -130,6 +132,7 @@ export default function ProductDetail({ modal = false }) {
   const reservedBy = React.useMemo(() => String(item?.reservedBy || '').trim(), [item]);
 
   const openReserveDialog = React.useCallback(() => {
+    if (readOnlyVl) return;
     if (isAlreadyReserved) {
       const msg = reservedBy
         ? t('product_already_reserved_by', { by: reservedBy })
@@ -145,9 +148,10 @@ export default function ProductDetail({ modal = false }) {
     setReserveInfo('');
     setReserveError('');
     setReserveOpen(true);
-  }, [isAlreadyReserved, reservedBy, t]);
+  }, [isAlreadyReserved, readOnlyVl, reservedBy, t]);
 
   const addProductToCart = React.useCallback(async () => {
+    if (readOnlyVl) return;
     if (!item || !Number.isFinite(availableAmount) || availableAmount <= 0) {
       setCartError(t('validation_cart_quantity_positive'));
       return;
@@ -167,9 +171,10 @@ export default function ProductDetail({ modal = false }) {
     } finally {
       setCartAdding(false);
     }
-  }, [availableAmount, item, t, vlMandantId, wpzId]);
+  }, [availableAmount, item, readOnlyVl, t, vlMandantId, wpzId]);
 
   const requestProductAction = React.useCallback((action) => {
+    if (readOnlyVl) return;
     if (!getSelectedCustomer()?.id) {
       setPendingCustomerAction(action);
       setCustomerPromptType(sourceCustomer?.id ? 'context' : 'generic');
@@ -181,9 +186,10 @@ export default function ProductDetail({ modal = false }) {
     } else if (action === 'cart') {
       void addProductToCart();
     }
-  }, [addProductToCart, openReserveDialog, sourceCustomer]);
+  }, [addProductToCart, openReserveDialog, readOnlyVl, sourceCustomer]);
 
   const chooseContextCustomer = React.useCallback(() => {
+    if (readOnlyVl) return;
     const selected = setSelectedCustomer(sourceCustomer);
     const action = pendingCustomerAction;
     setCustomerRequiredOpen(false);
@@ -195,7 +201,7 @@ export default function ProductDetail({ modal = false }) {
     } else if (action === 'cart') {
       void addProductToCart();
     }
-  }, [addProductToCart, openReserveDialog, pendingCustomerAction, sourceCustomer]);
+  }, [addProductToCart, openReserveDialog, pendingCustomerAction, readOnlyVl, sourceCustomer]);
 
   const chooseCustomer = React.useCallback(() => {
     if (!pendingCustomerAction) return;
@@ -267,7 +273,7 @@ export default function ProductDetail({ modal = false }) {
 
   React.useEffect(() => {
     const action = location.state?.pendingCustomerAction;
-    if (!action || !item || !getSelectedCustomer()?.id) return;
+    if (readOnlyVl || !action || !item || !getSelectedCustomer()?.id) return;
 
     const nextState = { ...(location.state || {}) };
     delete nextState.pendingCustomerAction;
@@ -281,7 +287,7 @@ export default function ProductDetail({ modal = false }) {
     } else if (action === 'cart') {
       void addProductToCart();
     }
-  }, [addProductToCart, item, location.pathname, location.state, navigate, openReserveDialog]);
+  }, [addProductToCart, item, location.pathname, location.state, navigate, openReserveDialog, readOnlyVl]);
 
   const handleBack = React.useCallback(() => {
     if (location.state?.returnTo?.pathname) {
@@ -467,6 +473,7 @@ export default function ProductDetail({ modal = false }) {
           variant="contained"
           disabled={reserveLoading || !reserveAmount || !reserveDate || reserveTooMuch}
           onClick={async () => {
+            if (readOnlyVl) return;
             try {
               setReserveLoading(true);
               setReserveError('');
