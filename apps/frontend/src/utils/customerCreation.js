@@ -7,6 +7,7 @@ export const CREATION_LABELS = {
   aussendienst: ['Außendienst', 'Sales representative'], innendienst: ['Innendienst', 'Inside sales'], verkaufsbuero: ['Verkaufsbüro', 'Sales office'],
   zahlungsbedingungId: ['Zahlungsbedingung', 'Payment terms'], bankeinzug: ['Bankeinzug', 'Direct debit'],
   iban: ['IBAN', 'IBAN'], bic: ['BIC', 'BIC'], bank: ['Bankname', 'Bank name'], kontoinhaber: ['Kontoinhaber', 'Account holder'],
+  ansprechpartner: ['Ansprechpartner vor Ort', 'Contact at delivery address'], abholzeiten: ['Abholzeiten', 'Pickup hours'],
   info: ['Bankinformation', 'Bank information'], notiz: ['Notiz', 'Note'], keinSerienbrief: ['Kein Serienbrief', 'No mail merge'],
   branchen: ['Branchen', 'Industries'], kategorien: ['Kategorie', 'Category'], postfach: ['Postfach', 'PO box'],
   standardanschrift: ['Postfach ist Standardanschrift', 'Use PO box as default address'], titel: ['Titel', 'Title'],
@@ -94,6 +95,8 @@ export function getCreationFieldLimit(path) {
   if (key === 'name1' || key === 'name2' || key === 'name' || key === 'ort') return 50;
   if (key === 'vorname' || key === 'anrede') return 25;
   if (key === 'matchcode' || key === 'region') return 100;
+  if (path.startsWith('lieferanschriften') && key === 'ansprechpartner') return 150;
+  if (path.startsWith('lieferanschriften') && key === 'abholzeiten') return 250;
   if (['telefon', 'fax', 'mobil', 'titel', 'abteilung', 'position'].includes(key)) return 50;
   if (key === 'bank' || key === 'kontoinhaber') return 200;
   if (key === 'postfach') return 15;

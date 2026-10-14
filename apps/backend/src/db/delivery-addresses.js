@@ -1,7 +1,6 @@
-const { runSQLQueryAccess, withSqlTransaction } = require('./access');
+const { runSQLQueryAccess } = require('./access');
 const { buildDeliveryAddressText } = require('../delivery-address');
 const { createHttpError } = require('../utils');
-const { getDeliveryAddressCountryType } = require('./delivery-address-country-types');
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -84,20 +83,6 @@ function normalizeDeliveryAddressInput(input, customer, customerId) {
   return values;
 }
 
-function getNextDeliveryAddressNumber(rows) {
-  const highest = (Array.isArray(rows) ? rows : [])
-    .map((row) => Number.parseInt(asText(row?.addressNo ?? row?.kdL_Lieferanschrift_Nr), 10))
-    .filter((value) => Number.isInteger(value) && value >= 0)
-    .reduce((max, value) => Math.max(max, value), 0);
-  const next = highest + 1;
-  if (next > 32767) {
-    throw createHttpError(409, 'No delivery address number is available for this customer.', {
-      code: 'DELIVERY_ADDRESS_NUMBER_EXHAUSTED',
-    });
-  }
-  return next;
-}
-
 function mapDeliveryAddressRow(row) {
   const countryCode = asText(row?.countryCode || row?.la_ISOalpha2 || row?.kdL_LK);
   return {
@@ -132,68 +117,8 @@ async function loadCustomerDeliveryAddresses(database, customerId) {
   return (Array.isArray(rows) ? rows : []).map(mapDeliveryAddressRow);
 }
 
-async function createCustomerDeliveryAddress(database, customer, input, customerId) {
-  const values = normalizeDeliveryAddressInput(input, customer, customerId);
-  const countryType = await getDeliveryAddressCountryType(values.countryId);
-  if (!countryType) {
-    throw createHttpError(400, 'Delivery address country type is not available.', {
-      code: 'DELIVERY_ADDRESS_COUNTRY_ID_INVALID',
-      field: 'countryId',
-    });
-  }
-  values.countryId = countryType.id;
-  values.countryCode = countryType.isoAlpha2;
-
-  const result = await withSqlTransaction(database?.databaseName || database, async ({ query }) => {
-    // Serialize address-number allocation per customer. The address table has no
-    // unique constraint for kdL_Lieferanschrift_Nr, so locking the customer row
-    // also covers the empty-address case where the address query locks no rows.
-    await query(`
-      SELECT [kd_KdNR]
-      FROM [dbo].[tblKunden] WITH (UPDLOCK, HOLDLOCK)
-      WHERE [kd_KdNR] = ?
-    `, [values.resolvedCustomerId]);
-    const existingRows = await query(`
-      SELECT [kdL_Lieferanschrift_Nr] AS addressNo
-      FROM [dbo].[tblKun_LiefAdress] WITH (UPDLOCK, HOLDLOCK)
-      WHERE COALESCE([kdL_KdNR], '') = ?
-    `, [values.resolvedCustomerId]);
-    const addressNo = getNextDeliveryAddressNumber(existingRows.rows);
-    const inserted = await query(`
-      INSERT INTO [dbo].[tblKun_LiefAdress] (
-        [kdL_KdNR], [kdL_Lieferanschrift_Nr], [kdL_Kurz], [kdL_Name1], [kdL_Name2],
-        [kdL_Strasse], [kdL_LK], [kdL_PLZ], [kdL_Ort], [kdL_Region], [kdL_Kontrakt], [kdL_Abhol]
-      )
-      OUTPUT INSERTED.[kdL_KdNR], INSERTED.[kdL_ID], INSERTED.[kdL_Lieferanschrift_Nr],
-             INSERTED.[kdL_Kurz], INSERTED.[kdL_Name1], INSERTED.[kdL_Name2], INSERTED.[kdL_Strasse],
-             INSERTED.[kdL_LK], INSERTED.[kdL_PLZ], INSERTED.[kdL_Ort], INSERTED.[kdL_Region],
-             INSERTED.[kdL_Kontrakt], INSERTED.[kdL_Abhol]
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      values.resolvedCustomerId,
-      addressNo,
-      values.short || null,
-      values.name1 || null,
-      values.name2 || null,
-      values.street,
-      values.countryId,
-      values.postalCode,
-      values.city,
-      values.region || null,
-      values.contact || null,
-      values.pickupTimes || null,
-    ]);
-    const row = Array.isArray(inserted.rows) ? inserted.rows[0] : null;
-    if (!row) throw new Error('Delivery address insert returned no row.');
-    return mapDeliveryAddressRow({ ...row, countryCode: values.countryCode });
-  });
-  return result;
-}
-
 module.exports = {
   DELIVERY_ADDRESS_FIELD_LIMITS,
-  createCustomerDeliveryAddress,
-  getNextDeliveryAddressNumber,
   loadCustomerDeliveryAddresses,
   mapDeliveryAddressRow,
   normalizeDeliveryAddressInput,

@@ -76,6 +76,48 @@ Für die Auslieferung Frontend bauen, Code und `.env.prod` auf DB03 übernehmen
 und die App-Dienste neu starten. Diese Bereitstellung und der abgestimmte echte
 Anlagetest sind noch offen.
 
+## Lieferadressen im Auftrag über die ERP-API
+
+Die Neuanlage im Auftragsdialog nutzt die BMS-Kunden-API. Das Backend schreibt
+keine Lieferadress-Stammdaten mehr direkt in `dbo.tblKun_LiefAdress`.
+Adressauswahl und Prüfung der technischen `kdL_ID` lesen weiterhin aus SQL.
+Der Client benötigt das Recht `nachtragen` für den ausgewählten Mandanten;
+zusätzliche Mandanten oder eine zentrale PLA-Anlage werden nicht ausgelöst.
+
+Vor der Bereitstellung auf **DB04 / BMS** das Skript
+`apps/backend/sql/add_delivery_address_operation.sql` ausführen. Es legt nur
+`BMSApp.DeliveryAddressOperation` an. Der App-SQL-Login benötigt dort
+SELECT, INSERT und UPDATE. Die Migration wird durch die Anwendung nicht automatisch
+ausgeführt. Ohne die Tabelle bleibt die neue Lieferadressfunktion gesperrt.
+
+Die bestehenden Parameter `BMS_CUSTOMER_API_ENABLED`, Basisadresse, API-Key,
+Zertifikatseinstellungen und `BMS_CUSTOMER_API_WRITE_ENABLED` gelten auch hier.
+Bei gesperrten API-Schreibzugriffen ist ausschließlich die Vorprüfung möglich.
+Die lokale `.env.prod` muss vor einer Freigabe mit der tatsächlich verwendeten
+Serverkonfiguration abgeglichen werden.
+
+Vor der Anlage werden Felder, Dubletten und Warnungen über den schreibfreien
+Endpunkt `/{kundennummer}/lieferanschriften/pruefung` geprüft. Eine vorhandene
+Adresse lässt sich direkt auswählen; ein bestätigter anderer Eintrag benötigt
+10 bis 500 Zeichen Begründung. Matchcode (100), Ansprechpartner (150) und
+Abholzeiten (250 Zeichen) werden vollständig übergeben. Die Region bestimmt die
+API aus der neuen Anschrift. Der Ersteller kommt aus der angemeldeten Identität.
+
+Anfrage und UUID werden vor dem Senden im Browser und im App-Schema gesichert.
+Timeouts und unvollständige Antworten behalten denselben Schlüssel und dieselbe
+ERP-Anfrage. Nach einem Reload lässt sich der Vorgang wieder aufnehmen; unbekannte
+Vorgänge können zusätzlich aus der serverseitigen Historie wiederhergestellt
+werden. Nach bestätigter Anlage wird exakt die zurückgegebene `kdL_ID` im
+Zielmandanten nachgeladen. Ist die Adresse noch nicht lesbar, wiederholt der
+nächste Versuch nur das Laden und löst keine neue ERP-Anlage aus.
+
+Die Historie speichert die Vorgangs-ID des Mandanteneintrags für spätere
+Nachverfolgung beziehungsweise einen gesonderten Rückbau. Eine Lieferadresse
+bleibt wie bisher bestehen, wenn anschließend der Auftrag verworfen wird.
+Ein tatsächlicher ERP-Anlagetest, Browserprüfung, Migration und Deployment
+sind separat durchzuführen; der Kunden-Rückbaudialog umfasst diese Nachträge
+nicht automatisch.
+
 Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm workspaces) mit:
 
 - **Backend**: Node.js + Express, Access (ODBC) über UNC-Pfade, Mandant per `x-mandant` Header

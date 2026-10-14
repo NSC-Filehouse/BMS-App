@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 
 const { buildDeliveryAddressText } = require('../src/delivery-address');
 const {
-  getNextDeliveryAddressNumber,
   mapDeliveryAddressRow,
   normalizeDeliveryAddressInput,
 } = require('../src/db/delivery-addresses');
@@ -103,14 +102,4 @@ test('requires a country type id and required address fields', () => {
     () => normalizeDeliveryAddressInput({ street: '', postalCode: '20457', city: 'Hamburg', countryId: 'D' }, { kd_KdNR: '10001' }),
     (error) => error?.details?.code === 'DELIVERY_ADDRESS_REQUIRED' && error.details.fields.includes('street'),
   );
-});
-
-test('assigns the next logical delivery address number', () => {
-  assert.equal(getNextDeliveryAddressNumber([
-    { addressNo: '0' },
-    { addressNo: 2 },
-    { addressNo: '4' },
-    { addressNo: 'not-a-number' },
-  ]), 5);
-  assert.equal(getNextDeliveryAddressNumber([]), 1);
 });

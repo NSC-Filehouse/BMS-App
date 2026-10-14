@@ -24,6 +24,15 @@ const salutations = [
 const body = () => ({ stammdaten: { name1: 'Müller GmbH', anrede: 'FI', anschrift: { strasse: 'Straße 1', plz: '12345', ort: 'München', land: 'DE' }, steuer: { ustIdNr: 'DE123456789' } }, rechnungsanschrift: { email: 'invoice@example.com' } });
 const normalize = (input = body()) => normalizeCreationRequest(input, identity, database, settings, countries, salutations, id, employees);
 
+test('delivery additions survive customer creation without changing frozen pre-upgrade requests', () => {
+  const input = body();
+  const address = { name1: 'Lager', name2: null, strasse: 'Hafenstraße 1', plz: '20457', ort: 'Hamburg', land: 'DE', region: null };
+  input.lieferanschriften = [address];
+  assert.deepEqual(normalize(input).payload.lieferanschriften, [address]);
+  Object.assign(address, { matchcode: 'Lager Nord', ansprechpartner: 'Tor 2', abholzeiten: 'Mo-Fr 08:00-16:00' });
+  assert.deepEqual(normalize(input).payload.lieferanschriften, [address]);
+});
+
 test('creation is restricted to the active personal main tenant, without full-access exceptions', () => {
   assert.equal(canCreateCustomer(identity, database, settings), true);
   assert.equal(canCreateCustomer(identity, { firmaId: 8, shortName: 'POL' }, settings), false);

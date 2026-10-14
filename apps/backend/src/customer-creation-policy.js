@@ -140,7 +140,11 @@ function normalizeCreationRequest(input, identity, database, settings, countries
       ranking: entry.ranking === null || entry.ranking === '' || entry.ranking === undefined ? null : Number(entry.ranking),
       eigeneAnschrift: entry.eigeneAnschrift ? pick(entry.eigeneAnschrift, ['strasse', 'plz', 'ort', 'land']) : null,
     })) : [],
-    lieferanschriften: Array.isArray(input?.lieferanschriften) ? input.lieferanschriften.map((entry) => address(entry, ['name1', 'name2'])) : [],
+    lieferanschriften: Array.isArray(input?.lieferanschriften) ? input.lieferanschriften.map((entry) => ({
+      ...address(entry, ['name1', 'name2']),
+      // Preserve the exact shape of pre-upgrade frozen requests for idempotency.
+      ...pick(entry, ['matchcode', 'ansprechpartner', 'abholzeiten'].filter((field) => Object.hasOwn(entry, field))),
+    })) : [],
   };
   const fehler = [];
   const requireField = (value, field) => { if (!text(value)) fehler.push({ code: 'FELD.FEHLT', feld: field, nachricht: 'Pflichtfeld fehlt.', abhilfe: 'Bitte dieses Feld ausfüllen.' }); };

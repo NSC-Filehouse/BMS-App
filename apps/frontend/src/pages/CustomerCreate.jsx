@@ -182,7 +182,7 @@ export default function CustomerCreate() {
     return <TextField key={path} id={fieldId(path)} name={path} label={label} value={value}
       required={Boolean(options.required)} fullWidth size="small" select={isSelect} disabled={busy || Boolean(frozen) || options.readOnly}
       type={key === 'geburtstag' ? 'date' : key.toLowerCase().includes('email') ? 'email' : ['telefon', 'mobil', 'fax'].includes(key) ? 'tel' : 'text'}
-      multiline={['notiz', 'info'].includes(key)} minRows={['notiz', 'info'].includes(key) ? 2 : undefined}
+      multiline={['notiz', 'info', 'abholzeiten'].includes(key)} minRows={['notiz', 'info', 'abholzeiten'].includes(key) ? 2 : undefined}
       InputLabelProps={key === 'geburtstag' ? { shrink: true } : undefined}
       inputProps={{ maxLength: getCreationFieldLimit(path) }}
       SelectProps={options.multiple ? { multiple: true } : undefined}
@@ -265,7 +265,7 @@ export default function CustomerCreate() {
       {section('delivery', w.delivery, <>
         {draft.lieferanschriften.map((_, index) => <Card key={index} variant="outlined" sx={{ mb: 2 }}><CardContent>
           <Stack direction="row" alignItems="center" justifyContent="space-between"><Typography fontWeight={600}>{w.row} {index + 1}</Typography>{remove('lieferanschriften', index)}</Stack>
-          {grid(...fields(`lieferanschriften[${index}]`, ['name1', 'name2', 'strasse', 'plz', 'ort', 'land', 'region'], ['strasse', 'plz', 'ort', 'land']))}
+          {grid(...fields(`lieferanschriften[${index}]`, ['name1', 'name2', 'matchcode', 'strasse', 'plz', 'ort', 'land', 'region', 'ansprechpartner', 'abholzeiten'], ['strasse', 'plz', 'ort', 'land']))}
         </CardContent></Card>)}
         {add('lieferanschriften', createEmptyAddress({ name1: draft.stammdaten.name1, name2: '' }))}
       </>)}

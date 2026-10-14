@@ -20,10 +20,12 @@ const {
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
 const {
-  createCustomerDeliveryAddress,
   loadCustomerDeliveryAddresses,
 } = require('../db/delivery-addresses');
-const { loadDeliveryAddressCountryTypes } = require('../db/delivery-address-country-types');
+const { loadDeliveryAddressCountryTypes, getDeliveryAddressCountryType } = require('../db/delivery-address-country-types');
+const { createCustomerApiClient } = require('../bms-customer-api');
+const { assertDeliveryAddressApi, normalizeDeliveryAddressRequest, executeDeliveryAddressCreation, throwDeliveryAddressProblem, resolveCreatedDeliveryAddress } = require('../delivery-address-api');
+const deliveryAddressHistory = require('../db/delivery-address-operations');
 const {
   isHiddenCustomerDetailEmployee,
   loadCustomerSalesRepresentatives,
@@ -31,7 +33,7 @@ const {
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 const { resolveCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const customerCreationHistory = require('../db/customer-creation-history');
-const { assertCustomerRollbackDeveloper } = require('../customer-creation-policy');
+const { assertCustomerRollbackDeveloper, UUID: DELIVERY_ADDRESS_UUID } = require('../customer-creation-policy');
 const {
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
@@ -1012,25 +1014,55 @@ router.get('/customers/:id/delivery-addresses', requireMandant, asyncHandler(asy
   });
 }));
 
-router.post('/customers/:id/delivery-addresses', requireMandant, asyncHandler(async (req, res) => {
+async function deliveryAddressRequest(req, operationId) {
   const id = toText(req.params.id);
-  if (!id) {
-    throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
-  }
+  if (!id) throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   const customer = await requireVisibleCustomer(req, id);
-  const data = await createCustomerDeliveryAddress(req.database, customer, req.body, id);
+  const country = await getDeliveryAddressCountryType(req.body?.countryId);
+  return { id, normalized: normalizeDeliveryAddressRequest(req.body, customer, id, req.database, req.userIdentity, country, operationId) };
+}
 
-  sendEnvelope(res, {
-    status: 201,
-    data,
-    meta: {
-      mandant: req.mandant,
-      databaseName: req.database?.databaseName || null,
-      idField: 'kdL_ID',
-      id,
-    },
-    error: null,
-  });
+router.get('/customers/:id/delivery-addresses/context', requireMandant, asyncHandler(async (req, res) => {
+  const id = toText(req.params.id);
+  await requireVisibleCustomer(req, id);
+  const apiAvailable = Boolean(config.customerApi.enabled && config.customerApi.baseAddress && config.customerApi.apiKey);
+  const pending = await deliveryAddressHistory.loadPending(req.userIdentity.userId, req.database.shortName, id);
+  sendEnvelope(res, { data: { apiAvailable, writeEnabled: apiAvailable && config.customerApi.writeEnabled, mandant: req.database.shortName, userId: req.userIdentity.userId, pending } });
+}));
+
+router.post('/customers/:id/delivery-addresses/check', requireMandant, asyncHandler(async (req, res) => {
+  assertDeliveryAddressApi(config.customerApi);
+  const request = await deliveryAddressRequest(req);
+  const response = await createCustomerApiClient().request('/' + encodeURIComponent(request.id) + '/lieferanschriften/pruefung', { method: 'POST', body: request.normalized.payload });
+  if (response.status !== 200) throwDeliveryAddressProblem(response);
+  sendEnvelope(res, { data: response.data });
+}));
+
+router.get('/customers/:id/delivery-addresses/operations/:operationId', requireMandant, asyncHandler(async (req, res) => {
+  const id = toText(req.params.id);
+  if (!DELIVERY_ADDRESS_UUID.test(req.params.operationId)) throw createHttpError(400, 'Ungültige Vorgangs-ID.', { code: 'DELIVERY_ADDRESS_KEY_INVALID' });
+  await requireVisibleCustomer(req, id);
+  const operation = await deliveryAddressHistory.load(req.params.operationId, req.userIdentity.userId, req.database.shortName, id);
+  if (!operation) throw createHttpError(404, 'Vorgang nicht gefunden.', { code: 'DELIVERY_ADDRESS_OPERATION_NOT_FOUND' });
+  const address = operation.state === 'created'
+    ? await resolveCreatedDeliveryAddress(operation, req.database, id, req.params.operationId, loadCustomerDeliveryAddresses) : null;
+  sendEnvelope(res, { data: { state: operation.state, address, problem: operation.state === 'failed' ? operation.response : null } });
+}));
+
+router.post('/customers/:id/delivery-addresses', requireMandant, asyncHandler(async (req, res) => {
+  assertDeliveryAddressApi(config.customerApi, true);
+  const operationId = req.header('Idempotency-Key');
+  const request = await deliveryAddressRequest(req, operationId);
+  const response = await executeDeliveryAddressCreation({
+    operationId, customerId: request.id, database: req.database, identity: req.userIdentity,
+    normalized: request.normalized, settings: config.customerApi,
+  }, { client: createCustomerApiClient(), history: deliveryAddressHistory });
+  if (response.state !== 'created') throwDeliveryAddressProblem(response, operationId);
+  const data = await resolveCreatedDeliveryAddress(response, req.database, request.id, operationId, loadCustomerDeliveryAddresses);
+  sendEnvelope(res, { status: 201, data, meta: {
+    mandant: req.mandant, databaseName: req.database.databaseName, idField: 'kdL_ID', id: request.id,
+    operationId, state: 'created', replay: Boolean(response.replay),
+  } });
 }));
 
 router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res) => {
