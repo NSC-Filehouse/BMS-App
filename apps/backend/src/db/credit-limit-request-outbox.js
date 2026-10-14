@@ -8,8 +8,8 @@ const {
   formatCreditLimitRequestBody,
   calculateCreditLimitRequest,
   hasBankDetails,
-  isCreditLimitExceeded,
-  isInsolventFlag,
+  isCreditLimitRequestRequired,
+  mapCustomerIdentity,
   isEmailAddress,
   isWithinCooldown,
   uniqueCaseInsensitive,
@@ -19,6 +19,7 @@ const {
   sendOrderMail,
   validateOrderMailConfig,
 } = require('../mail/order-mail');
+const { isOwnSalesMandantCustomer, loadOwnSalesMandantId } = require('./own-sales-mandants');
 
 const STATE_TABLE = appTableSql('creditLimitRequestState');
 const OUTBOX_TABLE = appTableSql('creditLimitMailOutbox');
@@ -235,8 +236,10 @@ async function queueCreditLimitMails({
     openOrders: creditContext.openOrders,
   });
   const creditRequestDue = Boolean(sendCreditRequest)
-    && isCreditLimitExceeded(creditContext.credit, creditRequestValues.exposureAmount);
-  if (sendCreditRequest && !creditRequestDue) {
+    && isCreditLimitRequestRequired(creditContext, creditRequestValues.exposureAmount);
+  if (isOwnSalesMandantCustomer(creditContext.customer)) {
+    result.creditRequest = { status: 'suppressed_internal' };
+  } else if (sendCreditRequest && !creditRequestDue) {
     result.creditRequest = { status: 'not_required' };
   }
   const configuredTestRecipient = asText(testRecipient);
@@ -417,14 +420,30 @@ async function updateStateMailStatus(item, status) {
   `, [status, item.companyId, item.customerId]);
 }
 
-async function isCustomerCurrentlyInsolvent(item) {
+async function loadCurrentCustomer(item) {
   const database = await getDatabaseConnectionForCompanyId(item.companyId);
   const rows = await runSQLQueryAccess(database, `
-    SELECT TOP 1 [kd_Insolvenz] AS insolvent
+    SELECT TOP 1 [kd_KdNR] AS customerId, [kd_Insolvenz] AS insolvent,
+      [kd_InterCompany] AS interCompany
     FROM [dbo].[tblKunden]
     WHERE [kd_KdNR] = ?
   `, [item.customerId]);
-  return isInsolventFlag(rows?.[0]?.insolvent);
+  return mapCustomerIdentity(rows?.[0]);
+}
+
+async function suppressInternalCreditRequest(item) {
+  await runSQLQuerySqlServer(config.sql.database, `
+    UPDATE ${OUTBOX_TABLE}
+    SET [clm_Status] = N'suppressed',
+        [clm_NextAttemptAt] = NULL,
+        [clm_LockedAt] = NULL,
+        [clm_LastError] = N'Kunde ist ein eigener Verkaufsmandant.',
+        [clm_LastModifiedDate] = SYSUTCDATETIME()
+    WHERE [clm_ID] = ?
+  `, [item.id]);
+  await updateStateMailStatus(item, 'suppressed_internal');
+  logger.info(`Kreditanfrage ${item.id} fuer eigenen Verkaufsmandanten ${item.customerId} unterdrueckt.`);
+  return { processed: true, status: 'suppressed_internal', type: item.type };
 }
 
 async function suppressInsolventOutboxItem(item) {
@@ -447,8 +466,12 @@ async function processCreditLimitMailOutboxById(outboxId) {
   if (!item) return { processed: false, status: 'not_claimed' };
 
   try {
-    if (await isCustomerCurrentlyInsolvent(item)) {
-      return suppressInsolventOutboxItem(item);
+    const customer = await loadCurrentCustomer(item);
+    if (customer?.insolvent) {
+      return await suppressInsolventOutboxItem(item);
+    }
+    if (item.type === CREDIT_LIMIT_TYPE && await loadOwnSalesMandantId(customer)) {
+      return await suppressInternalCreditRequest(item);
     }
 
     const delivery = await sendOrderMail({

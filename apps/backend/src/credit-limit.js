@@ -1,4 +1,5 @@
 const { runSQLQueryAccess } = require('./db/access');
+const { isOwnSalesMandantCustomer, loadOwnSalesMandantId } = require('./db/own-sales-mandants');
 
 function toAmount(value) {
   const amount = Number(value);
@@ -97,6 +98,11 @@ function isCreditLimitExceeded(credit, exposureAmount) {
   return Number.isFinite(limit) ? totalExposure > limit : totalExposure > 0;
 }
 
+function isCreditLimitRequestRequired(creditContext, exposureAmount) {
+  return !isOwnSalesMandantCustomer(creditContext?.customer)
+    && isCreditLimitExceeded(creditContext?.credit, exposureAmount);
+}
+
 function formatEuro(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '-';
@@ -168,6 +174,7 @@ function mapCustomerIdentity(row) {
     street: normalizeText(row.street),
     vatId: normalizeText(row.vatId),
     insolvent: isInsolventFlag(row.insolvent),
+    interCompany: isInsolventFlag(row.interCompany),
     mainSalesRepresentative: normalizeText(row.mainSalesRepresentative),
     iban: normalizeText(row.iban),
     swift: normalizeText(row.swift),
@@ -195,6 +202,7 @@ async function loadCustomerCreditContext(database, customerId) {
       [kd_Strasse] AS street,
       [kd_UST_Ident_Nr] AS vatId,
       [kd_Insolvenz] AS insolvent,
+      [kd_InterCompany] AS interCompany,
       [kd_Aussendienst] AS mainSalesRepresentative,
       [kd_IBAN] AS iban,
       [kd_SWIFT] AS swift,
@@ -208,6 +216,7 @@ async function loadCustomerCreditContext(database, customerId) {
   `, [id]);
   const customer = mapCustomerIdentity(Array.isArray(customerRows) ? customerRows[0] : null);
   if (!customer) return null;
+  customer.ownSalesMandantId = await loadOwnSalesMandantId(customer);
 
   const creditRows = await runSQLQueryAccess(database, `
     SELECT
@@ -344,6 +353,7 @@ module.exports = {
   isInsolventFlag,
   isEmailAddress,
   isCreditLimitExceeded,
+  isCreditLimitRequestRequired,
   isWithinCooldown,
   loadCustomerCreditContext,
   mapCustomerIdentity,

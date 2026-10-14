@@ -20,7 +20,7 @@ const {
   calculateCreditLimitRequest,
   hasBankDetails,
   isEmailAddress,
-  isCreditLimitExceeded,
+  isCreditLimitRequestRequired,
   loadCustomerCreditContext,
 } = require('../credit-limit');
 const { getEmailsForUserCodes, getGfsForMandant } = require('../config/geschaeftsfuehrer');
@@ -2136,7 +2136,7 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
     && creditContext
     && !creditContext.customer.insolvent
     && isTempOrderEditableStatus(normalizeStoredTempOrderStatus(order.ta_Status, order.ta_completed))
-    && isCreditLimitExceeded(creditContext.credit, requestValues.exposureAmount),
+    && isCreditLimitRequestRequired(creditContext, requestValues.exposureAmount),
   );
 
   sendEnvelope(res, {
@@ -2331,6 +2331,13 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       }
 
       const customerId = asText(orderRow.ta_ClientReferenceId);
+      if (creditLimitContext
+        && asText(creditLimitContext.customer.customerId).toUpperCase() !== customerId.toUpperCase()) {
+        throw createHttpError(409, 'Der Kunde des Auftrags wurde zwischenzeitlich geaendert. Bitte den Auftrag neu laden.', {
+          code: 'TEMP_ORDER_CUSTOMER_CHANGED',
+          id,
+        });
+      }
       const customerRequirements = await loadCustomerOrderRequirements(req.database, customerId);
       if (!customerRequirements.customerFound) {
         throw createHttpError(404, `Customer not found: ${customerId || '(missing customer number)'}.`, {

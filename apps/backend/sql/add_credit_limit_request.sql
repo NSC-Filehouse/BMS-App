@@ -51,7 +51,7 @@ BEGIN
     CONSTRAINT [PK_CreditLimitMailOutbox] PRIMARY KEY CLUSTERED ([clm_ID]),
     CONSTRAINT [UQ_CreditLimitMailOutbox_ClientMessageID] UNIQUE ([clm_ClientMessageID]),
     CONSTRAINT [CK_CreditLimitMailOutbox_Type]
-      CHECK ([clm_Type] IN (N'credit_limit_request', N'bank_details_reminder')),
+      CHECK ([clm_Type] IN (N'credit_limit_request', N'credit_limit_request_user_confirmed', N'bank_details_reminder')),
     CONSTRAINT [CK_CreditLimitMailOutbox_Status]
       CHECK ([clm_Status] IN (N'pending', N'sending', N'sent', N'failed', N'suppressed'))
   );
@@ -65,6 +65,16 @@ END;
 
 IF OBJECT_ID(N'BMSApp.CreditLimitMailOutbox', N'U') IS NOT NULL
 BEGIN
+  IF OBJECT_ID(N'BMSApp.CK_CreditLimitMailOutbox_Type', N'C') IS NOT NULL
+  BEGIN
+    ALTER TABLE [BMSApp].[CreditLimitMailOutbox]
+      DROP CONSTRAINT [CK_CreditLimitMailOutbox_Type];
+  END;
+
+  ALTER TABLE [BMSApp].[CreditLimitMailOutbox] WITH CHECK
+    ADD CONSTRAINT [CK_CreditLimitMailOutbox_Type]
+      CHECK ([clm_Type] IN (N'credit_limit_request', N'credit_limit_request_user_confirmed', N'bank_details_reminder'));
+
   IF OBJECT_ID(N'BMSApp.CK_CreditLimitMailOutbox_Status', N'C') IS NOT NULL
   BEGIN
     ALTER TABLE [BMSApp].[CreditLimitMailOutbox]

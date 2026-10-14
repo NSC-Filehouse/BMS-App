@@ -345,6 +345,18 @@ Mandanten-ID hinter dem Pipe-Zeichen (`E-Mail-Adresse|Mandanten-ID`). Ein
 gesetzter `BMS_ORDER_MAIL_TEST_RECIPIENT` bleibt ein isolierter Testversand an
 nur diese Adresse; echte CC-Empfänger werden dann nicht angeschrieben.
 
+Für Kunden, deren `kd_KdNR` zur `md_KdNR` eines der zehn Verkaufsmandanten
+aus `apps/backend/src/config/sales-mandants.js` passt und deren
+`kd_InterCompany` gesetzt ist, entfällt die Kreditanfrage. Die Prüfung gilt
+für Vorschau, Auftragsabschluss und noch wartende Kreditanfragen im Worker.
+Sie hängt nicht von den Mandantenrechten des Benutzers ab. Bei fehlendem
+Kennzeichen, mehrdeutiger Zuordnung oder nicht lesbarem Mandantenverzeichnis
+bleibt die normale Kreditprüfung aktiv. Die Liste der Verkaufsmandanten muss
+bei Änderungen des App-Angebots im Backend mitgepflegt werden.
+Bestehende Installationen müssen `add_credit_limit_request.sql` erneut
+ausführen, um auch den Typ `credit_limit_request_user_confirmed` in der
+CHECK-Bedingung zuzulassen. Frühere automatische Einträge bleiben gespeichert.
+
 Offene Kreditlimit-Mails aus der früheren Automatik werden nicht mehr vom
 Worker versendet. Die separate Bankdaten-Erinnerung bleibt bei einem
 Kreditlimit von `0` bestehen und wird weiterhin höchstens einmal pro
