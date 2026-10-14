@@ -345,6 +345,13 @@ Mandanten-ID hinter dem Pipe-Zeichen (`E-Mail-Adresse|Mandanten-ID`). Ein
 gesetzter `BMS_ORDER_MAIL_TEST_RECIPIENT` bleibt ein isolierter Testversand an
 nur diese Adresse; echte CC-Empfänger werden dann nicht angeschrieben.
 
+Für den sichtbaren Absender der Kreditlimit-Anfrage muss außerdem die idempotente
+Migration `apps/backend/sql/add_credit_limit_mail_sender.sql` auf der zentralen
+`BMS`-Datenbank ausgeführt werden. Die Kreditlimit-Mail verwendet anschließend
+die E-Mail-Adresse und den Namen des Auftragserstellers als expliziten Absender;
+die Empfänger- und CC-Auswahl bleibt unverändert. Der MailService bleibt der
+technische Transport und muss zum Senden mit der Absenderadresse berechtigt sein.
+
 Für Kunden, deren `kd_KdNR` zur `md_KdNR` eines der zehn Verkaufsmandanten
 aus `apps/backend/src/config/sales-mandants.js` passt und deren
 `kd_InterCompany` gesetzt ist, entfällt die Kreditanfrage. Die Prüfung gilt

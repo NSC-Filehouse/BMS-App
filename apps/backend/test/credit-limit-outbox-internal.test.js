@@ -44,6 +44,10 @@ function reset(type = CREDIT_LIMIT_TYPE, customer = {}) {
     id: 42, companyId: 3, customerId: currentCustomer.customerId, type, orderId: 1,
     toRecipients: '["recipient@example.com"]', subject: 'Credit request', body: 'Body',
     clientMessageId: 'test-message', status: 'sending', attemptCount: 1,
+    ...(type === CREDIT_LIMIT_TYPE ? {
+      fromAddress: 'creator@example.com',
+      fromDisplayName: 'Order Creator',
+    } : {}),
   };
 }
 
@@ -90,7 +94,18 @@ test('worker sends ordinary credit for external customers or missing InterCompan
     reset(CREDIT_LIMIT_TYPE, customer);
     assert.equal((await processCreditLimitMailOutboxById(42)).status, 'sent');
     assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].fromAddress, 'creator@example.com');
+    assert.equal(deliveries[0].fromDisplayName, 'Order Creator');
+    assert.equal(deliveries[0].onBehalfOfAddress, undefined);
   }
+});
+
+test('worker does not fall back to the service sender for credit requests without a creator email', async () => {
+  reset(CREDIT_LIMIT_TYPE, { customerId: 'external' });
+  delete item.fromAddress;
+  delete item.fromDisplayName;
+  assert.equal((await processCreditLimitMailOutboxById(42)).status, 'failed');
+  assert.equal(deliveries.length, 0);
 });
 
 test('directory failures use normal credit handling without granting an exemption', async () => {
@@ -119,4 +134,12 @@ test('migration permits the worker credit type for new and existing tables, reta
     assert.ok(types.includes(`N'${BANK_DETAILS_TYPE}'`));
     assert.ok(types.includes("N'credit_limit_request'"));
   }
+});
+
+test('sender migration adds nullable creator sender columns to existing outboxes', () => {
+  const migration = fs.readFileSync(path.join(__dirname, '../sql/add_credit_limit_mail_sender.sql'), 'utf8');
+  assert.match(migration, /COL_LENGTH\(N'BMSApp\.CreditLimitMailOutbox', N'clm_FromAddress'\) IS NULL/);
+  assert.match(migration, /ADD \[clm_FromAddress\] NVARCHAR\(320\) NULL/);
+  assert.match(migration, /COL_LENGTH\(N'BMSApp\.CreditLimitMailOutbox', N'clm_FromDisplayName'\) IS NULL/);
+  assert.match(migration, /ADD \[clm_FromDisplayName\] NVARCHAR\(255\) NULL/);
 });

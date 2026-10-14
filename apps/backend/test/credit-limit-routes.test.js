@@ -147,7 +147,10 @@ test('direct finalize POST still queues credit for an external customer', async 
   reset('external', false);
   const response = await request('post', '/temp-orders/:id/finalize', { sendCreditLimitRequest: true });
   assert.equal(response.meta.creditLimitMail.creditRequest.status, 'queued');
-  assert.equal(calls.some((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]')), true);
+  const creditInsert = calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]'));
+  assert.ok(creditInsert);
+  assert.equal(creditInsert.params[7], 'ad@example.com');
+  assert.equal(creditInsert.params[8], 'Test AD');
   assert.deepEqual(orderMailCalls, [100]);
 });
 

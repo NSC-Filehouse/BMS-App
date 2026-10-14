@@ -209,6 +209,8 @@ test('queues a credit request only after explicit consent and does not apply req
       nowIso,
       creditTo: ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de'],
       creditCc: ['Meyer@mlplastics.de', 'flasch@chg-thermoplast.de'],
+      creditFromAddress: 'auftragssteller@example.com',
+      creditFromDisplayName: 'Alex Auftrag',
       testRecipient,
     });
     return { calls, result };
@@ -220,8 +222,10 @@ test('queues a credit request only after explicit consent and does not apply req
     assert.equal(first.result.creditRequest.requestedLimit, 350000);
     const insert = first.calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox'));
     assert.equal(insert.params[3], 'credit_limit_request_user_confirmed');
-    assert.equal(insert.params[7], 'Kreditanfrage ER&GE GmbH');
-    assert.match(insert.params[8], /Anmerkungen: Bitte zeitnah prüfen\./);
+    assert.equal(insert.params[7], 'auftragssteller@example.com');
+    assert.equal(insert.params[8], 'Alex Auftrag');
+    assert.equal(insert.params[9], 'Kreditanfrage ER&GE GmbH');
+    assert.match(insert.params[10], /Anmerkungen: Bitte zeitnah prüfen\./);
     assert.deepEqual(JSON.parse(insert.params[4]), ['Kimaz@mlplastics.de', 'Petschler@mlplastics.de']);
     assert.deepEqual(JSON.parse(insert.params[5]), [
       'Meyer@mlplastics.de',

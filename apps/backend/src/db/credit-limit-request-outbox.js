@@ -3,6 +3,7 @@ const logger = require('../logger');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
 const { getDatabaseConnectionForCompanyId } = require('./databases');
 const { appTableSql } = require('./app-tables');
+const { getUserIdentityByShortCode } = require('./users');
 const {
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
@@ -23,6 +24,7 @@ const { isOwnSalesMandantCustomer, loadOwnSalesMandantId } = require('./own-sale
 
 const STATE_TABLE = appTableSql('creditLimitRequestState');
 const OUTBOX_TABLE = appTableSql('creditLimitMailOutbox');
+const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 // Legacy automatic rows use "credit_limit_request" and are excluded below.
 const CREDIT_LIMIT_TYPE = 'credit_limit_request_user_confirmed';
 const BANK_DETAILS_TYPE = 'bank_details_reminder';
@@ -89,6 +91,8 @@ function mapOutboxRow(row) {
     toRecipients: parseRecipientJson(row.toRecipients),
     ccRecipients: parseRecipientJson(row.ccRecipients),
     bccRecipients: parseRecipientJson(row.bccRecipients),
+    fromAddress: asText(row.fromAddress) || null,
+    fromDisplayName: asText(row.fromDisplayName) || null,
     subject: asText(row.subject),
     body: String(row.body || ''),
     clientMessageId: asText(row.clientMessageId),
@@ -130,6 +134,8 @@ async function insertOutbox(query, {
   toRecipients,
   ccRecipients,
   bccRecipients,
+  fromAddress,
+  fromDisplayName,
   subject,
   body,
   clientMessageId,
@@ -139,12 +145,13 @@ async function insertOutbox(query, {
     INSERT INTO ${OUTBOX_TABLE} (
       [clm_CompanyID], [clm_CustomerID], [clm_OrderID], [clm_Type],
       [clm_ToRecipients], [clm_CcRecipients], [clm_BccRecipients],
+      [clm_FromAddress], [clm_FromDisplayName],
       [clm_Subject], [clm_Body], [clm_ClientMessageID],
       [clm_Status], [clm_AttemptCount], [clm_NextAttemptAt],
       [clm_CreateDate], [clm_LastModifiedDate]
     )
     OUTPUT INSERTED.[clm_ID] AS id
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, N'pending', 0, ?, ?, ?)
   `, [
     companyId,
     customerId,
@@ -153,6 +160,8 @@ async function insertOutbox(query, {
     JSON.stringify(toRecipients || []),
     JSON.stringify(ccRecipients || []),
     JSON.stringify(bccRecipients || []),
+    asText(fromAddress) || null,
+    asText(fromDisplayName) || null,
     subject,
     body,
     clientMessageId,
@@ -205,6 +214,8 @@ async function queueCreditLimitMails({
   nowIso,
   creditTo,
   creditCc,
+  creditFromAddress,
+  creditFromDisplayName,
   testRecipient,
 }) {
   const result = {
@@ -281,6 +292,8 @@ async function queueCreditLimitMails({
       toRecipients: effectiveCreditTo,
       ccRecipients: effectiveCreditCc,
       bccRecipients: [],
+      fromAddress: creditFromAddress,
+      fromDisplayName: creditFromDisplayName,
       subject: `Kreditanfrage ${creditContext.customer.legalName || customerId}`,
       body,
       clientMessageId,
@@ -371,6 +384,8 @@ async function claimSpecificOutboxItem(outboxId) {
       INSERTED.[clm_ToRecipients] AS toRecipients,
       INSERTED.[clm_CcRecipients] AS ccRecipients,
       INSERTED.[clm_BccRecipients] AS bccRecipients,
+      INSERTED.[clm_FromAddress] AS fromAddress,
+      INSERTED.[clm_FromDisplayName] AS fromDisplayName,
       INSERTED.[clm_Subject] AS subject,
       INSERTED.[clm_Body] AS body,
       INSERTED.[clm_ClientMessageID] AS clientMessageId,
@@ -461,6 +476,47 @@ async function suppressInsolventOutboxItem(item) {
   return { processed: true, status: 'suppressed_insolvent', type: item.type };
 }
 
+async function resolveCreditLimitMailSender(item) {
+  if (item.type !== CREDIT_LIMIT_TYPE) {
+    return {
+      fromAddress: item.fromAddress,
+      fromDisplayName: item.fromDisplayName,
+    };
+  }
+  if (isEmailAddress(item.fromAddress)) {
+    return {
+      fromAddress: item.fromAddress,
+      fromDisplayName: item.fromDisplayName,
+    };
+  }
+  if (!item.orderId) return null;
+
+  try {
+    const rows = await runSQLQuerySqlServer(config.sql.database, `
+      SELECT TOP 1 [ta_CreatedBy] AS createdBy
+      FROM ${TEMP_ORDER_TABLE}
+      WHERE [ta_id] = ? AND [ta_company_id] = ?
+    `, [item.orderId, item.companyId]);
+    const createdBy = asText(rows?.[0]?.createdBy);
+    if (!createdBy) return null;
+
+    const identity = await getUserIdentityByShortCode(createdBy, item.companyId);
+    const email = asText(identity?.email).toLowerCase();
+    if (!isEmailAddress(email)) return null;
+
+    return {
+      fromAddress: email,
+      fromDisplayName: asText(identity?.fullName)
+        || [identity?.givenName, identity?.surname].filter(Boolean).join(' ')
+        || item.fromDisplayName
+        || null,
+    };
+  } catch (error) {
+    logger.warn(`Auftragsersteller fuer Kreditlimit-Mail ${item.id} konnte nicht aufgeloest werden.`, error);
+    return null;
+  }
+}
+
 async function processCreditLimitMailOutboxById(outboxId) {
   const item = await claimSpecificOutboxItem(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
@@ -474,9 +530,16 @@ async function processCreditLimitMailOutboxById(outboxId) {
       return await suppressInternalCreditRequest(item);
     }
 
+    const sender = await resolveCreditLimitMailSender(item);
+    if (item.type === CREDIT_LIMIT_TYPE && !sender?.fromAddress) {
+      throw new Error('Auftragsersteller fuer Kreditlimit-Mail hat keine gueltige Absenderadresse.');
+    }
+
     const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
       mailServiceConfig: config.mailService,
+      fromAddress: sender?.fromAddress,
+      fromDisplayName: sender?.fromDisplayName,
       recipients: item.toRecipients,
       ccRecipients: item.ccRecipients,
       bccRecipients: item.bccRecipients,

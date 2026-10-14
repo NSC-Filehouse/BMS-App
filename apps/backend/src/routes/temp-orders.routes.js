@@ -2568,6 +2568,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
             ...config.creditLimitMail.cc,
             ...getEmailsForUserCodes(getGfsForMandant(companyId)),
           ],
+          creditFromAddress: orderMailSender.onBehalfOfAddress,
+          creditFromDisplayName: orderMailSender.onBehalfOfDisplayName,
           testRecipient: config.orderMail.testRecipient,
         });
       }
