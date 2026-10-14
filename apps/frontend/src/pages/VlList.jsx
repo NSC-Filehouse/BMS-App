@@ -1030,6 +1030,13 @@ export default function VlList() {
   });
 
   const selectedCount = selectedItems.length;
+  const vlDropdownOptions = [...vlMandants];
+  if (canViewFrupackGroup) {
+    const firstFrupackIndex = vlDropdownOptions.findIndex((mandant) => /^frupack/i.test(mandant.name));
+    vlDropdownOptions.splice(Math.max(firstFrupackIndex, 0), 0, {
+      id: FRUPACK_GROUP_SCOPE, name: t('vl_frupack_group'),
+    });
+  }
 
   return (
     <Box sx={{ maxWidth: 980, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1081,10 +1088,9 @@ export default function VlList() {
             sx={{ minWidth: 150, flexShrink: 0 }}
             SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 320 } } } }}
           >
-            {vlMandants.map((mandant) => (
+            {vlDropdownOptions.map((mandant) => (
               <MenuItem key={mandant.id} value={String(mandant.id)}>{mandant.name}</MenuItem>
             ))}
-            {canViewFrupackGroup && <MenuItem value={FRUPACK_GROUP_SCOPE}>{t('vl_frupack_group')}</MenuItem>}
           </TextField>
         </Box>
 
