@@ -17,7 +17,6 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -497,7 +496,6 @@ export default function VlList() {
   const [groupSourceNames, setGroupSourceNames] = React.useState([]);
   const [vlMandantId, setVlMandantId] = React.useState(() => String(initialReturnState?.vlMandantId || ''));
   const [vlMandantsLoaded, setVlMandantsLoaded] = React.useState(false);
-  const [searchOpen, setSearchOpen] = React.useState(() => Boolean(initialReturnState?.searchOpen || initialReturnState?.searchInput));
   const [searchInput, setSearchInput] = React.useState(() => String(initialReturnState?.searchInput || ''));
   const [classicItems, setClassicItems] = React.useState([]);
   const [groupedGroups, setGroupedGroups] = React.useState([]);
@@ -597,13 +595,12 @@ export default function VlList() {
     activeMandantName,
     viewMode,
     vlMandantId,
-    searchOpen,
     searchInput,
     page: Math.max(Number(page) || 1, 1),
     scrollTop: Number(listRef.current?.scrollTop || 0),
     expandedGroups,
     selectedItems,
-  }), [activeMandantName, expandedGroups, page, searchInput, searchOpen, selectedItems, viewMode, vlMandantId]);
+  }), [activeMandantName, expandedGroups, page, searchInput, selectedItems, viewMode, vlMandantId]);
 
   const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (!vlMandantsLoaded) return;
@@ -1063,17 +1060,6 @@ export default function VlList() {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, minWidth: 0 }}>
           <Typography variant="h5">{t('vl_title')}</Typography>
-          <IconButton
-            aria-label="vl-search-toggle"
-            onClick={() => {
-              if (searchOpen) {
-                setSearchInput('');
-                setSearchOpen(false);
-              } else setSearchOpen(true);
-            }}
-          >
-            <SearchIcon />
-          </IconButton>
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, pb: 0.25 }}>
@@ -1119,27 +1105,24 @@ export default function VlList() {
           </Box>
         )}
 
-        {searchOpen && (
-          <TextField
-            fullWidth
-            size="small"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            autoFocus
-            placeholder={t('vl_search')}
-            sx={{ mt: 0.75 }}
-            InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ opacity: 0.65 }} /></InputAdornment>,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton size="small" aria-label="clear-search" onClick={() => setSearchInput('')}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        )}
+        <TextField
+          fullWidth
+          size="small"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          placeholder={t('vl_search')}
+          inputProps={{ 'aria-label': t('vl_search') }}
+          sx={{ mt: 0.75 }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton size="small" aria-label="clear-search" onClick={() => setSearchInput('')}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
       </Box>
 
       <Box ref={listRef} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
