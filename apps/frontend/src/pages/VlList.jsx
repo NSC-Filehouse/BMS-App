@@ -41,7 +41,10 @@ import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import { formatMfiValue, sortVlItems, sortVlPositions } from '../utils/mfi.js';
-import { FRUPACK_GROUP_SCOPE, getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId } from '../utils/vlScope.js';
+import {
+  FRUPACK_GROUP_SCOPE, getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId,
+  isVlReturnStateForMandant, resolveInitialVlSelection, buildVlDropdownOptions,
+} from '../utils/vlScope.js';
 
 const PAGE_SIZE = 100;
 const GROUP_PAGE_SIZE = 40;
@@ -347,6 +350,11 @@ function SwipeableProductRow({
         onClick={handleClick}
         sx={surfaceSx}
       >
+        {showSource && (
+          <Typography variant="caption" sx={{ display: 'block', px: variant === 'grouped' ? 1 : 0, pt: 0.35, pb: 0.15, color: foreign ? '#1565C0' : 'text.secondary' }}>
+            {item.sourceMandantName}
+          </Typography>
+        )}
         {variant === 'grouped' ? (
           <Card variant="outlined" sx={{ border: 0, boxShadow: 'none', bgcolor: 'transparent' }}>
             <CardContent sx={{ py: '5px !important', px: '8px !important' }}>
@@ -419,12 +427,6 @@ function SwipeableProductRow({
           </Box>
         )}
 
-        {showSource && (
-          <Typography variant="caption" sx={{ display: 'block', px: 0.75, color: foreign ? '#1565C0' : 'text.secondary' }}>
-            {item.sourceMandantName}
-          </Typography>
-        )}
-
         {isFinePointer && !readOnly && (
           <IconButton
             className="vl-row-action"
@@ -484,10 +486,13 @@ export default function VlList() {
   const location = useLocation();
   const { lang, t } = useI18n();
   const isFinePointer = useMediaQuery('(pointer: fine)');
-  const initialReturnState = location.state?.vlReturnState || null;
+  const activeMandantName = getMandant().trim().toLowerCase();
+  const initialReturnState = isVlReturnStateForMandant(location.state?.vlReturnState, activeMandantName)
+    ? location.state.vlReturnState : null;
 
   const [viewMode, setViewMode] = React.useState(() => initialReturnState?.viewMode === 'grouped' ? 'grouped' : 'classic');
   const [vlMandants, setVlMandants] = React.useState([]);
+  const [frupackMandantIds, setFrupackMandantIds] = React.useState([]);
   const [canViewFrupackGroup, setCanViewFrupackGroup] = React.useState(false);
   const [groupSourceNames, setGroupSourceNames] = React.useState([]);
   const [vlMandantId, setVlMandantId] = React.useState(() => String(initialReturnState?.vlMandantId || ''));
@@ -522,7 +527,6 @@ export default function VlList() {
   const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
   const visibleItemCount = viewMode === 'grouped' ? groupedGroups.length : classicItems.length;
   const hasMore = visibleItemCount < total;
-  const activeMandantName = getMandant().trim().toLowerCase();
   const activeVlMandantId = vlMandants.find((mandant) => mandant.name.toLowerCase() === activeMandantName)?.id;
   const isGroupVl = vlMandantId === FRUPACK_GROUP_SCOPE;
   const isForeignVl = Boolean(
@@ -567,12 +571,19 @@ export default function VlList() {
         const groupEnabled = Boolean(meResponse?.identityResolved && meResponse?.features?.frupackGroupVl
           && mandantsResponse?.meta?.vlGroups?.some((group) => group.scope === FRUPACK_GROUP_SCOPE));
         setCanViewFrupackGroup(groupEnabled);
-        const requestedId = String(initialReturnState?.vlMandantId || '');
-        const activeName = getMandant().trim().toLowerCase();
-        const selected = options.find((mandant) => String(mandant.id) === requestedId)
-          || options.find((mandant) => mandant.name.toLowerCase() === activeName);
-        setVlMandantId(requestedId === FRUPACK_GROUP_SCOPE && groupEnabled
-          ? FRUPACK_GROUP_SCOPE : (selected ? String(selected.id) : ''));
+        const memberIds = mandantsResponse?.meta?.vlGroupMemberships?.[FRUPACK_GROUP_SCOPE] || [];
+        setFrupackMandantIds(memberIds);
+        const selection = resolveInitialVlSelection({
+          mandants: options, activeMandantName: getMandant(), frupackMandantIds: memberIds,
+          canViewGroup: groupEnabled, returnState: initialReturnState,
+        });
+        setVlMandantId(selection.id);
+        if (!selection.restore) {
+          restorationRef.current = null;
+          setSelectedItems([]);
+          setSearchInput('');
+          setExpandedGroups({});
+        }
       } catch {
         if (alive) setVlMandants([]);
       } finally {
@@ -583,6 +594,7 @@ export default function VlList() {
   }, []);
 
   const getVlReturnState = React.useCallback(() => ({
+    activeMandantName,
     viewMode,
     vlMandantId,
     searchOpen,
@@ -591,7 +603,7 @@ export default function VlList() {
     scrollTop: Number(listRef.current?.scrollTop || 0),
     expandedGroups,
     selectedItems,
-  }), [expandedGroups, page, searchInput, searchOpen, selectedItems, viewMode, vlMandantId]);
+  }), [activeMandantName, expandedGroups, page, searchInput, searchOpen, selectedItems, viewMode, vlMandantId]);
 
   const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (!vlMandantsLoaded) return;
@@ -1030,13 +1042,9 @@ export default function VlList() {
   });
 
   const selectedCount = selectedItems.length;
-  const vlDropdownOptions = [...vlMandants];
-  if (canViewFrupackGroup) {
-    const firstFrupackIndex = vlDropdownOptions.findIndex((mandant) => /^frupack/i.test(mandant.name));
-    vlDropdownOptions.splice(Math.max(firstFrupackIndex, 0), 0, {
-      id: FRUPACK_GROUP_SCOPE, name: t('vl_frupack_group'),
-    });
-  }
+  const vlDropdownOptions = buildVlDropdownOptions(vlMandants, {
+    frupackMandantIds, canViewGroup: canViewFrupackGroup, groupLabel: t('vl_frupack_group'),
+  });
 
   return (
     <Box sx={{ maxWidth: 980, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

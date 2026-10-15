@@ -12,6 +12,7 @@ router.get('/mandants', asyncHandler(async (req, res) => {
   const user = getUserContextFromRequest(req);
   const identity = await getUserIdentityFromRequestContext(user);
   const mandants = await getMandantsForIdentity(identity);
+  const frupackMandants = selectFrupackMandants(mandants);
   const defaultMandant = getDefaultMandantForIdentity(identity, mandants);
   const defaultMandantId = defaultMandant ? Number(defaultMandant.firmaId) : null;
   sendEnvelope(res, {
@@ -24,7 +25,8 @@ router.get('/mandants', asyncHandler(async (req, res) => {
       count: mandants.length,
       mainMandantId: Number.isFinite(defaultMandantId) ? defaultMandantId : null,
       mainMandantName: defaultMandant?.name || null,
-      vlGroups: pilotFeaturesForIdentity(identity).frupackGroupVl && selectFrupackMandants(mandants).length
+      vlGroupMemberships: { [FRUPACK_GROUP_SCOPE]: frupackMandants.map((mandant) => mandant.firmaId) },
+      vlGroups: pilotFeaturesForIdentity(identity).frupackGroupVl && frupackMandants.length
         ? [{ scope: FRUPACK_GROUP_SCOPE, name: 'Frupack Gruppe' }]
         : [],
     },
