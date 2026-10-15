@@ -8,7 +8,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
 import { navigateToReturn } from '../utils/navigation.js';
-import { CREATION_LABELS, CREATION_LISTS, createCustomerDraft, createCustomerOperationId, createEmptyAddress, createEmptyContact, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, getCustomerSalutationType, setCreationValue, getCreationValue } from '../utils/customerCreation.js';
+import { CREATION_LABELS, CREATION_LISTS, CONTACT_FIELDS, createCustomerDraft, createCustomerOperationId, createEmptyAddress, createEmptyContact, buildCustomerCreationBody, validateCustomerDraft, getCreationFieldLimit, getCustomerSalutationEntries, getCustomerSalutationType, setCreationValue, getCreationValue } from '../utils/customerCreation.js';
 
 const TEXT = {
   de: {
@@ -256,7 +256,7 @@ export default function CustomerCreate() {
       {section('people', w.people, <>
         {draft.ansprechpartner.map((person, index) => <Card key={index} variant="outlined" sx={{ mb: 2 }}><CardContent>
           <Stack direction="row" alignItems="center" justifyContent="space-between"><Typography fontWeight={600}>{w.row} {index + 1}</Typography>{remove('ansprechpartner', index)}</Stack>
-          {grid(...fields(`ansprechpartner[${index}]`, ['anrede', 'titel', 'vorname', 'name', 'abteilung', 'position', 'telefon', 'fax', 'mobil', 'email', 'sprache', 'ranking', 'notiz', 'geburtstag'], ['name']))}
+          {grid(...fields(`ansprechpartner[${index}]`, CONTACT_FIELDS, ['name']))}
           {toggle(`ansprechpartner[${index}].eigeneAnschrift`, w.ownAddress, createEmptyAddress())}
           {person.eigeneAnschrift && grid(...fields(`ansprechpartner[${index}].eigeneAnschrift`, ['strasse', 'plz', 'ort', 'land'], ['strasse', 'plz', 'ort', 'land']))}
         </CardContent></Card>)}

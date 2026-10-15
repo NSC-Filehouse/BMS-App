@@ -24,6 +24,9 @@ import {
   Typography,
 } from '@mui/material';
 import MapIcon from '@mui/icons-material/Map';
+import AddIcon from '@mui/icons-material/Add';
+import ContactCreateDialog from '../components/ContactCreateDialog.jsx';
+import { getMandant } from '../utils/mandant.js';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
@@ -525,6 +528,17 @@ export default function CustomerDetail() {
   const [expandedActivities, setExpandedActivities] = React.useState({});
   const [expandedRepresentatives, setExpandedRepresentatives] = React.useState({});
   const [contactRankingSavingId, setContactRankingSavingId] = React.useState(null);
+  const [contactCreateOpen, setContactCreateOpen] = React.useState(false);
+  const [contactNotice, setContactNotice] = React.useState(null);
+  const [highlightedContactId, setHighlightedContactId] = React.useState(null);
+  const contactScope = React.useRef(null);
+  const contactMandant = getMandant();
+  contactScope.current = { customerId: id, mandant: contactMandant };
+  React.useEffect(() => {
+    contactScope.current = { customerId: id, mandant: contactMandant };
+    return () => { contactScope.current = null; };
+  }, [id, contactMandant]);
+  React.useEffect(() => { setContactCreateOpen(false); setContactNotice(null); setHighlightedContactId(null); }, [id, contactMandant]);
   const [contactRankingError, setContactRankingError] = React.useState('');
   const [expandedPurchasedArticleGroups, setExpandedPurchasedArticleGroups] = React.useState({});
   const [expandedPurchasedHistoryGroups, setExpandedPurchasedHistoryGroups] = React.useState({});
@@ -714,6 +728,23 @@ export default function CustomerDetail() {
     setSelectedCustomer({ id, name, address, representative: salesRep });
     navigate('/vl');
   }, [address, id, isSupplier, item, name, navigate, salesRep]);
+  const refreshAndOpenContact = async (contactId, warnings) => {
+    const scope = { customerId: id, mandant: contactMandant };
+    const current = () => contactScope.current?.customerId === scope.customerId
+      && contactScope.current?.mandant === scope.mandant && getMandant() === scope.mandant;
+    if (!current()) return;
+    const response = await apiRequest('/customers/' + encodeURIComponent(id) + '?includeActivities=0');
+    if (!current()) return;
+    if (!normalizeRepresentatives(response.data).some((contact) => Number(contact.id) === Number(contactId))) {
+      throw new Error(t('contact_refresh_pending'));
+    }
+    setItem(response.data);
+    setExpandedRepresentatives((previous) => ({ ...previous, [contactId]: true }));
+    setHighlightedContactId(Number(contactId));
+    if (warnings) setContactNotice({ warnings });
+    setTimeout(() => { if (current()) document.getElementById('customer-contact-' + contactId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+  };
+
   const handleContactRankingChange = React.useCallback(async (contact, value) => {
     if (!contact?.id) return;
     const ranking = value === '' ? null : Number(value);
@@ -1899,12 +1930,17 @@ export default function CustomerDetail() {
               forceRight
             />
 
-            {representatives.length > 0 && (
+            {(!isSupplier || representatives.length > 0) && (
               <>
                 <Divider sx={{ my: 3 }} />
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.75 }}>
-                  {t('contact_label')}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                  <Typography variant="subtitle2" color="text.secondary">{t('contact_label')}</Typography>
+                  {!isSupplier && <IconButton color="primary" size="small" title={t('contact_create')} aria-label={t('contact_create')} disabled={contactRankingSavingId !== null} onClick={() => setContactCreateOpen(true)}><AddIcon /></IconButton>}
+                </Box>
+                {contactNotice && <Alert severity={contactNotice.warnings.length ? 'warning' : 'success'} sx={{ mb: 1 }} onClose={() => setContactNotice(null)}>
+                  {t('contact_created')}
+                  {contactNotice.warnings.map((warning, index) => <Typography key={index} variant="body2">{typeof warning === 'string' ? warning : warning.nachricht || warning.detail || warning.code}</Typography>)}
+                </Alert>}
                 {contactRankingError && (
                   <Typography variant="body2" sx={{ color: 'error.main', mb: 0.75 }}>
                     {contactRankingError}
@@ -1913,8 +1949,9 @@ export default function CustomerDetail() {
                 {representatives.map((rep, index) => (
                   <React.Fragment key={rep.key}>
                     <Card
+                      id={'customer-contact-' + rep.id}
                       variant="outlined"
-                      sx={{ cursor: 'pointer' }}
+                      sx={{ cursor: 'pointer', ...(rep.id && Number(rep.id) === highlightedContactId ? { borderColor: 'primary.main', bgcolor: 'action.hover' } : {}) }}
                       onClick={() => toggleRepresentative(rep.key)}
                     >
                       <CardContent sx={{ py: '8px !important', px: '10px !important' }}>
@@ -2041,6 +2078,10 @@ export default function CustomerDetail() {
         </Card>
       )}
 
+      {contactCreateOpen && !isSupplier && <ContactCreateDialog key={id + ':' + contactMandant} customerId={id}
+        customerName={getCustomerDisplayName(item)} mandant={contactMandant} rankings={selectableContactRankings}
+        onClose={() => setContactCreateOpen(false)} onCreated={refreshAndOpenContact}
+        onExisting={(contactId) => refreshAndOpenContact(contactId)} />}
       <Dialog open={mapChoiceOpen} onClose={() => setMapChoiceOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>{t('navigation_choose_title')}</DialogTitle>
         <DialogContent>

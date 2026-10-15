@@ -25,6 +25,7 @@ export function getCustomerSalutationEntries(entries = []) {
   return ['Herr', 'Frau', 'Firma'].map((label) => byLabel.get(label.toLocaleLowerCase('de-DE'))).filter(Boolean);
 }
 export function createEmptyAddress(extra = {}) { return { ...extra, strasse: '', plz: '', ort: '', land: 'DE', region: '' }; }
+export const CONTACT_FIELDS = ['anrede', 'titel', 'vorname', 'name', 'abteilung', 'position', 'telefon', 'fax', 'mobil', 'email', 'sprache', 'ranking', 'notiz', 'geburtstag'];
 export function createEmptyContact() {
   return { anrede: '', titel: '', vorname: '', name: '', abteilung: '', position: '', telefon: '', fax: '', mobil: '', email: '', sprache: '', ranking: '', notiz: '', geburtstag: '', eigeneAnschrift: null };
 }
@@ -98,6 +99,8 @@ export function getCreationFieldLimit(path) {
   if (path.startsWith('lieferanschriften') && key === 'ansprechpartner') return 150;
   if (path.startsWith('lieferanschriften') && key === 'abholzeiten') return 250;
   if (['telefon', 'fax', 'mobil', 'titel', 'abteilung', 'position'].includes(key)) return 50;
+  if (path.startsWith('ansprechpartner') && key === 'email') return 150;
+  if (path.startsWith('ansprechpartner') && key === 'sprache') return 2;
   if (key === 'bank' || key === 'kontoinhaber') return 200;
   if (key === 'postfach') return 15;
   if (key === 'wunschnummer') return 10;

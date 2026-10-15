@@ -76,6 +76,63 @@ Für die Auslieferung Frontend bauen, Code und `.env.prod` auf DB03 übernehmen
 und die App-Dienste neu starten. Diese Bereitstellung und der abgestimmte echte
 Anlagetest sind noch offen.
 
+## Ansprechpartner beim bestehenden Kunden über die ERP-API
+
+In der Kundendetailseite öffnet das blaue Plus neben **Ansprechpartner** einen
+Dialog für eine einzelne Person mit denselben Feldern wie die Neukundenanlage.
+Das Plus erscheint auch bei Kunden ohne Ansprechpartner. Lieferantendetails
+bieten diese Kundenfunktion nicht an.
+
+Die Anlage verwendet `POST /api/v1/kunden/{kundennummer}/ansprechpartner`;
+Vorprüfung und Dublettensuche laufen über `.../ansprechpartner/pruefung`.
+Ziel ist ausschließlich der aktive, für den Benutzer freigegebene Mandant.
+Kundensichtbarkeit und Benutzeridentität werden bei jedem Endpunkt geprüft;
+`quelle.angelegtVon` kommt vom angemeldeten Benutzer. Der ERP-API-Client benötigt
+das Recht `nachtragen` für den Zielmandanten. Die App schreibt die neue Person
+nicht direkt in `dbo.tblKun_Ansprech`.
+
+Vor Bereitstellung auf **DB04 / BMS**
+`apps/backend/sql/add_contact_creation_operation.sql` ausführen. Das wiederholbar
+ausführbare Skript legt ausschließlich `BMSApp.ContactCreationOperation` samt
+Index an. Der App-SQL-Login benötigt dort SELECT, INSERT und UPDATE. Die App
+führt keine automatische Migration durch; eine fehlende Tabelle sperrt den
+Dialog mit einer Fehlermeldung. Die vorhandene Kunden-API-Konfiguration und
+`BMS_CUSTOMER_API_WRITE_ENABLED` gelten auch für diese Funktion. Die tatsächlich
+geladene Serverkonfiguration vor Freigabe prüfen; Commit und Push stellen
+keine Bereitstellung oder Schreibfreigabe dar.
+
+Nachname ist Pflicht. Eine eigene Anschrift benötigt Straße, PLZ, Ort und
+ISO-Land. Weitere Felder, Geburtstag und Ranking sind optional; ohne bewusste
+Auswahl wird kein Ranking vergeben. Feldlängen entsprechen den ERP-Feldern.
+Die Stammdatenlisten für Anrede, Sprache und Land stammen aus der ERP-API.
+Vorhandene Personen lassen sich anhand ihrer technischen `lfdNr` öffnen.
+Übersteuerbare Dubletten erfordern eine ausdrückliche Bestätigung und eine
+Begründung mit 10 bis 500 Zeichen; Warnungen müssen ebenfalls bestätigt werden.
+
+UUID, Eingaben und vollständiger ERP-Request werden vor dem Schreibversuch
+gesichert. Bei Zeitüberschreitung oder unklarem Ergebnis bleiben die Eingaben
+gesperrt. Derselbe Vorgang kann nach Schließen oder Reload wieder aufgenommen
+werden; offene Vorgänge stehen zusätzlich in der serverseitigen Historie.
+Ein anderer Kunde, Mandant oder Benutzer kann den Vorgang nicht übernehmen.
+Eine Wiederholung sendet den ursprünglichen Request mit demselben Schlüssel.
+Ein bestätigtes Ergebnis wird nur nachgeladen, auch wenn API-Schreibzugriffe
+inzwischen gesperrt sind. Eine fehlgeschlagene Aktualisierung der Anzeige darf
+keine neue Anlage auslösen.
+
+Nach der Anlage prüft das Backend die mandantenbezogene `lfdNr` und lädt die
+Person per `kdA_lfdNR` und Kundennummer aus SQL. Die Detailseite lädt alle
+Ansprechpartner und Rankings neu und hebt die neue Person hervor. Bestehende
+Auftragsauswahl, gespeicherte Ansprechpartner-IDs und Rankingänderungen nutzen
+ihre bisherigen Wege. Falls die API nur das gewünschte Ranking nicht setzen
+konnte, bleibt die Person erfolgreich angelegt; die Oberfläche zeigt einen
+Hinweis zur nachträglichen Rankingprüfung. Die Historie enthält zusätzlich die
+ERP-Vorgangs-ID zur Nachverfolgung. Ändern, Löschen und Rückbau sind keine
+Bestandteile dieses Dialogs.
+
+Die automatischen Prüfungen verwenden simulierte API- und SQL-Antworten.
+Migration, Serverberechtigungen, Bereitstellung sowie ein Browserdurchlauf mit
+echter ERP-Anlage müssen bei Inbetriebnahme geprüft werden.
+
 ## Lieferadressen im Auftrag über die ERP-API
 
 Die Neuanlage im Auftragsdialog nutzt die BMS-Kunden-API. Das Backend schreibt

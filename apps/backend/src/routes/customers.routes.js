@@ -42,6 +42,7 @@ const {
 const { buildCustomerInvoiceTimeline } = require('../customer-invoice-ordering');
 
 const router = express.Router();
+require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer, mapRepresentatives });
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
 const ACTIVE_CUSTOMERS_TTL_MS = 5 * 60 * 1000;
