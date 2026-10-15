@@ -297,7 +297,7 @@ function DocumentAccordionSummary({ title, controls, action }) {
           pr: 0.5,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, px: action ? 0.5 : 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
             {title}
           </Typography>
