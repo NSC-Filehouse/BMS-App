@@ -861,11 +861,8 @@ export default function VlList() {
           borderColor: 'divider',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5, minWidth: 0 }}>
           <Typography variant="h5">{t('vl_title')}</Typography>
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, pb: 0.25 }}>
           <TextField
             select
             size="small"
