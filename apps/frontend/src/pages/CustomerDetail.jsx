@@ -26,6 +26,7 @@ import {
 import MapIcon from '@mui/icons-material/Map';
 import AddIcon from '@mui/icons-material/Add';
 import ContactCreateDialog from '../components/ContactCreateDialog.jsx';
+import CustomerInvoiceDocuments from '../components/CustomerInvoiceDocuments.jsx';
 import { getMandant } from '../utils/mandant.js';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -1545,65 +1546,16 @@ export default function CustomerDetail() {
                 {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_invoices')}</Typography>
                 )}
-                {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.map((invoice, idx) => (
-                  <Card
-                    key={`${invoice.id || idx}-invoice`}
-                    variant="outlined"
-                    sx={invoice.isAttachedCredit ? { ml: 2, borderLeft: '3px solid', borderLeftColor: 'divider' } : undefined}
-                  >
-                    <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
-                      {!isSupplier && invoice.isCreditNote && (
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                          {t('credit_note_label')}
-                        </Typography>
-                      )}
-                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                        {t(!isSupplier && invoice.isCreditNote ? 'credit_note_number_label' : 'invoice_number_label')}: {invoice.invoiceNumber || '-'}
-                      </Typography>
-                      {isSupplier && invoice.supplierNumber && (
-                        <Typography variant="caption">{t('supplier_number_label')}: {invoice.supplierNumber}</Typography>
-                      )}
-                      <Typography variant="caption">
-                        {t(!isSupplier && invoice.isCreditNote ? 'credit_note_date_label' : 'invoice_date_label')}: {formatDateOnly(invoice.invoiceDate)}
-                      </Typography>
-                      {!isSupplier && invoice.isCreditNote && invoice.relatedInvoiceNumber && (
-                        <Typography variant="caption">
-                          {t('credit_note_reference_label')}: {invoice.relatedInvoiceNumber}
-                        </Typography>
-                      )}
-                      {(isSupplier || !invoice.isCreditNote) && (
-                        <Typography variant="caption">{t('due_date_label')}: {formatDateOnly(invoice.dueDate)}</Typography>
-                      )}
-                      {!isSupplier && !invoice.isCreditNote && (
-                        <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>
-                      )}
-                      {isSupplier && invoice.invoiceType !== null && invoice.invoiceType !== undefined && (
-                        <Typography variant="caption">{t('invoice_type_label')}: {invoice.invoiceType}</Typography>
-                      )}
-                      <Typography variant="caption">
-                        {t('amount_label')}: {formatMoney(invoice.amount)}
-                        {!invoice.isCreditNote && (
-                          <> (
-                            <Box
-                              component="span"
-                              sx={invoice.isPaid ? { color: 'success.main', fontWeight: 700 } : undefined}
-                            >
-                              {invoice.isPaid ? t('invoice_status_paid') : t('invoice_status_open')}
-                            </Box>
-                          )</>
-                        )}
-                      </Typography>
-                      {!isSupplier && !invoice.isCreditNote && invoice.reminderStageText && (
-                        <Typography
-                          variant="caption"
-                          sx={{ color: 'error.main', fontWeight: 600 }}
-                        >
-                          {t('reminder_stage_label')}: {invoice.reminderStageText}
-                        </Typography>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                {!docs.invoices.loading && !docs.invoices.error && (
+                  <CustomerInvoiceDocuments
+                    key={`${id}-${isSupplier}-${invoiceScope}-${invoiceYear}`}
+                    items={docs.invoices.items}
+                    isSupplier={isSupplier}
+                    t={t}
+                    formatDate={formatDateOnly}
+                    formatMoney={formatMoney}
+                  />
+                )}
               </AccordionDetails>
             </Accordion>
 

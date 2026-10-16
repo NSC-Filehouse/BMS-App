@@ -39,7 +39,7 @@ const {
   resolveLatestOrderPdf,
   resolveLatestPurchaseOrderPdf,
 } = require('../order-pdf');
-const { buildCustomerInvoiceTimeline } = require('../customer-invoice-ordering');
+const { loadCustomerInvoiceTimeline } = require('../db/customer-invoices');
 
 const router = express.Router();
 require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer, mapRepresentatives });
@@ -1572,33 +1572,8 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   }
   await requireVisibleCustomer(req, customerId);
 
-  const scopeFilterSql = scope === 'open'
-    ? "AND ([re_Bezahlt] = 0 OR [re_Auftragsstatus] = N'Gutschrift')"
-    : '';
   const dateFilter = buildDocumentDateFilter('[re_rgDatum]', scope, req.query.year);
-
-  const sql = `
-    SELECT
-      [re_KdNr] AS customerId,
-      [re_RgNummer] AS invoiceNumber,
-      [re_rgDatum] AS invoiceDate,
-      [re_RGfaellig] AS dueDate,
-      [re_Bezahlt] AS paidFlag,
-      [re_Auftragsstatus] AS documentStatus,
-      [re_RefRGNr] AS referenceInvoiceNumber,
-      [re_Zahltext] AS paymentTextId,
-      [re_MahnTextID] AS reminderTextId,
-      [re_MahnTextIDneu] AS reminderTextIdNew,
-      [re_Bruttosumme_EU] AS grossEu,
-      [re_Bruttosumme_DM] AS grossDm
-    FROM [dbo].[tblRechnung]
-    WHERE COALESCE([re_KdNr], '') = ?
-      ${scopeFilterSql}
-      ${dateFilter.sql}
-    ORDER BY [re_rgDatum] DESC, [re_RgNummer] DESC
-  `;
-  const rows = await runSQLQueryAccess(req.database, sql, [customerId, ...dateFilter.params]);
-  const invoices = buildCustomerInvoiceTimeline(rows);
+  const invoices = await loadCustomerInvoiceTimeline(req.database, customerId, { scope, dateFilter });
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
   const reminderMap = await loadReminderStageTextMap(
     req.database,
@@ -1607,7 +1582,6 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   );
 
   const data = invoices.map((row, idx) => {
-    const paidFlag = Number(row.paidFlag);
     const paymentId = Number(row.paymentTextId);
     const reminderId = Number(row.reminderTextId);
     const reminderIdNew = Number(row.reminderTextIdNew);
@@ -1626,10 +1600,14 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       isCreditNote,
       isAttachedCredit: Boolean(row.isAttachedCredit),
       relatedInvoiceNumber: row.relatedInvoiceNumber || null,
+      invoiceAssignment: row.invoiceAssignment || null,
+      creditKind: row.creditKind || null,
+      isFullyCredited: Boolean(row.isFullyCredited),
       invoiceNumber,
       invoiceDate,
       dueDate: row.dueDate || null,
-      isPaid: paidFlag !== 0,
+      isPaid: row.paymentStatus === 'paid',
+      paymentStatus: row.paymentStatus,
       amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),
       paymentTextId: Number.isFinite(paymentId) ? paymentId : null,
       paymentText: Number.isFinite(paymentId) ? (paymentMap.get(paymentId) || '') : '',
