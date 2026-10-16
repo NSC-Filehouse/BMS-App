@@ -27,6 +27,7 @@ import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelec
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import { getMandant } from '../utils/mandant.js';
+import { buildProductSourceQuery } from '../utils/vlScope.js';
 
 function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -88,7 +89,7 @@ export default function ProductDetail({ modal = false }) {
   const location = useLocation();
   const { t } = useI18n();
   const vlMandantId = String(location.state?.vlMandantId || '').trim();
-  const sourceQuery = vlMandantId ? `?vlMandantId=${encodeURIComponent(vlMandantId)}` : '';
+  const sourceQuery = buildProductSourceQuery(vlMandantId, location.state?.vlScope);
 
   const [item, setItem] = React.useState(null);
   const readOnlyVl = Boolean(location.state?.vlReadOnly)

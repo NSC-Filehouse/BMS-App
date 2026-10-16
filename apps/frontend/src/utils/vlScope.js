@@ -1,5 +1,12 @@
 export const FRUPACK_GROUP_SCOPE = 'frupack-group';
 
+export function buildProductSourceQuery(vlMandantId, vlScope = '') {
+  const params = new URLSearchParams();
+  if (vlMandantId !== null && vlMandantId !== undefined && String(vlMandantId).trim()) params.set('vlMandantId', vlMandantId);
+  if (vlScope === FRUPACK_GROUP_SCOPE) params.set('vlScope', FRUPACK_GROUP_SCOPE);
+  return params.size ? `?${params.toString()}` : '';
+}
+
 export function isVlReturnStateForMandant(returnState, activeMandantName) {
   const activeName = String(activeMandantName || '').trim().toLowerCase();
   return Boolean(activeName && String(returnState?.activeMandantName || '').trim().toLowerCase() === activeName);

@@ -1,3 +1,5 @@
+const { isFrupackEmployee } = require('./frupack-membership');
+
 // These identities are resolved from the active FX employee record using the
 // SSO SAM account. Matching all fields avoids granting access to a reused code.
 const PILOT_USERS = [
@@ -17,7 +19,7 @@ function pilotFeaturesForIdentity(identity) {
     purchaseOrders: enabled,
     options: enabled,
     forecast: enabled,
-    frupackGroupVl: enabled,
+    frupackGroupVl: enabled || isFrupackEmployee(identity),
   };
 }
 

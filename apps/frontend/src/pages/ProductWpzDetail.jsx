@@ -14,6 +14,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn } from '../utils/navigation.js';
+import { buildProductSourceQuery } from '../utils/vlScope.js';
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -63,7 +64,7 @@ export default function ProductWpzDetail() {
   const location = useLocation();
   const { t } = useI18n();
   const vlMandantId = String(location.state?.fromProduct?.vlMandantId || '').trim();
-  const sourceQuery = vlMandantId ? `?vlMandantId=${encodeURIComponent(vlMandantId)}` : '';
+  const sourceQuery = buildProductSourceQuery(vlMandantId, location.state?.fromProduct?.vlScope);
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -101,6 +102,7 @@ export default function ProductWpzDetail() {
         fromVl: Boolean(fromProduct.fromVl),
         vlMandantId: fromProduct.vlMandantId || null,
         vlReadOnly: Boolean(fromProduct.vlReadOnly),
+        vlScope: fromProduct.vlScope || '',
         vlReturnState: fromProduct.vlReturnState || null,
       },
     });

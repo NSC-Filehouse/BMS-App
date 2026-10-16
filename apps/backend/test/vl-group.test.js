@@ -5,13 +5,17 @@ const {
   sortGroupVlItems, combineVlGroups,
 } = require('../src/vl-group');
 
-test('group access stays limited to verified active AKI, MFR and NSC identities', () => {
+test('group access includes active Frupack employees and preserves verified pilot access', () => {
   for (const [shortCode, personNumber, userId] of [['AKI', 1, 'kimaz'], ['MFR', 130, 'm.frank'], ['NSC', 227, 'n.schroeder']]) {
     assert.doesNotThrow(() => assertFrupackGroupAccess({ shortCode, personNumber, userId, active: true }));
     assert.throws(() => assertFrupackGroupAccess({ shortCode, personNumber, userId, active: false }), { status: 403 });
     assert.throws(() => assertFrupackGroupAccess({ shortCode, personNumber, userId: 'other', active: true }), { status: 403 });
   }
-  assert.throws(() => assertFrupackGroupAccess({ shortCode: 'DRE', mainCompanyId: 3, active: true }), { status: 403 });
+  for (const mainCompanyId of [3, 10, 11, 12, 19]) {
+    assert.doesNotThrow(() => assertFrupackGroupAccess({ shortCode: 'DRE', mainCompanyId, active: true }));
+  }
+  assert.throws(() => assertFrupackGroupAccess({ mainCompanyId: 3, active: false }), { status: 403 });
+  assert.throws(() => assertFrupackGroupAccess({ mainCompanyId: 2, active: true }), { status: 403 });
 });
 
 test('group membership uses only Frupack tenants already authorized for the user', () => {

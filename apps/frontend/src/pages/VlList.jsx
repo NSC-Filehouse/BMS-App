@@ -871,11 +871,12 @@ export default function VlList() {
         fromVl: true,
         vlMandantId: getProductSourceMandantId(item, vlMandantId),
         vlReadOnly: isItemReadOnly(item),
+        vlScope: isGroupVl ? FRUPACK_GROUP_SCOPE : '',
         vlReturnState: getVlReturnState(),
         returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }),
       },
     });
-  }, [getVlReturnState, isItemReadOnly, location, navigate, vlMandantId]);
+  }, [getVlReturnState, isGroupVl, isItemReadOnly, location, navigate, vlMandantId]);
 
   const handleRowTap = React.useCallback((item) => {
     const itemId = getVlPositionKey(item);

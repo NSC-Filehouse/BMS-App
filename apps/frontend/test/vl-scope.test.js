@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId,
   isVlReturnStateForMandant, resolveInitialVlSelection, buildVlDropdownOptions,
+  buildProductSourceQuery,
 } from '../src/utils/vlScope.js';
 
 const frupackMandantIds = [3, 10, 11, 12, 19];
@@ -14,6 +15,14 @@ const mandants = [
 ];
 const select = (activeMandantName, canViewGroup = true, returnState = null) => resolveInitialVlSelection({
   mandants, activeMandantName, frupackMandantIds, canViewGroup, returnState,
+});
+
+test('group details and WPZ carry the explicit read scope and concrete source without changing ordinary reads', () => {
+  assert.equal(buildProductSourceQuery('10', 'frupack-group'), '?vlMandantId=10&vlScope=frupack-group');
+  assert.equal(buildProductSourceQuery('3'), '?vlMandantId=3');
+  assert.equal(buildProductSourceQuery(0), '?vlMandantId=0');
+  assert.equal(buildProductSourceQuery(''), '');
+  assert.equal(buildProductSourceQuery('10', 'all'), '?vlMandantId=10');
 });
 
 test('every active Frupack tenant defaults to the group only when the user has group access', () => {

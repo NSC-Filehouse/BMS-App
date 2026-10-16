@@ -1,15 +1,13 @@
 const { createHttpError } = require('./utils');
 const { pilotFeaturesForIdentity } = require('./pilot-features');
 const { compareVlItems } = require('./mfi-sort');
+const { FRUPACK_MANDANT_IDS } = require('./frupack-membership');
 
 const FRUPACK_GROUP_SCOPE = 'frupack-group';
-const FRUPACK_MANDANT_IDS = Object.freeze([3, 10, 11, 12, 19]);
-
-// The pilot gate is deliberately separate from membership and tenant permissions.
-// A later rollout can replace this gate without changing the VL data flow.
+// Group VL read access is independent of normal tenant/action permissions.
 function assertFrupackGroupAccess(identity) {
   if (!pilotFeaturesForIdentity(identity).frupackGroupVl) {
-    throw createHttpError(403, 'Frupack Gruppe ist fuer diesen Anwender noch nicht freigegeben.', {
+    throw createHttpError(403, 'Keine Leseberechtigung fuer Frupack Gruppe.', {
       code: 'FRUPACK_GROUP_FORBIDDEN',
     });
   }

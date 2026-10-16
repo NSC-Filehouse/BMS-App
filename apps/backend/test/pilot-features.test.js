@@ -24,3 +24,15 @@ test('a matching short code alone never opens pilot features', () => {
     });
   }
 });
+
+test('active employees of every Frupack company receive group VL without other pilot features', () => {
+  for (const mainCompanyId of [3, 10, 11, 12, 19]) {
+    assert.deepEqual(pilotFeaturesForIdentity({ mainCompanyId, shortCode: 'TST', active: true }), {
+      purchaseOrders: false, options: false, forecast: false, frupackGroupVl: true,
+    });
+    assert.equal(pilotFeaturesForIdentity({ mainCompanyId, active: false }).frupackGroupVl, false);
+  }
+  for (const mainCompanyId of [null, undefined, '', 0, 2, 9, 99]) {
+    assert.equal(pilotFeaturesForIdentity({ mainCompanyId, active: true }).frupackGroupVl, false);
+  }
+});

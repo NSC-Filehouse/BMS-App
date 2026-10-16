@@ -26,7 +26,7 @@ router.get('/mandants', asyncHandler(async (req, res) => {
       mainMandantId: Number.isFinite(defaultMandantId) ? defaultMandantId : null,
       mainMandantName: defaultMandant?.name || null,
       vlGroupMemberships: { [FRUPACK_GROUP_SCOPE]: frupackMandants.map((mandant) => mandant.firmaId) },
-      vlGroups: pilotFeaturesForIdentity(identity).frupackGroupVl && frupackMandants.length
+      vlGroups: pilotFeaturesForIdentity(identity).frupackGroupVl
         ? [{ scope: FRUPACK_GROUP_SCOPE, name: 'Frupack Gruppe' }]
         : [],
     },

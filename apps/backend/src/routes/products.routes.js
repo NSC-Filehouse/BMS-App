@@ -2,10 +2,10 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
-const { getDatabaseConnectionForIdentityById, getMandantsForIdentity } = require('../db/databases');
+const { getDatabaseConnectionForIdentityById, getDatabaseConnectionForCompanyId } = require('../db/databases');
 const {
   assertFrupackGroupAccess,
-  selectFrupackMandants,
+  FRUPACK_MANDANT_IDS,
   getVlScope,
   getVlPositionKey,
   sortGroupVlItems,
@@ -39,15 +39,25 @@ function asText(value) {
 }
 
 async function resolveVlDatabase(req, rawMandantId) {
-  if (getVlScope(req.query)) {
+  // A group detail/WPZ request names one concrete source. List requests still
+  // reject a combination of vlScope + vlMandantId in getVlScope(req.query).
+  const groupScope = getVlScope({ vlScope: req.query?.vlScope });
+  const value = asText(rawMandantId);
+  if (groupScope && !value) {
     throw createHttpError(400, 'Fuer Produktdetails bitte den Herkunftsmandanten angeben.', { code: 'VL_SCOPE_INVALID' });
   }
-  const value = asText(rawMandantId);
   if (!value) return req.database;
 
   const selectedId = Number(value);
   if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
     throw createHttpError(400, `Invalid VL mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
+  }
+  if (groupScope) {
+    assertFrupackGroupAccess(req.userIdentity);
+    if (!FRUPACK_MANDANT_IDS.includes(selectedId)) {
+      throw createHttpError(403, 'Dieser Mandant gehoert nicht zur Frupack Gruppe.', { code: 'MANDANT_FORBIDDEN' });
+    }
+    return getDatabaseConnectionForCompanyId(selectedId);
   }
   if (Number(req.database?.firmaId) === selectedId) return req.database;
   return getDatabaseConnectionForIdentityById(req.userIdentity, selectedId);
@@ -301,10 +311,6 @@ function normalizeTotal(rows) {
 
 async function sendFrupackGroupVl(req, res, grouped) {
   assertFrupackGroupAccess(req.userIdentity);
-  const mandants = selectFrupackMandants(await getMandantsForIdentity(req.userIdentity));
-  if (!mandants.length) {
-    throw createHttpError(403, 'Keine Frupack-Mandanten freigegeben.', { code: 'FRUPACK_GROUP_FORBIDDEN' });
-  }
   const { page, pageSize, q } = parseListParams(req.query, {
     page: 1, pageSize: grouped ? 40 : 100, sort: 'vl', dir: 'ASC',
   });
@@ -323,16 +329,19 @@ async function sendFrupackGroupVl(req, res, grouped) {
       ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
     ${whereSql}
   ` : `SELECT * FROM ${VIEW_SQL} ${whereSql}`;
-  const batches = await Promise.all(mandants.map(async (mandant) => {
+  const batches = await Promise.all(FRUPACK_MANDANT_IDS.map(async (mandantId) => {
+    let database;
     try {
-      const database = await getDatabaseConnectionForIdentityById(req.userIdentity, mandant.firmaId);
+      // The read grant covers the entire fixed Frupack group, even when the
+      // user's ordinary tenant assignments contain only their own company.
+      database = await getDatabaseConnectionForCompanyId(mandantId);
       const rows = await runSQLQueryAccess(database, query, params);
       return { database, rows: rows || [] };
     } catch {
       // Avoid DB_NOT_AVAILABLE: the generic frontend handler would switch the
       // active tenant. A failed group member instead invalidates this list.
-      throw createHttpError(503, `Frupack Gruppe konnte nicht vollstaendig geladen werden (${mandant.name}).`, {
-        code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: mandant.firmaId,
+      throw createHttpError(503, `Frupack Gruppe konnte nicht vollstaendig geladen werden (${database?.name || `Mandant ${mandantId}`}).`, {
+        code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: mandantId,
       });
     }
   }));
@@ -369,7 +378,7 @@ async function sendFrupackGroupVl(req, res, grouped) {
       viewMandant: 'Frupack Gruppe',
       viewMandantId: null,
       vlScope: getVlScope(req.query),
-      viewMandants: mandants.map(({ firmaId, name }) => ({ id: firmaId, name })),
+      viewMandants: batches.map(({ database }) => ({ id: database.firmaId, name: database.name })),
       page, pageSize, count: data.length, total: allEntries.length,
       ...(grouped ? {
         totalGroups: allEntries.length,
