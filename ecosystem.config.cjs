@@ -8,8 +8,13 @@ module.exports = {
     {
       name: "bms-backend",
       cwd: "./apps/backend",
-      script: "./src/index.js",
-      node_args: "--openssl-legacy-provider",
+      script: require.resolve("nodemon/bin/nodemon.js"),
+      args: [
+        "--delay", "5000ms",
+        "--ext", "js,json,cjs,mjs",
+        "--exec", "node --openssl-legacy-provider",
+        "src/index.js"
+      ],
       env: {
         NODE_ENV: "production"
       }

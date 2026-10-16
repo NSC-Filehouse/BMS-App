@@ -8,11 +8,10 @@ es mit Exitcode `1` ab. Es verwendet `pull --ff-only --no-rebase --no-autostash`
 Es gibt kein automatisches Stash, Reset oder Verwerfen von Dateien.
 
 Das Skript aktualisiert nur die Quelldateien. Es installiert keine npm-Pakete,
-baut kein Frontend, fuehrt keine SQL-Migration aus und startet keine Dienste neu.
-Neue Frontend-Aenderungen brauchen weiterhin einen Build; Backend-Aenderungen
-brauchen den passenden Neustart. Bei Diensten mit automatischem Datei-Watching
-kann bereits das Aendern der Dateien einen Neustart ausloesen. Vor Aktivierung
-der Aufgabe deshalb die tatsaechliche Server-Startkonfiguration pruefen.
+baut kein Frontend und fuehrt keine SQL-Migration aus. Das Backend wird nach der
+einmaligen Einrichtung unten ueber Nodemon nach Aenderungen an JavaScript- und
+JSON-Dateien automatisch neu gestartet. Das Frontend braucht weiterhin einen
+Build; SQL-Migrationen bleiben separat.
 
 ## Einmaliger Test auf dem Server
 
@@ -86,7 +85,7 @@ Das Intervall kann mit `-IntervalSeconds 1800` eingestellt werden (1800 Sekunden
 `logs\auto-pull\loop-YYYY-MM.log`. Die Sperrdatei `logs\auto-pull\loop.lock`
 kann nach dem Beenden liegen bleiben; massgeblich ist die offene Dateisperre.
 Vor einem manuellen Update oder einer anderen Bereitstellung den Loop beenden.
-Die Pruefungen sowie die Grenzen hinsichtlich Build und Neustart gelten unveraendert.
+Die Pruefungen sowie die Grenzen hinsichtlich Build und Migration gelten unveraendert.
 Der Loop bleibt beim Start auf seiner geladenen Version; nach Aenderungen am
 Loop selbst muss er neu gestartet werden. Das Pull-Skript wird bei jedem
 Durchlauf neu geladen.
@@ -134,6 +133,29 @@ zusaetzliche gleichzeitige Laeufe dieses Skripts. Manuelle Updates oder andere
 Deployments vorher mit der Aufgabe abstimmen und die Aufgabe dafuer deaktivieren.
 
 Zum Anhalten die Aufgabe in der Aufgabenplanung **Deaktivieren**.
+
+## Backend nach einem Pull neu starten
+
+PM2 startet Nodemon direkt mit einer Wartezeit von fuenf Sekunden. Die Wartezeit
+buendelt die Datei-Aenderungen eines Pulls. Nodemon startet bei JavaScript-,
+JSON-, CommonJS- und MJS-Dateien neu. Auch `npm start` verwendet Nodemon.
+
+Nach dem ersten Pull auf dem Server den Auto-Pull-Loop mit **Strg+C** anhalten,
+den Backend-Prozess kurz stoppen, die neue Laufzeitabhaengigkeit installieren
+und den Backend-Prozess mit der aktualisierten PM2-Konfiguration neu starten:
+
+```powershell
+Set-Location 'C:\_Services\BMS-App'
+pm2 stop bms-backend
+npm install
+pm2 restart ecosystem.config.cjs --only bms-backend --update-env
+```
+
+Danach reicht der laufende Auto-Pull fuer Backend-Codeaenderungen. Fuer geaenderte
+Frontend-Dateien weiterhin `npm run build` im Hauptverzeichnis ausfuehren.
+Spaetere Pulls, die weitere npm-Abhaengigkeiten hinzufuegen, brauchen ebenfalls
+ein manuelles `npm install`. Anschliessend den Loop wieder mit
+`start-auto-pull.bat` starten.
 
 Quellen: [Git pull](https://git-scm.com/docs/git-pull),
 [Windows-Aufgabenplanung](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks).
