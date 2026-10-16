@@ -3,16 +3,11 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Checkbox,
   CircularProgress,
-  FormControlLabel,
   IconButton,
   InputAdornment,
   MenuItem,
-  Radio,
-  RadioGroup,
   TextField,
   Typography,
   useMediaQuery,
@@ -38,15 +33,13 @@ import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
-import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
-import { formatMfiValue, sortVlItems, sortVlPositions } from '../utils/mfi.js';
+import { formatMfiValue, sortVlItems } from '../utils/mfi.js';
 import {
   FRUPACK_GROUP_SCOPE, getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId,
   isVlReturnStateForMandant, resolveInitialVlSelection, buildVlDropdownOptions,
 } from '../utils/vlScope.js';
 
 const PAGE_SIZE = 100;
-const GROUP_PAGE_SIZE = 40;
 const SWIPE_CART_WIDTH = 112;
 const SWIPE_LEFT_WIDTH = 190;
 const LONG_PRESS_MS = 550;
@@ -63,12 +56,6 @@ function formatNumber(value, fractionDigits = 0) {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   });
-}
-
-function formatQuantity(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '-';
-  return num.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 }
 
 function getPositionLabel(count, t) {
@@ -134,7 +121,6 @@ function buildLineParts(item) {
 function SwipeableProductRow({
   item,
   selected,
-  variant,
   index,
   isFinePointer,
   revealedRow,
@@ -142,7 +128,6 @@ function SwipeableProductRow({
   onToggleSelection,
   onTap,
   onAction,
-  onDetails,
   onEmployeeClick,
   inCart,
   readOnly,
@@ -151,7 +136,7 @@ function SwipeableProductRow({
   t,
 }) {
   const rowId = getVlPositionKey(item);
-  // VL actions are intentionally direct; horizontal swipe is disabled in both views.
+  // VL actions are intentionally direct; horizontal swipe is disabled.
   const swipeEnabled = false;
   const interactionRef = React.useRef({
     x: 0,
@@ -243,17 +228,16 @@ function SwipeableProductRow({
       ? `translateX(-${SWIPE_CART_WIDTH}px)`
       : (isLeftRevealed ? `translateX(${SWIPE_LEFT_WIDTH}px)` : 'translateX(0)'),
     transition: 'transform 160ms ease',
-    px: variant === 'grouped' ? 0 : 0.75,
-    py: variant === 'grouped' ? 0 : 0.45,
+    px: 0.75,
+    py: 0.45,
     borderRadius: 0.5,
     cursor: 'pointer',
-    border: variant === 'grouped' ? '1px solid' : undefined,
     borderColor: inCart ? 'success.main' : (selected ? 'success.light' : 'divider'),
     backgroundColor: foreign ? '#E3F2FD' : inCart
       ? '#C8E6C9'
       : (selected
         ? '#E8F5E9'
-        : (variant === 'grouped' ? 'background.paper' : (index % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent'))),
+        : (index % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent')),
     whiteSpace: 'normal',
     wordBreak: 'break-word',
     overflowWrap: 'anywhere',
@@ -350,81 +334,35 @@ function SwipeableProductRow({
         sx={surfaceSx}
       >
         {showSource && (
-          <Typography variant="caption" sx={{ display: 'block', px: variant === 'grouped' ? 1 : 0, pt: 0.35, pb: 0.15, color: foreign ? '#1565C0' : 'text.secondary' }}>
+          <Typography variant="caption" sx={{ display: 'block', pt: 0.35, pb: 0.15, color: foreign ? '#1565C0' : 'text.secondary' }}>
             {item.sourceMandantName}
           </Typography>
         )}
-        {variant === 'grouped' ? (
-          <Card variant="outlined" sx={{ border: 0, boxShadow: 'none', bgcolor: 'transparent' }}>
-            <CardContent sx={{ py: '5px !important', px: '8px !important' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                {!readOnly && (
-                  <Checkbox
-                    size="small"
-                    checked={selected}
-                    disabled={unavailable && !selected}
-                    onTouchStart={(event) => event.stopPropagation()}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={() => onToggleSelection(item)}
-                    inputProps={{ 'aria-label': `${item.article || '-'} ${item.beNumber || ''}`.trim() }}
-                  />
-                )}
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
-                    {item.article || '-'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                    {`${formatQuantity(availableAmount)} ${item.unit || 'kg'} · ${item.warehouse || item.warehouseId || '-'} · ${t('product_be_number')}: ${item.beNumber || '-'}`}
-                  </Typography>
-                  {parts.remark && (
-                    <Typography variant="caption" sx={{ display: 'block', color: 'error.main', overflowWrap: 'anywhere' }}>
-                      {parts.remark}
-                    </Typography>
-                  )}
-                  <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
+        <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          {!readOnly && (
+            <Checkbox
+              size="small"
+              checked={selected}
+              disabled={unavailable && !selected}
+              onTouchStart={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => onToggleSelection(item)}
+              inputProps={{ 'aria-label': `${item.article || '-'} ${item.beNumber || ''}`.trim() }}
+              sx={{ p: 0.25, mr: 0.35 }}
+            />
+          )}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ minWidth: 0 }}>
+              {parts.main}
+              {parts.remark ? (
+                <Box component="span" sx={{ color: 'error.main' }}>
+                  {` - ${parts.remark}`}
                 </Box>
-                {item.id && (
-                  <Button
-                    size="small"
-                    onTouchStart={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDetails(item);
-                    }}
-                  >
-                    {t('vl_details')}
-                  </Button>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-            {!readOnly && (
-              <Checkbox
-                size="small"
-                checked={selected}
-                disabled={unavailable && !selected}
-                onTouchStart={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                onChange={() => onToggleSelection(item)}
-                inputProps={{ 'aria-label': `${item.article || '-'} ${item.beNumber || ''}`.trim() }}
-                sx={{ p: 0.25, mr: 0.35 }}
-              />
-            )}
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="body2" sx={{ minWidth: 0 }}>
-                {parts.main}
-                {parts.remark ? (
-                  <Box component="span" sx={{ color: 'error.main' }}>
-                    {` - ${parts.remark}`}
-                  </Box>
-                ) : null}
-              </Typography>
-              <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
-            </Box>
+              ) : null}
+            </Typography>
+            <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
           </Box>
-        )}
+        </Box>
 
         {isFinePointer && !readOnly && (
           <IconButton
@@ -489,7 +427,6 @@ export default function VlList() {
   const initialReturnState = isVlReturnStateForMandant(location.state?.vlReturnState, activeMandantName)
     ? location.state.vlReturnState : null;
 
-  const [viewMode, setViewMode] = React.useState(() => initialReturnState?.viewMode === 'grouped' ? 'grouped' : 'classic');
   const [vlMandants, setVlMandants] = React.useState([]);
   const [frupackMandantIds, setFrupackMandantIds] = React.useState([]);
   const [canViewFrupackGroup, setCanViewFrupackGroup] = React.useState(false);
@@ -498,14 +435,12 @@ export default function VlList() {
   const [vlMandantsLoaded, setVlMandantsLoaded] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState(() => String(initialReturnState?.searchInput || ''));
   const [classicItems, setClassicItems] = React.useState([]);
-  const [groupedGroups, setGroupedGroups] = React.useState([]);
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [initialLoaded, setInitialLoaded] = React.useState(false);
   const [revealedRow, setRevealedRow] = React.useState({ id: '', side: '' });
-  const [expandedGroups, setExpandedGroups] = React.useState(() => initialReturnState?.expandedGroups || {});
   const [selectedItems, setSelectedItems] = React.useState(() => (
     Array.isArray(initialReturnState?.selectedItems) ? initialReturnState.selectedItems : []
   ));
@@ -523,7 +458,7 @@ export default function VlList() {
   const restorationRef = React.useRef(initialReturnState);
   const normalizedSearch = String(searchInput || '').trim();
   const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
-  const visibleItemCount = viewMode === 'grouped' ? groupedGroups.length : classicItems.length;
+  const visibleItemCount = classicItems.length;
   const hasMore = visibleItemCount < total;
   const activeVlMandantId = vlMandants.find((mandant) => mandant.name.toLowerCase() === activeMandantName)?.id;
   const isGroupVl = vlMandantId === FRUPACK_GROUP_SCOPE;
@@ -580,7 +515,6 @@ export default function VlList() {
           restorationRef.current = null;
           setSelectedItems([]);
           setSearchInput('');
-          setExpandedGroups({});
         }
       } catch {
         if (alive) setVlMandants([]);
@@ -593,14 +527,12 @@ export default function VlList() {
 
   const getVlReturnState = React.useCallback(() => ({
     activeMandantName,
-    viewMode,
     vlMandantId,
     searchInput,
     page: Math.max(Number(page) || 1, 1),
     scrollTop: Number(listRef.current?.scrollTop || 0),
-    expandedGroups,
     selectedItems,
-  }), [activeMandantName, expandedGroups, page, searchInput, selectedItems, viewMode, vlMandantId]);
+  }), [activeMandantName, page, searchInput, selectedItems, vlMandantId]);
 
   const loadPage = React.useCallback(async (nextPage, query, replace) => {
     if (!vlMandantsLoaded) return;
@@ -613,21 +545,19 @@ export default function VlList() {
     try {
       const params = new URLSearchParams({
         page: String(nextPage),
-        pageSize: String(viewMode === 'grouped' ? GROUP_PAGE_SIZE : PAGE_SIZE),
+        pageSize: String(PAGE_SIZE),
         sort: 'vl',
         dir: 'ASC',
       });
       if (query) params.set('q', query);
       if (vlMandantId === FRUPACK_GROUP_SCOPE) params.set('vlScope', FRUPACK_GROUP_SCOPE);
       else if (vlMandantId) params.set('vlMandantId', vlMandantId);
-      const endpoint = viewMode === 'grouped' ? '/products/grouped' : '/products';
-      const res = await apiRequest(`${endpoint}?${params.toString()}`);
+      const res = await apiRequest(`/products?${params.toString()}`);
       if (activeRequestRef.current !== requestToken) return;
       const data = Array.isArray(res?.data) ? res.data : [];
       setGroupSourceNames((res?.meta?.viewMandants || []).map((mandant) => mandant.name));
-      const nextTotal = Number(res?.meta?.totalGroups ?? res?.meta?.total ?? 0);
-      if (viewMode === 'grouped') setGroupedGroups((previous) => (replace ? data : [...previous, ...data]));
-      else setClassicItems((previous) => (replace ? data : [...previous, ...data]));
+      const nextTotal = Number(res?.meta?.total ?? 0);
+      setClassicItems((previous) => (replace ? data : [...previous, ...data]));
       setPage(nextPage);
       setTotal(nextTotal);
       setInitialLoaded(true);
@@ -640,7 +570,7 @@ export default function VlList() {
         loadingRef.current = false;
       }
     }
-  }, [t, viewMode, vlMandantId, vlMandantsLoaded]);
+  }, [t, vlMandantId, vlMandantsLoaded]);
 
   const loadNextPage = React.useCallback(async () => {
     if (loadingRef.current) return;
@@ -660,7 +590,6 @@ export default function VlList() {
     if (returnState) {
       restorationRef.current = null;
       setClassicItems([]);
-      setGroupedGroups([]);
       setPage(0);
       setTotal(0);
       setInitialLoaded(false);
@@ -681,11 +610,9 @@ export default function VlList() {
       return invalidateRequest;
     }
     setClassicItems([]);
-    setGroupedGroups([]);
     setPage(0);
     setTotal(0);
     setInitialLoaded(false);
-    setExpandedGroups({});
     setRevealedRow({ id: '', side: '' });
     if (listRef.current) listRef.current.scrollTop = 0;
     void loadPage(1, effectiveQuery, true);
@@ -713,26 +640,6 @@ export default function VlList() {
       if (getAvailableAmount(item) <= 0) return previous;
       const group = getGroupInfo(item, lang);
       return [...previous, { ...item, groupKey: group.key, groupName: group.name }];
-    });
-    setBatchCartSuccess('');
-  }, [isItemReadOnly, lang]);
-
-  const setGroupSelection = React.useCallback((positions, selected) => {
-    const entries = (Array.isArray(positions) ? positions : []).filter((item) => !isItemReadOnly(item));
-    setSelectedItems((previous) => {
-      const next = new Map(previous.filter((item) => !isItemReadOnly(item)).map((item) => [getVlPositionKey(item), item]));
-      entries.forEach((item) => {
-        const id = getVlPositionKey(item);
-        if (!id) return;
-        if (selected) {
-          if (getAvailableAmount(item) <= 0) return;
-          const group = getGroupInfo(item, lang);
-          next.set(id, { ...item, groupKey: group.key, groupName: group.name });
-        } else {
-          next.delete(id);
-        }
-      });
-      return Array.from(next.values());
     });
     setBatchCartSuccess('');
   }, [isItemReadOnly, lang]);
@@ -887,10 +794,6 @@ export default function VlList() {
     openProductDetail(item);
   }, [openProductDetail, revealedRow]);
 
-  const toggleGroup = React.useCallback((groupKey) => {
-    setExpandedGroups((previous) => ({ ...previous, [groupKey]: previous[groupKey] !== true }));
-  }, []);
-
   const handleVlMandantChange = React.useCallback((event) => {
     const nextId = String(event.target.value || '');
     if (nextId === vlMandantId) return;
@@ -902,111 +805,12 @@ export default function VlList() {
     setPendingCustomerAction(null);
     setCustomerRequiredOpen(false);
     setClassicItems([]);
-    setGroupedGroups([]);
     setPage(0);
     setTotal(0);
     setInitialLoaded(false);
-    setExpandedGroups({});
     setRevealedRow({ id: '', side: '' });
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [vlMandantId]);
-
-  const renderGrouped = () => groupedGroups.map((group, groupIndex) => {
-    const positions = sortVlPositions(group.positions);
-    const selectablePositions = positions.filter((item) => !isItemReadOnly(item) && getAvailableAmount(item) > 0);
-    const selectedInGroup = positions.filter((item) => selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item)));
-    const allSelected = selectablePositions.length > 0
-      && selectablePositions.every((item) => selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item)));
-    const isExpanded = Boolean(effectiveQuery) || expandedGroups[group.key] === true;
-    return (
-      <Box key={group.key} sx={{ display: 'grid', gap: 0.45 }}>
-        <Box
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: groupIndex ? 0.45 : 0, minWidth: 0, cursor: 'pointer' }}
-          role="button"
-          tabIndex={0}
-          onClick={() => toggleGroup(group.key)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              toggleGroup(group.key);
-            }
-          }}
-        >
-          <IconButton
-            size="small"
-            aria-label={isExpanded ? t('vl_group_collapse') : t('vl_group_expand')}
-            aria-expanded={isExpanded}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleGroup(group.key);
-            }}
-            sx={{ p: 0.25, color: 'text.secondary' }}
-          >
-            <ExpandCollapseIndicator expanded={isExpanded} direction="right" />
-          </IconButton>
-          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
-            <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>{group.name || '-'}</Typography>
-            {isGroupVl && <Typography variant="caption" color="text.secondary">{group.sourceMandantName}</Typography>}
-            <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
-              {t('vl_available_count', { count: positions.length, positionLabel: getPositionLabel(positions.length, t) })}
-            </Typography>
-            {!isForeignVl && selectedInGroup.length > 0 && (
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {t('vl_selected_short', { count: selectedInGroup.length })}
-              </Typography>
-            )}
-          </Box>
-        </Box>
-
-        {isExpanded && (
-          <Box sx={{ display: 'grid', gap: 0.6, pl: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>{t('vl_available_heading')}</Typography>
-              {positions.some((item) => !isItemReadOnly(item)) && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                  <Button size="small" disabled={selectablePositions.length === 0} onClick={() => setGroupSelection(positions, !allSelected)}>
-                    {allSelected ? t('vl_clear_selection') : t('vl_select_all')}
-                  </Button>
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    aria-label={t('vl_batch_add_selected')}
-                    title={t('vl_batch_add_selected')}
-                    disabled={selectedItems.length === 0 || batchCartAdding}
-                    onClick={requestBatchCart}
-                  >
-                    <ShoppingCartIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              )}
-            </Box>
-            {positions.map((item, index) => (
-              <SwipeableProductRow
-                key={getVlPositionKey(item)}
-                item={item}
-                selected={selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item))}
-                variant="grouped"
-                index={index}
-                isFinePointer={isFinePointer}
-                revealedRow={revealedRow}
-                onReveal={(id, side) => setRevealedRow({ id, side })}
-                onToggleSelection={toggleSelection}
-                onTap={handleRowTap}
-                onAction={handleAction}
-                onDetails={openProductDetail}
-                onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
-                inCart={!isItemReadOnly(item) && cartIds.has(getItemId(item))}
-                readOnly={isItemReadOnly(item)}
-                foreign={isGroupVl && isItemReadOnly(item)}
-                showSource={isGroupVl}
-                t={t}
-              />
-            ))}
-          </Box>
-        )}
-      </Box>
-    );
-  });
 
   let lastClassicGroup = '';
   const renderClassic = () => sortVlItems(classicItems).map((item, index) => {
@@ -1019,7 +823,6 @@ export default function VlList() {
         <SwipeableProductRow
           item={item}
           selected={selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item))}
-          variant="classic"
           index={index}
           isFinePointer={isFinePointer}
           revealedRow={revealedRow}
@@ -1027,7 +830,6 @@ export default function VlList() {
           onToggleSelection={toggleSelection}
           onTap={handleRowTap}
           onAction={handleAction}
-          onDetails={openProductDetail}
           onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
           inCart={!isItemReadOnly(item) && cartIds.has(getItemId(item))}
           readOnly={isItemReadOnly(item)}
@@ -1064,15 +866,6 @@ export default function VlList() {
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5, minWidth: 0, pb: 0.25 }}>
-          <RadioGroup
-            row
-            value={viewMode}
-            onChange={(event) => setViewMode(event.target.value === 'classic' ? 'classic' : 'grouped')}
-            sx={{ flexWrap: 'nowrap', gap: 0.25, flexShrink: 0, '& .MuiFormControlLabel-root': { margin: 0 }, '& .MuiFormControlLabel-label': { fontSize: '0.78rem', whiteSpace: 'nowrap' } }}
-          >
-            <FormControlLabel value="classic" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_classic')} />
-            <FormControlLabel value="grouped" control={<Radio size="small" sx={{ p: 0.35, mr: 0.15 }} />} label={t('vl_view_grouped')} />
-          </RadioGroup>
           <TextField
             select
             size="small"
@@ -1132,7 +925,7 @@ export default function VlList() {
         {batchCartSuccess && <Alert severity="success" sx={{ mt: 1, mb: 1.25 }}>{batchCartSuccess}</Alert>}
         {!loading && initialLoaded && visibleItemCount === 0 && <Typography sx={{ opacity: 0.7, mt: 1 }}>{t('vl_empty')}</Typography>}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, mt: 0.5 }}>
-          {viewMode === 'grouped' ? renderGrouped() : renderClassic()}
+          {renderClassic()}
         </Box>
         <Box ref={sentinelRef} sx={{ height: 18 }} />
         {loading && (
