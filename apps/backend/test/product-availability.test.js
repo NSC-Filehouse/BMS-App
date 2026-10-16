@@ -20,3 +20,14 @@ test('availability source calculates stock from purchase, order and material-cre
 test('availability source keeps alias validation', () => {
   assert.throws(() => productAvailabilitySource('availability alias'), /Invalid product availability alias/);
 });
+
+test('search enrichment exposes article fields through the existing index join only when requested', () => {
+  const regular = productAvailabilitySource();
+  const enriched = productAvailabilitySource('availability', { includeSearchFields: true });
+  assert.doesNotMatch(regular, /agA_Dichte|agA_Beschreibung/);
+  assert.match(enriched, /agA_MFI_bis/);
+  assert.match(enriched, /agA_Dichte/);
+  assert.match(enriched, /agA_Beschreibung/);
+  assert.match(enriched, /articleGroupName/);
+  assert.equal((enriched.match(/LEFT JOIN \[dbo\]\.\[tblArt_Artikel\]/g) || []).length, 1);
+});

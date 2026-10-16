@@ -73,14 +73,47 @@ test('classic group pagination spans tenants and planning is charged to each sou
   assert.deepEqual(page1.meta.viewMandants.map((mandant) => mandant.id), [3, 10, 11, 12, 19]);
 });
 
-test('grouped lists preserve both tenants and apply search to every source query', async () => {
+test('grouped lists preserve both tenants and share the parsed search', async () => {
   reset();
   const response = await request('/products/grouped', { vlScope: 'frupack-group', q: 'Shared' });
   assert.equal(response.meta.totalGroups, 2);
   assert.equal(response.meta.totalPositions, 2);
   assert.deepEqual(response.data.map((group) => group.positions[0].availableAmount), [23, 20]);
   assert.deepEqual(queries.map((query) => query.id), [3, 10, 11, 12, 19]);
-  assert.ok(queries.every((query) => query.params.includes('%Shared%')));
+  assert.equal(response.meta.search.conditions[0].value, 'Shared');
+  const filtered = await request('/products/grouped', { vlScope: 'frupack-group', q: 'shared mfi 1 to 3' });
+  assert.equal(filtered.meta.totalGroups, 1);
+  assert.equal(filtered.meta.totalPositions, 1);
+  assert.equal(filtered.data[0].positions[0].sourceMandantId, 10);
+  assert.equal(filtered.data[0].positions[0].searchMatch.matches[0].min, 2);
+});
+
+test('classic and grouped searches filter all positions before totals and pagination in every scope', async () => {
+  reset();
+  for (const scope of [{}, { vlMandantId: '3' }, { vlScope: 'frupack-group' }]) {
+    for (const path of ['/products', '/products/grouped']) {
+      const result = await request(path, { ...scope, q: 'shared mfi 9-11', pageSize: 1 });
+      assert.equal(result.meta.total, 1);
+      const item = path.endsWith('grouped') ? result.data[0].positions[0] : result.data[0];
+      assert.equal(item.sourceMandantId, 3);
+      assert.equal(item.availableAmount, 23);
+    }
+  }
+});
+
+test('a matching position beyond the first unfiltered page remains findable', async () => {
+  reset();
+  const original = rows[3];
+  rows[3] = Array.from({ length: 130 }, (_, index) => ({ ...row(3, index), 'Bestell-Pos': `3-${index}`, beP_Artikelindex: String(index), masterArticleName: `Article ${index}` }));
+  try {
+    for (const path of ['/products', '/products/grouped']) {
+      const response = await request(path, { q: 'mfi 120-125', page: 2, pageSize: 2 });
+      assert.equal(response.meta.total, 6);
+      assert.equal(response.data.length, 2);
+    }
+    const response = await request('/products', { q: 'mfi 120-125', sort: 'vl', page: 2, pageSize: 2 });
+    assert.deepEqual(response.data.map((item) => item.mfi), [122, 123]);
+  } finally { rows[3] = original; }
 });
 
 test('a tenant outage fails the group as a whole without the generic tenant-switch error', async () => {

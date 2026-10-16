@@ -6,8 +6,15 @@ function quoteAlias(alias) {
   return `[${value}]`;
 }
 
-function productAvailabilitySource(alias = 'availability') {
+function productAvailabilitySource(alias = 'availability', { includeSearchFields = false } = {}) {
   const safeAlias = quoteAlias(alias);
+  const searchFields = {
+    masterArticleName: 'agA_Artikelname', supplierArticleName: 'agA_Artikelname_Lieferant',
+    articleGroupId: 'agA_Artikelgruppe', masterMfi: 'agA_MFI', masterMfiTo: 'agA_MFI_bis',
+    masterMfiMethod: 'agA_MFI_Pruefmethode', masterDensity: 'agA_Dichte',
+    tradeName: 'agA_Handelsname', colorName: 'agA_Farbton', articleDescription: 'agA_Beschreibung',
+    applications: 'agA_Anwendungs_Bereiche', productNumber: 'agA_Produktnummer', oldArticleName: 'agA_AlteBezeichnung',
+  };
 
   return `(
     SELECT
@@ -18,6 +25,7 @@ function productAvailabilitySource(alias = 'availability') {
       [base].[beP_Artikelindex] AS [beP_Artikelindex],
       [base].[Einheit] AS [Einheit],
       [base].[Artikel] AS [Artikel],
+      ${includeSearchFields ? Object.keys(searchFields).map((name) => `[base].[${name}] AS [${name}],`).join('\n      ') + '\n      [search_group].[ag_Gruppenname] AS [articleGroupName],' : ''}
       [base].[beP_Additive] AS [beP_Additive],
       [base].[beP_MFIgemessen] AS [beP_MFIgemessen],
       [base].[beP_MFI] AS [beP_MFI],
@@ -38,6 +46,7 @@ function productAvailabilitySource(alias = 'availability') {
         [best].[beP_BEposID] AS [Bestell-Pos],
         [best].[beP_VL] AS [beP_VL],
         [best].[beP_Artikelindex] AS [beP_Artikelindex],
+        ${includeSearchFields ? Object.entries(searchFields).map(([name, column]) => `[article].[${column}] AS [${name}],`).join('\n        ') : ''}
         COALESCE(NULLIF(LTRIM(RTRIM([best].[beP_Einheit])), N''), [article].[agA_Einheit]) AS [Einheit],
         COALESCE(NULLIF(LTRIM(RTRIM([best].[beP_Artikel])), N''), [article].[agA_Artikelname]) AS [Artikel],
         [best].[beP_Additive] AS [beP_Additive],
@@ -129,6 +138,7 @@ function productAvailabilitySource(alias = 'availability') {
         AND COALESCE([best].[beP_Vorprodukt], 0) = 0
         AND COALESCE([best].[beP_Abgerechnet], 0) = 0
     ) AS [base]
+    ${includeSearchFields ? 'LEFT JOIN [dbo].[tblArtikelgruppe] AS [search_group] ON [search_group].[ag_Gruppenindex] = [base].[articleGroupId]' : ''}
     LEFT JOIN [dbo].[tblArt5_KunststoffUnter] AS [plastic_sub]
       ON COALESCE([plastic_sub].[art5_ID_Kunststoff], N'') = COALESCE([base].[agA_ID_Kunststoff], N'')
      AND COALESCE([plastic_sub].[art5_ID_KunststoffUnter], N'') = COALESCE([base].[agA_ID_KunststoffUnter], N'')

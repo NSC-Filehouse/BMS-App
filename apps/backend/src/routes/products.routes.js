@@ -13,6 +13,7 @@ const {
 } = require('../vl-group');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { parseProductSearch, filterProductRows, searchMetadata } = require('../product-search');
 const {
   getTempOrderPlanningEntry,
   loadTempOrderPlanning,
@@ -26,7 +27,7 @@ const {
 } = require('../mfi-sort');
 
 const router = express.Router();
-const VIEW_SQL = productAvailabilitySource('availability');
+const VIEW_SQL = productAvailabilitySource('availability', { includeSearchFields: true });
 const ID_SEPARATOR = '||';
 
 function normalizeDir(dir) {
@@ -146,6 +147,7 @@ function mapProductRow(row, database = null) {
     groupName: asText(getField(row, 'groupName')),
     sourceMandantId: database?.firmaId ?? null,
     sourceMandantName: database?.name || null,
+    ...(row.searchMatch ? { searchMatch: row.searchMatch } : {}),
   };
 }
 
@@ -198,38 +200,13 @@ async function loadProductPlanning(req, database, items) {
   });
 }
 
-function buildWhereClause(filters = {}, options = {}) {
-  const text = asText(filters.q);
+function buildWhereClause(filters = {}) {
   const plastic = asText(filters.plastic);
   const sub = asText(filters.sub);
   const subEmpty = String(filters.subEmpty || '') === '1';
 
   const clauses = [];
   const params = [];
-
-  if (text) {
-    const like = `%${text}%`;
-    const fields = [
-      "COALESCE([Artikel], '')",
-      "COALESCE([Kunststoff], '')",
-      "COALESCE([Kunststoff_Untergruppe], '')",
-      "COALESCE([Lagerort], '')",
-      "COALESCE([Bestell-Pos], '')",
-      "COALESCE([Einheit], '')",
-      "COALESCE([beP_MFI_Pruefmethode], '')",
-      "COALESCE([beP_VLbemerkung], '')",
-      "COALESCE([beP_Additive], '')",
-      "COALESCE([txtLagerInfo], '')",
-      "CONVERT(nvarchar(64), [Menge])",
-      "CONVERT(nvarchar(64), [EP])",
-      "CONVERT(nvarchar(64), [beP_MFI])",
-      "CONVERT(nvarchar(64), [beP_MFIgemessen])",
-      "CONVERT(nvarchar(64), [bePR_Anzahl])",
-      ...(Array.isArray(options.textFields) ? options.textFields : []),
-    ];
-    clauses.push(`(${fields.map((f) => `${f} LIKE ?`).join(' OR ')})`);
-    params.push(...fields.map(() => like));
-  }
 
   if (plastic) {
     clauses.push(`COALESCE([Kunststoff], '') = ?`);
@@ -314,21 +291,11 @@ async function sendFrupackGroupVl(req, res, grouped) {
   const { page, pageSize, q } = parseListParams(req.query, {
     page: 1, pageSize: grouped ? 40 : 100, sort: 'vl', dir: 'ASC',
   });
+  const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause({
     q, plastic: req.query?.plastic, sub: req.query?.sub, subEmpty: req.query?.subEmpty,
-  }, { textFields: grouped ? ['[article].[agA_Artikelname]', '[articleGroup].[ag_Gruppenname]'] : [] });
-  const query = grouped ? `
-    SELECT [availability].*,
-      [article].[agA_Artikelname] AS [masterArticleName],
-      [article].[agA_Artikelgruppe] AS [articleGroupId],
-      [articleGroup].[ag_Gruppenname] AS [articleGroupName]
-    FROM ${VIEW_SQL}
-    LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
-      ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
-    LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
-      ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
-    ${whereSql}
-  ` : `SELECT * FROM ${VIEW_SQL} ${whereSql}`;
+  });
+  const query = `SELECT * FROM ${VIEW_SQL} ${whereSql}`;
   const batches = await Promise.all(FRUPACK_MANDANT_IDS.map(async (mandantId) => {
     let database;
     try {
@@ -336,7 +303,7 @@ async function sendFrupackGroupVl(req, res, grouped) {
       // user's ordinary tenant assignments contain only their own company.
       database = await getDatabaseConnectionForCompanyId(mandantId);
       const rows = await runSQLQueryAccess(database, query, params);
-      return { database, rows: rows || [] };
+      return { database, rows: filterProductRows(rows || [], search) };
     } catch {
       // Avoid DB_NOT_AVAILABLE: the generic frontend handler would switch the
       // active tenant. A failed group member instead invalidates this list.
@@ -385,6 +352,7 @@ async function sendFrupackGroupVl(req, res, grouped) {
         totalPositions: allEntries.reduce((sum, group) => sum + group.positions.length, 0),
       } : {}),
       q, sort: 'vl', dir: 'ASC',
+      search: searchMetadata(search),
       plastic: asText(req.query?.plastic), sub: asText(req.query?.sub),
       subEmpty: String(req.query?.subEmpty || '') === '1',
     },
@@ -404,6 +372,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   const safeSort = resolveSort(sort);
   const safeDir = normalizeDir(dir);
   const isVlSort = String(sort || '').trim() === 'vl';
+  const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause({
     q,
     plastic: req.query?.plastic,
@@ -412,9 +381,12 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   });
   const offset = (page - 1) * pageSize;
 
-  const countSql = `SELECT COUNT(*) AS total FROM ${VIEW_SQL} ${whereSql}`;
-  const totalRows = await runSQLQueryAccess(viewDatabase, countSql, params);
-  const total = normalizeTotal(totalRows);
+  let total;
+  if (!q) {
+    const countSql = `SELECT COUNT(*) AS total FROM ${VIEW_SQL} ${whereSql}`;
+    const totalRows = await runSQLQueryAccess(viewDatabase, countSql, params);
+    total = normalizeTotal(totalRows);
+  }
 
   const dataSql = isVlSort
     ? `
@@ -427,12 +399,14 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
       FROM ${VIEW_SQL}
       ${whereSql}
       ORDER BY ${safeSort} ${safeDir}
-      OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+      ${q ? '' : 'OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}
     `;
-  const rows = await runSQLQueryAccess(viewDatabase, dataSql, isVlSort ? params : [...params, offset, pageSize]);
-  const mappedRows = (rows || []).map((row) => mapProductRow(row, viewDatabase));
+  const rows = await runSQLQueryAccess(viewDatabase, dataSql, isVlSort || q ? params : [...params, offset, pageSize]);
+  const filteredRows = filterProductRows(rows || [], search);
+  if (q) total = filteredRows.length;
+  const mappedRows = filteredRows.map((row) => mapProductRow(row, viewDatabase));
   const orderedRows = isVlSort ? sortVlItems(mappedRows) : mappedRows;
-  const pageRows = isVlSort ? orderedRows.slice(offset, offset + pageSize) : orderedRows;
+  const pageRows = isVlSort || q ? orderedRows.slice(offset, offset + pageSize) : orderedRows;
   const planning = await loadProductPlanning(req, viewDatabase, pageRows);
   const data = pageRows.map((item) => applyTempOrderPlanning(item, planning));
 
@@ -446,6 +420,7 @@ router.get('/products', requireMandant, asyncHandler(async (req, res) => {
       count: data.length,
       total,
       q,
+      search: searchMetadata(search),
       plastic: asText(req.query?.plastic),
       sub: asText(req.query?.sub),
       subEmpty: String(req.query?.subEmpty || '') === '1',
@@ -465,36 +440,26 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
     sort: 'vl',
     dir: 'ASC',
   });
+  const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause({
     q,
     plastic: req.query?.plastic,
     sub: req.query?.sub,
     subEmpty: req.query?.subEmpty,
-  }, {
-    textFields: [
-      '[article].[agA_Artikelname]',
-      '[articleGroup].[ag_Gruppenname]',
-    ],
   });
 
   const rows = await runSQLQueryAccess(viewDatabase, `
     SELECT
-      [availability].*,
-      [article].[agA_Artikelname] AS [masterArticleName],
-      [article].[agA_Artikelgruppe] AS [articleGroupId],
-      [articleGroup].[ag_Gruppenname] AS [articleGroupName]
+      [availability].*
     FROM ${VIEW_SQL}
-    LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
-      ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
-    LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
-      ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
     ${whereSql}
     ORDER BY [availability].[Kunststoff], [availability].[Kunststoff_Untergruppe], [availability].[Artikel], [availability].[Bestell-Pos]
   `, params);
 
-  const mappedRows = (rows || []).map((row) => mapProductRow(row, viewDatabase));
+  const filteredRows = filterProductRows(rows || [], search);
+  const mappedRows = filteredRows.map((row) => mapProductRow(row, viewDatabase));
   const planning = await loadProductPlanning(req, viewDatabase, mappedRows);
-  const allGroups = groupProductRows(rows, viewDatabase, planning);
+  const allGroups = groupProductRows(filteredRows, viewDatabase, planning);
   const offset = (page - 1) * pageSize;
   const data = allGroups.slice(offset, offset + pageSize);
   sendEnvelope(res, {
@@ -509,6 +474,7 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
       totalGroups: allGroups.length,
       totalPositions: allGroups.reduce((sum, group) => sum + group.positions.length, 0),
       q,
+      search: searchMetadata(search),
       plastic: asText(req.query?.plastic),
       sub: asText(req.query?.sub),
       subEmpty: String(req.query?.subEmpty || '') === '1',

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   IconButton,
   InputAdornment,
@@ -34,6 +35,7 @@ import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import { formatMfiValue, sortVlItems } from '../utils/mfi.js';
+import { formatSearchCondition, formatSearchMatch } from '../utils/productSearch.js';
 import {
   FRUPACK_GROUP_SCOPE, getVlPositionKey, isVlPositionReadOnly, getProductSourceMandantId,
   isVlReturnStateForMandant, resolveInitialVlSelection, buildVlDropdownOptions,
@@ -133,6 +135,7 @@ function SwipeableProductRow({
   readOnly,
   foreign,
   showSource,
+  lang,
   t,
 }) {
   const rowId = getVlPositionKey(item);
@@ -361,6 +364,11 @@ function SwipeableProductRow({
               ) : null}
             </Typography>
             <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
+            {item.searchMatch && (item.searchMatch.matches.length > 0 || item.searchMatch.fuzzy.length > 0) && (
+              <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                {formatSearchMatch(item.searchMatch, t, lang)}
+              </Typography>
+            )}
           </Box>
         </Box>
 
@@ -434,6 +442,8 @@ export default function VlList() {
   const [vlMandantId, setVlMandantId] = React.useState(() => String(initialReturnState?.vlMandantId || ''));
   const [vlMandantsLoaded, setVlMandantsLoaded] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState(() => String(initialReturnState?.searchInput || ''));
+  const [debouncedSearch, setDebouncedSearch] = React.useState(() => String(initialReturnState?.searchInput || '').trim());
+  const [searchMeta, setSearchMeta] = React.useState(null);
   const [classicItems, setClassicItems] = React.useState([]);
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
@@ -455,11 +465,23 @@ export default function VlList() {
   const listRef = React.useRef(null);
   const loadingRef = React.useRef(false);
   const activeRequestRef = React.useRef(null);
+  const requestControllerRef = React.useRef(null);
   const restorationRef = React.useRef(initialReturnState);
   const normalizedSearch = String(searchInput || '').trim();
-  const effectiveQuery = normalizedSearch.length >= 2 ? normalizedSearch : '';
+  const effectiveQuery = debouncedSearch;
+  const searchPending = normalizedSearch !== effectiveQuery;
+  const currentSearchMeta = !searchPending && searchMeta?.query === normalizedSearch ? searchMeta : null;
   const visibleItemCount = classicItems.length;
   const hasMore = visibleItemCount < total;
+  React.useEffect(() => {
+    if (normalizedSearch === debouncedSearch) return undefined;
+    activeRequestRef.current = null;
+    requestControllerRef.current?.abort();
+    loadingRef.current = false;
+    setLoading(false);
+    const timer = window.setTimeout(() => setDebouncedSearch(normalizedSearch), 300);
+    return () => window.clearTimeout(timer);
+  }, [normalizedSearch, debouncedSearch]);
   const activeVlMandantId = vlMandants.find((mandant) => mandant.name.toLowerCase() === activeMandantName)?.id;
   const isGroupVl = vlMandantId === FRUPACK_GROUP_SCOPE;
   const isForeignVl = Boolean(
@@ -539,6 +561,8 @@ export default function VlList() {
     if (loadingRef.current) return;
     loadingRef.current = true;
     const requestToken = {};
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     activeRequestRef.current = requestToken;
     setLoading(true);
     setError('');
@@ -552,7 +576,7 @@ export default function VlList() {
       if (query) params.set('q', query);
       if (vlMandantId === FRUPACK_GROUP_SCOPE) params.set('vlScope', FRUPACK_GROUP_SCOPE);
       else if (vlMandantId) params.set('vlMandantId', vlMandantId);
-      const res = await apiRequest(`/products?${params.toString()}`);
+      const res = await apiRequest(`/products?${params.toString()}`, { signal: controller.signal });
       if (activeRequestRef.current !== requestToken) return;
       const data = Array.isArray(res?.data) ? res.data : [];
       setGroupSourceNames((res?.meta?.viewMandants || []).map((mandant) => mandant.name));
@@ -560,6 +584,7 @@ export default function VlList() {
       setClassicItems((previous) => (replace ? data : [...previous, ...data]));
       setPage(nextPage);
       setTotal(nextTotal);
+      setSearchMeta(res?.meta?.search || null);
       setInitialLoaded(true);
       setRevealedRow({ id: '', side: '' });
     } catch (e) {
@@ -573,10 +598,11 @@ export default function VlList() {
   }, [t, vlMandantId, vlMandantsLoaded]);
 
   const loadNextPage = React.useCallback(async () => {
+    if (searchPending) return;
     if (loadingRef.current) return;
     if (initialLoaded && !hasMore) return;
     await loadPage(page + 1, effectiveQuery, false);
-  }, [effectiveQuery, hasMore, initialLoaded, loadPage, page]);
+  }, [effectiveQuery, hasMore, initialLoaded, loadPage, page, searchPending]);
 
   React.useEffect(() => {
     if (!vlMandantsLoaded) return undefined;
@@ -584,6 +610,7 @@ export default function VlList() {
     const invalidateRequest = () => {
       cancelled = true;
       activeRequestRef.current = null;
+      requestControllerRef.current?.abort();
       loadingRef.current = false;
     };
     const returnState = restorationRef.current;
@@ -836,6 +863,7 @@ export default function VlList() {
           foreign={isGroupVl && isItemReadOnly(item)}
           showSource={isGroupVl}
           t={t}
+          lang={lang}
         />
       </Box>
     );
@@ -901,12 +929,13 @@ export default function VlList() {
           size="small"
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
-          placeholder={t('vl_search')}
-          inputProps={{ 'aria-label': t('vl_search') }}
+          placeholder={t('vl_search_example')}
+          inputProps={{ 'aria-label': t('vl_search'), maxLength: 500 }}
           sx={{ mt: 0.75 }}
           InputProps={{
             endAdornment: (
               <InputAdornment position="end">
+                {searchPending && <CircularProgress size={16} sx={{ mr: 0.5 }} />}
                 <IconButton size="small" aria-label="clear-search" onClick={() => setSearchInput('')}>
                   <CloseIcon fontSize="small" />
                 </IconButton>
@@ -914,13 +943,40 @@ export default function VlList() {
             ),
           }}
         />
+        {currentSearchMeta?.conditions?.length > 0 && (
+          <Box aria-label={t('vl_search_conditions')} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.75, maxHeight: 88, overflowY: 'auto' }}>
+            {currentSearchMeta.conditions.map((condition) => (
+              <Chip key={condition.id} size="small" variant="outlined" label={formatSearchCondition(condition, lang)}
+                onDelete={() => setSearchInput(condition.queryWithout)} />
+            ))}
+          </Box>
+        )}
+        {currentSearchMeta?.warnings?.map((warning) => (
+          <Typography key={warning} variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
+            {t(`vl_search_warning_${warning}`)}
+          </Typography>
+        ))}
+        {normalizedSearch && !searchPending && initialLoaded && !loading && (
+          <Typography variant="caption" aria-live="polite" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
+            {t('vl_search_count', { count: total })}
+          </Typography>
+        )}
       </Box>
 
-      <Box ref={listRef} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
+      <Box ref={listRef} aria-busy={loading || searchPending} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
         {error && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{error}</Alert>}
         {batchCartError && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{batchCartError}</Alert>}
         {batchCartSuccess && <Alert severity="success" sx={{ mt: 1, mb: 1.25 }}>{batchCartSuccess}</Alert>}
         {!loading && initialLoaded && visibleItemCount === 0 && <Typography sx={{ opacity: 0.7, mt: 1 }}>{t('vl_empty')}</Typography>}
+        {!loading && !searchPending && initialLoaded && visibleItemCount === 0 && currentSearchMeta?.conditions?.length > 1 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+            {currentSearchMeta.conditions.map((condition) => (
+              <Button key={condition.id} size="small" onClick={() => setSearchInput(condition.queryWithout)}>
+                {t('vl_search_without', { condition: formatSearchCondition(condition, lang) })}
+              </Button>
+            ))}
+          </Box>
+        )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, mt: 0.5 }}>
           {renderClassic()}
         </Box>
