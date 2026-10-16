@@ -6,7 +6,7 @@ param(
     [string]$Branch = 'main',
     [string]$GitPath = 'git.exe',
     [ValidateRange(1, 86400)]
-    [int]$IntervalSeconds = 900
+    [int]$IntervalSeconds = 1800
 )
 
 Set-StrictMode -Version 2.0

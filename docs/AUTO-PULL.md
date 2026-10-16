@@ -56,7 +56,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\_Services\BMS-App\sc
 ```
 
 Dieses Fenster geoeffnet lassen. Das Skript ruft den vorhandenen Pull sofort
-und danach jeweils 15 Minuten nach Abschluss des vorherigen Durchlaufs auf.
+und danach jeweils 30 Minuten nach Abschluss des vorherigen Durchlaufs auf.
 Auch nach einem fehlgeschlagenen Pull wartet es und versucht es erneut.
 Ein zweiter Loop fuer denselben Checkout wird durch eine Dateisperre abgewiesen.
 Zum Beenden **Strg+C** druecken. Das Schliessen des Fensters, eine Windows-Abmeldung
@@ -70,8 +70,8 @@ Bei Bedarf laesst sich ein anderer Git-Pfad angeben:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\_Services\BMS-App\scripts\auto-pull-loop.ps1' -GitPath 'C:\Program Files\Git\cmd\git.exe'
 ```
 
-Das Intervall kann mit `-IntervalSeconds 900` eingestellt werden (900 Sekunden
-= 15 Minuten, Standard). Der Loop schreibt zusaetzlich Statusmeldungen unter
+Das Intervall kann mit `-IntervalSeconds 1800` eingestellt werden (1800 Sekunden
+= 30 Minuten, Standard). Der Loop schreibt zusaetzlich Statusmeldungen unter
 `logs\auto-pull\loop-YYYY-MM.log`. Die Sperrdatei `logs\auto-pull\loop.lock`
 kann nach dem Beenden liegen bleiben; massgeblich ist die offene Dateisperre.
 Vor einem manuellen Update oder einer anderen Bereitstellung den Loop beenden.
@@ -87,7 +87,7 @@ Wenn lediglich die grafische Aufgabenplanung nicht erreichbar ist, kann eine
 Aufgabe alternativ per `Register-ScheduledTask` eingerichtet werden, sofern das
 Konto die benoetigten Rechte hat. Die Endlosschleife braucht diese Rechte nicht.
 
-## Mit Aufgabenplanung: alle 15 Minuten
+## Mit Aufgabenplanung: alle 30 Minuten
 
 Auf dem Server in der Windows-Aufgabenplanung **Aufgabe erstellen** waehlen:
 
@@ -97,7 +97,7 @@ Auf dem Server in der Windows-Aufgabenplanung **Aufgabe erstellen** waehlen:
    greift nur auf lokale Computerressourcen zu** deaktiviert lassen.
    Administratorrechte sind fuer den Pull bei passenden Dateirechten nicht noetig.
 2. **Trigger:** Einmalig ab der gewuenschten Startzeit, **Aufgabe wiederholen alle:
-   15 Minuten**, **fuer die Dauer von: Unbegrenzt**, aktiviert.
+   30 Minuten**, **fuer die Dauer von: Unbegrenzt**, aktiviert.
 3. **Aktion:** Programm starten:
 
    - Programm: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
