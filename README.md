@@ -239,6 +239,13 @@ Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm work
    pm2 start ecosystem.config.cjs
    ```
 
+## Automatischer Git-Pull auf Windows Server
+
+`scripts/auto-pull.ps1` aktualisiert `C:\_Services\BMS-App` per Fast-Forward
+aus `origin/main`. Die [Einrichtungsanleitung](docs/AUTO-PULL.md) beschreibt
+den Test und eine geplante Aufgabe alle 15 Minuten. Build, Paketinstallation,
+SQL-Migrationen und Dienstneustart bleiben separate Schritte.
+
 ---
 
 ## Mandant-Handling
