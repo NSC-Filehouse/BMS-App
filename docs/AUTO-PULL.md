@@ -46,7 +46,48 @@ andere Konten oder eine unbeaufsichtigte Anmeldung verfuegbar. Keine Passwoerter
 oder Tokens in Skript oder Aufgabenargumenten hinterlegen. HTTPS-Abfragen nach
 Zugangsdaten werden durch das Skript unterdrueckt.
 
-## Aufgabenplanung: alle 15 Minuten
+## Ohne Aufgabenplanung: dauerhaftes PowerShell-Skript
+
+Wenn PowerShell ausgefuehrt werden und dauerhaft laufen darf, ist keine
+Aufgabenplanung erforderlich. Nach dem einmaligen Test starten:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\_Services\BMS-App\scripts\auto-pull-loop.ps1'
+```
+
+Dieses Fenster geoeffnet lassen. Das Skript ruft den vorhandenen Pull sofort
+und danach jeweils 15 Minuten nach Abschluss des vorherigen Durchlaufs auf.
+Auch nach einem fehlgeschlagenen Pull wartet es und versucht es erneut.
+Ein zweiter Loop fuer denselben Checkout wird durch eine Dateisperre abgewiesen.
+Zum Beenden **Strg+C** druecken. Das Schliessen des Fensters, eine Windows-Abmeldung
+oder ein Serverneustart beendet den Lauf; danach muss er erneut gestartet werden.
+Eine getrennte RDP-Verbindung kann die Sitzung weiterlaufen lassen, sofern die
+Serverrichtlinie die Sitzung nicht abmeldet. Das ersetzt keinen Autostart.
+
+Bei Bedarf laesst sich ein anderer Git-Pfad angeben:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\_Services\BMS-App\scripts\auto-pull-loop.ps1' -GitPath 'C:\Program Files\Git\cmd\git.exe'
+```
+
+Das Intervall kann mit `-IntervalSeconds 900` eingestellt werden (900 Sekunden
+= 15 Minuten, Standard). Der Loop schreibt zusaetzlich Statusmeldungen unter
+`logs\auto-pull\loop-YYYY-MM.log`. Die Sperrdatei `logs\auto-pull\loop.lock`
+kann nach dem Beenden liegen bleiben; massgeblich ist die offene Dateisperre.
+Vor einem manuellen Update oder einer anderen Bereitstellung den Loop beenden.
+Die Pruefungen sowie die Grenzen hinsichtlich Build und Neustart gelten unveraendert.
+Der Loop bleibt beim Start auf seiner geladenen Version; nach Aenderungen am
+Loop selbst muss er neu gestartet werden. Das Pull-Skript wird bei jedem
+Durchlauf neu geladen.
+
+Nur Dateien anzulegen fuehrt noch keinen Code aus. Falls Skripte weder manuell
+noch durch einen vorhandenen Dienst oder eine Verwaltungssoftware gestartet
+werden koennen, braucht es zunaechst einen solchen Ausfuehrungsmechanismus.
+Wenn lediglich die grafische Aufgabenplanung nicht erreichbar ist, kann eine
+Aufgabe alternativ per `Register-ScheduledTask` eingerichtet werden, sofern das
+Konto die benoetigten Rechte hat. Die Endlosschleife braucht diese Rechte nicht.
+
+## Mit Aufgabenplanung: alle 15 Minuten
 
 Auf dem Server in der Windows-Aufgabenplanung **Aufgabe erstellen** waehlen:
 

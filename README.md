@@ -243,7 +243,8 @@ Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm work
 
 `scripts/auto-pull.ps1` aktualisiert `C:\_Services\BMS-App` per Fast-Forward
 aus `origin/main`. Die [Einrichtungsanleitung](docs/AUTO-PULL.md) beschreibt
-den Test und eine geplante Aufgabe alle 15 Minuten. Build, Paketinstallation,
+den Test, den dauerhaften Betrieb mit `scripts/auto-pull-loop.ps1` ohne
+Aufgabenplanung und eine geplante Aufgabe alle 15 Minuten. Build, Paketinstallation,
 SQL-Migrationen und Dienstneustart bleiben separate Schritte.
 
 ---
