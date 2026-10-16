@@ -48,6 +48,17 @@ Zugangsdaten werden durch das Skript unterdrueckt.
 
 ## Ohne Aufgabenplanung: dauerhaftes PowerShell-Skript
 
+Nach dem einmaligen Pull im Hauptverzeichnis einfach **start-auto-pull.bat**
+doppelklicken, auf dem Server unter
+`C:\_Services\BMS-App\start-auto-pull.bat`. Der Starter ruft nur
+den Loop auf; dieser fuehrt sofort den ersten Pull aus und wartet danach jeweils
+30 Minuten. Ein zusaetzlicher Pull vor jedem Start ist nicht erforderlich.
+Nach einem Serverneustart die BAT-Datei erneut doppelklicken und das Fenster
+geoeffnet lassen. Mit **Strg+C** beenden. Falls CMD anschliessend nach dem
+Beenden des Stapelauftrags fragt, mit **J** bestaetigen.
+Bei einem Startfehler bleibt die Meldung bis zu einem Tastendruck sichtbar.
+Die BAT-Datei ist versioniert; Logs und Sperrdateien bleiben ignoriert.
+
 Wenn PowerShell ausgefuehrt werden und dauerhaft laufen darf, ist keine
 Aufgabenplanung erforderlich. Nach dem einmaligen Test starten:
 
