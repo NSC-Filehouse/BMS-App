@@ -510,3 +510,11 @@ VITE_MANDANT_EXCLUDE_IDS=0,1,6,8,13,14,15,16,17,18
 Nach einer Aenderung muss das Frontend neu gebaut werden. FrupackSweden (ID 19)
 verwendet fuer Auftragsmails dieselbe Customer-Service-Adresse wie FrupackNordic:
 `cs@frupack.dk`.
+
+## Optionen in der VL (Pilot)
+
+Die verifizierten Pilotidentitaeten AKI, NSC und MFR erhalten optionsVlPreview. Ihre VL nutzt GET /vl/entries: Bestands- und Optionspositionen werden gemeinsam vor der Pagination nach der bestehenden aufsteigenden MFI-Regel sortiert. Optionspositionen sind gruen, oeffnen die Optionsdetails und bieten keine Warenkorb-/Reservierungsaktionen. Die Testvorschau zeigt auch abgelaufene Angebote mit entsprechendem Hinweis. Frupack-Gruppen- und Einzelmandantenrechte werden serverseitig geprueft; fremde Optionsdetails sind lesend.
+
+Vor dem Speichern neuer Artikel-Lernregeln apps/backend/sql/upgrade_options_matching.sql in der zentralen BMS-Datenbank ausfuehren. Sie ergaenzt nur optionale Merkmals- und Versionsfelder. Eine manuelle Zuordnung speichert Mandant, kanonischen Lieferanten, Produktidentitaet und passende Bedingungen. Technische Widersprueche erfordern eine ausdrueckliche Bestaetigung. Die Zuordnung bestaetigt keinen Wareneingang.
+
+Der Artikelabgleich wird aus dem Schwesterprojekt OptionReader (src/matchingCore.js) mit dessen scripts/sync-article-matching.js synchronisiert. Beide Deployments enthalten eine eigene identische Kopie mit Versionskennung. Bestehende unbestaetigte Vorschlaege und Lieferantenkennungen lassen sich dort mit scripts/refresh-options-matching.ps1 analysieren bzw. nach Sicherung mit -Apply aktualisieren. Auch beim Lesen der Details wird der aktuelle Abgleich verwendet.

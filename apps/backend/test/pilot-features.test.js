@@ -7,7 +7,7 @@ test('pilot features belong to the three verified employee identities', () => {
     ['AKI', 1, 'Kimaz'], ['MFR', 130, 'M.Frank'], ['NSC', 227, 'n.schroeder'],
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity({ shortCode, personNumber, userId, active: true }), {
-      purchaseOrders: true, options: true, forecast: true, frupackGroupVl: true,
+      purchaseOrders: true, options: true, optionsVlPreview: true, forecast: true, frupackGroupVl: true,
     });
   }
 });
@@ -20,7 +20,7 @@ test('a matching short code alone never opens pilot features', () => {
     null,
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity(identity), {
-      purchaseOrders: false, options: false, forecast: false, frupackGroupVl: false,
+      purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
     });
   }
 });
@@ -28,7 +28,7 @@ test('a matching short code alone never opens pilot features', () => {
 test('active employees of every Frupack company receive group VL without other pilot features', () => {
   for (const mainCompanyId of [3, 10, 11, 12, 19]) {
     assert.deepEqual(pilotFeaturesForIdentity({ mainCompanyId, shortCode: 'TST', active: true }), {
-      purchaseOrders: false, options: false, forecast: false, frupackGroupVl: true,
+      purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: true,
     });
     assert.equal(pilotFeaturesForIdentity({ mainCompanyId, active: false }).frupackGroupVl, false);
   }

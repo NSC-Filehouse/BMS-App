@@ -41,6 +41,7 @@ export function getVlPositionKey(item) {
 }
 
 export function isVlPositionReadOnly(item, activeMandantId, foreignList = false) {
+  if (item?.kind === 'option') return true;
   if (foreignList) return true;
   const source = item?.sourceMandantId;
   if (source === null || source === undefined || activeMandantId === null || activeMandantId === undefined) return true;

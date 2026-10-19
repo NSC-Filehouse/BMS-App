@@ -17,6 +17,13 @@ const select = (activeMandantName, canViewGroup = true, returnState = null) => r
   mandants, activeMandantName, frupackMandantIds, canViewGroup, returnState,
 });
 
+test('option rows are informational even when they belong to the active tenant', () => {
+  assert.equal(isVlPositionReadOnly({ kind: 'option', sourceMandantId: 3 }, 3, false), true);
+  assert.equal(isVlPositionReadOnly({ kind: 'stock', sourceMandantId: 3 }, 3, false), false);
+  assert.notEqual(getVlPositionKey({ kind: 'option', id: 'option:3:197:602', sourceMandantId: 3 }),
+    getVlPositionKey({ id: '602', sourceMandantId: 3 }));
+});
+
 test('group details and WPZ carry the explicit read scope and concrete source without changing ordinary reads', () => {
   assert.equal(buildProductSourceQuery('10', 'frupack-group'), '?vlMandantId=10&vlScope=frupack-group');
   assert.equal(buildProductSourceQuery('3'), '?vlMandantId=3');

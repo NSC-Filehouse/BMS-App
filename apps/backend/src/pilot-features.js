@@ -18,6 +18,7 @@ function pilotFeaturesForIdentity(identity) {
   return {
     purchaseOrders: enabled,
     options: enabled,
+    optionsVlPreview: enabled,
     forecast: enabled,
     frupackGroupVl: enabled || isFrupackEmployee(identity),
   };

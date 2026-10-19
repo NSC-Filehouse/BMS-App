@@ -33,7 +33,7 @@ async function loadWpz(item, vlMandantId) {
 }
 
 export async function addProductsToOrderCart(items, { vlMandantId = '' } = {}) {
-  const products = (Array.isArray(items) ? items : []).filter((item) => getItemId(item));
+  const products = (Array.isArray(items) ? items : []).filter((item) => item?.kind !== 'option' && getItemId(item));
   const enrichedProducts = await Promise.all(products.map((item) => loadWpz(item, vlMandantId)));
   return addOrderCartItemsWithDefaults(enrichedProducts);
 }

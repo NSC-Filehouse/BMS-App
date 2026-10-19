@@ -39,30 +39,7 @@ function asText(value) {
   return String(value).trim();
 }
 
-async function resolveVlDatabase(req, rawMandantId) {
-  // A group detail/WPZ request names one concrete source. List requests still
-  // reject a combination of vlScope + vlMandantId in getVlScope(req.query).
-  const groupScope = getVlScope({ vlScope: req.query?.vlScope });
-  const value = asText(rawMandantId);
-  if (groupScope && !value) {
-    throw createHttpError(400, 'Fuer Produktdetails bitte den Herkunftsmandanten angeben.', { code: 'VL_SCOPE_INVALID' });
-  }
-  if (!value) return req.database;
-
-  const selectedId = Number(value);
-  if (!Number.isSafeInteger(selectedId) || selectedId < 0) {
-    throw createHttpError(400, `Invalid VL mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
-  }
-  if (groupScope) {
-    assertFrupackGroupAccess(req.userIdentity);
-    if (!FRUPACK_MANDANT_IDS.includes(selectedId)) {
-      throw createHttpError(403, 'Dieser Mandant gehoert nicht zur Frupack Gruppe.', { code: 'MANDANT_FORBIDDEN' });
-    }
-    return getDatabaseConnectionForCompanyId(selectedId);
-  }
-  if (Number(req.database?.firmaId) === selectedId) return req.database;
-  return getDatabaseConnectionForIdentityById(req.userIdentity, selectedId);
-}
+const { resolveVlDatabase } = require('../vl-source');
 
 function buildVlMeta(req, database) {
   return {
@@ -358,6 +335,55 @@ async function sendFrupackGroupVl(req, res, grouped) {
     },
   });
 }
+
+// Pilot-only union: stocks retain their product actions; options are informational entries.
+router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.middleware').requirePilotFeature('optionsVlPreview'), asyncHandler(async (req, res) => {
+  const { loadOffers } = require('../options/read');
+  const { candidateContext } = require('../options/matching-service');
+  const { buildOptionEntries } = require('../options/vl-preview');
+  const scope = getVlScope(req.query);
+  let databases;
+  if (scope) {
+    assertFrupackGroupAccess(req.userIdentity);
+    databases = await Promise.all(FRUPACK_MANDANT_IDS.map(async id => {
+      try { return await getDatabaseConnectionForCompanyId(id); }
+      catch { throw createHttpError(503, 'Frupack Gruppe konnte nicht vollständig geladen werden.', { code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: id }); }
+    }));
+  } else databases = [await resolveVlDatabase(req, req.query?.vlMandantId)];
+  const { page, pageSize, q } = parseListParams(req.query, { page: 1, pageSize: 100, sort: 'vl', dir: 'ASC' });
+  const search = parseProductSearch(q);
+  const { whereSql, params } = buildWhereClause(req.query);
+  const offers = await loadOffers(databases.map(database => Number(database.firmaId)), { includeExpired: true });
+  const batches = await Promise.all(databases.map(async database => {
+    const stocks = await runSQLQueryAccess(database, `SELECT * FROM ${VIEW_SQL} ${whereSql}`, params).catch(error => {
+      if (scope) throw createHttpError(503, 'Frupack Gruppe konnte nicht vollständig geladen werden.', { code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: database.firmaId });
+      throw error;
+    });
+    const ownOffers = offers.filter(offer => Number(offer.sourceMandantId) === Number(database.firmaId));
+    const options = ownOffers.length ? buildOptionEntries(ownOffers, database, await candidateContext(database)) : [];
+    const filteredOptions = options.flatMap(entry => {
+      if (req.query?.plastic && entry.plastic !== req.query.plastic || req.query?.sub && entry.plasticSubCategory !== req.query.sub
+        || req.query?.subEmpty === '1' && entry.plasticSubCategory) return [];
+      const matched = filterProductRows([entry.searchRow], search)[0];
+      if (!matched) return [];
+      const { searchRow, ...result } = entry;
+      return [{ ...result, ...(matched.searchMatch ? { searchMatch: matched.searchMatch } : {}) }];
+    });
+    return { database, entries: [...filterProductRows(stocks || [], search).map(row => {
+      const item = mapProductRow(row, database);
+      return { ...item, kind: 'stock', positionKey: getVlPositionKey(item) };
+    }), ...filteredOptions] };
+  }));
+  const all = sortGroupVlItems(batches.flatMap(batch => batch.entries));
+  const data = all.slice((page - 1) * pageSize, page * pageSize);
+  const planning = new Map(await Promise.all(databases.map(async database => [Number(database.firmaId),
+    await loadProductPlanning(req, database, data.filter(item => item.kind === 'stock' && Number(item.sourceMandantId) === Number(database.firmaId)))])));
+  sendEnvelope(res, { status: 200, data: data.map(item => item.kind === 'option' ? item : applyTempOrderPlanning(item, planning.get(Number(item.sourceMandantId)))),
+    meta: { mandant: req.mandant, page, pageSize, total: all.length, count: data.length, q, sort: 'vl', dir: 'ASC',
+      optionsPreview: true, includeExpired: true, search: searchMetadata(search),
+      optionPositions: all.filter(item => item.kind === 'option').length,
+      viewMandants: databases.map(database => ({ id: database.firmaId, name: database.name })) }, error: null });
+}));
 
 router.get('/products', requireMandant, asyncHandler(async (req, res) => {
   if (getVlScope(req.query)) return sendFrupackGroupVl(req, res, false);

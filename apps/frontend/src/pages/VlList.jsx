@@ -34,6 +34,7 @@ import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
+import OptionVlRow from '../components/OptionVlRow.jsx';
 import { formatMfiValue, sortVlItems } from '../utils/mfi.js';
 import { formatSearchCondition, formatSearchMatch } from '../utils/productSearch.js';
 import {
@@ -438,6 +439,7 @@ export default function VlList() {
   const [vlMandants, setVlMandants] = React.useState([]);
   const [frupackMandantIds, setFrupackMandantIds] = React.useState([]);
   const [canViewFrupackGroup, setCanViewFrupackGroup] = React.useState(false);
+  const [optionsPreview, setOptionsPreview] = React.useState(false);
   const [groupSourceNames, setGroupSourceNames] = React.useState([]);
   const [vlMandantId, setVlMandantId] = React.useState(() => String(initialReturnState?.vlMandantId || ''));
   const [vlMandantsLoaded, setVlMandantsLoaded] = React.useState(false);
@@ -526,6 +528,7 @@ export default function VlList() {
         const groupEnabled = Boolean(meResponse?.identityResolved && meResponse?.features?.frupackGroupVl
           && mandantsResponse?.meta?.vlGroups?.some((group) => group.scope === FRUPACK_GROUP_SCOPE));
         setCanViewFrupackGroup(groupEnabled);
+        setOptionsPreview(Boolean(meResponse?.identityResolved && meResponse?.features?.optionsVlPreview));
         const memberIds = mandantsResponse?.meta?.vlGroupMemberships?.[FRUPACK_GROUP_SCOPE] || [];
         setFrupackMandantIds(memberIds);
         const selection = resolveInitialVlSelection({
@@ -576,7 +579,7 @@ export default function VlList() {
       if (query) params.set('q', query);
       if (vlMandantId === FRUPACK_GROUP_SCOPE) params.set('vlScope', FRUPACK_GROUP_SCOPE);
       else if (vlMandantId) params.set('vlMandantId', vlMandantId);
-      const res = await apiRequest(`/products?${params.toString()}`, { signal: controller.signal });
+      const res = await apiRequest(`${optionsPreview ? '/vl/entries' : '/products'}?${params.toString()}`, { signal: controller.signal });
       if (activeRequestRef.current !== requestToken) return;
       const data = Array.isArray(res?.data) ? res.data : [];
       setGroupSourceNames((res?.meta?.viewMandants || []).map((mandant) => mandant.name));
@@ -595,7 +598,7 @@ export default function VlList() {
         loadingRef.current = false;
       }
     }
-  }, [t, vlMandantId, vlMandantsLoaded]);
+  }, [t, vlMandantId, vlMandantsLoaded, optionsPreview]);
 
   const loadNextPage = React.useCallback(async () => {
     if (searchPending) return;
@@ -799,6 +802,14 @@ export default function VlList() {
   }, [requestProductAction, toggleSelection]);
 
   const openProductDetail = React.useCallback((item) => {
+    if (item.kind === 'option') {
+      const params = new URLSearchParams({ preview: '1', vlMandantId: String(item.sourceMandantId) });
+      if (isGroupVl) params.set('vlScope', FRUPACK_GROUP_SCOPE);
+      navigate(`/options/${encodeURIComponent(item.optionId)}?${params.toString()}#position-${item.optionPositionId}`, {
+        state: { returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }) },
+      });
+      return;
+    }
     navigate(`/products/${encodeURIComponent(getItemId(item))}`, {
       state: {
         backgroundLocation: location,
@@ -847,7 +858,7 @@ export default function VlList() {
     return (
       <Box key={getVlPositionKey(item)} sx={{ mb: 0.4 }}>
         {showHeader && <Typography variant="subtitle2" sx={{ mt: 1.2, mb: 0.35, fontWeight: 700 }}>{group}</Typography>}
-        <SwipeableProductRow
+        {item.kind === 'option' ? <OptionVlRow item={item} onOpen={openProductDetail} showSource={isGroupVl} t={t} lang={lang} /> : <SwipeableProductRow
           item={item}
           selected={selectedItems.some((entry) => getVlPositionKey(entry) === getVlPositionKey(item))}
           index={index}
@@ -864,7 +875,7 @@ export default function VlList() {
           showSource={isGroupVl}
           t={t}
           lang={lang}
-        />
+        />}
       </Box>
     );
   });
@@ -963,6 +974,9 @@ export default function VlList() {
         )}
       </Box>
 
+      {optionsPreview && <Typography variant="caption" sx={{ color: '#23752A', mb: 0.5 }}>
+        {lang === 'en' ? 'Option preview includes expired offers for information.' : 'Optionen-Testansicht: inklusive abgelaufener Angebote zur Information.'}
+      </Typography>}
       <Box ref={listRef} aria-busy={loading || searchPending} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
         {error && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{error}</Alert>}
         {batchCartError && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{batchCartError}</Alert>}
