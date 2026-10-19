@@ -22,18 +22,36 @@ function method(value) {
   const temperature = input.match(/(\d{2,3})\s*(?:[°℃]|C\b)/i) || input.match(/(\d{2,3})\s*\//);
   return { load: load ? number(load[1]) : null, temperature: temperature ? number(temperature[1]) : null };
 }
-function checkMfi(position, article) {
-  const mfi = number(position.mfi), range = mfiRange(article.articleName, article.mfi, article.mfiTo);
+function resolvedMeasurements(position) {
+  const output={...position};
+  let source;
+  try{source=typeof position.sourceMeasurementsJson==='string' ? JSON.parse(position.sourceMeasurementsJson) : position.sourceMeasurementsJson;}catch{return output;}
+  if(source?.mfiAmbiguous){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='Mehrdeutige MFI-Angaben im Original-PDF';}
+  if(source?.mfiMeasurements?.length){
+    const original=method(position.mfiTestCondition);
+    const matches=source.mfiMeasurements.filter(m=>['load','temperature'].every(key=>original[key]==null || original[key]===method(m.condition)[key]));
+    const chosen=source.mfiMeasurements.length===1 ? source.mfiMeasurements[0] : matches.length===1 ? matches[0] : null;
+    if(chosen){output.mfi=chosen.min;output.mfiTo=chosen.max;output.mfiTestCondition=chosen.condition;output.measurementSource='Original-PDF (Charge und Produkt geprüft)';}
+    else{output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='Mehrere MFI-Prüfungen im Original; Messwertauswahl ungeklärt';}
+  }
+  if(source?.density?.value!=null){output.density=source.density.value;output.densityUnit=source.density.unit;}
+  delete output.sourceMeasurementsJson;
+  return output;
+}
+function checkMfi(input, article) {
+  const position=resolvedMeasurements(input);
+  const mfi = number(position.mfi), mfiTo=number(position.mfiTo) ?? mfi, range = mfiRange(article.articleName, article.mfi, article.mfiTo);
   const offered = method(position.mfiTestCondition), named = method(article.articleName), field = method(article.mfiMethod);
   const expected = { load: field.load ?? named.load, temperature: field.temperature ?? named.temperature };
   const reasons = [];
-  if (mfi != null && range && (mfi < range[0] || mfi > range[1])) reasons.push(`MFI ${mfi} außerhalb ${range[0]}–${range[1]}`);
+  if(mfi!=null && mfiTo<mfi)reasons.push('MFI-Bereich des Angebots widersprüchlich');
+  if (mfi != null && range && (mfi < range[0] || mfiTo > range[1])) reasons.push(`MFI ${mfi}${mfiTo!==mfi ? `–${mfiTo}`:''} außerhalb ${range[0]}–${range[1]}`);
   for (const key of ['load', 'temperature']) {
     if (named[key] != null && field[key] != null && named[key] !== field[key]) reasons.push('Artikelstamm: MFI-Prüfbedingungen widersprüchlich');
     if (offered[key] != null && expected[key] != null && offered[key] !== expected[key]) reasons.push(key === 'load' ? 'MFI-Prüflast widerspricht' : 'MFI-Prüftemperatur widerspricht');
   }
   const complete = mfi != null && range != null && ['load', 'temperature'].every(key => offered[key] != null && expected[key] != null);
   return { status: reasons.length ? 'excluded' : complete ? 'verified' : 'unverified', blocked: reasons.length > 0,
-    complete: complete && !reasons.length, reasons: [...new Set(reasons)], mfi, range, offered, expected };
+    complete: complete && !reasons.length, reasons: [...new Set(reasons)], mfi, mfiTo, range, offered, expected };
 }
-module.exports = { number, mfiRange, method, checkMfi };
+module.exports = { number, mfiRange, method, checkMfi, resolvedMeasurements };

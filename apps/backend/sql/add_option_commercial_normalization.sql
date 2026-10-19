@@ -16,6 +16,10 @@ IF COL_LENGTH(N'BMSApp.tblOptionenLieferantenRegel',N'olr_Dokumenttyp') IS NULL
  ALTER TABLE BMSApp.tblOptionenLieferantenRegel ADD olr_Dokumenttyp NVARCHAR(100) NULL,
   olr_BedingungenJson NVARCHAR(MAX) NULL,olr_Version NVARCHAR(30) NULL,
   olr_Prioritaet INT NOT NULL CONSTRAINT DF_OptionRegel_Prioritaet DEFAULT 0;
+IF COL_LENGTH(N'BMSApp.tblOptionenPositionen',N'opp_QuellaufbereitungJson') IS NULL
+ ALTER TABLE BMSApp.tblOptionenPositionen ADD opp_QuellaufbereitungJson NVARCHAR(MAX) NULL;
+IF COL_LENGTH(N'BMSApp.tblOptionenPositionen',N'opp_MFI_bis') IS NULL
+ ALTER TABLE BMSApp.tblOptionenPositionen ADD opp_MFI_bis DECIMAL(18,3) NULL;
 -- Business rules approved on 19.10.2026. Never modify source units or prices.
 -- Borealis override applies only to the known table, EUR and price range below.
 EXEC(N'INSERT BMSApp.tblOptionenLieferantenRegel(olr_MandantID,olr_Lieferantenkennung,olr_Dokumenttyp,

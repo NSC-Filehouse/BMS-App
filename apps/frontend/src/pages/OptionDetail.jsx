@@ -6,7 +6,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn } from '../utils/navigation.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -111,7 +111,8 @@ export default function OptionDetail() {
         <InfoRow label={t('option_category')} value={position.materialCategory} />
         <InfoRow label={t('option_quality')} value={position.quality} />
         <InfoRow label={t('option_batch')} value={position.batchNo} />
-        <InfoRow label={t('option_mfi')} value={position.mfi === null ? '' : `${optionNumber(position.mfi)}${position.mfiTestCondition ? ` (${position.mfiTestCondition})` : ''}`} />
+        <InfoRow label={t('option_mfi')} value={optionMfi(position)} />
+        <InfoRow label={lang==='en'?'Measurement source':'Messwertquelle'} value={position.measurementSource} />
         <InfoRow label={t('option_density')} value={[optionNumber(position.density), position.densityUnit].filter(Boolean).join(' ')} />
         <InfoRow label={t('option_c2')} value={optionNumber(position.c2)} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />

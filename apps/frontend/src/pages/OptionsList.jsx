@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionMfi, optionPackaging } from '../utils/optionDisplay.js';
 
 export default function OptionsList() {
   const [offers, setOffers] = React.useState([]);
@@ -80,10 +80,10 @@ export default function OptionsList() {
                     <Box component="span" sx={{ fontWeight: 600 }}>{position.internalArticleName || position.articleName}</Box>
                     {offer.isDemo && <Box component="span" sx={{ color: 'warning.dark', fontWeight: 600 }}> · {t('option_demo')}</Box>}
                     {position.internalArticleName && position.internalArticleName !== position.articleName && ` · ${position.articleName}`}
-                    {position.mfi !== null && ` · MFI ${optionNumber(position.mfi)}`}
+                    {position.mfi !== null && ` · MFI ${optionMfi(position)}`}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
-                    {[optionQuantity(position, t), optionPrice(position, t), offer.supplierName,
+                    {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position), offer.supplierName,
                       offer.loadingLocation ? `${offer.incoterm || ''} ${offer.loadingLocation}`.trim() : offer.incoterm,
                       `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`]
                       .filter(Boolean).join(' · ')}

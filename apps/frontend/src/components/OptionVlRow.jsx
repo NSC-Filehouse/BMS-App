@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi } from '../utils/optionDisplay.js';
 
 export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
   const p = item.option;
@@ -14,7 +14,7 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
       {en ? 'Option' : 'Option'}{showSource ? ` · ${item.sourceMandantName}` : ''}{p.isDemo ? ' · Demo' : ''}
     </Typography>
     <Typography variant="body2">
-      {item.article}{p.mfi != null ? ` · MFI ${optionNumber(p.mfi)}${p.mfiTestCondition ? ` (${p.mfiTestCondition})` : ''}` : ` · ${en ? 'MFI unknown' : 'MFI unbekannt'}`}
+      {item.article}{p.mfi != null ? ` · MFI ${optionMfi(p)}` : ` · ${en ? 'MFI unknown' : 'MFI unbekannt'}`}
     </Typography>
     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
       {[optionQuantity(p, t), optionPrice(p, t), p.supplierName,

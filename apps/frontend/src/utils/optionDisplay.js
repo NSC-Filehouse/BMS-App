@@ -11,6 +11,11 @@ export function optionDate(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('de-DE');
 }
 
+export function optionMfi(position) {
+  if(position?.mfi==null)return '';
+  return `${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi ? `–${optionNumber(position.mfiTo)}`:''}${position.mfiTestCondition ? ` (${position.mfiTestCondition})`:''}`;
+}
+
 export function optionQuantity(position, t) {
   if(position?.quantityKind==='minimum-and-stock' && (position.minimumOrderKg!=null || position.stockKg!=null)) {
     return [position.minimumOrderKg!=null ? `Mindestabnahme ${optionNumber(position.minimumOrderKg)} kg` : null,

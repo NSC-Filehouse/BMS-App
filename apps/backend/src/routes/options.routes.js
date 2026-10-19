@@ -29,12 +29,14 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
 }));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
-  p.opp_MFI AS mfi,p.opp_MFI_Pruefmethode AS mfiTestCondition,
+  p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,p.opp_QuellaufbereitungJson AS sourceMeasurementsJson,
   CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS originalChanged,
   CONVERT(NVARCHAR(33),r.oab_QuelldatenGeaendertAm,126) AS snapshotChanged,
-  r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt
+  r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt,
+  r.oab_AnforderungRevision AS snapshotRevision,j.oaa_Revision AS requestRevision
   FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
   LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
+  LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
   WHERE o.op_id=? AND p.opp_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')`,
   [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId)]);
@@ -84,7 +86,7 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
   throw createHttpError(409,'MFI-Eignung ungeprüft: Messwert, Artikelbereich oder Prüfbedingungen fehlen. Bitte ausdrücklich bestätigen.',{code:'ARTICLE_MFI_UNVERIFIED'});
  const selected=await storedCandidate(req.database,position,index);
  const manual=req.body?.acknowledgeManual===true;
- if(!manual&&(!selected||position.snapshotChanged!==position.originalChanged
+ if(!manual&&(!selected||position.snapshotChanged!==position.originalChanged || position.snapshotRevision<position.requestRevision
    ||(req.body?.snapshotId!=null&&String(req.body.snapshotId)!==String(position.snapshotId))
    ||selected.articleHash!==articleHash(article))){
   await requestRecalculation(Number(req.database.firmaId),'Veralteter oder fehlender Artikelvorschlag');
