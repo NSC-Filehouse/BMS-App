@@ -26,7 +26,8 @@ function resolvedMeasurements(position) {
   const output={...position};
   let source;
   try{source=typeof position.sourceMeasurementsJson==='string' ? JSON.parse(position.sourceMeasurementsJson) : position.sourceMeasurementsJson;}catch{return output;}
-  if(source?.mfiAmbiguous){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='Mehrdeutige MFI-Angaben im Original-PDF';}
+  if(source?.mfiAmbiguous){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource=source.status==='unmatched'
+    ?'MFI durch zugeordnetes PDF nicht belegt: Produkt/Charge stimmen nicht überein':'Mehrdeutige MFI-Angaben im Original-PDF';}
   else if(source?.mfiMissing){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='MFI in der Original-PDF-Zeile nicht angegeben';}
   else if(source?.mfiMeasurements?.length){
     const original=method(position.mfiTestCondition);
