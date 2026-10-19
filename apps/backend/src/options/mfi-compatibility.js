@@ -44,6 +44,10 @@ function checkMfi(input, article) {
   const offered = method(position.mfiTestCondition), named = method(article.articleName), field = method(article.mfiMethod);
   const expected = { load: field.load ?? named.load, temperature: field.temperature ?? named.temperature };
   const reasons = [];
+  const declaredRange=text(article.articleName).match(/\b(?:MFI|MFR)\s*([\d.,]+)\s*(?:-|–|—|bis|to)\s*([\d.,]+)/i);
+  if(declaredRange && !range)reasons.push('Artikelstamm: MFI-Bereich ungültig');
+  if(!declaredRange && number(article.mfi)!=null && number(article.mfiTo)!=null && number(article.mfiTo)<number(article.mfi))reasons.push('Artikelstamm: MFI-Bereich ungültig');
+  if(position.mfiTo!=null && number(position.mfiTo)==null)reasons.push('MFI-Obergrenze des Angebots ungültig');
   if(mfi!=null && mfiTo<mfi)reasons.push('MFI-Bereich des Angebots widersprüchlich');
   if (mfi != null && range && (mfi < range[0] || mfiTo > range[1])) reasons.push(`MFI ${mfi}${mfiTo!==mfi ? `–${mfiTo}`:''} außerhalb ${range[0]}–${range[1]}`);
   for (const key of ['load', 'temperature']) {
