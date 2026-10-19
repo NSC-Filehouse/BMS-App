@@ -31,6 +31,10 @@ export function optionQuantity(position, t) {
 }
 
 export function optionPrice(position, t) {
+  if (position?.priceNeedsReview) {
+    const raw = optionNumber(position.price, 2);
+    return `${raw} ${position.currency === 'EUR' ? '€' : (position.currency || '')} (${t('option_price_needs_review')})`.trim();
+  }
   if (position?.pricePerTonne !== null && position?.pricePerTonne !== undefined) {
     return `${optionNumber(position.pricePerTonne, 2)} €/t`;
   }

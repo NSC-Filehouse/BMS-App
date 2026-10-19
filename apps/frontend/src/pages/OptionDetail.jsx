@@ -87,6 +87,9 @@ export default function OptionDetail() {
         {position.internalArticleName && position.internalArticleName !== position.articleName &&
           <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{position.articleName}</Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
+        {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
+        {position.priceNeedsReview && <InfoRow label={t('option_raw_price_basis')}
+          value={`${optionNumber(position.price, 2)} ${position.priceUnit || position.currency || ''}`} />}
         <Divider sx={{ my: 1 }} />
         <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
         {position.quantityMinKg !== null && <InfoRow label={t('option_raw_quantity')} value={position.quantityText || `${position.quantityMin} ${position.quantityUnit || ''}`} />}

@@ -1,6 +1,8 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
+const { normalizePosition } = require('./normalization');
+const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -11,6 +13,11 @@ const numeric = value => value == null ? null : Number(value);
 function mapPosition(row) {
   const position = { ...row };
   for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2']) position[key] = numeric(row[key]);
+  position.priceNeedsReview = normalizePosition(position).priceNeedsReview || optionPriceNeedsReview(position.pricePerTonne);
+  if (position.priceNeedsReview) {
+    position.pricePerTonne = null;
+    position.priceWarning = optionPriceWarning();
+  }
   position.id = Number(row.id);
   position.validUntil = dateOnly(row.validUntil);
   position.expired = Boolean(position.validUntil && position.validUntil < berlinDate());
