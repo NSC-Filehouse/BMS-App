@@ -20,6 +20,10 @@ IF COL_LENGTH(N'BMSApp.tblOptionenPositionen',N'opp_QuellaufbereitungJson') IS N
  ALTER TABLE BMSApp.tblOptionenPositionen ADD opp_QuellaufbereitungJson NVARCHAR(MAX) NULL;
 IF COL_LENGTH(N'BMSApp.tblOptionenPositionen',N'opp_MFI_bis') IS NULL
  ALTER TABLE BMSApp.tblOptionenPositionen ADD opp_MFI_bis DECIMAL(18,3) NULL;
+IF COL_LENGTH(N'BMSApp.tblOptionenAbgleich',N'oab_MesswerteVorbereitet') IS NULL
+ ALTER TABLE BMSApp.tblOptionenAbgleich ADD oab_MesswerteVorbereitet BIT NOT NULL DEFAULT 0,
+  oab_MFI DECIMAL(18,6) NULL,oab_MFI_bis DECIMAL(18,6) NULL,oab_MFI_Pruefmethode NVARCHAR(100) NULL,
+  oab_Dichte DECIMAL(18,6) NULL,oab_DichteEinheit NVARCHAR(30) NULL,oab_Messwertquelle NVARCHAR(200) NULL;
 -- Business rules approved on 19.10.2026. Never modify source units or prices.
 -- Borealis override applies only to the known table, EUR and price range below.
 EXEC(N'INSERT BMSApp.tblOptionenLieferantenRegel(olr_MandantID,olr_Lieferantenkennung,olr_Dokumenttyp,

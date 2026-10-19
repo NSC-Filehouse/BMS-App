@@ -3,7 +3,6 @@ const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
-const {resolvedMeasurements}=require('./mfi-compatibility');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -12,7 +11,7 @@ function berlinDate() {
 function dateOnly(value) { return value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : null; }
 const numeric = value => value == null ? null : Number(value);
 function mapPosition(row,today) {
-  const position = resolvedMeasurements(row);
+  const position = {...row};
   for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2',
     'minimumOrderKg','stockKg','truckMin','truckMax','bagWeightKg','palletWeightKg','mfiTo']) position[key] = numeric(position[key]);
   position.normalization = row.normalizationJson ? JSON.parse(row.normalizationJson) : null;
@@ -54,14 +53,19 @@ async function loadOffers(companyIds, { includeExpired = false, optionId = null 
     p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,p.opp_ZustandNorm AS qualityNorm,p.opp_Charge AS batchNo,
     p.opp_MengeVon AS quantityMin,p.opp_MengeBis AS quantityMax,p.opp_Mengeneinheit AS quantityUnit,p.opp_MengeRohtext AS quantityText,
     p.opp_PreisRoh AS price,p.opp_PreiseinheitRoh AS priceUnit,p.opp_Waehrung AS currency,p.opp_PreisProTonne AS pricePerTonne,
-    p.opp_MengeVonKg AS quantityMinKg,p.opp_MengeBisKg AS quantityMaxKg,p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
-    p.opp_QuellaufbereitungJson AS sourceMeasurementsJson,
+    p.opp_MengeVonKg AS quantityMinKg,p.opp_MengeBisKg AS quantityMaxKg,
+    CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_MFI ELSE p.opp_MFI END AS mfi,
+    CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_MFI_bis ELSE p.opp_MFI_bis END AS mfiTo,
+    CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_MFI_Pruefmethode ELSE p.opp_MFI_Pruefmethode END AS mfiTestCondition,
+    r.oab_Messwertquelle AS measurementSource,
     p.opp_NormalisierungJson AS normalizationJson,p.opp_MindestabnahmeKg AS minimumOrderKg,p.opp_ChargenbestandKg AS stockKg,
     p.opp_LKWAnzahlVon AS truckMin,p.opp_LKWAnzahlBis AS truckMax,p.opp_Mengenart AS quantityKind,
     p.opp_Verpackung AS positionPackaging,p.opp_Verpackungsart_id AS packagingTypeId,
     p.opp_GebindegewichtKg AS bagWeightKg,p.opp_PalettengewichtKg AS palletWeightKg,
     JSON_QUERY(r.oab_MerkmaleJson,'$.assignedMfiCheck') AS assignedMfiCheckJson,
-    p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,
+    CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_Dichte ELSE p.opp_Dichte END AS density,
+    CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_DichteEinheit ELSE p.opp_DichteEinheit END AS densityUnit,
+    p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,
     p.opp_Ladehinweis AS loadingText,p.opp_Kommentar AS comment,p.opp_Artikelindex AS articleIndex,
     r.oab_ArtikelindexVorschlag AS suggestedArticleIndex,r.oab_ArtikelnameVorschlag AS suggestedArticleName,
     p.opp_MatchStatus AS matchStatus,CASE WHEN p.opp_Artikelindex IS NOT NULL THEN p.opp_MatchGrund ELSE r.oab_VorschlagGrund END AS matchReason,
