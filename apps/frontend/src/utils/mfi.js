@@ -59,6 +59,12 @@ function compareText(left, right) {
 }
 
 export function compareVlItems(left, right) {
+  // Keep the unclassified option category after every regular VL category.
+  const isUnclassifiedOption = (item) => item?.kind === 'option'
+    && item.plastic === 'Optionen' && item.plasticSubCategory === 'Zuordnung offen';
+  const categoryStatusCompare = Number(isUnclassifiedOption(left)) - Number(isUnclassifiedOption(right));
+  if (categoryStatusCompare !== 0) return categoryStatusCompare;
+
   const groupCompare = compareText(
     `${asText(left?.plastic)}\u0000${asText(left?.plasticSubCategory)}`,
     `${asText(right?.plastic)}\u0000${asText(right?.plasticSubCategory)}`,
