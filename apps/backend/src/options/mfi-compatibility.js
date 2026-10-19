@@ -27,7 +27,8 @@ function resolvedMeasurements(position) {
   let source;
   try{source=typeof position.sourceMeasurementsJson==='string' ? JSON.parse(position.sourceMeasurementsJson) : position.sourceMeasurementsJson;}catch{return output;}
   if(source?.mfiAmbiguous){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='Mehrdeutige MFI-Angaben im Original-PDF';}
-  if(source?.mfiMeasurements?.length){
+  else if(source?.mfiMissing){output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='MFI in der Original-PDF-Zeile nicht angegeben';}
+  else if(source?.mfiMeasurements?.length){
     const original=method(position.mfiTestCondition);
     const matches=source.mfiMeasurements.filter(m=>['load','temperature'].every(key=>original[key]==null || original[key]===method(m.condition)[key]));
     const chosen=source.mfiMeasurements.length===1 ? source.mfiMeasurements[0] : matches.length===1 ? matches[0] : null;
