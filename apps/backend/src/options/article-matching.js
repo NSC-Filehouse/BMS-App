@@ -1,4 +1,5 @@
-// Canonical source; sync both deployable copies with scripts/sync-article-matching.js.
+// Legacy reference for existing unit tests. App routes do not import this file.
+// The current matching implementation belongs to OptionReader; results are stored in SQL.
 const MATCHING_VERSION = '2026-10-19.1';
 const text = value => String(value ?? '').trim();
 function number(value) {

@@ -4,142 +4,112 @@ const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
-const { normalizeProductName, supplierKey, features, MATCHING_VERSION, bestSuggestion, rankCandidates } = require('../options/article-matching');
 const { loadOffers } = require('../options/read');
 const { resolveVlDatabase } = require('../vl-source');
-const { candidatesFor: findCandidates, candidateContext, articleCatalog } = require('../options/matching-service');
+const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
+const { articleHash, queueSql } = require('../options/matching-contract');
 const { appTableSql } = require('../db/app-tables');
-
 const router = express.Router();
-const OPTIONS = appTableSql('options');
-const POSITIONS = appTableSql('optionPositions');
-
-router.get('/options', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
-  const offers = await loadOffers([Number(req.database.firmaId)]);
-  sendEnvelope(res, { status: 200, data: offers, meta: { mandant: req.mandant }, error: null });
-}));
-
-router.get('/options/:id', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
-  const database = await resolveVlDatabase(req, req.query?.vlMandantId);
-  const offers = await loadOffers([Number(database.firmaId)], { optionId: positiveId(req.params.id), includeExpired: req.query?.preview === '1' });
-  if (!offers.length) throw createHttpError(404, 'Option nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
-  // Recompute suggestions on read; a confirmed assignment is never overwritten.
-  const context = await candidateContext(database);
-  for (const position of offers[0].positions) {
-    if (position.articleIndex) continue;
-    const candidates = rankCandidates({ ...position, supplierName: offers[0].supplierName, supplierKey: offers[0].supplierKey }, context.articles, { mappings: context.mappings, limit: null });
-    const best = bestSuggestion(candidates);
-    position.suggestedArticleIndex = best?.articleIndex || null;
-    position.suggestedArticleName = best?.articleName || null;
-    position.matchReason = best?.reason || null;
-    position.matchStatus = best ? 'suggested' : 'unmatched';
-    position.candidateCount = candidates.length;
-  }
-  sendEnvelope(res, { status: 200, data: { ...offers[0], readOnly: Number(database.firmaId) !== Number(req.database.firmaId) },
-    meta: { mandant: req.mandant, viewMandantId: database.firmaId, preview: req.query?.preview === '1' }, error: null });
-}));
-
+const OPTIONS = appTableSql('options'), POSITIONS = appTableSql('optionPositions');
 function positiveId(value) {
-  const id = Number(value);
-  if (!Number.isSafeInteger(id) || id < 1) throw createHttpError(400, 'Ungültige ID.', { code: 'INVALID_ID' });
-  return id;
+ const id=Number(value);
+ if(!Number.isSafeInteger(id)||id<1)throw createHttpError(400,'Ungültige ID.',{code:'INVALID_ID'});
+ return id;
 }
-
-async function scopedPosition(req, database = req.database) {
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
-    SELECT p.[opp_id] AS id, p.[opp_Artikelname_Lieferant] AS articleName,
-      p.[opp_Artikelnummer_Lieferant] AS supplierArticleNo,
-      p.[opp_Kunststofftyp] AS materialCategory, p.[opp_Zustand] AS quality,
-      p.[opp_ZustandNorm] AS qualityNorm, p.[opp_MFI] AS mfi,
-      p.[opp_MFI_Pruefmethode] AS mfiTestCondition, p.[opp_Dichte] AS density,
-      p.[opp_DichteEinheit] AS densityUnit, p.[opp_Eigenschaften] AS propertiesText, o.[op_Lieferantenkennung] AS supplierKey,
-      o.[op_Lieferantenname] AS supplierName
-    FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.[op_id]=p.[opp_op_id]
-    WHERE o.[op_id]=? AND p.[opp_id]=? AND o.[op_MandantID]=?
-      AND o.[op_GeloeschtAm] IS NULL AND o.[op_Geschaeftsstatus]=N'open'
-      AND o.[op_Pruefstatus] IN (N'approved',N'pending')
-  `, [positiveId(req.params.id), positiveId(req.params.positionId), Number(database.firmaId)]);
-  if (!rows.length) throw createHttpError(404, 'Position nicht gefunden.', { code: 'OPTION_POSITION_NOT_FOUND' });
-  return rows[0];
+router.get('/options',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ sendEnvelope(res,{data:await loadOffers([Number(req.database.firmaId)]),meta:{mandant:req.mandant}});
+}));
+router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const database=await resolveVlDatabase(req,req.query?.vlMandantId);
+ const offers=await loadOffers([Number(database.firmaId)],{optionId:positiveId(req.params.id),includeExpired:req.query?.preview==='1'});
+ if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
+ sendEnvelope(res,{data:{...offers[0],readOnly:Number(database.firmaId)!==Number(req.database.firmaId)},
+  meta:{mandant:req.mandant,viewMandantId:database.firmaId,preview:req.query?.preview==='1'}});
+}));
+async function scopedPosition(req,database=req.database){
+ const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
+  CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS originalChanged,
+  CONVERT(NVARCHAR(33),r.oab_QuelldatenGeaendertAm,126) AS snapshotChanged,
+  r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt
+  FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
+  LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
+  WHERE o.op_id=? AND p.opp_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
+  AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')`,
+  [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId)]);
+ if(!rows.length)throw createHttpError(404,'Position nicht gefunden.',{code:'OPTION_POSITION_NOT_FOUND'});
+ return rows[0];
 }
-
-router.get('/options/:id/positions/:positionId/candidates', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
-  const database = await resolveVlDatabase(req, req.query?.vlMandantId);
-  const position = await scopedPosition(req, database);
-  const q = String(req.query?.q || '').trim().slice(0, 150);
-  const candidates = await findCandidates(database, position, { q, limit: null });
-  const pageSize = 30, page = Math.max(1, Math.min(10000, Number.parseInt(req.query?.page, 10) || 1));
-  sendEnvelope(res, { status: 200, data: candidates.slice((page-1)*pageSize,page*pageSize),
-    meta: { mandant: req.mandant, page, pageSize, total: candidates.length, version: MATCHING_VERSION }, error: null });
+router.get('/options/:id/positions/:positionId/candidates',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const database=await resolveVlDatabase(req,req.query?.vlMandantId);
+ const position=await scopedPosition(req,database);
+ const q=String(req.query?.q||'').trim().slice(0,150);
+ const pageSize=30,page=Math.max(1,Math.min(10000,Number.parseInt(req.query?.page,10)||1));
+ const result=await candidatesFor(database,position,{q,page,pageSize});
+ const {data,...meta}=result;
+ sendEnvelope(res,{data,meta:{mandant:req.mandant,page,pageSize,...meta}});
 }));
-
-router.post('/options/:id/positions/:positionId/article', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
-  const position = await scopedPosition(req);
-  const articleIndex = String(req.body?.articleIndex || '').trim();
-  if (!articleIndex || articleIndex.length > 50) throw createHttpError(400, 'Artikelindex fehlt.', { code: 'ARTICLE_INDEX_REQUIRED' });
-  const articles = await runSQLQueryAccess(req.database, `
-    SELECT [agA_Artikelindex] AS articleIndex, [agA_Artikelname] AS articleName,
-      [agA_MFI] AS mfi
-    FROM [dbo].[tblArt_Artikel]
-    WHERE [agA_Artikelindex]=? AND COALESCE([agA_Deaktiv], 0)=0
-  `, [articleIndex]);
-  if (!articles.length) throw createHttpError(404, 'Artikel nicht gefunden.', { code: 'ARTICLE_NOT_FOUND' });
-  const article = articles[0];
-  const ranked = await findCandidates(req.database, position, { limit: null });
-  const selected = ranked.find((item) => item.articleIndex === articleIndex)
-    || rankCandidates(position, (await articleCatalog(req.database)).filter(item => String(item.articleIndex) === articleIndex), { includeAll: true })[0];
-  if (selected?.conflicts?.length && req.body?.acknowledgeConflict !== true) {
-    throw createHttpError(409, selected.conflicts.join('; '), { code: 'ARTICLE_MATCH_CONFLICT' });
-  }
-  const metadata = await runSQLQuerySqlServer(config.sql.database,
-    "SELECT COL_LENGTH(N'BMSApp.tblOptionenArtikelMapping',N'oam_MerkmaleJson') AS available");
-  if (metadata[0]?.available == null) throw createHttpError(503, 'Bitte zuerst upgrade_options_matching.sql ausführen.', { code: 'OPTION_MATCHING_MIGRATION_REQUIRED' });
-  const f = features(position);
-  const canonicalSupplier = supplierKey(position.supplierName, position.supplierKey);
-  const conditions = JSON.stringify({ ...f, requireDensity: Boolean(selected?.warnings?.some(value => value.includes('Dichtegrenze'))) });
-  const actor = String(req.userIdentity?.shortCode || req.userEmail || 'APP').slice(0, 100);
-  await withSqlTransaction(config.sql.database, async ({ query }) => {
-    const updated = await query(`UPDATE ${POSITIONS} SET [opp_Artikelindex]=?, [opp_Artikelname]=?,
-      [opp_MatchStatus]=N'confirmed', [opp_MatchGrund]=N'Manuell in der App zugeordnet',
-      [opp_GeaendertVon]=?, [opp_GeaendertAm]=SYSUTCDATETIME()
-      WHERE [opp_id]=? AND [opp_op_id]=?
-        AND EXISTS (SELECT 1 FROM ${OPTIONS} o WITH (UPDLOCK,HOLDLOCK)
-          WHERE o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open')`,
-    [articleIndex, article.articleName, actor, Number(position.id), positiveId(req.params.id), positiveId(req.params.id), Number(req.database.firmaId)]);
-    if (!updated.rowsAffected[0]) throw createHttpError(409, 'Position wurde zwischenzeitlich geändert.', { code: 'OPTION_CHANGED' });
-    await query(`UPDATE [BMSApp].[tblOptionenArtikelMapping] SET [oam_Aktiv]=0,
-      [oam_GeaendertVon]=?, [oam_GeaendertAm]=SYSUTCDATETIME()
-      WHERE [oam_MandantID]=? AND [oam_Lieferantenkennung]=? AND [oam_ArtikelnameNorm]=?
-        AND ([oam_MFIvon] IS NULL OR ? BETWEEN [oam_MFIvon] AND [oam_MFIbis])
-        AND COALESCE([oam_MerkmaleJson],N'')=?`,
-    [actor, Number(req.database.firmaId), canonicalSupplier, normalizeProductName(position.articleName), position.mfi, conditions]);
-    await query(`INSERT INTO [BMSApp].[tblOptionenArtikelMapping]
-      ([oam_MandantID], [oam_Lieferantenkennung], [oam_Lieferantenname],
-       [oam_Artikelnummer_Lieferant], [oam_Artikelname_Lieferant], [oam_ArtikelnameNorm],
-       [oam_Kunststofftyp], [oam_ZustandNorm], [oam_MFIvon], [oam_MFIbis],
-       [oam_MFI_Pruefmethode], [oam_Artikelindex], [oam_Artikelname],
-       [oam_ErstelltVon], [oam_GeaendertVon], [oam_MerkmaleJson], [oam_AlgorithmusVersion])
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [Number(req.database.firmaId), canonicalSupplier,
-      position.supplierName, position.supplierArticleNo, position.articleName,
-      normalizeProductName(position.articleName), f.polymer, f.quality,
-      selected?.mfiFrom ?? position.mfi, selected?.mfiTo ?? position.mfi,
-      position.mfiTestCondition, articleIndex, article.articleName, actor, actor, conditions, MATCHING_VERSION]);
-  });
-  sendEnvelope(res, { status: 200, data: { articleIndex, articleName: article.articleName }, meta: { mandant: req.mandant }, error: null });
+router.post('/options/:id/positions/:positionId/recalculate',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ await scopedPosition(req);
+ await requestRecalculation(Number(req.database.firmaId),'In der App angeforderte Neuberechnung');
+ sendEnvelope(res,{status:202,data:{queued:true},meta:{mandant:req.mandant}});
 }));
-
-router.delete('/options/:id', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
-  const actor = String(req.userIdentity?.shortCode || req.userEmail || 'APP').slice(0, 100);
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
-    UPDATE ${OPTIONS} SET [op_GeloeschtAm]=SYSUTCDATETIME(), [op_GeloeschtVon]=?,
-      [op_GeaendertVon]=?, [op_GeaendertAm]=SYSUTCDATETIME()
-    OUTPUT inserted.[op_id] AS id
-    WHERE [op_id]=? AND [op_MandantID]=? AND [op_GeloeschtAm] IS NULL
-      AND [op_Geschaeftsstatus]=N'open'`,
-  [actor, actor, positiveId(req.params.id), Number(req.database.firmaId)]);
-  if (!rows.length) throw createHttpError(404, 'Option nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
-  res.status(204).end();
+router.get('/options/:id/positions/:positionId/history/:articleIndex/:evidencePositionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const database=await resolveVlDatabase(req,req.query?.vlMandantId);
+ const position=await scopedPosition(req,database);
+ const candidate=await storedCandidate(database,position,String(req.params.articleIndex));
+ const evidence=candidate?.history?.examples?.find(example=>example.positionId===req.params.evidencePositionId);
+ if(!evidence)throw createHttpError(404,'Historischer Beleg nicht gefunden.',{code:'OPTION_HISTORY_NOT_FOUND'});
+ const rows=await runSQLQueryAccess(database,`SELECT p.beP_BEposID AS positionId,p.beP_Artikel AS articleName,
+  p.beP_Artikelindex AS articleIndex,p.beP_MFI AS mfi,p.beP_MFIgemessen AS measuredMfi,p.beP_MFI_Pruefmethode AS mfiMethod,
+  p.beP_Zusatztext AS additionalText,p.beP_Anzahl AS amount,p.beP_Einheit AS unit,p.beP_WareErhalten AS goodsReceived,
+  b.be_Bestelldatum AS orderDate,b.be_Bestellindex AS orderIndex,k.kd_Name1 AS supplierName
+  FROM dbo.tblBest_Position p JOIN dbo.tblBestellung b ON b.be_Bestellindex=p.beP_Bestellindex
+  LEFT JOIN dbo.tblKunden k ON k.kd_KdNR=b.be_KdNr
+  WHERE p.beP_BEposID=? AND b.be_Bestellindex=? AND b.be_KdNr=? AND p.beP_Artikelindex=? AND COALESCE(p.beP_Storno,0)=0`,
+  [evidence.positionId,evidence.orderIndex,evidence.supplierId,String(req.params.articleIndex)]);
+ if(!rows.length)throw createHttpError(404,'Historischer Beleg ist nicht mehr verfügbar.',{code:'OPTION_HISTORY_NOT_FOUND'});
+ sendEnvelope(res,{data:rows[0],meta:{mandant:req.mandant,viewMandantId:database.firmaId}});
 }));
-
-module.exports = router;
+router.post('/options/:id/positions/:positionId/article',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const position=await scopedPosition(req);
+ const index=String(req.body?.articleIndex||'').trim();
+ if(!index||index.length>50)throw createHttpError(400,'Artikelindex fehlt.',{code:'ARTICLE_INDEX_REQUIRED'});
+ const article=await articleByIndex(req.database,index);
+ if(!article)throw createHttpError(404,'Artikel nicht gefunden.',{code:'ARTICLE_NOT_FOUND'});
+ const selected=await storedCandidate(req.database,position,index);
+ const manual=req.body?.acknowledgeManual===true;
+ if(!manual&&(!selected||position.snapshotChanged!==position.originalChanged
+   ||(req.body?.snapshotId!=null&&String(req.body.snapshotId)!==String(position.snapshotId))
+   ||selected.articleHash!==articleHash(article))){
+  await requestRecalculation(Number(req.database.firmaId),'Veralteter oder fehlender Artikelvorschlag');
+  throw createHttpError(409,'Artikelvorschlag wird aktualisiert. Bitte anschließend erneut auswählen oder ausdrücklich über die manuelle Artikelsuche zuordnen.',{code:'OPTION_MATCH_STALE'});
+ }
+ if(!manual&&selected?.conflicts?.length&&req.body?.acknowledgeConflict!==true){
+  throw createHttpError(409,selected.conflicts.join('; '),{code:'ARTICLE_MATCH_CONFLICT'});
+ }
+ const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
+ const sub=/\bmLLDPE\b/i.test(article.articleName)?'mLLDPE':article.polymerSubCategory;
+ await withSqlTransaction(config.sql.database,async({query})=>{
+  await query(`DECLARE @company INT=?,@reason NVARCHAR(200)=?;${queueSql()}`,
+   [Number(req.database.firmaId),'Manuelle Artikelzuordnung und Lernregel prüfen']);
+  const updated=await query(`UPDATE p SET opp_Artikelindex=?,opp_Artikelname=?,opp_MatchStatus=N'confirmed',
+   opp_MatchGrund=N'Manuell in der App zugeordnet',opp_GeaendertVon=?,opp_GeaendertAm=SYSUTCDATETIME(),
+   opp_BestaetigtKunststoff=?,opp_BestaetigtUntergruppe=?,opp_ZuordnungRevision=opp_ZuordnungRevision+1,
+   opp_LernenAngefordert=1,opp_LernregelHinweis=NULL
+   FROM ${POSITIONS} p JOIN ${OPTIONS} o WITH(UPDLOCK,HOLDLOCK) ON o.op_id=p.opp_op_id
+   WHERE p.opp_id=? AND o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
+   AND p.opp_GeaendertAm=CONVERT(DATETIME2(7),?)`,
+   [index,article.articleName,actor,article.polymerCategory||'Optionen',sub??'',Number(position.id),positiveId(req.params.id),Number(req.database.firmaId),position.originalChanged]);
+  if(!updated.rowsAffected[0])throw createHttpError(409,'Position wurde zwischenzeitlich geändert.',{code:'OPTION_CHANGED'});
+ });
+ sendEnvelope(res,{data:{articleIndex:index,articleName:article.articleName,learningPending:true},meta:{mandant:req.mandant}});
+}));
+router.delete('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
+ const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE ${OPTIONS} SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
+  op_GeaendertVon=?,op_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.op_id AS id
+  WHERE op_id=? AND op_MandantID=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'`,[actor,actor,positiveId(req.params.id),Number(req.database.firmaId)]);
+ if(!rows.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
+ res.status(204).end();
+}));
+module.exports=router;

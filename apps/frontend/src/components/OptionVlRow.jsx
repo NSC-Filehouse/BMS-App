@@ -24,6 +24,12 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
     {p.expired && <Typography variant="caption" sx={{ display: 'block', color: 'error.dark', fontWeight: 600 }}>
       {en ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}
     </Typography>}
+    {['pending', 'updating'].includes(p.matchProcessingStatus) && <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+      {en ? 'Article suggestions are being prepared' : 'Artikelvorschläge werden vorbereitet'}
+    </Typography>}
+    {p.matchProcessingStatus === 'stale' && <Typography variant="caption" sx={{ display: 'block', color: 'warning.dark' }}>
+      {en ? 'Saved suggestions – background update overdue' : 'Gespeicherte Vorschläge – Aktualisierung ausstehend'}
+    </Typography>}
     {!p.articleIndex && <Typography variant="caption" sx={{ display: 'block', color: '#23752A' }}>
       {p.suggestedArticleName ? `${en ? 'Suggested article' : 'Artikelvorschlag'}: ${p.suggestedArticleName}`
         : p.candidateCount > 1 ? (en ? 'Multiple possible articles – assignment open' : 'Mehrere Artikel möglich – Zuordnung offen')

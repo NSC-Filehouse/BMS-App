@@ -10,7 +10,7 @@ function berlinDate() {
 }
 function dateOnly(value) { return value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : null; }
 const numeric = value => value == null ? null : Number(value);
-function mapPosition(row) {
+function mapPosition(row,today) {
   const position = { ...row };
   for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2']) position[key] = numeric(row[key]);
   position.priceNeedsReview = normalizePosition(position).priceNeedsReview || optionPriceNeedsReview(position.pricePerTonne);
@@ -20,7 +20,10 @@ function mapPosition(row) {
   }
   position.id = Number(row.id);
   position.validUntil = dateOnly(row.validUntil);
-  position.expired = Boolean(position.validUntil && position.validUntil < berlinDate());
+  position.expired = Boolean(position.validUntil && position.validUntil < today);
+  position.matchCalculatedAt = row.matchCalculatedAt instanceof Date ? row.matchCalculatedAt.toISOString() : row.matchCalculatedAt;
+  position.snapshotId = row.snapshotId == null ? null : String(row.snapshotId);
+  position.candidateCount = Number(row.candidateCount || 0);
   position.matchStatus = row.matchStatus || 'unmatched';
   return position;
 }
@@ -47,16 +50,28 @@ async function loadOffers(companyIds, { includeExpired = false, optionId = null 
     p.opp_MengeVonKg AS quantityMinKg,p.opp_MengeBisKg AS quantityMaxKg,p.opp_MFI AS mfi,p.opp_MFI_Pruefmethode AS mfiTestCondition,
     p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,
     p.opp_Ladehinweis AS loadingText,p.opp_Kommentar AS comment,p.opp_Artikelindex AS articleIndex,
-    p.opp_ArtikelindexVorschlag AS suggestedArticleIndex,p.opp_ArtikelnameVorschlag AS suggestedArticleName,
-    p.opp_MatchStatus AS matchStatus,p.opp_MatchGrund AS matchReason,COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil
+    r.oab_ArtikelindexVorschlag AS suggestedArticleIndex,r.oab_ArtikelnameVorschlag AS suggestedArticleName,
+    p.opp_MatchStatus AS matchStatus,CASE WHEN p.opp_Artikelindex IS NOT NULL THEN p.opp_MatchGrund ELSE r.oab_VorschlagGrund END AS matchReason,
+    r.oab_id AS snapshotId,r.oab_KandidatenAnzahl AS candidateCount,r.oab_BerechnetAm AS matchCalculatedAt,
+    r.oab_AlgorithmusVersion AS matchVersion,r.oab_KategorieQuelle AS categorySource,
+    COALESCE(p.opp_BestaetigtKunststoff,r.oab_Kunststoff,N'Optionen') AS plastic,
+    COALESCE(p.opp_BestaetigtUntergruppe,r.oab_KunststoffUntergruppe,N'Zuordnung offen') AS plasticSubCategory,
+    CASE WHEN j.oaa_Status=N'error' OR j.oaa_GesperrtBis<SYSUTCDATETIME()
+      OR COALESCE(j.oaa_LetzterErfolgAm,j.oaa_GeaendertAm)<DATEADD(MINUTE,-5,SYSUTCDATETIME()) THEN N'stale'
+      WHEN r.oab_id IS NULL THEN N'pending'
+      WHEN r.oab_QuelldatenGeaendertAm<>p.opp_GeaendertAm OR j.oaa_Revision>r.oab_AnforderungRevision THEN N'updating' ELSE N'ready' END AS matchProcessingStatus,
+    p.opp_LernenAngefordert AS learningPending,p.opp_LernregelHinweis AS learningNotice,
+    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil
     FROM ${appTableSql('optionPositions')} p JOIN ${appTableSql('options')} o ON o.op_id=p.opp_op_id
+    LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
+    LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
     WHERE o.op_MandantID IN (${marks}) AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
       ${includeExpired ? '' : 'AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?'}
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...companyIds, today, ...(optionId == null ? [] : [optionId]), ...(includeExpired ? [] : [today])]);
   const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
-  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push(mapPosition(row)));
+  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push(mapPosition(row,today)));
   return [...byId.values()].filter(offer => offer.positions.length);
 }
 module.exports = { loadOffers, berlinDate, dateOnly };

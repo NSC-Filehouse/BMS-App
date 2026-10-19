@@ -7,7 +7,9 @@ let identity = pilot, reads = [], allowed = [3], capturedOptions, writes = [], m
 const stock = (id, mfi) => ({ Artikel: 'LDPE stock', Kunststoff: 'PE', Kunststoff_Untergruppe: 'LDPE',
   Lagerort: 'A', 'Bestell-Pos': `3-01-26-${id}`, beP_MFI: mfi, Menge: 2000, bePR_Anzahl: 0 });
 const articles = [{ articleIndex: '00417', articleName: 'LDPE MFI 2-3,99 natur', mfi: 2, polymerCategory: 'PE', polymerSubCategory: 'LDPE' }];
+const { articleHash } = require('../src/options/matching-contract');
 const position = { id: 602, articleName: 'LDPE near to prime', mfi: 3, expired: true, validUntil: '2026-09-01',
+  plastic: 'PE', plasticSubCategory: 'LDPE', snapshotId: '1', candidateCount: 1,
   quantityMinKg: null, quantityMaxKg: null, quantityUnit: 'truckload', quantityMin: 1, quantityMax: 1 };
 const offers = [{ id: 197, sourceMandantId: 3, supplierName: 'Longfield', supplierKey: 'longfield', positions: [position] }];
 require.cache[require.resolve('../src/middlewares/mandant.middleware')] = { exports: {
@@ -20,10 +22,11 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     return database.firmaId === 3 ? [stock('1', 1), stock('2', 5)] : [];
   },
   runSQLQuerySqlServer: async (database, sql, params) => {
-    if (sql.includes('SELECT p.[opp_id]')) {
+    if (sql.includes('SELECT p.opp_id AS id')) {
       const offer = offers.find(o => o.id === Number(params[0]) && o.sourceMandantId === Number(params[2]));
       const found = offer?.positions.find(p => p.id === Number(params[1]));
-      return found ? [{ ...found, supplierName: offer.supplierName }] : [];
+      return found ? [{ ...found, supplierName: offer.supplierName,
+        originalChanged: '2026-10-19T08:00:00.0000000', snapshotChanged: '2026-10-19T08:00:00.0000000' }] : [];
     }
     if (sql.includes('COL_LENGTH')) return [{ available: migrationAvailable ? 1 : null }];
     return [];
@@ -46,7 +49,9 @@ require.cache[require.resolve('../src/options/read')] = { exports: {
   loadOffers: async (companyIds, options) => { capturedOptions = { companyIds, ...options }; return offers.filter(o => companyIds.includes(o.sourceMandantId) && (!options.optionId || o.id === options.optionId)); },
 } };
 require.cache[require.resolve('../src/options/matching-service')] = { exports: {
-  candidateContext: async () => ({ articles, mappings: [] }), candidatesFor: async () => [], articleCatalog: async () => articles,
+  candidatesFor: async () => ({ data: [], total: 0 }), articleByIndex: async (database, index) => articles.find(a => a.articleIndex === index),
+  storedCandidate: async () => migrationAvailable ? { articleIndex: articles[0].articleIndex, articleHash: articleHash(articles[0]), conflicts: [], snapshotId: '1' } : null,
+  requestRecalculation: async () => {},
 } };
 const app = express(); app.use(express.json());
 app.use(require('../src/routes/products.routes'));
@@ -111,29 +116,26 @@ test('foreign group details are read only and cannot be assigned through an acti
   } finally { offers.pop(); }
 });
 
-test('mLLDPE has its own VL subgroup even when the generic NT master belongs to LLDPE', () => {
+test('mLLDPE preserves its stored VL subgroup without loading the article catalog', () => {
   const { buildOptionEntries } = require('../src/options/vl-preview');
-  const entries = buildOptionEntries([{ id: 1, supplierName: 'INEOS', positions: [{ id: 2, articleName: 'mLLDPE OG', articleIndex: '008', mfi: 17 }] }], databases[0], {
-    articles: [{ articleIndex: '008', articleName: 'mLLDPE NT MFI 15-19,99 natur', polymerCategory: 'PE', polymerSubCategory: 'LLDPE' }], mappings: [],
-  });
+  const entries = buildOptionEntries([{ id: 1, supplierName: 'INEOS', positions: [{ id: 2, articleName: 'mLLDPE OG', articleIndex: '008', mfi: 17,
+    plastic: 'PE', plasticSubCategory: 'mLLDPE' }] }], databases[0]);
   assert.equal(entries[0].plasticSubCategory, 'mLLDPE');
 });
 
-test('own assignment persists tenant, canonical supplier and explicit conditions in one transaction', async () => {
+test('own assignment persists the decision and queues Reader learning in one transaction', async () => {
   const response = await fetch(`${base}/options/197/positions/602/article`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ articleIndex: '00417' }) });
   assert.equal(response.status, 200);
-  assert.equal(writes.length, 3);
-  assert.match(writes[0].sql, /UPDLOCK,HOLDLOCK/);
-  const insert = writes.find(write => write.sql.includes('INSERT INTO'));
-  assert.equal(insert.params[0], 3);
-  assert.equal(insert.params[1], 'longfield');
-  assert.match(insert.sql, /oam_MerkmaleJson/);
-  assert.equal(JSON.parse(insert.params.at(-2)).polymer, 'LDPE');
+  assert.equal(writes.length, 2);
+  assert.match(writes[1].sql, /UPDLOCK,HOLDLOCK/);
+  assert.match(writes[1].sql, /opp_LernenAngefordert=1/);
+  assert.match(writes[0].sql, /tblOptionenAbgleichAuftrag/);
+  assert.equal(writes[0].params[0], 3);
 });
 
-test('missing metadata migration fails before saving any assignment', async () => {
+test('missing stored proposal queues recalculation before any assignment is saved', async () => {
   migrationAvailable = false;
   const response = await fetch(`${base}/options/197/positions/602/article`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ articleIndex: '00417' }) });
-  assert.equal(response.status, 503);
+  assert.equal(response.status, 409);
   assert.equal(writes.length, 0);
 });

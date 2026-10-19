@@ -48,7 +48,18 @@ export default function OptionDetail() {
     if (!offer || !location.hash) return;
     const target = document.getElementById(location.hash.slice(1));
     target?.scrollIntoView({ block: 'start' });
-  }, [offer, location.hash]);
+  }, [offer?.id, location.hash]);
+  React.useEffect(() => {
+    if (!offer?.positions?.some(position => ['pending', 'updating'].includes(position.matchProcessingStatus)
+      || position.learningPending && position.matchProcessingStatus !== 'stale')) return undefined;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      apiRequest(`/options/${encodeURIComponent(id)}?${sourceQuery}`)
+        .then(response => { if (active && response?.data) setOffer(response.data); })
+        .catch(() => { if (active) setError(t('loading_error')); });
+    }, 5000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [offer, id, sourceQuery, t]);
 
   async function deleteOption() {
     if (!window.confirm(t('option_delete_confirm'))) return;

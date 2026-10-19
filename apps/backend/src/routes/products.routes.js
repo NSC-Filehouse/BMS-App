@@ -339,7 +339,6 @@ async function sendFrupackGroupVl(req, res, grouped) {
 // Pilot-only union: stocks retain their product actions; options are informational entries.
 router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.middleware').requirePilotFeature('optionsVlPreview'), asyncHandler(async (req, res) => {
   const { loadOffers } = require('../options/read');
-  const { candidateContext } = require('../options/matching-service');
   const { buildOptionEntries } = require('../options/vl-preview');
   const scope = getVlScope(req.query);
   let databases;
@@ -360,7 +359,7 @@ router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.
       throw error;
     });
     const ownOffers = offers.filter(offer => Number(offer.sourceMandantId) === Number(database.firmaId));
-    const options = ownOffers.length ? buildOptionEntries(ownOffers, database, await candidateContext(database)) : [];
+    const options = ownOffers.length ? buildOptionEntries(ownOffers, database) : [];
     const filteredOptions = options.flatMap(entry => {
       if (req.query?.plastic && entry.plastic !== req.query.plastic || req.query?.sub && entry.plasticSubCategory !== req.query.sub
         || req.query?.subEmpty === '1' && entry.plasticSubCategory) return [];
