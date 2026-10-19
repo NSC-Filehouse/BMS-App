@@ -6,7 +6,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn } from '../utils/navigation.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -88,7 +88,7 @@ export default function OptionDetail() {
         <InfoRow label={t('option_delivery_term')} value={[offer.incoterm, offer.loadingLocation].filter(Boolean).join(' ')} />
         <InfoRow label={t('option_packaging')} value={offer.packagingText} />
         <InfoRow label={t('option_loading')} value={offer.termsText} />
-        <InfoRow label={t('option_comment')} value={offer.comment} />
+        <InfoRow label={lang==='en'?'Original import notes':'Ursprüngliche Importhinweise'} value={offer.comment} />
         <InfoRow label={t('option_negotiable')} value={offer.negotiable === 'yes' ? t('option_yes') : offer.negotiable === 'no' ? t('option_no') : t('option_unconfirmed')} />
         <InfoRow label={t('option_negotiable_evidence')} value={offer.negotiableEvidence} />
       </CardContent></Card>
@@ -103,6 +103,10 @@ export default function OptionDetail() {
           value={`${optionNumber(position.price, 2)} ${position.priceUnit || position.currency || ''}`} />}
         <Divider sx={{ my: 1 }} />
         <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
+        <InfoRow label={t('option_packaging')} value={optionPackaging(position)} />
+        <InfoRow label={lang==='en'?'Maximum weight per truck':'Maximales Ladegewicht je LKW'} value={position.normalization?.maxTruckLoadKg!=null ? `${optionNumber(position.normalization.maxTruckLoadKg)} kg` : null} />
+        <InfoRow label={lang==='en'?'Normalization':'Normalisierung'} value={optionNormalizationNotes(position)} />
+        {position.normalization && <InfoRow label={t('option_raw_price_basis')} value={`${optionNumber(position.price,2)} ${position.priceUnit || position.currency || ''}`} />}
         {position.quantityMinKg !== null && <InfoRow label={t('option_raw_quantity')} value={position.quantityText || `${position.quantityMin} ${position.quantityUnit || ''}`} />}
         <InfoRow label={t('option_category')} value={position.materialCategory} />
         <InfoRow label={t('option_quality')} value={position.quality} />
@@ -112,7 +116,7 @@ export default function OptionDetail() {
         <InfoRow label={t('option_c2')} value={optionNumber(position.c2)} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
         <InfoRow label={t('option_loading')} value={position.loadingText} />
-        <InfoRow label={t('option_comment')} value={position.comment} />
+        <InfoRow label={position.normalization ? (lang==='en'?'Original import notes':'Ursprüngliche Importhinweise') : t('option_comment')} value={position.comment} />
         <ArticleAssignment optionId={offer.id} position={position} onAssigned={() => setRevision((value) => value + 1)} sourceQuery={sourceQuery} readOnly={offer.readOnly} />
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
       </CardContent></Card>)}

@@ -8,6 +8,7 @@ const { loadOffers } = require('../options/read');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
+const { checkMfi } = require('../options/mfi-compatibility');
 const { appTableSql } = require('../db/app-tables');
 const router = express.Router();
 const OPTIONS = appTableSql('options'), POSITIONS = appTableSql('optionPositions');
@@ -28,6 +29,7 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
 }));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
+  p.opp_MFI AS mfi,p.opp_MFI_Pruefmethode AS mfiTestCondition,
   CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS originalChanged,
   CONVERT(NVARCHAR(33),r.oab_QuelldatenGeaendertAm,126) AS snapshotChanged,
   r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt
@@ -76,6 +78,10 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
  if(!index||index.length>50)throw createHttpError(400,'Artikelindex fehlt.',{code:'ARTICLE_INDEX_REQUIRED'});
  const article=await articleByIndex(req.database,index);
  if(!article)throw createHttpError(404,'Artikel nicht gefunden.',{code:'ARTICLE_NOT_FOUND'});
+ const mfiCheck=checkMfi(position,article);
+ if(mfiCheck.blocked)throw createHttpError(409,`Artikel wegen MFI nicht zuordenbar: ${mfiCheck.reasons.join('; ')}`,{code:'ARTICLE_MFI_EXCLUDED'});
+ if(!mfiCheck.complete && req.body?.acknowledgeUnverifiedMfi!==true)
+  throw createHttpError(409,'MFI-Eignung ungeprüft: Messwert, Artikelbereich oder Prüfbedingungen fehlen. Bitte ausdrücklich bestätigen.',{code:'ARTICLE_MFI_UNVERIFIED'});
  const selected=await storedCandidate(req.database,position,index);
  const manual=req.body?.acknowledgeManual===true;
  if(!manual&&(!selected||position.snapshotChanged!==position.originalChanged

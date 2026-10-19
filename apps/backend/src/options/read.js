@@ -12,8 +12,14 @@ function dateOnly(value) { return value instanceof Date ? value.toISOString().sl
 const numeric = value => value == null ? null : Number(value);
 function mapPosition(row,today) {
   const position = { ...row };
-  for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2']) position[key] = numeric(row[key]);
-  position.priceNeedsReview = normalizePosition(position).priceNeedsReview || optionPriceNeedsReview(position.pricePerTonne);
+  for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2',
+    'minimumOrderKg','stockKg','truckMin','truckMax','bagWeightKg','palletWeightKg']) position[key] = numeric(row[key]);
+  position.normalization = row.normalizationJson ? JSON.parse(row.normalizationJson) : null;
+  delete position.normalizationJson;
+  position.assignmentMfiCheck = row.assignedMfiCheckJson ? JSON.parse(row.assignedMfiCheckJson) : null;
+  delete position.assignedMfiCheckJson;
+  position.priceNeedsReview = (position.normalization ? position.normalization.priceNeedsReview : normalizePosition(position).priceNeedsReview)
+    || optionPriceNeedsReview(position.pricePerTonne);
   if (position.priceNeedsReview) {
     position.pricePerTonne = null;
     position.priceWarning = optionPriceWarning();
@@ -48,6 +54,11 @@ async function loadOffers(companyIds, { includeExpired = false, optionId = null 
     p.opp_MengeVon AS quantityMin,p.opp_MengeBis AS quantityMax,p.opp_Mengeneinheit AS quantityUnit,p.opp_MengeRohtext AS quantityText,
     p.opp_PreisRoh AS price,p.opp_PreiseinheitRoh AS priceUnit,p.opp_Waehrung AS currency,p.opp_PreisProTonne AS pricePerTonne,
     p.opp_MengeVonKg AS quantityMinKg,p.opp_MengeBisKg AS quantityMaxKg,p.opp_MFI AS mfi,p.opp_MFI_Pruefmethode AS mfiTestCondition,
+    p.opp_NormalisierungJson AS normalizationJson,p.opp_MindestabnahmeKg AS minimumOrderKg,p.opp_ChargenbestandKg AS stockKg,
+    p.opp_LKWAnzahlVon AS truckMin,p.opp_LKWAnzahlBis AS truckMax,p.opp_Mengenart AS quantityKind,
+    p.opp_Verpackung AS positionPackaging,p.opp_Verpackungsart_id AS packagingTypeId,
+    p.opp_GebindegewichtKg AS bagWeightKg,p.opp_PalettengewichtKg AS palletWeightKg,
+    JSON_QUERY(r.oab_MerkmaleJson,'$.assignedMfiCheck') AS assignedMfiCheckJson,
     p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,
     p.opp_Ladehinweis AS loadingText,p.opp_Kommentar AS comment,p.opp_Artikelindex AS articleIndex,
     r.oab_ArtikelindexVorschlag AS suggestedArticleIndex,r.oab_ArtikelnameVorschlag AS suggestedArticleName,

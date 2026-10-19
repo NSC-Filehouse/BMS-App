@@ -2,6 +2,7 @@ const { runSQLQueryAccess,runSQLQuerySqlServer }=require('../db/access');
 const config=require('../config');
 const {articleSelect}=require('./article-catalog');
 const {queueSql}=require('./matching-contract');
+const {checkMfi}=require('./mfi-compatibility');
 async function articleByIndex(database,index){
  return (await runSQLQueryAccess(database,`${articleSelect()} AND a.agA_Artikelindex=?`,[index]))[0] || null;
 }
@@ -17,8 +18,11 @@ async function candidatesFor(database,position,{q='',page=1,pageSize=30}={}){
   const base=`${articleSelect()} ${terms.map(()=>"AND CONCAT(a.agA_Artikelindex,N' ',a.agA_Artikelname,N' ',a.agA_Produktnummer) LIKE ?").join(' ')}`;
   const totalRows=await runSQLQueryAccess(database,`SELECT COUNT(*) AS total FROM (${base}) searched`,params);
   const rows=await runSQLQueryAccess(database,`${base} ORDER BY a.agA_Artikelname,a.agA_Artikelindex OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,[...params,(page-1)*pageSize,pageSize]);
-  return {data:rows.map(article=>({...article,score:0,reason:'Manuelle Artikelsuche – technische Eignung ungeprüft',
-    confidence:'manual',warnings:[],conflicts:[],snapshotId:null})),total:Number(totalRows[0]?.total || 0),version:null};
+  return {data:rows.map(article=>{
+    const mfiCheck=checkMfi(position,article);
+    return {...article,score:0,reason:'Manuelle Artikelsuche – technische Eignung ungeprüft',mfiCheck,
+      confidence:'manual',warnings:mfiCheck.complete?[]:['MFI-Eignung ungeprüft'],conflicts:mfiCheck.reasons,snapshotId:null};
+  }),total:Number(totalRows[0]?.total || 0),version:null};
  }
  if(!position.snapshotId)return {data:[],total:0,processingStatus:'pending',version:null};
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT k.* FROM BMSApp.tblOptionenArtikelKandidaten k

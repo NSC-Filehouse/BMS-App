@@ -14,7 +14,7 @@ function unit(value) {
 function normalizePosition(line, rule = null) {
   const quantityUnit = unit(line.quantityUnit || rule?.quantityUnit);
   const priceUnit = unit(line.priceUnit || rule?.priceUnit);
-  const quantityFactor = { kg: 1, kilogram: 1, kilograms: 1, t: 1000, mt: 1000,
+  const quantityFactor = { kg: 1, kilogram: 1, kilograms: 1, t: 1000, to:1000, mt: 1000,
     tonne: 1000, tonnes: 1000, metricton: 1000, metrictons: 1000 }[quantityUnit];
   const priceFactor = { 'eur/t': 1, 'eur/mt': 1, 'eur/tonne': 1, t: 1, mt: 1, tonne: 1,
     'eur/kg': 1000, kg: 1000 }[priceUnit];

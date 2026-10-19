@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { optionDate, optionNumber, optionPrice, optionQuantity } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes } from '../utils/optionDisplay.js';
 
 export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
   const p = item.option;
@@ -21,6 +21,8 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
         [p.incoterm, p.loadingLocation].filter(Boolean).join(' '),
         p.validUntil ? `${en ? 'Valid until' : 'Gültig bis'} ${optionDate(p.validUntil)}` : null].filter(Boolean).join(' · ')}
     </Typography>
+    {optionPackaging(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p)}</Typography>}
+    {optionNormalizationNotes(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionNormalizationNotes(p)}</Typography>}
     {p.expired && <Typography variant="caption" sx={{ display: 'block', color: 'error.dark', fontWeight: 600 }}>
       {en ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}
     </Typography>}

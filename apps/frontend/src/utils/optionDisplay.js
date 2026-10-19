@@ -12,11 +12,16 @@ export function optionDate(value) {
 }
 
 export function optionQuantity(position, t) {
+  if(position?.quantityKind==='minimum-and-stock' && (position.minimumOrderKg!=null || position.stockKg!=null)) {
+    return [position.minimumOrderKg!=null ? `Mindestabnahme ${optionNumber(position.minimumOrderKg)} kg` : null,
+      position.stockKg!=null ? `Chargenbestand ${optionNumber(position.stockKg)} kg` : null].filter(Boolean).join(' · ');
+  }
   if (position?.quantityMinKg !== null && position?.quantityMinKg !== undefined) {
     const minKg = optionNumber(position.quantityMinKg);
     const maxKg = optionNumber(position.quantityMaxKg);
     return `${minKg}${maxKg && maxKg !== minKg ? `–${maxKg}` : ''} kg`;
   }
+  if(position?.quantityMaxKg!=null)return `${optionNumber(position.quantityMaxKg)} kg`;
   const min = optionNumber(position?.quantityMin);
   const max = optionNumber(position?.quantityMax);
   if (position?.quantityUnit) {
@@ -28,6 +33,20 @@ export function optionQuantity(position, t) {
   }
   if (min || max) return `${min || max} (${t('option_unit_unconfirmed')})`;
   return position?.quantityText || '';
+}
+
+export function optionPackaging(position) {
+  return [position?.positionPackaging,
+    position?.bagWeightKg!=null ? `${optionNumber(position.bagWeightKg)}-kg-Gebinde` : null,
+    position?.palletWeightKg!=null ? `${optionNumber(position.palletWeightKg)}-kg-Paletten` : null,
+    position?.normalization?.provenance?.packaging?.source==='history' ? '(aus Einkaufshistorie abgeleitet)' : null].filter(Boolean).join(' · ');
+}
+
+export function optionNormalizationNotes(position) {
+  const p=position?.normalization?.provenance;
+  return [p?.quantityUnit?.source==='rule' ? 'Mengeneinheit gemäß Geschäftsregel' : null,
+    p?.priceUnit?.source==='rule' ? 'Preisbezug gemäß Lieferantenregel' : null,
+    ...(position?.normalization?.notes || [])].filter(Boolean).join(' · ');
 }
 
 export function optionPrice(position, t) {

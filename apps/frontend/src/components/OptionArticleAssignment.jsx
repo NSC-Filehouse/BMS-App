@@ -45,12 +45,15 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
     finally { setBusy(false); }
   }
   async function assign(candidate) {
+    if(candidate.mfiCheck?.blocked)return;
+    if(!candidate.mfiCheck?.complete && !window.confirm(en ? 'MFI suitability is unverified. Assign this article with missing measurement or test conditions?' : 'MFI-Eignung ungeprüft. Diesen Artikel trotz fehlendem Messwert oder unvollständiger Prüfbedingungen zuordnen?'))return;
     if (candidate.conflicts?.length && !window.confirm(`${candidate.conflicts.join('\n')}\n\n${en ? 'Assign this article anyway?' : 'Diesen Artikel trotzdem zuordnen?'}`)) return;
     if (candidate.confidence === 'manual' && !window.confirm(en ? 'Assign this article? Technical suitability has not been confirmed.' : 'Diesen Artikel zuordnen? Die technische Eignung wurde nicht bestätigt.')) return;
     setBusy(true); setError('');
     try {
       await apiRequest(`${base}/article`, { method: 'POST', body: JSON.stringify({ articleIndex: candidate.articleIndex,
-        snapshotId: candidate.snapshotId, acknowledgeManual: candidate.confidence === 'manual', acknowledgeConflict: candidate.conflicts?.length > 0 }) });
+        snapshotId: candidate.snapshotId, acknowledgeManual: candidate.confidence === 'manual', acknowledgeConflict: candidate.conflicts?.length > 0,
+        acknowledgeUnverifiedMfi:!candidate.mfiCheck?.complete }) });
       onAssigned();
     } catch (cause) { setError(cause?.message || t('loading_error')); }
     finally { setBusy(false); }
@@ -69,6 +72,9 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
       {position.categorySource === 'history' ? ` · ${en ? 'Category inferred from purchasing history' : 'Kategorie aus Einkaufshistorie abgeleitet'}` : ''}
     </Typography>}
     {position.learningNotice && <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>{position.learningNotice}</Typography>}
+    {position.assignmentMfiCheck?.blocked && <Alert severity="error" sx={{ mb:1 }}>
+      {en ? 'Existing assignment conflicts with MFI' : 'Bestehende Zuordnung widerspricht dem MFI'}: {position.assignmentMfiCheck.reasons.join('; ')}
+    </Alert>}
     {!position.articleIndex && position.suggestedArticleIndex && <Alert severity="info" sx={{ mb: 1 }}>
       {t('option_saved_suggestion')}: {position.suggestedArticleName} ({position.suggestedArticleIndex})
       {position.matchReason && <Typography variant="caption" sx={{ display: 'block' }}>{position.matchReason}</Typography>}
@@ -95,7 +101,7 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
         </Button>)}
         {candidate.warnings?.map(warning => <Typography key={warning} variant="caption" sx={{ display: 'block', color: 'warning.dark' }}>{warning}</Typography>)}
         {candidate.conflicts?.map(conflict => <Typography key={conflict} variant="caption" sx={{ display: 'block', color: 'error.main' }}>{conflict}</Typography>)}
-        {!readOnly && <Button size="small" disabled={busy} onClick={() => assign(candidate)}>{t('option_assign')}</Button>}
+        {!readOnly && <Button size="small" disabled={busy || candidate.mfiCheck?.blocked} onClick={() => assign(candidate)}>{t('option_assign')}</Button>}
       </Box>)}
       {visible < total && <Button disabled={busy} onClick={() => visible < candidates.length ? setVisible(candidates.length) : loadCandidates(activeQuery, page + 1)}>
         {en ? 'Show more candidates' : 'Weitere Kandidaten anzeigen'}
