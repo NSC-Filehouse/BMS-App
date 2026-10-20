@@ -208,6 +208,7 @@ function formatOrderMailBody({
       line('VK', `${formatNumber(position?.price, 2)} EUR/t`),
       line('EP', `${formatNumber(position?.costPrice, 2)} EUR/t`),
       line('Lieferdatum', formatDate(position?.deliveryDate)),
+      line('Valuta Datum', formatDate(position?.valutaDate || position?.deliveryDate)),
       line('Ursprüngliche Verpackungsart', position?.originalPackagingType),
       line('Verpackungsart gewechselt', yesNo(position?.packagingTypeChanged)),
       line('Reservierungsmenge', position?.reservationInKg === null || position?.reservationInKg === undefined

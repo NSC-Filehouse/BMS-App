@@ -131,6 +131,7 @@ function mapTempPosition(row) {
     price: asNumber(row.price ?? row.tap_price),
     costPrice: asNumber(row.costPrice ?? row.tap_ep),
     deliveryDate: row.deliveryDate ?? row.tap_delivery_date,
+    valutaDate: row.valutaDate ?? row.tap_ValutaDatum ?? row.deliveryDate ?? row.tap_delivery_date,
   };
 }
 
@@ -215,7 +216,8 @@ async function loadOrderPositions(orderId) {
       [tap_warehouse] AS warehouse,
       [tap_price] AS price,
       [tap_ep] AS costPrice,
-      [tap_delivery_date] AS deliveryDate
+      [tap_delivery_date] AS deliveryDate,
+      COALESCE([tap_ValutaDatum], [tap_delivery_date]) AS valutaDate
     FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE [tap_ta_id] = ?
     ORDER BY [tap_line_no] ASC, [tap_id] ASC

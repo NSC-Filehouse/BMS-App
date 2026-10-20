@@ -409,6 +409,9 @@ export default function TempOrdersList() {
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                           {t('delivery_date')}: {formatDateOnly(pos?.deliveryDate) || '-'}
                         </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                          {t('valuta_date')}: {formatDateOnly(pos?.valutaDate || pos?.deliveryDate) || '-'}
+                        </Typography>
                       </Box>
                     ))}
                   </Box>

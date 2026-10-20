@@ -1,0 +1,10 @@
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+IF COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position', N'tap_ValutaDatum') IS NULL
+BEGIN
+  ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position]
+  ADD [tap_ValutaDatum] DATETIME2(7) NULL;
+END;
+
+COMMIT TRANSACTION;

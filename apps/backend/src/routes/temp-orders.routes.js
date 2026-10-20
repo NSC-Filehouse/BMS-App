@@ -131,6 +131,21 @@ function asText(value) {
   return String(value).trim();
 }
 
+function normalizeTempOrderValutaDate(value, deliveryDate, fallbackValue = null) {
+  const candidate = asText(value) ? value : (fallbackValue || deliveryDate);
+  const parsed = candidate instanceof Date ? candidate : new Date(candidate);
+  if (!candidate || Number.isNaN(parsed.getTime())) {
+    return { valid: false, storedDate: null };
+  }
+  const dateOnly = parsed.toISOString().slice(0, 10);
+  const deliveryDateOnly = deliveryDate.toISOString().slice(0, 10);
+  const effectiveDate = `${dateOnly}T00:00:00.000Z`;
+  return {
+    valid: true,
+    storedDate: dateOnly === deliveryDateOnly ? null : effectiveDate,
+  };
+}
+
 function normalizeCustomerOrderNumber(value) {
   const text = asText(value);
   if (text.length > MAX_CUSTOMER_ORDER_NUMBER_LENGTH) {
@@ -1212,6 +1227,7 @@ async function loadOrderPositions(orderId) {
     const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
     const cEp = resolveColumn(cols, ['tap_ep', 'taP_ep', 'ep']);
     const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
+    const cValutaDate = resolveColumn(cols, ['tap_ValutaDatum']);
     const cReservationInKg = resolveColumn(cols, ['tap_reservation_in_kg', 'taP_reservation_in_kg', 'reservation_in_kg']);
     const cReservationDate = resolveColumn(cols, ['tap_reservation_date', 'taP_reservation_date', 'reservation_date']);
     const cAbout = resolveColumn(cols, ['tap_about', 'taP_about', 'about']);
@@ -1224,6 +1240,9 @@ async function loadOrderPositions(orderId) {
     const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
+    const effectiveValutaDate = cValutaDate && cDeliveryDate
+      ? `COALESCE(${toId(cValutaDate)}, ${toId(cDeliveryDate)}) AS [valutaDate]`
+      : pick(cValutaDate, 'valutaDate');
     const sql = `
       SELECT
         ${pick(cId, 'id')},
@@ -1239,6 +1258,7 @@ async function loadOrderPositions(orderId) {
         ${pick(cPrice, 'price')},
         ${pick(cEp, 'costPrice')},
         ${pick(cDeliveryDate, 'deliveryDate')},
+        ${effectiveValutaDate},
         ${pick(cReservationInKg, 'reservationInKg')},
         ${pick(cReservationDate, 'reservationDate')},
         ${pick(cAbout, 'about')},
@@ -1279,8 +1299,12 @@ async function loadPositionSummariesForOrders(orderIds) {
   const cAmount = resolveColumn(cols, ['tap_amount_in_kg', 'taP_amount_in_kg', 'amount_in_kg']);
   const cPrice = resolveColumn(cols, ['tap_price', 'taP_price', 'price']);
   const cDeliveryDate = resolveColumn(cols, ['tap_delivery_date']);
+  const cValutaDate = resolveColumn(cols, ['tap_ValutaDatum']);
   const cLineNo = resolveColumn(cols, ['tap_line_no', 'taP_line_no', 'line_no']);
   const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
+  const effectiveValutaDate = cValutaDate && cDeliveryDate
+    ? `COALESCE(${toId(cValutaDate)}, ${toId(cDeliveryDate)}) AS [valutaDate]`
+    : pick(cValutaDate, 'valutaDate');
   const placeholders = ids.map(() => '?').join(', ');
   const sql = `
     SELECT
@@ -1290,7 +1314,8 @@ async function loadPositionSummariesForOrders(orderIds) {
       ${pick(cArticleIndex, 'articleIndex')},
       ${pick(cAmount, 'amountInKg')},
       ${pick(cPrice, 'price')},
-      ${pick(cDeliveryDate, 'deliveryDate')}
+      ${pick(cDeliveryDate, 'deliveryDate')},
+      ${effectiveValutaDate}
     FROM ${TEMP_ORDER_POSITION_TABLE}
     WHERE ${toId(cOrderId)} IN (${placeholders})
     ORDER BY ${toId(cOrderId)} ASC${cLineNo ? `, ${toId(cLineNo)} ASC` : ''}
@@ -1308,6 +1333,7 @@ async function loadPositionSummariesForOrders(orderIds) {
       amountInKg: row.amountInKg,
       price: row.price,
       deliveryDate: row.deliveryDate || null,
+      valutaDate: row.valutaDate || row.deliveryDate || null,
     });
   }
   return map;
@@ -1840,6 +1866,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
   const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasPositionValutaDate = hasColumn(positionCols, 'tap_ValutaDatum');
   const hasOriginalPackagingTypeId = hasColumn(positionCols, 'tap_Verpackungsart_id');
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
@@ -1862,6 +1889,11 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(503, 'Temp order position table is missing packaging change support. Apply the migration first.', { code: 'TEMP_ORDER_PACKAGING_CHANGE_SCHEMA_MISSING' });
   }
   assertArticleNameSchema(positionCols);
+  if (!hasPositionValutaDate) {
+    throw createHttpError(503, 'Temp order position table is missing valuta date support. Apply the migration first.', {
+      code: 'TEMP_ORDER_POSITION_VALUTA_DATE_MISSING',
+    });
+  }
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -1876,6 +1908,10 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     }
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
       throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    const valutaDateState = normalizeTempOrderValutaDate(raw?.valutaDate, deliveryDate);
+    if (!valutaDateState.valid) {
+      throw createHttpError(400, 'Invalid valuta date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -1920,6 +1956,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       warehouseId,
       articleIndex: asText(productContext.articleIndex) || null,
       deliveryDate: deliveryDate.toISOString(),
+      valutaDate: valutaDateState.storedDate,
       amountInKg,
       salePricePerKg,
       costPricePerKg,
@@ -2033,6 +2070,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+        '[tap_ValutaDatum]',
         '[tap_about]', '[tap_mfi]',
         '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
@@ -2058,6 +2096,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.reservationInKg,
         pos.reservationDate,
         ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
+        pos.valutaDate,
         posCtx.about || null,
         posCtx.mfi || '',
         pos.wpzOriginal,
@@ -2364,6 +2403,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           [tap_price] AS price,
           [tap_ep] AS costPrice,
           [tap_delivery_date] AS deliveryDate,
+          COALESCE([tap_ValutaDatum], [tap_delivery_date]) AS valutaDate,
           [tap_reservation_in_kg] AS reservationInKg,
           [tap_reservation_date] AS reservationDate,
           [tap_about] AS about,
@@ -2731,6 +2771,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   const hasRepresentativeId = hasColumn(orderCols, 'ta_client_representative_id');
   const hasPackagingTypeId = hasColumn(orderCols, 'ta_packaging_type_id');
   const hasPositionDeliveryDate = hasColumn(positionCols, 'tap_delivery_date');
+  const hasPositionValutaDate = hasColumn(positionCols, 'tap_ValutaDatum');
   const hasOriginalPackagingTypeId = hasColumn(positionCols, 'tap_Verpackungsart_id');
   if (!hasOrderDeliveryAddressId) {
     throw createHttpError(503, 'Temp order table is missing delivery address id support. Apply the migration first.', {
@@ -2754,6 +2795,12 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   }
   assertArticleNameSchema(positionCols);
 
+  if (!hasPositionValutaDate) {
+    throw createHttpError(503, 'Temp order position table is missing valuta date support. Apply the migration first.', {
+      code: 'TEMP_ORDER_POSITION_VALUTA_DATE_MISSING',
+    });
+  }
+
   const storedPositionRows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT
       p.[tap_id] AS id,
@@ -2764,6 +2811,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       p.[tap_article] AS article,
       p.[tap_Artikelname_Original] AS articleOriginal,
       p.[tap_Artikelname_Gewechselt] AS articleChanged,
+      p.[tap_ValutaDatum] AS valutaDate,
       p.[tap_about] AS about,
       p.[tap_mfi] AS mfi,
       p.[tap_Verpackungsart] AS originalPackagingType,
@@ -2821,6 +2869,10 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       ? splitSourceCandidate
       : null;
     const snapshotPosition = storedPosition || splitSourcePosition;
+    const valutaDateState = normalizeTempOrderValutaDate(raw?.valutaDate, deliveryDate, snapshotPosition?.valutaDate);
+    if (!valutaDateState.valid) {
+      throw createHttpError(400, 'Invalid valuta date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
     const articleName = resolveArticleName({
       requestedArticle: raw?.article,
       canonicalArticle: productContext.article,
@@ -2860,6 +2912,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       warehouseId,
       articleIndex: asText(snapshotPosition?.articleIndex) || asText(productContext.articleIndex) || null,
       deliveryDate: deliveryDate.toISOString(),
+      valutaDate: valutaDateState.storedDate,
       amountInKg,
       salePricePerKg,
       costPricePerKg,
@@ -3061,6 +3114,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
           '[tap_reservation_in_kg] = ?',
           '[tap_reservation_date] = ?',
           ...(hasPositionDeliveryDate ? ['[tap_delivery_date] = ?'] : []),
+          '[tap_ValutaDatum] = ?',
           '[tap_about] = ?',
           '[tap_mfi] = ?',
           '[tap_wpz_original] = ?',
@@ -3091,6 +3145,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
           pos.reservationInKg,
           pos.reservationDate,
           ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
+          pos.valutaDate,
           pos.about || null,
           pos.mfi || '',
           pos.wpzOriginal,
@@ -3111,6 +3166,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
         ...(hasPositionDeliveryDate ? ['[tap_delivery_date]'] : []),
+        '[tap_ValutaDatum]',
         '[tap_about]', '[tap_mfi]',
         '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
@@ -3136,6 +3192,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         pos.reservationInKg,
         pos.reservationDate,
         ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
+        pos.valutaDate,
         pos.about || null,
         pos.mfi || '',
         pos.wpzOriginal,

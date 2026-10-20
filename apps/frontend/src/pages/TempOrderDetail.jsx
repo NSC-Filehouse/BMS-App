@@ -497,6 +497,9 @@ export default function TempOrderDetail() {
                     {t('delivery_date')}: {formatDateOnly(pos.deliveryDate) || '-'}
                   </Typography>
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {t('valuta_date')}: {formatDateOnly(pos.valutaDate || pos.deliveryDate) || '-'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_amount')}: {pos.amountInKg ?? '-'} kg | {t('order_sale_price')}: {formatPrice(pos.price)} | {t('product_price')}: {formatPrice(pos.costPrice)}
                   </Typography>
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>

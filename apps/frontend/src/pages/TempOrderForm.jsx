@@ -116,13 +116,25 @@ function inSevenDays() {
 }
 
 function createPositionDefaults(overrides = {}) {
+  const deliveryDate = String(overrides.deliveryDate || tomorrow()).slice(0, 10);
   return {
-    deliveryDate: tomorrow(),
+    deliveryDate,
     deliveryDateAuto: true,
+    valutaDate: String(overrides.valutaDate || deliveryDate).slice(0, 10),
+    valutaDateManual: false,
     wpzId: null,
     wpzOriginal: true,
     wpzComment: 'Original verwenden',
     ...overrides,
+  };
+}
+
+function getValutaDateState(valutaDate, deliveryDate) {
+  const normalizedDeliveryDate = String(deliveryDate || '').slice(0, 10);
+  const normalizedValutaDate = String(valutaDate || normalizedDeliveryDate).slice(0, 10);
+  return {
+    valutaDate: normalizedValutaDate,
+    valutaDateManual: Boolean(normalizedValutaDate && normalizedDeliveryDate && normalizedValutaDate !== normalizedDeliveryDate),
   };
 }
 
@@ -341,6 +353,8 @@ export default function TempOrderForm() {
   const [addPosSalePrice, setAddPosSalePrice] = React.useState('');
   const [addPosDeliveryDate, setAddPosDeliveryDate] = React.useState(tomorrow());
   const [addPosDeliveryDateAuto, setAddPosDeliveryDateAuto] = React.useState(true);
+  const [addPosValutaDate, setAddPosValutaDate] = React.useState(tomorrow());
+  const [addPosValutaDateManual, setAddPosValutaDateManual] = React.useState(false);
   const [addPosError, setAddPosError] = React.useState('');
   const [addPosWpzId, setAddPosWpzId] = React.useState(null);
   const [addPosWpzOriginal, setAddPosWpzOriginal] = React.useState(true);
@@ -445,6 +459,8 @@ export default function TempOrderForm() {
       addPosSalePrice,
       addPosDeliveryDate,
       addPosDeliveryDateAuto,
+      addPosValutaDate,
+      addPosValutaDateManual,
       addPosWpzId,
       addPosWpzOriginal,
       addPosWpzComment,
@@ -849,7 +865,11 @@ export default function TempOrderForm() {
             return position;
           }
           changed = true;
-          return { ...position, deliveryDate: status.suggestedDate };
+          return {
+            ...position,
+            deliveryDate: status.suggestedDate,
+            ...(position.valutaDateManual ? {} : { valutaDate: status.suggestedDate }),
+          };
         });
         return changed ? next : previous;
       });
@@ -858,6 +878,7 @@ export default function TempOrderForm() {
         const addStatus = statusByDate.get(String(addPosDeliveryDate || '').slice(0, 10));
         if (addStatus?.suggestedDate && (addStatus.isWeekend || addStatus.isHoliday)) {
           setAddPosDeliveryDate(addStatus.suggestedDate);
+          if (!addPosValutaDateManual) setAddPosValutaDate(addStatus.suggestedDate);
         }
       }
     }).catch(() => {
@@ -868,7 +889,7 @@ export default function TempOrderForm() {
     });
 
     return () => { alive = false; };
-  }, [addPosDeliveryDate, addPosDeliveryDateAuto, addPosOpen, deliveryDateSignature, form.clientReferenceId, form.deliveryAddressId, form.deliveryAddressManual]);
+  }, [addPosDeliveryDate, addPosDeliveryDateAuto, addPosOpen, addPosValutaDateManual, deliveryDateSignature, form.clientReferenceId, form.deliveryAddressId, form.deliveryAddressManual]);
 
   const loadCustomerRepresentatives = React.useCallback(async (clientReferenceId, preferredName = '', preferredId = '') => {
     const customerId = String(clientReferenceId || '').trim();
@@ -1006,6 +1027,7 @@ export default function TempOrderForm() {
             reservationDate: p.reservationDate,
             ...createPositionDefaults({
               deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : (d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : tomorrow()),
+              ...getValutaDateState(p.valutaDate, p.deliveryDate || d.deliveryDate || tomorrow()),
               deliveryDateAuto: !(p.deliveryDate || d.deliveryDate),
               wpzId: p.wpzId ?? null,
               wpzOriginal: p.wpzOriginal ?? true,
@@ -1078,6 +1100,7 @@ export default function TempOrderForm() {
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
             deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow()),
+            ...getValutaDateState(x.valutaDate, x.deliveryDate || copyOrder?.deliveryDate || tomorrow()),
             deliveryDateAuto: x.deliveryDateAuto !== undefined
               ? Boolean(x.deliveryDateAuto)
               : !(x.deliveryDate || copyOrder?.deliveryDate),
@@ -1114,6 +1137,7 @@ export default function TempOrderForm() {
             reservationDate: x.reservationDate ?? null,
             ...createPositionDefaults({
               deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : tomorrow(),
+              ...getValutaDateState(x.valutaDate, x.deliveryDate || tomorrow()),
               deliveryDateAuto: x.deliveryDateAuto !== undefined ? Boolean(x.deliveryDateAuto) : !x.deliveryDate,
               wpzId: x.wpzId ?? null,
               wpzOriginal: x.wpzOriginal ?? true,
@@ -1192,6 +1216,8 @@ export default function TempOrderForm() {
     setAddPosSalePrice(restoredUi.addPosSalePrice ?? '');
     setAddPosDeliveryDate(restoredUi.addPosDeliveryDate || tomorrow());
     setAddPosDeliveryDateAuto(restoredUi.addPosDeliveryDateAuto !== false);
+    setAddPosValutaDate(restoredUi.addPosValutaDate || restoredUi.addPosDeliveryDate || tomorrow());
+    setAddPosValutaDateManual(Boolean(restoredUi.addPosValutaDateManual));
     setAddPosWpzId(restoredUi.addPosWpzId ?? null);
     setAddPosWpzOriginal(restoredUi.addPosWpzOriginal !== false);
     setAddPosWpzComment(restoredUi.addPosWpzComment || 'Original verwenden');
@@ -1758,6 +1784,7 @@ export default function TempOrderForm() {
           salePricePerKg: Number(x.price),
           costPricePerKg: Number(x.costPrice),
           deliveryDate: x.deliveryDate || null,
+          valutaDate: x.valutaDate || x.deliveryDate || null,
           reservationInKg: x.reservationInKg === null || x.reservationInKg === undefined ? null : Number(x.reservationInKg),
           reservationDate: x.reservationDate || null,
           originalPackagingType: x.originalPackagingType || null,
@@ -2359,15 +2386,31 @@ export default function TempOrderForm() {
                                 type="date"
                                 label={t('delivery_date')}
                                 value={x.deliveryDate || ''}
-                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? {
-                                  ...p,
-                                  deliveryDate: e.target.value,
-                                  deliveryDateAuto: false,
-                                } : p)))}
+                                onChange={(e) => {
+                                  const deliveryDate = e.target.value;
+                                  setPositions((prev) => prev.map((p, i) => (i === idx ? {
+                                    ...p,
+                                    deliveryDate,
+                                    ...(p.valutaDateManual ? {} : { valutaDate: deliveryDate }),
+                                    deliveryDateAuto: false,
+                                  } : p)));
+                                }}
                                 InputLabelProps={{ shrink: true }}
                                 size="small"
                               />
                               <DeliveryDateHint status={deliveryDateStatuses[String(x.deliveryDate || '').slice(0, 10)]} t={t} />
+                              <TextField
+                                type="date"
+                                label={t('valuta_date')}
+                                value={x.valutaDate || x.deliveryDate || ''}
+                                onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? {
+                                  ...p,
+                                  valutaDate: e.target.value,
+                                  valutaDateManual: true,
+                                } : p)))}
+                                InputLabelProps={{ shrink: true }}
+                                size="small"
+                              />
                             </Box>
                             <TextField
                               type="number"
@@ -2676,13 +2719,26 @@ export default function TempOrderForm() {
               label={t('delivery_date')}
               value={addPosDeliveryDate || ''}
               onChange={(e) => {
-                setAddPosDeliveryDate(e.target.value);
+                const deliveryDate = e.target.value;
+                setAddPosDeliveryDate(deliveryDate);
+                if (!addPosValutaDateManual) setAddPosValutaDate(deliveryDate);
                 setAddPosDeliveryDateAuto(false);
               }}
               InputLabelProps={{ shrink: true }}
               fullWidth
             />
             <DeliveryDateHint status={deliveryDateStatuses[String(addPosDeliveryDate || '').slice(0, 10)]} t={t} />
+            <TextField
+              type="date"
+              label={t('valuta_date')}
+              value={addPosValutaDate || addPosDeliveryDate || ''}
+              onChange={(e) => {
+                setAddPosValutaDate(e.target.value);
+                setAddPosValutaDateManual(true);
+              }}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
           </Box>
           {addPosProduct && (
             <WpzCommentField
@@ -2751,6 +2807,8 @@ export default function TempOrderForm() {
                   ...createPositionDefaults({
                     deliveryDate: addPosDeliveryDate || tomorrow(),
                     deliveryDateAuto: addPosDeliveryDateAuto,
+                    valutaDate: addPosValutaDate || addPosDeliveryDate || tomorrow(),
+                    valutaDateManual: addPosValutaDateManual,
                     wpzId: addPosWpzId,
                     wpzOriginal: addPosWpzOriginal,
                     wpzComment: addPosWpzComment || '',

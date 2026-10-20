@@ -137,12 +137,16 @@ function renderSaleRows(positions, orderDeliveryType) {
     const incoterm = getPositionIncoterm(position, orderDeliveryType, index);
     const costPrice = formatPositionPrice(position?.costPrice);
     const deliveryDate = formatDeliveryMonthYear(position?.deliveryDate);
+    const hasDistinctValutaDate = position?.valutaDate
+      && String(position.valutaDate).slice(0, 10) !== String(position?.deliveryDate || '').slice(0, 10);
+    const valutaDate = hasDistinctValutaDate ? formatDeliveryMonthYear(position.valutaDate) : '';
     const positionText = `${salePrice}${incoterm ? ` ${incoterm}` : ''} ${amount} ${unit} ${article}${details ? ` - ${details}` : ''} - EP ${costPrice}`;
 
     return `<div style="margin:0;padding:1px 0;line-height:1.35;word-break:break-word;">
       ${escapeHtml(positionText)}
       ${remark ? `<span style="color:#ff0000;font-weight:700;"> - ${escapeHtml(remark)}</span>` : ''}
       ${deliveryDate ? `<span style="color:#0000ff;"> - ${escapeHtml(deliveryDate)}</span>` : ''}
+      ${valutaDate ? `<span style="color:#008000;"> - Valuta ${escapeHtml(valutaDate)}</span>` : ''}
     </div>`;
   }).join('');
 }
