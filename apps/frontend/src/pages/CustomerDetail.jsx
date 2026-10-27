@@ -32,7 +32,6 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
@@ -1342,7 +1341,6 @@ export default function CustomerDetail() {
                         : 'text.secondary',
                   }}
                 >
-                  <AccountBalanceWalletIcon fontSize="small" />
                   {isPrepaymentCustomer && creditInsurerText ? (
                     <Button
                       variant="text"
