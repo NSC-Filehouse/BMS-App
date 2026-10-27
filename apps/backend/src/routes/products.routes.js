@@ -352,7 +352,7 @@ router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.
   const { page, pageSize, q } = parseListParams(req.query, { page: 1, pageSize: 100, sort: 'vl', dir: 'ASC' });
   const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause(req.query);
-  const offers = await loadOffers(databases.map(database => Number(database.firmaId)), { includeExpired: true });
+  const offers = await loadOffers(databases.map(database => Number(database.firmaId)), { includeExpired: false });
   const batches = await Promise.all(databases.map(async database => {
     const stocks = await runSQLQueryAccess(database, `SELECT * FROM ${VIEW_SQL} ${whereSql}`, params).catch(error => {
       if (scope) throw createHttpError(503, 'Frupack Gruppe konnte nicht vollständig geladen werden.', { code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: database.firmaId });
@@ -379,7 +379,7 @@ router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.
     await loadProductPlanning(req, database, data.filter(item => item.kind === 'stock' && Number(item.sourceMandantId) === Number(database.firmaId)))])));
   sendEnvelope(res, { status: 200, data: data.map(item => item.kind === 'option' ? item : applyTempOrderPlanning(item, planning.get(Number(item.sourceMandantId)))),
     meta: { mandant: req.mandant, page, pageSize, total: all.length, count: data.length, q, sort: 'vl', dir: 'ASC',
-      optionsPreview: true, includeExpired: true, search: searchMetadata(search),
+      optionsPreview: true, includeExpired: false, search: searchMetadata(search),
       optionPositions: all.filter(item => item.kind === 'option').length,
       viewMandants: databases.map(database => ({ id: database.firmaId, name: database.name })) }, error: null });
 }));

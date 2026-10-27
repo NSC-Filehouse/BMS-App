@@ -11,7 +11,8 @@ const { articleHash } = require('../src/options/matching-contract');
 const position = { id: 602, articleName: 'LDPE near to prime', mfi: 3, expired: true, validUntil: '2026-09-01',
   plastic: 'PE', plasticSubCategory: 'LDPE', snapshotId: '1', candidateCount: 1,
   quantityMinKg: null, quantityMaxKg: null, quantityUnit: 'truckload', quantityMin: 1, quantityMax: 1 };
-const offers = [{ id: 197, sourceMandantId: 3, supplierName: 'Longfield', supplierKey: 'longfield', positions: [position] }];
+const currentPosition = { ...position, id: 604, articleName: 'LDPE current option', mfi: 4, expired: false, validUntil: '2026-12-01' };
+const offers = [{ id: 197, sourceMandantId: 3, supplierName: 'Longfield', supplierKey: 'longfield', positions: [position, currentPosition] }];
 require.cache[require.resolve('../src/middlewares/mandant.middleware')] = { exports: {
   requireMandant: (req, res, next) => { Object.assign(req, { userIdentity: identity, database: databases[0], mandant: 'Mandant 3' }); next(); },
 } };
@@ -46,7 +47,12 @@ require.cache[require.resolve('../src/db/databases')] = { exports: {
 const planning = require('../src/db/temp-order-planning');
 require.cache[require.resolve('../src/db/temp-order-planning')] = { exports: { ...planning, loadTempOrderPlanning: async () => new Map() } };
 require.cache[require.resolve('../src/options/read')] = { exports: {
-  loadOffers: async (companyIds, options) => { capturedOptions = { companyIds, ...options }; return offers.filter(o => companyIds.includes(o.sourceMandantId) && (!options.optionId || o.id === options.optionId)); },
+  loadOffers: async (companyIds, options = {}) => {
+    capturedOptions = { companyIds, ...options };
+    return offers.filter(o => companyIds.includes(o.sourceMandantId) && (!options.optionId || o.id === options.optionId))
+      .map(offer => ({ ...offer, positions: offer.positions.filter(item => options.includeExpired || !item.expired) }))
+      .filter(offer => offer.positions.length);
+  },
 } };
 require.cache[require.resolve('../src/options/matching-service')] = { exports: {
   candidatesFor: async () => ({ data: [], total: 0 }), articleByIndex: async (database, index) => articles.find(a => a.articleIndex === index),
@@ -62,15 +68,17 @@ test.before(async () => { server = await new Promise(resolve => { const s = app.
 test.after(() => new Promise(resolve => server.close(resolve)));
 test.beforeEach(() => { identity = pilot; reads = []; allowed = [3]; writes = []; migrationAvailable = true; });
 
-test('pilot union sorts expired options between stocks before pagination and returns each position once', async () => {
+test('pilot union excludes expired options before pagination and returns current positions once', async () => {
   const first = await (await fetch(`${base}/vl/entries?pageSize=2`)).json();
   const second = await (await fetch(`${base}/vl/entries?pageSize=2&page=2`)).json();
   assert.equal(first.meta.total, 3);
-  assert.deepEqual([...first.data, ...second.data].map(row => row.mfi), [1, 3, 5]);
+  assert.deepEqual([...first.data, ...second.data].map(row => row.mfi), [1, 4, 5]);
   assert.equal(first.data[1].kind, 'option');
-  assert.equal(first.data[1].option.expired, true);
+  assert.equal(first.data[1].optionPositionId, 604);
+  assert.equal(first.data[1].option.expired, false);
   assert.equal(first.data[1].availableAmount, null);
-  assert.equal(capturedOptions.includeExpired, true);
+  assert.equal(capturedOptions.includeExpired, false);
+  assert.equal(first.meta.includeExpired, false);
 });
 test('ordinary users and reused pilot short codes cannot call the preview endpoint', async () => {
   for (const user of [{ shortCode: 'TST', active: true, mainCompanyId: 3 }, { ...pilot, userId: 'other' }, { ...pilot, active: false }]) {
@@ -88,7 +96,7 @@ test('all three verified identities receive preview access', async () => {
 test('search filters options with the same MFI parser as stock before computing totals', async () => {
   const response = await (await fetch(`${base}/vl/entries?q=${encodeURIComponent('ldpe mfi 2 to 4')}`)).json();
   assert.equal(response.meta.total, 1);
-  assert.equal(response.data[0].optionPositionId, 602);
+  assert.equal(response.data[0].optionPositionId, 604);
 });
 test('group preview scopes option sources and preserves the original tenant on detail reads', async () => {
   const response = await (await fetch(`${base}/vl/entries?vlScope=frupack-group`)).json();
