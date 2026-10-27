@@ -70,9 +70,9 @@ function matchesPurchasePdfPrefix(entry, prefix) {
     && (/^[\s_.(-]/.test(entry.name.slice(prefix.length)) || entry.name.length === prefix.length + 4);
 }
 
-function findTimestampedAbFile(entries, orderNumber) {
+function findTimestampedOrderDocument(entries, orderNumber, documentType) {
   const escapedOrderNumber = escapeRegExp(orderNumber);
-  const pattern = new RegExp(`^${escapedOrderNumber}_AB_(\\d{8})_(\\d{6})\\.pdf$`, 'i');
+  const pattern = new RegExp(`^${escapedOrderNumber}_${documentType}_(\\d{8})_(\\d{6})\\.pdf$`, 'i');
   return entries
     .filter((entry) => entry && entry.isFile && entry.isFile())
     .map((entry) => {
@@ -90,6 +90,14 @@ function findTimestampedAbFile(entries, orderNumber) {
     ))[0] || null;
 }
 
+function findTimestampedAbFile(entries, orderNumber) {
+  return findTimestampedOrderDocument(entries, orderNumber, 'AB');
+}
+
+function findTimestampedEbFile(entries, orderNumber) {
+  return findTimestampedOrderDocument(entries, orderNumber, 'EB');
+}
+
 async function resolveLatestOrderPdf({ companyName, orderNumber, baseFilePath = getConfiguredBaseFilePath() } = {}) {
   const directory = buildOrderPdfDirectory({ baseFilePath, companyName, orderNumber });
   if (!directory) return null;
@@ -102,7 +110,10 @@ async function resolveLatestOrderPdf({ companyName, orderNumber, baseFilePath = 
     throw error;
   }
 
-  const match = findTimestampedAbFile(entries, String(orderNumber).trim());
+  const normalizedOrderNumber = String(orderNumber).trim();
+  // Keep AB authoritative; use EB only when no matching AB exists.
+  const match = findTimestampedAbFile(entries, normalizedOrderNumber)
+    || findTimestampedEbFile(entries, normalizedOrderNumber);
   return match
     ? { fileName: match.fileName, filePath: path.win32.join(directory, match.fileName) }
     : null;

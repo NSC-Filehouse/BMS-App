@@ -208,3 +208,31 @@ test('resolves the newest AB PDF from a local test tree', async () => {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
 });
+
+test('falls back to the newest timestamped EB PDF when no AB PDF exists', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bms-order-eb-pdf-'));
+  try {
+    const directory = buildOrderPdfDirectory({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-03-26-00772',
+    });
+    await fs.promises.mkdir(directory, { recursive: true });
+    await Promise.all([
+      fs.promises.writeFile(path.join(directory, '3-03-26-00772_EB_20260526_154145.pdf'), 'old eb'),
+      fs.promises.writeFile(path.join(directory, '3-03-26-00772_EB_20260910_095920.pdf'), 'new eb'),
+      fs.promises.writeFile(path.join(directory, '3-03-26-00772_EB_invalid.pdf'), 'invalid'),
+      fs.promises.writeFile(path.join(directory, '3-03-26-00772_LI_20260910_095921.pdf'), 'delivery note'),
+    ]);
+
+    const result = await resolveLatestOrderPdf({
+      baseFilePath: root,
+      companyName: 'Frupack',
+      orderNumber: '3-03-26-00772',
+    });
+    assert.equal(result.fileName, '3-03-26-00772_EB_20260910_095920.pdf');
+    assert.equal(await fs.promises.readFile(result.filePath, 'utf8'), 'new eb');
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
