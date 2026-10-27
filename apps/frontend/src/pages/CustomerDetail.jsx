@@ -679,13 +679,11 @@ export default function CustomerDetail() {
       : t('credit_limit_missing');
   const availableCreditAmount = Number(creditLimit?.availableAmount);
   const hasAvailableCredit = !isPrepaymentCustomer && creditLimit?.status === 'active' && Number.isFinite(availableCreditAmount);
-  const openOrdersAmount = Number(creditLimit?.openOrdersAmount);
-  const hasOpenOrdersAmount = !isPrepaymentCustomer && Boolean(creditLimit) && Number.isFinite(openOrdersAmount);
-  const availableCreditColor = availableCreditAmount > 0
+  const unpaidInvoicesAmount = Number(creditLimit?.unpaidInvoicesAmount);
+  const hasUnpaidInvoicesAmount = !isPrepaymentCustomer && Boolean(creditLimit) && Number.isFinite(unpaidInvoicesAmount);
+  const availableCreditColor = availableCreditAmount >= 0
     ? 'success.main'
-    : availableCreditAmount < 0
-      ? 'error.main'
-      : 'text.secondary';
+    : 'error.main';
   const representatives = normalizeRepresentatives(item);
   const selectableContactRankings = getSelectableContactRankings(representatives);
   const isSelectedCustomer = Boolean(
@@ -1322,21 +1320,34 @@ export default function CustomerDetail() {
               )}
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  columnGap: 2,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: 0.25,
                   py: 0.75,
-                  color: creditLimit?.status === 'expired' ? 'error.main' : 'text.secondary',
+                  minWidth: 0,
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 1,
+                    minWidth: 0,
+                    color: creditLimit?.status === 'expired'
+                      ? 'error.main'
+                      : creditLimit?.status === 'active'
+                        ? 'warning.main'
+                        : 'text.secondary',
+                  }}
+                >
                   <AccountBalanceWalletIcon fontSize="small" />
                   {isPrepaymentCustomer && creditInsurerText ? (
                     <Button
                       variant="text"
                       onClick={() => setCreditInsurerOpen(true)}
-                      sx={{ p: 0, minWidth: 0, justifyContent: 'flex-start', textTransform: 'none', fontWeight: 600 }}
+                      sx={{ p: 0, minWidth: 0, justifyContent: 'flex-end', textAlign: 'right', textTransform: 'none', fontWeight: 600 }}
                     >
                       {t('prepayment_customer')}
                     </Button>
@@ -1345,6 +1356,7 @@ export default function CustomerDetail() {
                       variant="body2"
                       sx={{
                         minWidth: 0,
+                        textAlign: 'right',
                         fontWeight: creditLimit?.status === 'expired' ? 600 : undefined,
                       }}
                     >
@@ -1352,6 +1364,11 @@ export default function CustomerDetail() {
                     </Typography>
                   )}
                 </Box>
+                {hasUnpaidInvoicesAmount && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'right' }}>
+                    {t('credit_limit_open_invoices_label')}: {formatEuro(unpaidInvoicesAmount)}
+                  </Typography>
+                )}
                 {hasAvailableCredit && (
                   <Typography
                     variant="body2"
@@ -1361,26 +1378,6 @@ export default function CustomerDetail() {
                   </Typography>
                 )}
               </Box>
-              {hasOpenOrdersAmount && (
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto',
-                    alignItems: 'center',
-                    columnGap: 2,
-                    ml: 4,
-                    mt: 0.25,
-                    color: 'text.secondary',
-                  }}
-                >
-                  <Typography variant="body2">
-                    {t('credit_limit_open_orders_label')}:
-                  </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatEuro(openOrdersAmount)}
-                  </Typography>
-                </Box>
-              )}
             </Box>}
 
             {!isSupplier && <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
