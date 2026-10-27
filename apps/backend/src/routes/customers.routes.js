@@ -39,7 +39,8 @@ const {
   resolveLatestOrderPdf,
   resolveLatestPurchaseOrderPdf,
 } = require('../order-pdf');
-const { loadCustomerInvoiceTimeline } = require('../db/customer-invoices');
+const { loadCustomerInvoiceTimeline, loadCustomerInvoicePaymentTerms } = require('../db/customer-invoices');
+const { calculateCustomerInvoiceDueDate } = require('../customer-invoice-due-date');
 
 const router = express.Router();
 require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer, mapRepresentatives });
@@ -1575,6 +1576,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
   const dateFilter = buildDocumentDateFilter('[re_rgDatum]', scope, req.query.year);
   const invoices = await loadCustomerInvoiceTimeline(req.database, customerId, { scope, dateFilter });
   const paymentMap = await loadPaymentTextMap(invoices.map((x) => x.paymentTextId), lang);
+  const paymentTerms = await loadCustomerInvoicePaymentTerms(invoices.map((x) => x.paymentTextId));
   const reminderMap = await loadReminderStageTextMap(
     req.database,
     invoices.flatMap((x) => [x.reminderTextId, x.reminderTextIdNew]),
@@ -1606,6 +1608,7 @@ router.get('/customers/:id/invoices', requireMandant, asyncHandler(async (req, r
       invoiceNumber,
       invoiceDate,
       dueDate: row.dueDate || null,
+      displayDueDate: isCreditNote ? null : calculateCustomerInvoiceDueDate(invoiceDate, paymentTerms.get(paymentId)),
       isPaid: row.paymentStatus === 'paid',
       paymentStatus: row.paymentStatus,
       amount: Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null),

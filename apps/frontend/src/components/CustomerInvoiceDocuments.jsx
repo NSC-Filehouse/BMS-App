@@ -4,6 +4,9 @@ import { Box, Button, Card, CardContent, Collapse, Typography } from '@mui/mater
 function InvoiceCard({ invoice, isSupplier, t, formatDate, formatMoney }) {
   const credit = !isSupplier && invoice.isCreditNote;
   const status = invoice.paymentStatus || (invoice.isPaid ? 'paid' : 'open');
+  // The calculated date is a calendar day; interpret it at local midnight.
+  const dueDate = isSupplier ? invoice.dueDate
+    : (invoice.displayDueDate ? `${invoice.displayDueDate}T00:00:00` : invoice.dueDate);
   return (
     <Card variant="outlined">
       <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
@@ -30,7 +33,7 @@ function InvoiceCard({ invoice, isSupplier, t, formatDate, formatMoney }) {
           </Typography>
         )}
         {!credit && (
-          <Typography variant="caption">{t('due_date_label')}: {formatDate(invoice.dueDate)}</Typography>
+          <Typography variant="caption">{t('due_date_label')}: {formatDate(dueDate)}</Typography>
         )}
         {!isSupplier && !credit && (
           <Typography variant="caption">{t('payment_terms_label')}: {invoice.paymentText || '-'}</Typography>

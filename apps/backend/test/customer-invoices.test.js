@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadCustomerInvoiceTimeline } = require('../src/db/customer-invoices');
+const { loadCustomerInvoiceTimeline, loadCustomerInvoicePaymentTerms } = require('../src/db/customer-invoices');
+const config = require('../src/config');
 
 test('loads customer history and position evidence before selecting the invoice period', async () => {
   const calls = [];
@@ -25,4 +26,19 @@ test('loads customer history and position evidence before selecting the invoice 
   assert.deepEqual(calls[1].params, ['42']);
   assert.match(calls[1].sql, /WHERE \[r\]\.\[re_KdNr\] = \?/);
   assert.equal(calls[1].database.databaseName, 'BMS.FRU');
+});
+
+test('loads unique invoice payment-term IDs from the shared master database', async () => {
+  let calls = 0;
+  const terms = await loadCustomerInvoicePaymentTerms([17, '17', 141, null, 0, -1, 'invalid'], async (database, sql, params) => {
+    calls += 1;
+    assert.equal(database, config.sql.database);
+    assert.deepEqual(params, [17, 141]);
+    assert.match(sql, /FROM \[dbo\]\.\[tblZahlText\]/);
+    return [{ id: 17, netDays: 30, basis: 1 }, { id: 141, netDays: 30, basis: 1, monthEnd: true }];
+  });
+  assert.equal(calls, 1);
+  assert.equal(terms.get(17).netDays, 30);
+  assert.equal(terms.get(141).monthEnd, true);
+  assert.equal((await loadCustomerInvoicePaymentTerms([], async () => assert.fail('Unexpected query'))).size, 0);
 });
