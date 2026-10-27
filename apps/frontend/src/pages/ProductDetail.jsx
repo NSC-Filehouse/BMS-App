@@ -415,7 +415,7 @@ export default function ProductDetail({ modal = false }) {
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                {t('product_extra')}
+                {t('product_vl_remark')}
               </Typography>
               <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {item.about || ''}
