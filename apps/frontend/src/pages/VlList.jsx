@@ -14,6 +14,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
@@ -22,7 +23,8 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { createReturnTo } from '../utils/navigation.js';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
+import { createVlReturnTo } from '../utils/vlNavigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { getSelectableMandants } from '../utils/mandantOptions.js';
 import {
@@ -470,6 +472,9 @@ export default function VlList() {
 
   const sentinelRef = React.useRef(null);
   const listRef = React.useRef(null);
+  const locationRef = React.useRef(location);
+  locationRef.current = location;
+  const cartAddingRef = React.useRef(false);
   const loadingRef = React.useRef(false);
   const activeRequestRef = React.useRef(null);
   const requestControllerRef = React.useRef(null);
@@ -639,7 +644,13 @@ export default function VlList() {
         window.requestAnimationFrame(() => {
           if (listRef.current) listRef.current.scrollTop = Math.max(Number(returnState.scrollTop) || 0, 0);
         });
-        navigate(location.pathname, { replace: true, state: null });
+        const currentLocation = locationRef.current;
+        const nextState = { ...(currentLocation.state || {}) };
+        delete nextState.vlReturnState;
+        navigate(`${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}`, {
+          replace: true,
+          state: Object.keys(nextState).length ? nextState : null,
+        });
       };
       void restorePages();
       return invalidateRequest;
@@ -680,11 +691,12 @@ export default function VlList() {
   }, [isItemReadOnly, lang]);
 
   const addItemsToCart = React.useCallback(async (items) => {
-    if (isForeignVl) return;
+    if (isForeignVl || cartAddingRef.current) return;
     const sourceItems = (Array.isArray(items) ? items : [])
       .filter((item) => !isItemReadOnly(item) && !cartIds.has(getItemId(item)) && getAvailableAmount(item) > 0);
     if (!sourceItems.length) return;
     const selectedIds = new Set(sourceItems.map((item) => getVlPositionKey(item)));
+    cartAddingRef.current = true;
     try {
       setBatchCartAdding(true);
       setBatchCartError('');
@@ -701,12 +713,23 @@ export default function VlList() {
         positionLabel: getPositionLabel(sourceItems.length, t),
       }));
       setRevealedRow({ id: '', side: '' });
+      const vlReturnState = getVlReturnState();
+      navigate('/order-cart', {
+        state: {
+          fromVl: true,
+          returnTo: createVlReturnTo(locationRef.current, {
+            ...vlReturnState,
+            selectedItems: vlReturnState.selectedItems.filter((item) => !selectedIds.has(getVlPositionKey(item))),
+          }),
+        },
+      });
     } catch (e) {
       setBatchCartError(e?.message || t('loading_error'));
     } finally {
+      cartAddingRef.current = false;
       setBatchCartAdding(false);
     }
-  }, [activeVlMandantId, cartIds, isForeignVl, isItemReadOnly, t]);
+  }, [activeVlMandantId, cartIds, getVlReturnState, isForeignVl, isItemReadOnly, navigate, t]);
 
   const getAddableSelectedItems = React.useCallback((item) => {
     const itemId = getVlPositionKey(item);
@@ -740,7 +763,7 @@ export default function VlList() {
         fromVl: true,
         vlMandantId: getProductSourceMandantId(item, vlMandantId),
         vlReturnState,
-        returnTo: createReturnTo(location, { vlReturnState }),
+        returnTo: createVlReturnTo(location, vlReturnState),
       },
     });
     else if (action === 'cart') void addItemsToCart(sourceItems);
@@ -766,11 +789,11 @@ export default function VlList() {
       state: {
         afterSelect: {
           to: '/vl',
-          state: { pendingCustomerAction, vlReturnState: getVlReturnState() },
+          state: { ...(location.state || {}), pendingCustomerAction, vlReturnState: getVlReturnState() },
         },
       },
     });
-  }, [getVlReturnState, navigate, pendingCustomerAction]);
+  }, [getVlReturnState, location.state, navigate, pendingCustomerAction]);
 
   React.useEffect(() => {
     const pending = location.state?.pendingCustomerAction;
@@ -792,7 +815,7 @@ export default function VlList() {
           fromVl: true,
           vlMandantId: getProductSourceMandantId(pending.product, vlMandantId),
           vlReturnState,
-          returnTo: createReturnTo(location, { vlReturnState }),
+          returnTo: createVlReturnTo(location, vlReturnState),
         },
       });
     } else if (pending.type === 'cart' && pending.product) {
@@ -811,7 +834,7 @@ export default function VlList() {
       const params = new URLSearchParams({ preview: '1', vlMandantId: String(item.sourceMandantId) });
       if (isGroupVl) params.set('vlScope', FRUPACK_GROUP_SCOPE);
       navigate(`/options/${encodeURIComponent(item.optionId)}?${params.toString()}#position-${item.optionPositionId}`, {
-        state: { returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }) },
+        state: { returnTo: createVlReturnTo(location, getVlReturnState()) },
       });
       return;
     }
@@ -823,7 +846,7 @@ export default function VlList() {
         vlReadOnly: isItemReadOnly(item),
         vlScope: isGroupVl ? FRUPACK_GROUP_SCOPE : '',
         vlReturnState: getVlReturnState(),
-        returnTo: createReturnTo(location, { vlReturnState: getVlReturnState() }),
+        returnTo: createVlReturnTo(location, getVlReturnState()),
       },
     });
   }, [getVlReturnState, isGroupVl, isItemReadOnly, location, navigate, vlMandantId]);
@@ -906,7 +929,17 @@ export default function VlList() {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5, minWidth: 0 }}>
-          <Typography variant="h5">{t('vl_title')}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            {location.state?.returnTo?.pathname && (
+              <IconButton
+                aria-label={t('back_label')}
+                onClick={() => navigateToReturn(navigate, location.state.returnTo, '/customers')}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+            )}
+            <Typography variant="h5">{t('vl_title')}</Typography>
+          </Box>
           <TextField
             select
             size="small"

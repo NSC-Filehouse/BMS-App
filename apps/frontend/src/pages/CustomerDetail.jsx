@@ -724,8 +724,8 @@ export default function CustomerDetail() {
   const handleOpenCustomerVl = React.useCallback(() => {
     if (isSupplier || !item) return;
     setSelectedCustomer({ id, name, address, representative: salesRep });
-    navigate('/vl');
-  }, [address, id, isSupplier, item, name, navigate, salesRep]);
+    navigate('/vl', { state: { returnTo: createReturnTo(location) } });
+  }, [address, id, isSupplier, item, location, name, navigate, salesRep]);
   const refreshAndOpenContact = async (contactId, warnings) => {
     const scope = { customerId: id, mandant: contactMandant };
     const current = () => contactScope.current?.customerId === scope.customerId

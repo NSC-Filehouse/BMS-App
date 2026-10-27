@@ -77,6 +77,28 @@ export default function OrderCart() {
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const activeMandant = getMandant();
 
+  const handleBack = () => {
+    let returnTo = location.state?.returnTo;
+    let cameFromVl = Boolean(location.state?.fromVl);
+    while (returnTo?.pathname === location.pathname) {
+      cameFromVl = cameFromVl || Boolean(returnTo.state?.fromVl);
+      returnTo = returnTo.state?.returnTo;
+    }
+    if (returnTo?.pathname && returnTo.pathname !== '/') {
+      navigateToReturn(navigate, returnTo, '/products');
+      return;
+    }
+    navigate(cameFromVl ? '/vl' : '/products', { replace: true });
+  };
+
+  const handleContinueShopping = () => {
+    if (location.state?.fromVl || location.state?.returnTo?.pathname === '/vl') {
+      handleBack();
+      return;
+    }
+    navigate('/vl', { replace: true });
+  };
+
   React.useEffect(() => {
     let alive = true;
     apiRequest('/mandants')
@@ -219,24 +241,8 @@ export default function OrderCart() {
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
         <IconButton
-          aria-label="back"
-          onClick={() => {
-            let returnTo = location.state?.returnTo;
-            let cameFromVl = Boolean(location.state?.fromVl);
-            while (returnTo?.pathname === location.pathname) {
-              cameFromVl = cameFromVl || Boolean(returnTo.state?.fromVl);
-              returnTo = returnTo.state?.returnTo;
-            }
-            if (returnTo?.pathname && returnTo.pathname !== '/') {
-              navigateToReturn(navigate, returnTo, '/products');
-              return;
-            }
-            if (cameFromVl) {
-              navigate('/vl', { replace: true });
-              return;
-            }
-            navigate('/products', { replace: true });
-          }}
+          aria-label={t('back_label')}
+          onClick={handleBack}
         >
           <ArrowBackIcon />
         </IconButton>
@@ -427,7 +433,10 @@ export default function OrderCart() {
           })}
 
           {error && <Alert severity="error" sx={{ mb: 0.5 }}>{error}</Alert>}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+            <Button variant="outlined" onClick={handleContinueShopping}>
+              {t('cart_continue_shopping')}
+            </Button>
             <Button
               variant="contained"
               onClick={() => {
