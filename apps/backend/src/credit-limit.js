@@ -236,7 +236,7 @@ async function loadCustomerCreditContext(database, customerId) {
         SELECT SUM(COALESCE([re_Bruttosumme_EU], [re_Bruttosumme_DM], 0))
         FROM [dbo].[tblRechnung]
         WHERE COALESCE([re_KdNr], '') = ?
-          AND [re_Bezahlt] = 0
+          AND [re_Bezahlt] <> 1
       ), 0) AS unpaidInvoicesAmount,
       COALESCE((
         SELECT SUM(COALESCE([au_Bruttosumme_EU], [au_Bruttosumme_DM], 0))
