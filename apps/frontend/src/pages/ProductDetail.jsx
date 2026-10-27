@@ -375,11 +375,13 @@ export default function ProductDetail({ modal = false }) {
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_category')} value={item.category} />
             <InfoRow label={t('product_amount')} value={item.amount} />
-            <InfoRow
-              label={t('product_reserved')}
-              value={item.reserved}
-              valueColor={Number(item.reserved) > 0 ? 'error.main' : undefined}
-            />
+            {Number(item?.reserved) > 0 && (
+              <InfoRow
+                label={t('product_reserved')}
+                value={item.reserved}
+                valueColor="error.main"
+              />
+            )}
             <TempPlanningHint
               item={item}
               onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
@@ -407,9 +409,13 @@ export default function ProductDetail({ modal = false }) {
                 )
               }
             />
-            <Divider sx={{ my: 2 }} />
-            <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
-            <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
+            {Number(item?.reserved) > 0 && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
+                <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
+              </>
+            )}
 
             <Divider sx={{ my: 2 }} />
 
