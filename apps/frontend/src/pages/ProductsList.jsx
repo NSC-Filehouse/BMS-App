@@ -70,19 +70,30 @@ function ProductCard({ item, onClick, onAddToCart, t }) {
             </Typography>
           </Box>
 
-          <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
-            <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-              {t('product_reserved')}
-            </Typography>
-            <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-              {item.reserved || ''}
-            </Typography>
-          </Box>
+          {Number(item?.reserved) > 0 && (
+            <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
+              <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.7, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                {t('product_reserved')}
+              </Typography>
+              <Typography variant="caption" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                {item.reserved}
+              </Typography>
+            </Box>
+          )}
 
           <Box sx={{ display: { xs: 'grid', md: 'flex' }, gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'space-between', gap: { xs: 0.25, md: 2 }, minWidth: 0 }}>
-            <Typography variant="caption" sx={{ width: { xs: '100%', md: '70%' }, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-              {item.about || ''}
-            </Typography>
+            <Box sx={{ width: { xs: '100%', md: '70%' }, minWidth: 0 }}>
+              {item.about && (
+                <>
+                  <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                    {t('product_vl_remark')}
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {item.about}
+                  </Typography>
+                </>
+              )}
+            </Box>
             <Typography
               variant="caption"
               sx={{ fontWeight: 700, whiteSpace: 'nowrap', textAlign: { xs: 'left', md: 'right' }, minWidth: { xs: 0, md: 92 }, overflowWrap: 'anywhere' }}

@@ -358,12 +358,17 @@ function SwipeableProductRow({
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="body2" sx={{ minWidth: 0 }}>
               {parts.main}
-              {parts.remark ? (
-                <Box component="span" sx={{ color: 'error.main' }}>
-                  {` - ${parts.remark}`}
-                </Box>
-              ) : null}
             </Typography>
+            {parts.remark && (
+              <Box sx={{ mt: 0.2, minWidth: 0 }}>
+                <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.2 }}>
+                  {t('product_vl_remark')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                  {parts.remark}
+                </Typography>
+              </Box>
+            )}
             <TempPlanningHint item={item} onEmployeeClick={onEmployeeClick} t={t} />
             {item.searchMatch && (item.searchMatch.matches.length > 0 || item.searchMatch.fuzzy.length > 0) && (
               <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere' }}>
