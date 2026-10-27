@@ -375,13 +375,11 @@ export default function ProductDetail({ modal = false }) {
             <InfoRow label={t('product_be_number')} value={item.beNumber} />
             <InfoRow label={t('product_category')} value={item.category} />
             <InfoRow label={t('product_amount')} value={item.amount} />
-            {Number(item?.reserved) > 0 && (
-              <InfoRow
-                label={t('product_reserved')}
-                value={item.reserved}
-                valueColor="error.main"
-              />
-            )}
+            <InfoRow
+              label={t('product_reserved')}
+              value={item.reserved}
+              valueColor={Number(item.reserved) > 0 ? 'error.main' : undefined}
+            />
             <TempPlanningHint
               item={item}
               onEmployeeClick={(shortCode) => navigate(`/employees/${encodeURIComponent(shortCode)}`, { state: { returnTo: createReturnTo(location) } })}
@@ -409,27 +407,20 @@ export default function ProductDetail({ modal = false }) {
                 )
               }
             />
-            {Number(item?.reserved) > 0 && (
-              <>
-                <Divider sx={{ my: 2 }} />
-                <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
-                <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
-              </>
-            )}
+            <Divider sx={{ my: 2 }} />
+            <InfoRow label={t('product_reserved_by')} value={item.reservedBy} />
+            <InfoRow label={t('product_reserved_until')} value={formatDateDe(item.reservedUntil)} />
 
-            {item.about && (
-              <>
-                <Divider sx={{ my: 2 }} />
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                    {t('product_vl_remark')}
-                  </Typography>
-                  <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                    {item.about}
-                  </Typography>
-                </Box>
-              </>
-            )}
+            <Divider sx={{ my: 2 }} />
+
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                {t('product_extra')}
+              </Typography>
+              <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                {item.about || ''}
+              </Typography>
+            </Box>
           </CardContent>
         </Card>
       )}
