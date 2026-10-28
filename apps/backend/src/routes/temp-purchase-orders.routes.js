@@ -270,7 +270,7 @@ async function resolveLoadingAddress(database, body) {
     const normalized = requestedText.toLocaleLowerCase('de-DE');
     address = context.addresses.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === normalized) || null;
   }
-  if (!address) throw createHttpError(400, 'Bitte einen gemeinsamen Ladeort für die ausgewählten Artikel wählen. Ohne gemeinsamen Ladeort sind getrennte Bestellungen erforderlich.', { code: 'LOADING_LOCATION_REQUIRED' });
+  if (!address) throw createHttpError(400, 'Bitte einen bisherigen Ladeort dieses Artikels beim ausgewählten Lieferanten wählen.', { code: 'LOADING_LOCATION_REQUIRED' });
   const text = asText(address.text) || asText(body?.loadingLocationText);
   if (!text) throw createHttpError(400, 'Die ausgewählte Lieferadresse hat keinen lesbaren Ladeort.', { code: 'LOADING_LOCATION_REQUIRED' });
   const id = null;

@@ -66,7 +66,7 @@ function fixture(options = {}) {
     loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }], incoterms: [{ id: 1, text: 'FCA' }] }),
     loadSupplierTerms: async () => ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
     loadLatestPurchase: async (_db, _supplier, article) => article === 'A' ? { article: 'Neuester Name', originalPackagingType: 'Sackware' } : null,
-    loadPurchaseLocations: async () => [{ id: 'Hamburg', text: 'Hamburg' }],
+    loadPurchaseLocations: async () => options.locations || [{ id: 'Hamburg', text: 'Hamburg' }],
     findPackaging: (options, value, id) => options.find((p) => p.id === Number(id) || p.text === value),
     packagingKey: (value) => value,
   };
@@ -184,8 +184,24 @@ test('finalize locks the saved order and publishes current purchase identity, ne
 
 test('rejects a location outside the supplier/article selection before creating anything', async () => {
   const f = fixture();
-  await assert.rejects(f.request({ ...body(), loadingLocationText: 'Fremder Ort' }), /gemeinsamen Ladeort/);
+  await assert.rejects(f.request({ ...body(), loadingLocationText: 'Fremder Ort' }), /Ladeort.*Lieferanten/);
   assert.equal(f.headers.length, 0);
+});
+
+test('all historical pickup choices remain valid through create, edit and finalize for repeated article positions', async () => {
+  const f = fixture({ locations: [{ id: 'Hamburg', text: 'Hamburg' }, { id: 'Werk B', text: 'Werk B' }] });
+  const input = body();
+  input.loadingLocationText = 'Werk B';
+  input.positions.push({ ...input.positions[0] });
+  const created = (await f.request(input)).data;
+  assert.equal(created.loadingLocationText, 'Werk B');
+  assert.equal(created.loadingLocationId, null);
+  assert.equal(created.positions.length, 2);
+  const edited = (await f.request({ ...created, loadingLocationText: 'Hamburg' }, 'put', '/temp-purchase-orders/:id')).data;
+  assert.equal(edited.loadingLocationText, 'Hamburg');
+  const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+  assert.equal(sent.status, 1);
+  assert.equal(sent.loadingLocationText, 'Hamburg');
 });
 
 

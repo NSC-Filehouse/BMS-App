@@ -115,7 +115,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, minWidth: 0, width: '100%', '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
     {error && <Alert severity="error">{error}</Alert>}
     {locationError && <Alert severity="error">{locationError}</Alert>}
-    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && <Alert severity="warning">Für diese Artikel gibt es keinen gemeinsamen gespeicherten Ladeort. Bitte getrennte Bestellungen anlegen.</Alert>}
+    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && <Alert severity="warning">Für diesen Artikel ist bei diesem Lieferanten kein bisheriger Ladeort gespeichert.</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       <TextField label="Ansprechpartner" size="small" value={order.supplierContact || ''} onChange={(e) => update({ supplierContact: e.target.value })} disabled={disabled || loading} />
@@ -126,7 +126,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
         <TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => update({ loadingLocationId: '', loadingLocationText: e.target.value })}>
-          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text}>{p.text}</MenuItem>)}
+          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text} sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{p.text}</MenuItem>)}
         </TextField>
         <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));

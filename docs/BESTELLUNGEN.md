@@ -47,9 +47,11 @@ EK-/Termin-/Freitextfelder und die Verpackungs-Standardmenge umgestellt.
 Danach bleiben manuelle Eingaben erhalten. Bei einer unklaren Speicherantwort
 bleibt der eingefrorene ursprüngliche Inhalt vollständig unverändert.
 
-Der Ladeort ist wie die Lieferadresse beim Auftrag ein Kopffeld. Nur für alle
-ausgewählten Artikel historisch belegte Orte dieses Lieferanten sind gültig.
-Bei fehlendem gemeinsamen Ort sind getrennte Bestellungen nötig. Historische
+Der Ladeort ist wie die Lieferadresse beim Auftrag ein Kopffeld. Für die eine
+Artikelart stehen sämtliche bisherigen Abholadressen dieses Lieferanten aus
+allen zugehörigen, nicht stornierten Einkaufspositionen zur Auswahl. Dazu werden
+be_AdresseAbhol und be_AdresseSP_Abhol ausgewertet; gleiche Adressen erscheinen
+nur einmal. Lange Adressen werden im Dropdown mehrzeilig dargestellt. Historische
 Adressfreitexte sind keine technischen Adress-IDs; tb_loading_location_id bleibt
 für diese Orte NULL. Andere Lieferanten- oder Mandantenadressen werden nicht
 als Ersatz zugelassen.

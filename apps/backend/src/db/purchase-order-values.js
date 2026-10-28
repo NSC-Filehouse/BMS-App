@@ -64,7 +64,8 @@ async function loadLatestPurchase(database, supplierId, articleIndex) {
       [b].[be_Verpackung] AS originalPackagingType,
       COALESCE([p].[beP_EK_EU], [p].[beP_EK_DM]) AS lastPurchasePrice,
       [p].[beP_Lieferdatum] AS lastDeliveryDate, [b].[be_Bestelldatum] AS lastOrderDate,
-      [b].[be_AdresseAbhol] AS loadingLocationText
+      COALESCE(NULLIF(LTRIM(RTRIM([b].[be_AdresseAbhol])), N''),
+        NULLIF(LTRIM(RTRIM([b].[be_AdresseSP_Abhol])), N'')) AS loadingLocationText
     FROM [dbo].[tblBest_Position] [p] JOIN [dbo].[tblBestellung] [b] ON [b].[be_Bestellindex] = [p].[beP_Bestellindex]
     LEFT JOIN [dbo].[tblArt_Artikel] [a] ON [a].[agA_Artikelindex] = [p].[beP_Artikelindex]
     WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? AND LTRIM(RTRIM(COALESCE([p].[beP_Artikelindex], ''))) = ?
@@ -74,15 +75,16 @@ async function loadLatestPurchase(database, supplierId, articleIndex) {
 }
 
 function commonLoadingLocations(rows, articleIndexes) {
-  const required = [...new Set(articleIndexes.map(text).filter(Boolean))];
+  const required = [...new Set(articleIndexes.map(normalized).filter(Boolean))];
   if (!required.length) return [];
   const places = new Map();
   for (const row of rows) {
     const location = text(row.loadingLocationText);
     const key = normalized(location);
-    if (!key) continue;
+    const articleId = normalized(row.articleIndex);
+    if (!key || !required.includes(articleId)) continue;
     if (!places.has(key)) places.set(key, { text: location, articles: new Set() });
-    places.get(key).articles.add(text(row.articleIndex));
+    places.get(key).articles.add(articleId);
   }
   return [...places.values()].filter((place) => required.every((id) => place.articles.has(id))).map((place) => ({
     // Historical addresses are text, never a technical address primary key.
@@ -94,10 +96,11 @@ async function loadPurchaseLocations(database, supplierId, articleIndexes) {
   const ids = [...new Set(articleIndexes.map(text).filter(Boolean))];
   if (!supplierId || !ids.length) return [];
   const rows = await runSQLQueryAccess(database, `
-    SELECT [p].[beP_Artikelindex] AS articleIndex, [b].[be_AdresseAbhol] AS loadingLocationText
+    SELECT [p].[beP_Artikelindex] AS articleIndex, [pickup].[address] AS loadingLocationText
     FROM [dbo].[tblBestellung] [b] JOIN [dbo].[tblBest_Position] [p] ON [p].[beP_Bestellindex] = [b].[be_Bestellindex]
-    WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? AND [p].[beP_Artikelindex] IN (${ids.map(() => '?').join(',')})
-      AND COALESCE([p].[beP_Storno], 0) <> 1 AND NULLIF(LTRIM(RTRIM([b].[be_AdresseAbhol])), N'') IS NOT NULL
+    CROSS APPLY (VALUES ([b].[be_AdresseAbhol]), ([b].[be_AdresseSP_Abhol])) [pickup]([address])
+    WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? AND LTRIM(RTRIM([p].[beP_Artikelindex])) IN (${ids.map(() => '?').join(',')})
+      AND COALESCE([p].[beP_Storno], 0) <> 1 AND NULLIF(LTRIM(RTRIM([pickup].[address])), N'') IS NOT NULL
     ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC`, [supplierId, ...ids]);
   return commonLoadingLocations(rows, ids);
 }
