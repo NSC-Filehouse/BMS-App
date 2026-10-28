@@ -22,6 +22,7 @@ export default function PurchaseCart() {
   const [error, setError] = React.useState('');
   const returnTo = getPurchaseCartContext().returnTo || location.state?.returnTo || supplierReturnTo(initialOrder.supplierId);
   const back = () => navigateToReturn(navigate, returnTo, '/suppliers');
+  const removeDraft = () => { if (!saving && !locked) { clearPurchaseCart(); back(); } };
   const change = React.useCallback((order) => {
     if (getPurchaseCartContext().pendingPayload) return;
     try {
@@ -50,11 +51,11 @@ export default function PurchaseCart() {
       setError(e?.message || 'Speichern fehlgeschlagen. Bitte erneut prüfen.');
     } finally { setSaving(false); }
   };
-  return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', display: 'grid', gap: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><IconButton onClick={back} disabled={saving || locked} aria-label="zurück"><ArrowBackIcon /></IconButton><Typography variant="h5">Bestellwarenkorb</Typography></Box>
+  return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><IconButton onClick={back} disabled={saving || locked} aria-label="zurück"><ArrowBackIcon /></IconButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>Bestellwarenkorb</Typography></Box>
     {error && <Alert severity="error">{error}</Alert>}
     {locked && <Alert severity="info">Der Speicherstatus wird mit derselben Anfrage geprüft. Bitte „Speichern erneut prüfen“ verwenden.</Alert>}
-    {initialOrder.positions.length ? <PurchaseOrderEditor initialOrder={initialOrder} isNew onChange={change} onSave={submit} onContinue={back} saving={saving} locked={locked} />
+    {initialOrder.positions.length ? <PurchaseOrderEditor initialOrder={initialOrder} isNew onChange={change} onSave={submit} onContinue={back} onDelete={removeDraft} saving={saving} locked={locked} />
       : <><Typography>Der Bestellwarenkorb ist leer.</Typography><Button onClick={back}>Weiter einkaufen</Button></>}
   </Box>;
 }

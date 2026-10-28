@@ -1,19 +1,5 @@
 import React from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CircularProgress,
-  IconButton,
-  InputAdornment,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-  Badge,
-} from '@mui/material';
+import { Alert, Badge, Box, Button, Card, CardContent, CircularProgress, FormControlLabel, IconButton, InputAdornment, Radio, RadioGroup, Switch, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -26,211 +12,111 @@ import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getPurchaseCartCount, getPurchaseCartContext, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
 import { getTempOrderStatusColor, getTempOrderStatusLabel } from '../utils/tempOrderStatus.js';
+import { formatPurchaseDate, formatPurchaseNumber, formatPurchasePrice } from '../utils/purchaseOrderDisplay.js';
+import PurchaseOrderActions from '../components/PurchaseOrderActions.jsx';
 
 const PAGE_SIZE = 12;
-
-function formatDateOnly(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString('de-DE');
-}
-
 export default function TempPurchaseOrdersList() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const initial = location.state?.listState || {};
   const [items, setItems] = React.useState([]);
-  const [meta, setMeta] = React.useState({ page: 1, pageSize: PAGE_SIZE, total: null });
-  const [q, setQ] = React.useState('');
-  const [status, setStatus] = React.useState('all');
-  const [ownerScope, setOwnerScope] = React.useState('all');
+  const [meta, setMeta] = React.useState({ page: Number(initial.page) || 1, pageSize: PAGE_SIZE, total: null });
+  const [q, setQ] = React.useState(initial.q || '');
+  const [status, setStatus] = React.useState(['draft', 'sent', 'rework'].includes(initial.status) ? initial.status : 'all');
+  const [ownerScope, setOwnerScope] = React.useState(initial.ownerScope === 'mine' ? 'mine' : 'all');
+  const [createdPeriod, setCreatedPeriod] = React.useState(['today', 'week'].includes(initial.createdPeriod) ? initial.createdPeriod : 'all');
   const [canViewAll, setCanViewAll] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [cartCount, setCartCount] = React.useState(() => getPurchaseCartCount());
-
-  const metaRef = React.useRef(meta);
-  const qRef = React.useRef(q);
-  const statusRef = React.useRef(status);
-  const ownerScopeRef = React.useRef(ownerScope);
-  const hydratedFromStateRef = React.useRef(false);
-  const skipSearchReloadRef = React.useRef(false);
-  React.useEffect(() => { metaRef.current = meta; }, [meta]);
-  React.useEffect(() => { qRef.current = q; }, [q]);
-  React.useEffect(() => { statusRef.current = status; }, [status]);
-  React.useEffect(() => { ownerScopeRef.current = ownerScope; }, [ownerScope]);
-
-  const totalPages = meta.total !== null && meta.total !== undefined
-    ? Math.max(1, Math.ceil(Number(meta.total) / (meta.pageSize || PAGE_SIZE)))
-    : null;
-
-  const load = React.useCallback(async (opts = {}) => {
-    const currentMeta = metaRef.current || {};
-    const page = opts.page ?? currentMeta.page ?? 1;
-    const qValue = opts.q ?? qRef.current ?? '';
-    const statusValue = opts.status ?? statusRef.current ?? 'all';
-    const ownerScopeValue = opts.ownerScope ?? ownerScopeRef.current ?? 'all';
+  const [cartCount, setCartCount] = React.useState(getPurchaseCartCount);
+  const current = React.useRef(null);
+  current.current = { page: meta.page, q, status, ownerScope, createdPeriod };
+  const requestId = React.useRef(0);
+  const previousQuery = React.useRef(q);
+  const load = React.useCallback(async (patch = {}) => {
+    const state = { ...current.current, ...patch };
+    const request = ++requestId.current;
+    setLoading(true); setError('');
     try {
-      setLoading(true);
-      setError('');
-      const response = await apiRequest(
-        `/temp-purchase-orders?page=${page}&pageSize=${PAGE_SIZE}&q=${encodeURIComponent(qValue)}&status=${encodeURIComponent(statusValue)}&ownerScope=${encodeURIComponent(ownerScopeValue)}&sort=createdAt&dir=DESC`,
-      );
-      setItems(Array.isArray(response?.data) ? response.data : []);
-      const nextMeta = response?.meta || { page, pageSize: PAGE_SIZE, total: null };
-      setMeta(nextMeta);
-      if (nextMeta.status) setStatus(nextMeta.status);
-      if (nextMeta.ownerScope) setOwnerScope(nextMeta.ownerScope);
-      if (nextMeta.canViewAll !== undefined) setCanViewAll(Boolean(nextMeta.canViewAll));
-    } catch (e) {
-      setError(e?.message || t('loading_error'));
-    } finally {
-      setLoading(false);
-    }
+      const query = new URLSearchParams({ ...state, pageSize: PAGE_SIZE, sort: 'createdAt', dir: 'DESC' });
+      const response = await apiRequest(`/temp-purchase-orders?${query}`);
+      if (request !== requestId.current) return;
+      const lastPage = response.meta?.total == null ? state.page : Math.max(1, Math.ceil(response.meta.total / (response.meta.pageSize || PAGE_SIZE)));
+      if (state.page > lastPage) { await load({ ...state, page: lastPage }); return; }
+      setItems(Array.isArray(response.data) ? response.data : []);
+      setMeta(response.meta || { page: state.page, pageSize: PAGE_SIZE, total: null });
+      if (response.meta?.status) setStatus(response.meta.status);
+      if (response.meta?.ownerScope) setOwnerScope(response.meta.ownerScope);
+      if (response.meta?.createdPeriod) setCreatedPeriod(response.meta.createdPeriod);
+      setCanViewAll(Boolean(response.meta?.canViewAll));
+    } catch (e) { if (request === requestId.current) setError(e.message || t('loading_error')); }
+    finally { if (request === requestId.current) setLoading(false); }
   }, [t]);
-
+  React.useEffect(() => { void load(); }, [load]);
   React.useEffect(() => {
-    if (hydratedFromStateRef.current) return;
-    hydratedFromStateRef.current = true;
-    const listState = location.state?.listState;
-    if (listState && (listState.page || listState.q !== undefined || listState.status !== undefined || listState.ownerScope !== undefined)) {
-      const restoredQ = String(listState.q || '');
-      const restoredPage = Number(listState.page) > 0 ? Number(listState.page) : 1;
-      const restoredStatus = ['all', 'draft', 'sent', 'rework'].includes(String(listState.status || '')) ? String(listState.status) : 'all';
-      const restoredOwnerScope = String(listState.ownerScope || '') === 'mine' ? 'mine' : 'all';
-      skipSearchReloadRef.current = true;
-      setQ(restoredQ);
-      setStatus(restoredStatus);
-      setOwnerScope(restoredOwnerScope);
-      load({ page: restoredPage, q: restoredQ, status: restoredStatus, ownerScope: restoredOwnerScope });
-      navigate(location.pathname, { replace: true, state: null });
-      return;
-    }
-    load({ page: 1, q: '', status: 'all', ownerScope: 'all' });
-  }, [load, location.pathname, location.state, navigate]);
-
-  React.useEffect(() => {
-    const handle = setTimeout(() => {
-      const qValue = q.trim();
-      if (skipSearchReloadRef.current) {
-        skipSearchReloadRef.current = false;
-        return;
-      }
-      if (qValue.length === 0 || qValue.length >= SEARCH_MIN) load({ page: 1, q: qValue });
-    }, 300);
+    if (previousQuery.current === q) return undefined;
+    previousQuery.current = q;
+    const handle = setTimeout(() => { if (!q.trim() || q.trim().length >= SEARCH_MIN) void load({ page: 1, q: q.trim() }); }, 300);
     return () => clearTimeout(handle);
   }, [q, load]);
-
   React.useEffect(() => {
     const sync = () => setCartCount(getPurchaseCartCount());
-    window.addEventListener(PURCHASE_CART_CHANGED, sync);
-    window.addEventListener('storage', sync);
-    sync();
-    return () => {
-      window.removeEventListener(PURCHASE_CART_CHANGED, sync);
-      window.removeEventListener('storage', sync);
-    };
+    window.addEventListener(PURCHASE_CART_CHANGED, sync); window.addEventListener('storage', sync);
+    return () => { window.removeEventListener(PURCHASE_CART_CHANGED, sync); window.removeEventListener('storage', sync); };
   }, []);
-
-  return (
-    <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
-        <Typography variant="h5" sx={{ mr: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('temp_purchase_orders_title')}</Typography>
-        <Button variant="outlined" onClick={() => navigateToReturn(navigate, getPurchaseCartContext().returnTo, '/suppliers')}>Weiter einkaufen</Button>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
-          <IconButton aria-label="zurueck" onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope })} disabled={(meta.page || 1) <= 1}><ArrowBackIcon /></IconButton>
-          <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>{t('page_label')} {meta.page || 1}/{totalPages || '?'}</Typography>
-          <IconButton aria-label="weiter" onClick={() => load({ page: (meta.page || 1) + 1, q, status, ownerScope })} disabled={meta.total !== null && meta.total !== undefined ? (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total : false}><ArrowForwardIcon /></IconButton>
-          <IconButton
-            color="primary"
-            onClick={() => navigate('/purchase-cart', {
-              state: {
-                returnTo: createReturnTo(location, {
-                  listState: { page: meta.page || 1, q, status, ownerScope },
-                }),
-              },
-            })}
-            aria-label={t('temp_purchase_cart_title')}
-          >
-            <Badge badgeContent={cartCount} color="error"><AddShoppingCartIcon /></Badge>
-          </IconButton>
-        </Box>
-      </Box>
-
-      <Card sx={{ mb: 2 }}>
-        <CardContent sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <TextField fullWidth size="small" sx={{ minWidth: 0 }} placeholder={t('temp_purchase_orders_search')} value={q} onChange={(e) => setQ(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ opacity: 0.6 }} /></InputAdornment> }} />
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={status}
-            aria-label={t('temp_order_status')}
-            onChange={(e, value) => {
-              if (!value) return;
-              setStatus(value);
-              load({ page: 1, q, status: value, ownerScope });
-            }}
-            sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
-          >
-            <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton>
-            <ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton>
-            <ToggleButton value="rework">{t('temp_orders_status_rework')}</ToggleButton>
-            <ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
-          </ToggleButtonGroup>
-          {canViewAll && (
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={ownerScope}
-              aria-label={t('temp_orders_owner_filter')}
-              onChange={(e, value) => {
-                if (!value) return;
-                setOwnerScope(value);
-                load({ page: 1, q, status, ownerScope: value });
-              }}
-              sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}
-            >
-              <ToggleButton value="mine">{t('temp_orders_scope_mine')}</ToggleButton>
-              <ToggleButton value="all">{t('temp_orders_scope_all')}</ToggleButton>
-            </ToggleButtonGroup>
-          )}
-        </CardContent>
-      </Card>
-
-      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
-        {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!loading && !error && items.length === 0 && <Typography sx={{ opacity: 0.7 }}>{t('temp_purchase_orders_empty')}</Typography>}
-        {!loading && !error && items.length > 0 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {items.map((item) => (
-              <Card
-                key={item.id}
-                sx={{ borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', cursor: 'pointer', width: '100%', minWidth: 0 }}
-                onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(item.id)}`, {
-                  state: {
-                    listState: { page: meta.page || 1, q, status, ownerScope },
-                    returnTo: createReturnTo(location, {
-                      listState: { page: meta.page || 1, q, status, ownerScope },
-                    }),
-                  },
-                })}
-              >
-                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
-                  <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
-                    <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{item.supplierName || item.supplierId || item.id}</Typography>
-                    <Typography variant="caption" sx={{ color: getTempOrderStatusColor(item.status), fontWeight: 600 }}>{getTempOrderStatusLabel(t, item.status)}</Typography>
-                    <Typography variant="caption" sx={{ display: 'block', opacity: 0.7 }}>{item.bmsPurchaseOrderNumber || 'noch keine BMS-BE'} · {formatDateOnly(item.createdAt)}</Typography>
-                    {(item.positions || []).map((position) => <Typography key={position.id} variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{`${position.article || '-'}; ${position.amount ?? '-'} ${position.unit || ''}; ${formatDateOnly(position.requestedDeliveryDate) || '-'}; EK ${position.purchasePrice ?? '-'}`}</Typography>)}
-                  </Box>
-                  <Box sx={{ width: 38, minWidth: 38, flex: '0 0 38px', display: 'flex', justifyContent: 'center' }}><ChevronRightIcon /></Box>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        )}
+  const pages = meta.total == null ? '?' : Math.max(1, Math.ceil(meta.total / (meta.pageSize || PAGE_SIZE)));
+  const returnTo = () => createReturnTo(location, { listState: current.current });
+  return <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
+      <Typography variant="h5" sx={{ mr: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{t('temp_purchase_orders_title')}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto', minWidth: 0 }}>
+        <IconButton aria-label="Vorherige Seite" disabled={loading || (meta.page || 1) <= 1} onClick={() => load({ page: Math.max(1, meta.page - 1) })}><ArrowBackIcon /></IconButton>
+        <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>{t('page_label')} {meta.page || 1}/{pages}</Typography>
+        <IconButton aria-label="Nächste Seite" disabled={loading || (meta.total != null && (meta.page || 1) * (meta.pageSize || PAGE_SIZE) >= meta.total)} onClick={() => load({ page: (meta.page || 1) + 1 })}><ArrowForwardIcon /></IconButton>
+        <IconButton color="primary" aria-label="Bestellwarenkorb" onClick={() => navigate('/purchase-cart', { state: { returnTo: returnTo() } })}><Badge badgeContent={cartCount} color="error"><AddShoppingCartIcon /></Badge></IconButton>
       </Box>
     </Box>
-  );
+    <Card sx={{ mb: 2, minWidth: 0, flexShrink: 0 }}><CardContent sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
+      <Box sx={{ display: { xs: 'grid', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 0 }}>
+        <TextField fullWidth size="small" sx={{ minWidth: 0 }} placeholder={t('temp_purchase_orders_search')} value={q} onChange={(e) => setQ(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ opacity: 0.6 }} /></InputAdornment> }} />
+        <ToggleButtonGroup size="small" exclusive value={status} aria-label={t('temp_order_status')} onChange={(_e, value) => { if (value) { setStatus(value); void load({ page: 1, status: value }); } }} sx={{ ml: { xs: 0, md: 1 }, justifySelf: 'start', maxWidth: '100%', flexWrap: 'wrap' }}>
+          <ToggleButton value="all">{t('temp_orders_status_all')}</ToggleButton><ToggleButton value="draft">{t('temp_orders_status_draft')}</ToggleButton><ToggleButton value="rework">{t('temp_orders_status_rework')}</ToggleButton><ToggleButton value="sent">{t('temp_orders_status_sent')}</ToggleButton>
+        </ToggleButtonGroup>
+        {canViewAll && <FormControlLabel control={<Switch size="small" checked={ownerScope === 'mine'} onChange={(e) => { const value = e.target.checked ? 'mine' : 'all'; setOwnerScope(value); void load({ page: 1, ownerScope: value }); }} />} label={t('temp_orders_scope_mine')} sx={{ ml: { xs: 0, md: 1 }, mr: 0, whiteSpace: 'nowrap' }} />}
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+        <Typography variant="caption" color="text.secondary">{t('temp_orders_period_label')}</Typography>
+        <RadioGroup row value={createdPeriod} aria-label={t('temp_orders_period_label')} onChange={(e) => { setCreatedPeriod(e.target.value); void load({ page: 1, createdPeriod: e.target.value }); }}>
+          <FormControlLabel value="today" control={<Radio size="small" />} label={t('temp_orders_period_today')} sx={{ mr: 1 }} /><FormControlLabel value="week" control={<Radio size="small" />} label={t('temp_orders_period_week')} sx={{ mr: 1 }} /><FormControlLabel value="all" control={<Radio size="small" />} label={t('temp_orders_period_all')} sx={{ mr: 0 }} />
+        </RadioGroup>
+      </Box>
+    </CardContent></Card>
+    <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+      {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {!loading && !error && !items.length && <Typography color="text.secondary">{t('temp_purchase_orders_empty')}</Typography>}
+      {!loading && !error && <Box sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
+        {items.map((item) => <Card key={item.id} sx={{ borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', cursor: 'pointer', width: '100%', minWidth: 0 }} onClick={() => navigate(`/temp-purchase-orders/${encodeURIComponent(item.id)}`, { state: { listState: current.current, returnTo: returnTo() } })}>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, minWidth: 0 }}>
+            <Box sx={{ flex: 1, minWidth: 0, pr: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1, minWidth: 0 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{item.createdBy || '–'}</Typography>
+                <Typography variant="subtitle1" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{item.supplierName || item.supplierId}</Typography>
+                {item.bmsPurchaseOrderNumber && <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main', overflowWrap: 'anywhere' }}>BE: {item.bmsPurchaseOrderNumber}</Typography>}
+              </Box>
+              <Typography variant="caption" sx={{ color: getTempOrderStatusColor(item.status), fontWeight: 600 }}>{getTempOrderStatusLabel(t, item.status)}</Typography>
+              {(item.positions || []).map((p, index) => <Box key={p.id || index} sx={{ mt: 0.75, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {formatPurchaseNumber(p.amount)} kg · {p.article || '–'} · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>
+                <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
+              </Box>)}
+            </Box>
+            <Box sx={{ width: 38, minWidth: 38, flex: '0 0 38px', display: 'flex', justifyContent: 'center' }}><ChevronRightIcon /></Box>
+          </CardContent>
+        </Card>)}
+      </Box>}
+    </Box>
+    <PurchaseOrderActions><Button variant="outlined" onClick={() => navigateToReturn(navigate, getPurchaseCartContext().returnTo, '/suppliers')}>Weiter einkaufen</Button></PurchaseOrderActions>
+  </Box>;
 }

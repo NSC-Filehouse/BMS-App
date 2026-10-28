@@ -47,7 +47,7 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
               <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{article.article}</Typography>
             </ButtonBase>
             {canPurchase && <IconButton size="small" color={cartKeys.has(article.key) ? 'success' : 'primary'} disabled={working || !article.articleIndex}
-              title="Beim Lieferanten bestellen" onClick={() => action('purchase', article)} aria-label={`${article.article} zum Bestellwarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>}
+              title={cartKeys.has(article.key) ? 'Bereits im Bestellwarenkorb – öffnen' : 'Beim Lieferanten bestellen'} onClick={() => action('purchase', article)} aria-label={`${article.article} zum Bestellwarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>}
           </Box>
           {article.positions.length > 0 && <Box sx={{ pl: 1.25, display: 'grid', gap: 0.25 }}>
             <Typography variant="caption" color="primary">Aktuell auf VL</Typography>

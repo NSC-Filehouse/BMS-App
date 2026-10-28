@@ -54,6 +54,30 @@ Adressfreitexte sind keine technischen Adress-IDs; tb_loading_location_id bleibt
 für diese Orte NULL. Andere Lieferanten- oder Mandantenadressen werden nicht
 als Ersatz zugelassen.
 
+## Übersicht, Detailansicht und Löschen
+
+Bestellübersicht und Detailansicht folgen der Auftragsdarstellung: Ersteller,
+Lieferant, Status und nummerierte Positionen mit Menge, EK und Liefertermin.
+Die Übersicht bietet dieselben Status-, Ersteller- und Zeitraumfilter.
+Die Aktionen stehen unter den Daten; auf dem Handy werden sie in zwei Spalten
+mit umbrechendem Text angezeigt. Die grünen Einkaufswarenkörbe am Lieferanten
+kennzeichnen Artikel, die bereits im Bestellwarenkorb liegen; blaue Warenkörbe
+stehen für noch nicht hinzugefügte Artikel. Der Tooltip erklärt diesen Zustand.
+
+Entwürfe und Bestellungen zur Nacharbeit können vollständig gelöscht werden.
+Das Entfernen ihrer letzten Position löscht unmittelbar die gesamte Bestellung;
+bei weiteren Positionen werden Zeilenänderungen erst beim Speichern übernommen.
+Im ungespeicherten Warenkorb leert die letzte Position nur den lokalen Warenkorb.
+Nach dem Löschen einer gespeicherten Bestellung geht es zur Bestellübersicht
+mit den bisherigen Filtern zurück, niemals zur gelöschten Detailansicht.
+
+Kopf, Positionen und vorhandene Mail-Outboxeinträge werden in einer Transaktion
+gelöscht. Mandant, Eigentümer und bearbeitbarer Status werden unter Sperre
+geprüft; Status 1 und 2 bleiben gegen Löschen geschützt. Wiederholtes DELETE nach
+verlorener Antwort ist unschädlich. Ein Löschfehler rollt alle Löschungen zurück
+und lässt die eingegebenen Formulardaten stehen. Explizites Speichern mit einer
+leeren Positionsliste verwendet denselben vollständigen Löschvorgang.
+
 ## Speicherung und Übergabe
 
 Die Anlage speichert eine stabile Client-Anfragekennung. Wiederholungen nach

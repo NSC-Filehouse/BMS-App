@@ -207,6 +207,17 @@ function buildPurchaseStatusFilter(status) {
   return { whereSql: '', status: normalized };
 }
 
+function buildPurchaseCreatedPeriodFilter(period) {
+  const normalized = ['today', 'week'].includes(asText(period).toLowerCase()) ? asText(period).toLowerCase() : 'all';
+  const today = 'CONVERT(date, GETDATE())';
+  if (normalized === 'today') return { period: normalized, whereSql: ` AND [tb_create_date] >= ${today} AND [tb_create_date] < DATEADD(DAY,1,${today})` };
+  if (normalized === 'week') {
+    const offset = `(DATEDIFF(DAY,CONVERT(date,'19000101',112),${today}) % 7)`;
+    return { period: normalized, whereSql: ` AND [tb_create_date] >= DATEADD(DAY,-${offset},${today}) AND [tb_create_date] < DATEADD(DAY,7-${offset},${today})` };
+  }
+  return { period: normalized, whereSql: '' };
+}
+
 async function loadWorkingCalendar(address) {
   let holidays = [];
   let profile = null;
@@ -308,6 +319,27 @@ async function loadOrderForUser(id, companyId, userShortCode, isFullAccess) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess) {
+  if (!Number.isInteger(id) || id <= 0) throw createHttpError(400, 'Ungültige Bestellnummer.');
+  return withSqlTransaction(config.sql.database, async ({ query }) => {
+    const ownerSql = isFullAccess ? '' : ' AND [tb_created_by]=?';
+    const params = isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
+    const locked = await query(`${orderSelectSql()} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?${ownerSql}`, params);
+    const row = locked.rows[0];
+    // Retrying a successfully completed DELETE is harmless, including when
+    // its first HTTP response was lost. Owner/tenant filtering stays in SQL.
+    if (!row) return { id, deleted: true };
+    if (!isEditable(normalizeStatus(row.status))) throw createHttpError(409, 'Diese Bestellung kann nicht gelöscht werden.', { code: 'PURCHASE_ORDER_LOCKED' });
+    for (const [tableKey, column] of [['purchaseOrderMailOutbox', 'pom_PurchaseOrderID'], ['purchaseOrderCsMailOutbox', 'pcom_PurchaseOrderID']]) {
+      const table = appTableSql(tableKey);
+      await query(`IF OBJECT_ID(?, N'U') IS NOT NULL DELETE FROM ${table} WHERE [${column}]=?`, [table, id]);
+    }
+    await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
+    await query(`DELETE FROM ${TEMP_PURCHASE_ORDER_TABLE} WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
+    return { id, deleted: true };
+  });
+}
+
 router.get('/purchase-order-loading-locations', requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.query?.supplierId);
@@ -386,11 +418,13 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
   const { page, pageSize } = parseListParams(req.query, { page: 1, pageSize: 20, sort: 'createdAt', dir: 'DESC' });
   const q = asText(req.query.q);
   const statusFilter = buildPurchaseStatusFilter(req.query.status);
+  const createdFilter = buildPurchaseCreatedPeriodFilter(req.query.createdPeriod);
   const ownerFilter = buildPurchaseOwnerFilter(userShortCode, accessScope.isFullAccess, req.query.ownerScope);
   const clauses = ['[tb_company_id] = ?'];
   const params = [companyId];
   if (ownerFilter.whereSql) { clauses.push(ownerFilter.whereSql.replace(/^\s*AND\s+/i, '')); params.push(...ownerFilter.params); }
   if (statusFilter.whereSql) { clauses.push(statusFilter.whereSql.replace(/^\s*AND\s+/i, '')); }
+  if (createdFilter.whereSql) clauses.push(createdFilter.whereSql.replace(/^\s*AND\s+/i, ''));
   if (q) {
     clauses.push(`([tb_supplier_name] LIKE ? OR [tb_supplier_id] LIKE ? OR EXISTS (
       SELECT 1 FROM ${TEMP_PURCHASE_POSITION_TABLE} p
@@ -421,6 +455,7 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
       total,
       mandant: req.mandant,
       status: statusFilter.status,
+      createdPeriod: createdFilter.period,
       ownerScope: ownerFilter.scope,
       canViewAll: Boolean(accessScope.isFullAccess),
     },
@@ -483,6 +518,11 @@ router.put('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req,
   if (!existing) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   if (!isEditable(normalizeStatus(existing.status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
   if (req.body?.supplierId && asText(req.body.supplierId) !== existing.supplierId) throw createHttpError(400, 'Der Lieferant einer Bestellung kann nicht geändert werden.');
+  if (Array.isArray(req.body?.positions) && req.body.positions.length === 0) {
+    const deleted = await deletePurchaseForUser(id, companyId, user, scope.isFullAccess);
+    sendEnvelope(res, { data: deleted, meta: { mandant: req.mandant } });
+    return;
+  }
   await assertSupplier(req.database, existing.supplierId, scope);
   const storedPositions = await loadPositions(id);
   const { positions, loading, packaging, incoterm } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
@@ -506,17 +546,7 @@ router.delete('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (r
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
   const userShortCode = asText(req.userIdentity?.shortCode);
-  const row = await loadOrderForUser(id, companyId, userShortCode, accessScope.isFullAccess);
-  if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
-  if (!isEditable(normalizeStatus(row.status))) throw createHttpError(409, 'Diese Bestellung kann nicht gelöscht werden.', { code: 'PURCHASE_ORDER_LOCKED' });
-  await withSqlTransaction(config.sql.database, async ({ query }) => {
-    // The position FK is intentionally restrictive so an accidental parent
-    // delete cannot orphan lines; remove the owned draft's lines first.
-    await query(`DELETE FROM ${appTableSql('purchaseOrderMailOutbox')} WHERE [pom_PurchaseOrderID] = ?`, [id]);
-    await query(`DELETE FROM ${appTableSql('purchaseOrderCsMailOutbox')} WHERE [pcom_PurchaseOrderID] = ?`, [id]);
-    await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id] = ?`, [id]);
-    await query(`DELETE FROM ${TEMP_PURCHASE_ORDER_TABLE} WHERE [tb_id] = ? AND [tb_company_id] = ?`, [id, companyId]);
-  });
+  await deletePurchaseForUser(id, companyId, userShortCode, accessScope.isFullAccess);
   res.status(204).end();
 }));
 
@@ -611,3 +641,4 @@ module.exports = router;
 module.exports.STATUS = STATUS;
 module.exports.normalizePositions = normalizePositions;
 module.exports.getNextWorkingDate = getNextWorkingDate;
+module.exports.buildPurchaseCreatedPeriodFilter = buildPurchaseCreatedPeriodFilter;
