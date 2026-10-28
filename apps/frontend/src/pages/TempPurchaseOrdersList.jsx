@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Badge, Box, Button, Card, CardContent, CircularProgress, FormControlLabel, IconButton, InputAdornment, Radio, RadioGroup, Switch, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Badge, Box, Card, CardContent, CircularProgress, FormControlLabel, IconButton, InputAdornment, Radio, RadioGroup, Switch, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -9,11 +9,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
-import { getPurchaseCartCount, getPurchaseCartContext, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
+import { createReturnTo } from '../utils/navigation.js';
+import { getPurchaseCartCount, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
 import { getTempOrderStatusColor, getTempOrderStatusLabel } from '../utils/tempOrderStatus.js';
 import { formatPurchaseDate, formatPurchaseNumber, formatPurchasePrice } from '../utils/purchaseOrderDisplay.js';
-import PurchaseOrderActions from '../components/PurchaseOrderActions.jsx';
 
 const PAGE_SIZE = 12;
 export default function TempPurchaseOrdersList() {
@@ -117,6 +116,5 @@ export default function TempPurchaseOrdersList() {
         </Card>)}
       </Box>}
     </Box>
-    <PurchaseOrderActions><Button variant="outlined" onClick={() => navigateToReturn(navigate, getPurchaseCartContext().returnTo, '/suppliers')}>Weiter einkaufen</Button></PurchaseOrderActions>
   </Box>;
 }
