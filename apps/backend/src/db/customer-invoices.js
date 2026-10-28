@@ -1,5 +1,4 @@
-const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
-const config = require('../config');
+const { runSQLQueryAccess } = require('./access');
 const { buildCustomerInvoiceTimeline } = require('../customer-invoice-ordering');
 
 async function loadCustomerInvoiceTimeline(database, customerId, { scope, dateFilter }, query = runSQLQueryAccess) {
@@ -10,7 +9,7 @@ async function loadCustomerInvoiceTimeline(database, customerId, { scope, dateFi
       [re_KdNr] AS customerId,
       [re_RgNummer] AS invoiceNumber,
       [re_RgDatum] AS invoiceDate,
-      [re_RGfaellig] AS dueDate,
+      [re_FaelligBis] AS dueDate,
       [re_Bezahlt] AS paidFlag,
       [re_BezahltDatum] AS paidDate,
       [re_TeilBetrag] AS partialAmount,
@@ -41,16 +40,4 @@ async function loadCustomerInvoiceTimeline(database, customerId, { scope, dateFi
   return buildCustomerInvoiceTimeline(rows, { scope, positionRows });
 }
 
-async function loadCustomerInvoicePaymentTerms(ids, query = runSQLQuerySqlServer) {
-  const paymentIds = [...new Set(ids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
-  if (!paymentIds.length) return new Map();
-  const rows = await query(config.sql.database, `
-    SELECT [za_ID] AS id, [za_FaelligNach] AS netDays, [za_Basis] AS basis,
-      [za_Monatsende] AS monthEnd, [za_MonatsMitteEnde] AS halfMonthEnd
-    FROM [dbo].[tblZahlText]
-    WHERE [za_ID] IN (${paymentIds.map(() => '?').join(', ')})
-  `, paymentIds);
-  return new Map(rows.map((row) => [Number(row.id), row]));
-}
-
-module.exports = { loadCustomerInvoiceTimeline, loadCustomerInvoicePaymentTerms };
+module.exports = { loadCustomerInvoiceTimeline };
