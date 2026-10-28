@@ -62,10 +62,10 @@ test('explicit API consent cannot queue credit for an internal customer; bank re
         return { rows: sql.includes('SELECT TOP 1') ? [] : [{ id: 10 }] };
       },
       companyId: 3, customerId: '14104', orderId: 1,
-      currentOrderAmount: 200000, openTempOrders: [], sendCreditRequest: true,
+      currentOrderAmount: 200000, sendCreditRequest: true,
       creditContext: {
         customer: { customerId: '14104', interCompany: true, ownSalesMandantId: 7 },
-        credit: { amount: 0 }, openOrders: [],
+        credit: { amount: 0 },
       },
       primaryAdEmail: 'ad@example.com', mandantName: 'Frupack',
       nowIso: '2026-10-14T10:00:00.000Z', creditTo: ['credit@example.com'], creditCc: [],

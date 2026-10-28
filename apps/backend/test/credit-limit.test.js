@@ -70,22 +70,24 @@ test('accepts a manually entered credit request amount to the cent without step 
   assert.equal(parseCreditLimitRequestAmount('10.001'), null);
 });
 
-test('calculates exposure separately from the manually entered requested limit', () => {
+test('calculates exposure from unpaid invoices plus current order, excluding other open orders', () => {
   assert.deepEqual(calculateCreditExposure({
     currentOrderAmount: 323000,
+    unpaidInvoicesAmount: 1250.5,
     openTempOrders: [{ amount: 1000 }],
     openOrders: [{ amount: 2000 }],
   }), {
     currentOrderAmount: 323000,
-    openTempOrdersAmount: 1000,
-    openOrdersAmount: 2000,
-    exposureAmount: 326000,
+    unpaidInvoicesAmount: 1250.5,
+    exposureAmount: 324250.5,
   });
 });
 
 test('detects limit overruns with unpaid invoices and recognizes advance-payment types', () => {
-  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, 901), true);
-  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, 900), false);
+  const withinLimit = calculateCreditExposure({ currentOrderAmount: 900, unpaidInvoicesAmount: 100 });
+  const overLimit = calculateCreditExposure({ currentOrderAmount: 901, unpaidInvoicesAmount: 100 });
+  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, withinLimit.exposureAmount), false);
+  assert.equal(isCreditLimitExceeded({ amount: 1000, unpaidInvoicesAmount: 100 }, overLimit.exposureAmount), true);
   assert.equal(isCreditLimitExceeded({ amount: null, unpaidInvoicesAmount: 0 }, 1), true);
   assert.equal(isAdvanceOrImmediatePaymentTextId(57), true);
   assert.equal(isAdvanceOrImmediatePaymentTextId(40), true);
@@ -175,7 +177,6 @@ test('queues a credit request only after explicit consent and does not apply req
       amount: 0,
       unpaidInvoicesAmount: 0,
     },
-    openOrders: [],
   };
 
   const runQueue = async (stateRows, testRecipient = '') => {
@@ -200,7 +201,6 @@ test('queues a credit request only after explicit consent and does not apply req
       customerId: 'K-1',
       orderId: 42,
       currentOrderAmount: 323000,
-      openTempOrders: [],
       creditContext,
       sendCreditRequest: true,
       creditLimitAmount: 323137.45,
@@ -256,7 +256,6 @@ test('queues a credit request only after explicit consent and does not apply req
       customerId: 'K-1',
       orderId: 42,
       currentOrderAmount: 323000,
-      openTempOrders: [],
       creditContext,
       primaryAdEmail: '',
       mandantName: 'Mandant GmbH',
@@ -274,7 +273,6 @@ test('queues a credit request only after explicit consent and does not apply req
       customerId: 'K-1',
       orderId: 42,
       currentOrderAmount: 323000,
-      openTempOrders: [],
       creditContext,
       sendCreditRequest: true,
       primaryAdEmail: '',
@@ -293,7 +291,6 @@ test('queues a credit request only after explicit consent and does not apply req
       customerId: 'K-1',
       orderId: 42,
       currentOrderAmount: 323000,
-      openTempOrders: [],
       creditContext: {
         ...creditContext,
         customer: { ...creditContext.customer, insolvent: true },
@@ -313,5 +310,50 @@ test('queues a credit request only after explicit consent and does not apply req
     config.creditLimitMail.enabled = previousEnabled;
     config.creditLimitMail.cooldownMonths = previousCooldown;
     config.orderMail.customerServiceAddressMap = previousCustomerServiceAddressMap;
+  }
+});
+
+test('queues credit requests from unpaid invoices plus current order and ignores other orders', async () => {
+  const previousEnabled = config.creditLimitMail.enabled;
+  config.creditLimitMail.enabled = true;
+  const writes = [];
+  const query = async (sql, params) => {
+    writes.push({ sql, params });
+    if (sql.includes('SELECT TOP 1') && sql.includes('CreditLimitRequestState')) return { rows: [] };
+    if (sql.includes('INSERT INTO') && sql.includes('CreditLimitRequestState')) return { rows: [{ id: 1 }] };
+    if (sql.includes('INSERT INTO') && sql.includes('CreditLimitMailOutbox')) return { rows: [{ id: 2 }] };
+    return { rows: [] };
+  };
+  const common = {
+    query,
+    companyId: 7,
+    customerId: 'K-1',
+    orderId: 42,
+    creditContext: {
+      customer: { customerId: 'K-1', legalName: 'ER&GE GmbH' },
+      credit: { amount: 1000, unpaidInvoicesAmount: 900 },
+      openOrders: [{ amount: 50000 }],
+    },
+    openTempOrders: [{ amount: 50000 }],
+    sendCreditRequest: true,
+    creditLimitAmount: 1500,
+    nowIso: '2026-09-11T10:00:00.000Z',
+    creditTo: ['credit@example.com'],
+    creditCc: [],
+  };
+
+  try {
+    const withinLimit = await queueCreditLimitMails({ ...common, currentOrderAmount: 100 });
+    assert.equal(withinLimit.creditRequest.status, 'not_required');
+
+    const overLimit = await queueCreditLimitMails({ ...common, currentOrderAmount: 101 });
+    assert.equal(overLimit.creditRequest.status, 'queued');
+    assert.equal(overLimit.creditRequest.exposureAmount, 1001);
+    const stateUpdate = writes.find((call) => call.sql.trimStart().startsWith('UPDATE')
+      && call.sql.includes('[clrs_LastExposureAmount]'));
+    assert.ok(stateUpdate);
+    assert.equal(stateUpdate.params[2], 1001);
+  } finally {
+    config.creditLimitMail.enabled = previousEnabled;
   }
 });

@@ -11,7 +11,6 @@ const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-
 const { loadCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const { processOrderMailOutboxById } = require('../db/order-mail-outbox');
 const {
-  loadOpenTempOrderRows,
   processCreditLimitMailOutboxById,
   queueCreditLimitMails,
 } = require('../db/credit-limit-request-outbox');
@@ -2197,21 +2196,9 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
   const currentOrderAmount = calculateTempOrderValue(positions);
   const customerId = asText(order.ta_ClientReferenceId);
   const creditContext = customerId ? await loadCustomerCreditContext(req.database, customerId) : null;
-  const openTempOrders = creditContext
-    ? await loadOpenTempOrderRows(async (sql, params) => ({
-      rows: await runSQLQuerySqlServer(config.sql.database, sql, params),
-    }), {
-      tableSql: TEMP_ORDER_TABLE,
-      positionTableSql: TEMP_ORDER_POSITION_TABLE,
-      companyId,
-      customerId,
-      excludeOrderId: id,
-    })
-    : [];
   const creditExposure = calculateCreditExposure({
     currentOrderAmount,
-    openTempOrders,
-    openOrders: creditContext?.openOrders || [],
+    unpaidInvoicesAmount: creditContext?.credit?.unpaidInvoicesAmount,
   });
   const shouldPrompt = Boolean(
     config.creditLimitMail.enabled
@@ -2226,9 +2213,10 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
     data: {
       shouldPrompt,
       projectedExposure: creditExposure.exposureAmount,
+      currentOrderAmount: creditExposure.currentOrderAmount,
+      unpaidInvoicesAmount: creditExposure.unpaidInvoicesAmount,
       currentCreditLimit: creditContext?.credit?.amount ?? null,
       availableCreditAmount: creditContext?.credit?.availableAmount ?? null,
-      unpaidInvoicesAmount: creditContext?.credit?.unpaidInvoicesAmount ?? 0,
     },
     meta: { mandant: req.mandant, id },
     error: null,
@@ -2629,20 +2617,12 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 
       let creditNotifications = { outboxIds: [] };
       if (creditLimitContext && config.creditLimitMail.enabled) {
-        const openTempOrders = await loadOpenTempOrderRows(query, {
-          tableSql: TEMP_ORDER_TABLE,
-          positionTableSql: TEMP_ORDER_POSITION_TABLE,
-          companyId,
-          customerId: mappedOrder.clientReferenceId,
-          excludeOrderId: id,
-        });
         creditNotifications = await queueCreditLimitMails({
           query,
           companyId,
           customerId: mappedOrder.clientReferenceId,
           orderId: id,
           currentOrderAmount: calculateTempOrderValue(positions),
-          openTempOrders,
           creditContext: {
             ...creditLimitContext,
             customer: creditLimitContext.customer,

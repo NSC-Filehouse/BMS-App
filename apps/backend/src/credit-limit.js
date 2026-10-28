@@ -73,16 +73,12 @@ function parseCreditLimitRequestAmount(value) {
   return cents / 100;
 }
 
-function calculateCreditExposure({ currentOrderAmount, openTempOrders = [], openOrders = [] }) {
-  const openTempOrdersAmount = (Array.isArray(openTempOrders) ? openTempOrders : [])
-    .reduce((sum, item) => sum + toAmount(item?.amount), 0);
-  const openOrdersAmount = (Array.isArray(openOrders) ? openOrders : [])
-    .reduce((sum, item) => sum + toAmount(item?.amount), 0);
-  const exposureAmount = toAmount(currentOrderAmount) + openTempOrdersAmount + openOrdersAmount;
+function calculateCreditExposure({ currentOrderAmount, unpaidInvoicesAmount = 0 }) {
+  const unpaidInvoices = toAmount(unpaidInvoicesAmount);
+  const exposureAmount = toAmount(currentOrderAmount) + unpaidInvoices;
   return {
     currentOrderAmount: toAmount(currentOrderAmount),
-    openTempOrdersAmount,
-    openOrdersAmount,
+    unpaidInvoicesAmount: unpaidInvoices,
     exposureAmount,
   };
 }
@@ -92,7 +88,7 @@ function isCreditLimitExceeded(credit, exposureAmount) {
   const limit = credit.amount === null || credit.amount === undefined || normalizeText(credit.amount) === ''
     ? null
     : Number(credit.amount);
-  const totalExposure = toAmount(exposureAmount) + toAmount(credit.unpaidInvoicesAmount);
+  const totalExposure = toAmount(exposureAmount);
   return Number.isFinite(limit) ? totalExposure > limit : totalExposure > 0;
 }
 
@@ -235,14 +231,8 @@ async function loadCustomerCreditContext(database, customerId) {
         FROM [dbo].[tblRechnung]
         WHERE COALESCE([re_KdNr], '') = ?
           AND [re_Bezahlt] <> 1
-      ), 0) AS unpaidInvoicesAmount,
-      COALESCE((
-        SELECT SUM(COALESCE([au_Bruttosumme_EU], [au_Bruttosumme_DM], 0))
-        FROM [dbo].[tblAuftrag]
-        WHERE COALESCE([au_KdNr], '') = ?
-          AND COALESCE([au_Abgeschlossen], 0) <> 1
-      ), 0) AS openOrdersAmount
-  `, [id, id, id, id]);
+      ), 0) AS unpaidInvoicesAmount
+  `, [id, id, id]);
   const creditRow = Array.isArray(creditRows) ? creditRows[0] : null;
   const amount = creditRow?.amount === null || creditRow?.amount === undefined || normalizeText(creditRow?.amount) === ''
     ? null
@@ -250,30 +240,11 @@ async function loadCustomerCreditContext(database, customerId) {
   const credit = calculateAvailableCredit({
     amount,
     unpaidInvoicesAmount: creditRow?.unpaidInvoicesAmount,
-    openOrdersAmount: creditRow?.openOrdersAmount,
   });
-
-  const openOrderRows = await runSQLQueryAccess(database, `
-    SELECT
-      [au_Auftragsindex] AS orderId,
-      [au_Auftragsnummer] AS orderNumber,
-      COALESCE([au_Bruttosumme_EU], [au_Bruttosumme_DM], 0) AS amount,
-      [au_Auftragsdatum] AS orderDate
-    FROM [dbo].[tblAuftrag]
-    WHERE COALESCE([au_KdNr], '') = ?
-      AND COALESCE([au_Abgeschlossen], 0) <> 1
-    ORDER BY [au_Auftragsdatum] ASC, [au_Auftragsindex] ASC
-  `, [id]);
 
   return {
     customer,
     credit,
-    openOrders: (Array.isArray(openOrderRows) ? openOrderRows : []).map((row) => ({
-      orderId: normalizeText(row.orderId),
-      orderNumber: normalizeText(row.orderNumber),
-      amount: toAmount(row.amount),
-      orderDate: row.orderDate || null,
-    })),
   };
 }
 

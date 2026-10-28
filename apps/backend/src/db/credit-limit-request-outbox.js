@@ -25,7 +25,6 @@ const { isOwnSalesMandantCustomer, loadOwnSalesMandantId } = require('./own-sale
 
 const STATE_TABLE = appTableSql('creditLimitRequestState');
 const OUTBOX_TABLE = appTableSql('creditLimitMailOutbox');
-const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 // Legacy automatic rows use "credit_limit_request" and are excluded below.
 const CREDIT_LIMIT_TYPE = 'credit_limit_request_user_confirmed';
 const BANK_DETAILS_TYPE = 'bank_details_reminder';
@@ -175,36 +174,12 @@ async function insertOutbox(query, {
   return id;
 }
 
-async function loadOpenTempOrderRows(query, { tableSql, positionTableSql, companyId, customerId, excludeOrderId }) {
-  const result = await query(`
-    SELECT
-      [o].[ta_id] AS orderId,
-      COALESCE(SUM(
-        COALESCE([p].[tap_amount_in_kg], 0) * COALESCE([p].[tap_price], 0) / 1000.0
-      ), 0) AS amount
-    FROM ${tableSql} [o]
-    INNER JOIN ${positionTableSql} [p]
-      ON [p].[tap_ta_id] = [o].[ta_id]
-    WHERE [o].[ta_company_id] = ?
-      AND COALESCE([o].[ta_ClientReferenceId], '') = ?
-      AND COALESCE([o].[ta_Status], 0) IN (1, 2)
-      AND [o].[ta_id] <> ?
-    GROUP BY [o].[ta_id]
-    ORDER BY [o].[ta_id] ASC
-  `, [companyId, customerId, excludeOrderId]);
-  return (result.rows || []).map((row) => ({
-    orderId: Number(row.orderId),
-    amount: toAmount(row.amount),
-  })).filter((row) => Number.isFinite(row.orderId) && row.orderId > 0);
-}
-
 async function queueCreditLimitMails({
   query,
   companyId,
   customerId,
   orderId,
   currentOrderAmount,
-  openTempOrders,
   creditContext,
   primaryAdEmail,
   mandantName,
@@ -245,8 +220,7 @@ async function queueCreditLimitMails({
     && !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
   const creditExposure = calculateCreditExposure({
     currentOrderAmount,
-    openTempOrders,
-    openOrders: creditContext.openOrders,
+    unpaidInvoicesAmount: creditContext.credit.unpaidInvoicesAmount,
   });
   const requestedLimit = parseCreditLimitRequestAmount(creditLimitAmount);
   const creditRequestRequired = isCreditLimitRequestRequired(creditContext, creditExposure.exposureAmount);
@@ -620,7 +594,6 @@ function startCreditLimitMailOutboxWorker() {
 module.exports = {
   BANK_DETAILS_TYPE,
   CREDIT_LIMIT_TYPE,
-  loadOpenTempOrderRows,
   processCreditLimitMailOutboxById,
   processPendingCreditLimitMails,
   queueCreditLimitMails,

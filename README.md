@@ -396,9 +396,11 @@ Dialog zur manuellen Eingabe des gewünschten Kreditlimits. Der Betrag wird
 weder aus der erwarteten Auslastung abgeleitet noch auf feste Schritte gerundet.
 Der Außendienst entscheidet ausdrücklich, ob die zusätzliche Kreditlimit-Mail
 mit dem eingegebenen Betrag gesendet wird; die Auftragsmail wird in beiden
-Fällen versendet. Für die Überschreitungsprüfung addiert die App den aktuellen
-Auftrag sowie offene BMS-App- und ERP-Aufträge. Offene Rechnungen fließen in
-diese Prüfung ein, bestimmen aber nicht den manuell eingegebenen Kreditwunsch.
+Fällen versendet. Für die Überschreitungsprüfung addiert die App die Summe der
+offenen Rechnungen und den aktuellen Auftrag als mögliche neue Rechnung. Andere
+offene BMS-App- und ERP-Aufträge werden nicht mitgerechnet. Der Dialog zeigt
+beide Beträge und ihre Summe an; sie bestimmen nicht den manuell eingegebenen
+Kreditwunsch.
 
 Die Mail verwendet den Betreff `Kreditanfrage <Kundenname>` und enthält den
 Kreditwunsch, Kunden- und Mandantendaten, den Kunden-Außendienst, das bisherige

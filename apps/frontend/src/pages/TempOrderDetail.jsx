@@ -619,9 +619,17 @@ export default function TempOrderDetail() {
                   limit: creditLimitPreview.currentCreditLimit == null
                     ? t('credit_limit_missing_value')
                     : formatPrice(creditLimitPreview.currentCreditLimit),
-                  exposure: formatPrice(creditLimitPreview.projectedExposure),
                 })}
               </Alert>
+              <Typography variant="body2">
+                {t('credit_limit_open_invoices', { amount: formatPrice(creditLimitPreview.unpaidInvoicesAmount) })}
+              </Typography>
+              <Typography variant="body2">
+                {t('credit_limit_current_order_amount', { amount: formatPrice(creditLimitPreview.currentOrderAmount) })}
+              </Typography>
+              <Typography variant="body2" fontWeight={600}>
+                {t('credit_limit_projected_exposure', { amount: formatPrice(creditLimitPreview.projectedExposure) })}
+              </Typography>
               <Typography variant="body2">{t('credit_limit_prompt_order_still_sends')}</Typography>
               <TextField
                 type="number"

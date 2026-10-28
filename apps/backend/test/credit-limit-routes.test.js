@@ -7,6 +7,7 @@ let directoryError = false;
 let concurrentCustomerId = '';
 let order;
 let customer;
+let creditValues;
 let pickupRows;
 const pickupQueries = [];
 const position = {
@@ -32,6 +33,7 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
     ta_delivery_address: 'Street 1, City', ta_special_payment_text: '30 Tage',
   };
   customer = { customerId, interCompany, iban: 'DE123', insolvent: false };
+  creditValues = { amount: 0, unpaidInvoicesAmount: 0 };
 }
 
 async function sqlQuery(database, sql, params = []) {
@@ -69,7 +71,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryAccess: async (database, sql) => {
     if (sql.includes('AS warehouseName1')) { pickupQueries.push(sql); return pickupRows; }
     if (sql.includes('FROM [dbo].[tblKunden]')) return [customer];
-    if (sql.includes('tblKun_KreditLimit')) return [{ amount: 0, unpaidInvoicesAmount: 0 }];
+    if (sql.includes('tblKun_KreditLimit')) return [{ ...creditValues }];
     return [];
   },
   withSqlTransaction: async (database, work) => work({
@@ -137,6 +139,18 @@ test('actual preview retains credit prompt for external customers, missing flags
     assert.equal(response.data.projectedExposure, 200000);
     assert.equal(Object.hasOwn(response.data, 'requestedLimit'), false);
   }
+});
+
+test('actual preview compares unpaid invoices plus the current order and returns both amounts', async () => {
+  reset('external', false);
+  creditValues = { amount: 220000, unpaidInvoicesAmount: 25000 };
+  const response = await request('get', '/temp-orders/:id/credit-limit-preview');
+
+  assert.equal(response.data.shouldPrompt, true);
+  assert.equal(response.data.unpaidInvoicesAmount, 25000);
+  assert.equal(response.data.currentOrderAmount, 200000);
+  assert.equal(response.data.projectedExposure, 225000);
+  assert.equal(response.data.availableCreditAmount, 195000);
 });
 
 test('direct finalize POST completes internal orders without credit inserts, including returned orders', async () => {
