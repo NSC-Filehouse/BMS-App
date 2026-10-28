@@ -22,6 +22,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { getBePdfErrorMessage, getOrderPdfErrorMessage } from '../utils/orderPdf.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { isFcaIncoterm } from '../utils/incoterm.js';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { getMandant } from '../utils/mandant.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
@@ -430,8 +431,8 @@ export default function TempOrderDetail() {
             )}
             <InfoRow label={t('incoterm_label')} value={item.deliveryType || '-'} />
             <InfoRow label={t('packaging_type_label')} value={item.packagingType || '-'} />
-            <InfoRow label={t('delivery_address_label')} value={item.deliveryAddress || '-'} />
-            {item.deliveryAddressId !== null && item.deliveryAddressId !== undefined && (
+            <InfoRow label={t(isFcaIncoterm(item.deliveryType) ? 'pickup_address_label' : 'delivery_address_label')} value={item.deliveryAddress || '-'} />
+            {!isFcaIncoterm(item.deliveryType) && item.deliveryAddressId !== null && item.deliveryAddressId !== undefined && (
               <InfoRow label={t('delivery_address_id_label')} value={item.deliveryAddressId} />
             )}
             <InfoRow label={t('special_payment_condition')} value={item.specialPaymentCondition ? t('yes_label') : t('no_label')} />

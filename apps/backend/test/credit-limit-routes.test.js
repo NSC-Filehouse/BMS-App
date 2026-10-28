@@ -7,6 +7,8 @@ let directoryError = false;
 let concurrentCustomerId = '';
 let order;
 let customer;
+let pickupRows;
+const pickupQueries = [];
 const position = {
   id: 1, lineNo: 1, beNumber: '3-02-26-001-01', article: 'Article',
   amountInKg: 100000, price: 2000, costPrice: 1000, warehouse: 'L1',
@@ -21,6 +23,8 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   orderMailCalls.length = 0;
   directoryError = false;
   concurrentCustomerId = '';
+  pickupQueries.length = 0;
+  pickupRows = [{ warehouseId: 'L1', isStrecke: true, pickupName1: 'Factory', pickupStreet: 'Plant road 1', pickupPostalCode: '7190', pickupCity: 'Feluy', pickupCountry: 'B', countryCode: 'BE' }];
   order = {
     ta_id: 42, ta_company_id: companyId, ta_ClientReferenceId: customerId, ta_CreatedBy: 'NSC',
     ta_Status: orderStatus, ta_client_name: 'Customer', ta_client_address: 'Street 1, City',
@@ -63,6 +67,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryFx: async () => { throw new Error('Unexpected FX query'); },
   runSQLQuerySqlServer: sqlQuery,
   runSQLQueryAccess: async (database, sql) => {
+    if (sql.includes('AS warehouseName1')) { pickupQueries.push(sql); return pickupRows; }
     if (sql.includes('FROM [dbo].[tblKunden]')) return [customer];
     if (sql.includes('tblKun_KreditLimit')) return [{ amount: 0, unpaidInvoicesAmount: 0 }];
     return [];
@@ -161,5 +166,42 @@ test('concurrent customer change cannot reuse the previously loaded internal exe
     error.status === 409 && error.details.code === 'TEMP_ORDER_CUSTOMER_CHANGED'
   ));
   assert.equal(calls.some((call) => call.sql.includes('INSERT INTO')), false);
+  assert.equal(orderMailCalls.length, 0);
+});
+
+test('pickup preview groups the same planned address and refuses foreign source positions before reading them', async () => {
+  reset();
+  const response = await request('post', '/temp-orders/pickup-addresses', { positions: [
+    { beNumber: '3-02-26-001-01', warehouseId: 'L1' },
+    { beNumber: '3-02-26-002-01', warehouseId: 'L1' },
+  ] });
+  assert.equal(response.data.addresses.length, 1);
+  assert.equal(response.data.addresses[0].positions.length, 2);
+  assert.equal(response.data.conflict, false);
+  pickupQueries.length = 0;
+  await assert.rejects(request('post', '/temp-orders/pickup-addresses', { positions: [{ beNumber: '2-02-26-001-01', warehouseId: 'L1' }] }), error => error.status === 403);
+  assert.equal(pickupQueries.length, 0);
+});
+
+test('FCA finalization queues the persisted corrected pickup address in the mail', async () => {
+  reset();
+  order.ta_delivery_type = 'FCA / Free Carrier';
+  order.ta_delivery_address_id = null;
+  order.ta_delivery_address_changed = 1;
+  order.ta_delivery_address = 'Corrected factory pickup address';
+  const response = await request('post', '/temp-orders/:id/finalize');
+  assert.equal(response.data.orderStatus, 1);
+  assert.equal(pickupQueries.length, 1);
+  const insert = calls.find(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]'));
+  assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('Abholadresse: Corrected factory pickup address')));
+  assert.deepEqual(orderMailCalls, [100]);
+});
+
+test('legacy FCA orders with a customer delivery-address FK must be reviewed before any mail is queued', async () => {
+  reset();
+  order.ta_delivery_type = 'FCA';
+  order.ta_delivery_address_id = 51;
+  await assert.rejects(request('post', '/temp-orders/:id/finalize'), error => error.status === 409 && error.details.code === 'TEMP_ORDER_PICKUP_ADDRESS_REVIEW_REQUIRED');
+  assert.equal(calls.some(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]')), false);
   assert.equal(orderMailCalls.length, 0);
 });

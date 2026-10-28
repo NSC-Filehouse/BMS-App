@@ -46,6 +46,8 @@ import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
+import PickupAddressField from '../components/PickupAddressField.jsx';
+import { isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../utils/incoterm.js';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
@@ -404,6 +406,24 @@ export default function TempOrderForm() {
     deliveryAddressManual: false,
     deliveryAddressNewlyCreated: false,
   });
+  const isFca = isFcaIncoterm(form.incotermText);
+  const addressModeCacheRef = React.useRef({});
+  const [pickupAddressStatus, setPickupAddressStatus] = React.useState({ loading: false, conflict: false, error: '' });
+  const pickupPositionSignature = React.useMemo(() => JSON.stringify(positions.map((position) => ({
+    beNumber: String(position.beNumber || '').trim(), warehouseId: String(position.warehouseId || position.warehouse || '').trim(),
+  }))), [positions]);
+  const pickupContextKey = `${activeMandant}|${form.clientReferenceId}|${pickupPositionSignature}`;
+  const updatePickupAddress = React.useCallback((value) => {
+    setForm((previous) => isFcaIncoterm(previous.incotermText)
+      ? { ...normalizePickupFormAddress(previous), deliveryAddress: value } : previous);
+  }, []);
+  const suggestPickupAddress = React.useCallback((value, previousSuggestion) => {
+    setForm((previous) => applyPickupSuggestion(previous, value, previousSuggestion));
+  }, []);
+  React.useEffect(() => {
+    if (!isFca || (form.deliveryAddressManual && String(form.deliveryAddressId ?? '') === '' && !form.deliveryAddressNewlyCreated)) return;
+    setForm((previous) => isFcaIncoterm(previous.incotermText) ? normalizePickupFormAddress(previous) : previous);
+  }, [isFca, form.deliveryAddressManual, form.deliveryAddressId, form.deliveryAddressNewlyCreated]);
   newDeliveryAddressScopeRef.current = { customerId: String(form.clientReferenceId || '').trim(), mandant: activeMandant };
   React.useEffect(() => {
     if (newDeliveryAddressContext && !deliveryAddressContextMatches(newDeliveryAddressContext, newDeliveryAddressScopeRef.current)) {
@@ -796,7 +816,7 @@ export default function TempOrderForm() {
   };
 
   React.useEffect(() => {
-    if (form.deliveryAddressManual || !String(form.deliveryAddress || '').trim()) {
+    if (isFca || form.deliveryAddressManual || !String(form.deliveryAddress || '').trim()) {
       return;
     }
     const matchingAddress = resolveDeliveryAddressSelection(deliveryAddressOptions, form.deliveryAddressId, form.deliveryAddress);
@@ -806,10 +826,10 @@ export default function TempOrderForm() {
         || String(prev.deliveryAddressId || '') === String(matchingAddress.id || '')) return prev;
       return { ...prev, deliveryAddressId: matchingAddress.id };
     });
-  }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressId, form.deliveryAddressManual]);
+  }, [isFca, deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressId, form.deliveryAddressManual]);
 
   React.useEffect(() => {
-    if (form.deliveryAddressManual || String(form.deliveryAddress || '').trim() || deliveryAddressOptions.length !== 1) {
+    if (isFca || form.deliveryAddressManual || String(form.deliveryAddress || '').trim() || deliveryAddressOptions.length !== 1) {
       return;
     }
     const onlyAddress = deliveryAddressOptions[0];
@@ -822,7 +842,7 @@ export default function TempOrderForm() {
         deliveryAddressId: onlyAddress.id || '',
       };
     });
-  }, [deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressManual]);
+  }, [isFca, deliveryAddressOptions, form.deliveryAddress, form.deliveryAddressManual]);
 
   React.useEffect(() => {
     const dates = deliveryDateSignature ? deliveryDateSignature.split('|') : [];
@@ -836,7 +856,7 @@ export default function TempOrderForm() {
 
     const customerId = String(form.clientReferenceId || '').trim();
     const deliveryAddressId = String(form.deliveryAddressId || '').trim();
-    if (!customerId || form.deliveryAddressManual || !deliveryAddressId) {
+    if (isFca || !customerId || form.deliveryAddressManual || !deliveryAddressId) {
       setDeliveryDateStatuses(fallback);
       return undefined;
     }
@@ -889,7 +909,7 @@ export default function TempOrderForm() {
     });
 
     return () => { alive = false; };
-  }, [addPosDeliveryDate, addPosDeliveryDateAuto, addPosOpen, addPosValutaDateManual, deliveryDateSignature, form.clientReferenceId, form.deliveryAddressId, form.deliveryAddressManual]);
+  }, [isFca, addPosDeliveryDate, addPosDeliveryDateAuto, addPosOpen, addPosValutaDateManual, deliveryDateSignature, form.clientReferenceId, form.deliveryAddressId, form.deliveryAddressManual]);
 
   const loadCustomerRepresentatives = React.useCallback(async (clientReferenceId, preferredName = '', preferredId = '') => {
     const customerId = String(clientReferenceId || '').trim();
@@ -1705,7 +1725,11 @@ export default function TempOrderForm() {
     if (!packagingSelectionState.complete) messages.push(t('validation_original_packaging_required'));
     if (!effectivePackagingType) messages.push(t('validation_packaging_required'));
     if (!isEdit && !form.packagingTypeId) messages.push(t('validation_packaging_required'));
-    if (!String(form.deliveryAddress || '').trim()) messages.push(t('validation_delivery_address_required'));
+    if (!String(form.deliveryAddress || '').trim()) messages.push(t(isFca ? 'validation_pickup_address_required' : 'validation_delivery_address_required'));
+    if (isFca && pickupAddressStatus.loading) messages.push(t('pickup_address_loading'));
+    if (isFca && pickupAddressStatus.error) messages.push(t('pickup_address_load_error'));
+    if (isFca && pickupAddressStatus.conflict) messages.push(t('pickup_address_conflict'));
+    if (isFca && String(form.deliveryAddress || '').trim().length > 500) messages.push(t('pickup_address_too_long'));
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
@@ -1768,10 +1792,10 @@ export default function TempOrderForm() {
           ? null
           : Number(form.packagingTypeId),
         deliveryAddress: form.deliveryAddress || null,
-        deliveryAddressId: form.deliveryAddressId === '' || form.deliveryAddressId === null || form.deliveryAddressId === undefined
+        deliveryAddressId: isFca || form.deliveryAddressId === '' || form.deliveryAddressId === null || form.deliveryAddressId === undefined
           ? null
           : Number(form.deliveryAddressId),
-        deliveryAddressChanged: Boolean(form.deliveryAddressManual || form.deliveryAddressNewlyCreated),
+        deliveryAddressChanged: Boolean(isFca || form.deliveryAddressManual || form.deliveryAddressNewlyCreated),
       };
       if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
@@ -2074,11 +2098,9 @@ export default function TempOrderForm() {
               onChange={(e) => {
                 const selectedId = Number(e.target.value);
                 const selected = incotermOptions.find((z) => Number(z.id) === selectedId);
-                setForm((p) => ({
-                  ...p,
-                  incotermId: Number.isFinite(selectedId) ? selectedId : '',
-                  incotermText: selected?.text || '',
-                }));
+                const next = switchOrderIncoterm(form, selected, addressModeCacheRef.current, pickupContextKey);
+                addressModeCacheRef.current = next.cache;
+                setForm(next.form);
               }}
               fullWidth
             >
@@ -2115,7 +2137,11 @@ export default function TempOrderForm() {
                 {t('packaging_types_mixed_hint')}
               </Typography>
             )}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            {isFca ? <PickupAddressField
+              positionSignature={pickupPositionSignature} contextKey={pickupContextKey}
+              ready={initialDataReady && draftDecisionReady} value={form.deliveryAddress}
+              onChange={updatePickupAddress} onSuggest={suggestPickupAddress} onStatusChange={setPickupAddressStatus}
+            /> : <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
               {form.deliveryAddressManual ? (
                 <TextField
                   label={t('delivery_address_label')}
@@ -2183,7 +2209,7 @@ export default function TempOrderForm() {
               >
                 <AddCircleOutlineIcon fontSize="small" />
               </IconButton>
-            </Box>
+            </Box>}
             <Typography variant="caption" sx={{ color: 'text.secondary', pl: 0.5, mt: -0.35, overflowWrap: 'anywhere' }}>
               {t('current_payment_condition')}: {customerPaymentDefaultText || t('payment_select_placeholder')}
             </Typography>

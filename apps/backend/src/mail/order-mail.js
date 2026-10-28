@@ -5,6 +5,7 @@ const {
   MailServiceClientError,
 } = require('@filehouse/mailservice-client');
 const logger = require('../logger');
+const { isFcaIncoterm } = require('../incoterm');
 
 const ORDER_MAIL_SUBJECT = 'BMS-App es liegt ein neuer Auftrag vor';
 const TEST_MANDANT_ID = 0;
@@ -181,9 +182,11 @@ function formatOrderMailBody({
     line('Bemerkung', order?.comment),
     line('Incoterm', order?.deliveryType),
     line('Verpackungsart', order?.packagingType),
-    line('Lieferadresse', order?.deliveryAddress),
-    line('Lieferadress-ID', order?.deliveryAddressId),
-    line('Abweichende Lieferadresse', yesNo(order?.deliveryAddressChanged)),
+    line(isFcaIncoterm(order?.deliveryType) ? 'Abholadresse' : 'Lieferadresse', order?.deliveryAddress),
+    ...(!isFcaIncoterm(order?.deliveryType) ? [
+      line('Lieferadress-ID', order?.deliveryAddressId),
+      line('Abweichende Lieferadresse', yesNo(order?.deliveryAddressChanged)),
+    ] : []),
     line('Abweichende Zahlungsbedingung', yesNo(order?.specialPaymentCondition)),
     line('Zahlungsbedingung', order?.specialPaymentText),
     line(

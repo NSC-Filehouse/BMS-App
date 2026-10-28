@@ -38,6 +38,8 @@ const {
   loadTempOrderPlanning,
 } = require('../db/temp-order-planning');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
+const { isFcaIncoterm } = require('../incoterm');
+const { loadPickupAddresses, assertSinglePickupAddress, normalizePickupAddressInput } = require('../db/pickup-addresses');
 const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 const {
   getConfiguredBaseFilePath,
@@ -366,6 +368,20 @@ function assertPositionsBelongToActiveMandant(req, positions) {
       });
     }
   }
+}
+
+async function loadTempOrderPickupAddresses(req, positions) {
+  assertPositionsBelongToActiveMandant(req, positions);
+  return loadPickupAddresses({
+    positions,
+    resolveDatabase: (beNumber) => resolvePositionDatabase(req, beNumber),
+  });
+}
+
+async function applyFcaPickupAddress(req, body, orderLevel, positions) {
+  if (!isFcaIncoterm(orderLevel.incotermText)) return;
+  const summary = await loadTempOrderPickupAddresses(req, positions);
+  Object.assign(orderLevel, normalizePickupAddressInput(body, summary));
 }
 
 function normalizeTempOrderCompanyId(value) {
@@ -1169,6 +1185,23 @@ async function normalizeOrderLevelInput(
     throw createHttpError(400, 'Packaging type id is required.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
 
+  if (isFcaIncoterm(incoterm.text)) {
+    // Resolve from the source positions after they have been validated. Never
+    // fall back to the sales customer's address in pickup mode.
+    return {
+      specialPaymentCondition,
+      specialPaymentText: specialPayment?.text || null,
+      specialPaymentId: specialPayment?.id || null,
+      incotermText: incoterm.text,
+      incotermId: incoterm.id,
+      packagingType,
+      packagingTypeId,
+      deliveryAddress: null,
+      deliveryAddressId: null,
+      deliveryAddressChanged: 1,
+    };
+  }
+
   const deliveryAddressChanged = asBit(body?.deliveryAddressChanged ?? body?.deliveryAddressManual, 0);
   const requestedDeliveryAddressId = parseDeliveryAddressId(body?.deliveryAddressId);
   const submittedDeliveryAddress = asText(body?.deliveryAddress);
@@ -1338,6 +1371,15 @@ async function loadPositionSummariesForOrders(orderIds) {
   }
   return map;
 }
+
+router.post('/temp-orders/pickup-addresses', requireMandant, asyncHandler(async (req, res) => {
+  const positions = req.body?.positions;
+  if (!Array.isArray(positions) || !positions.length || positions.length > 500) {
+    throw createHttpError(400, 'Bitte 1 bis 500 Positionen für die Abholadresse angeben.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+  }
+  const data = await loadTempOrderPickupAddresses(req, positions);
+  sendEnvelope(res, { data, meta: { mandant: req.mandant } });
+}));
 
 router.get('/temp-orders/meta/by-be-number/:beNumber', requireMandant, asyncHandler(async (req, res) => {
   const beNumber = asText(req.params?.beNumber);
@@ -1974,6 +2016,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     });
   }
 
+  await applyFcaPickupAddress(req, body, orderLevel, normalizedPositions);
   await assertTempOrderPositionsAvailable({
     companyId,
     positions: normalizedPositions,
@@ -2471,6 +2514,15 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           position.packagingTypeChanged = packagingTypeChanged;
         }
       }
+      if (isFcaIncoterm(mappedOrder.deliveryType)) {
+        const summary = await loadTempOrderPickupAddresses(req, positions);
+        assertSinglePickupAddress(summary);
+        if (mappedOrder.deliveryAddressId !== null || !mappedOrder.deliveryAddressChanged) {
+          throw createHttpError(409, 'Bitte den FCA-Auftrag bearbeiten und die Abholadresse prüfen und speichern.', {
+            code: 'TEMP_ORDER_PICKUP_ADDRESS_REVIEW_REQUIRED',
+          });
+        }
+      }
       validateFinalOrder(mappedOrder, positions);
 
       const recipient = resolveOrderMailRecipient(companyId, config.orderMail);
@@ -2935,6 +2987,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       sourceDatabase,
     });
   }
+  await applyFcaPickupAddress(req, body, orderLevel, normalizedPositions);
   await assertTempOrderPositionsAvailable({
     companyId,
     excludeOrderId: id,
