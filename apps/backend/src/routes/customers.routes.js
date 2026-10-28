@@ -1689,6 +1689,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       SELECT
         [a].[agA_Artikelindex] AS articleIndex,
         [a].[agA_Artikelname] AS masterArticleName,
+        [a].[agA_Artikelname_Lieferant] AS supplierArticleName,
         [a].[agA_Artikelgruppe] AS articleGroupId,
         [g].[ag_Gruppenname] AS articleGroupName,
         [a].[agA_MFI] AS mfi,
@@ -1804,7 +1805,9 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     const mfi = textMfi !== null ? textMfi : (Number.isFinite(masterMfi) ? masterMfi : null);
     const child = {
       id: `${customerId}-procured-article-${group.key}-${groupEntry.articles.length + 1}`,
-      article,
+      article: toText(meta.masterArticleName) || article,
+      supplierArticleName: toText(meta.supplierArticleName),
+      lastPurchaseArticle: article,
       articleIndex: articleIndex || null,
       mfi,
       amount: Number.isFinite(amount) ? amount : null,

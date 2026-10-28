@@ -269,6 +269,8 @@ async function resolveLoadingAddress(database, body) {
 function normalizePositions(rawPositions) {
   const list = Array.isArray(rawPositions) ? rawPositions : [];
   if (!list.length) throw createHttpError(400, 'Die Bestellung benötigt mindestens eine Position.', { code: 'PURCHASE_POSITIONS_REQUIRED' });
+  const articleIds = new Set(list.map((item) => asText(item?.articleIndex || item?.article).toLocaleLowerCase('de-DE')));
+  if (articleIds.size > 1) throw createHttpError(400, 'Pro Bestellung ist nur eine Artikelart möglich.', { code: 'PURCHASE_SINGLE_ARTICLE_REQUIRED' });
   return list.map((item, index) => {
     const amount = asNumber(item?.amount, null);
     const price = asNumber(item?.purchasePrice, null);

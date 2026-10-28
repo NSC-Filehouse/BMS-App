@@ -10,7 +10,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
       { articleIndex: 'A', article: 'Alter Name', amount: 200, unit: 'kg', orderDate: '2025-01-01', purchasePricePerTonneEu: 700 },
       { articleIndex: 'B', article: 'Weiterer Artikel', amount: 300, unit: 'kg', orderDate: '2026-10-27', purchasePricePerTonneEu: 800 },
     ];
-    if (sql.includes('AS masterArticleName') && !sql.includes('FROM (')) return [];
+    if (sql.includes('AS masterArticleName') && !sql.includes('FROM (')) return [{ articleIndex: 'A', masterArticleName: 'Unsere Artikelbezeichnung', supplierArticleName: 'Lieferantenbezeichnung' }];
     if (sql.includes('AS [supplierOrder]')) {
       assert.match(sql, /\[supplierPosition\]\.\[beP_BEposID\] = \[availability\]\.\[Bestell-Pos\]/);
       assert.match(sql, /WHERE \[supplierOrder\]\.\[be_KdNr\] IN/);
@@ -35,7 +35,9 @@ test('deduplicates historical spellings before grouping and links the actual sup
   const articles = result.data.flatMap((group) => group.articles);
   assert.equal(articles.length, 2);
   const article = articles.find((item) => item.articleIndex === 'A');
-  assert.equal(article.article, 'Neuster Einkaufsname');
+  assert.equal(article.article, 'Unsere Artikelbezeichnung');
+  assert.equal(article.lastPurchaseArticle, 'Neuster Einkaufsname');
+  assert.equal(article.supplierArticleName, 'Lieferantenbezeichnung');
   assert.equal(article.amount, 300);
   assert.equal(article.purchasePricePerTonne, 900);
   assert.equal(article.availablePositions.length, 1);

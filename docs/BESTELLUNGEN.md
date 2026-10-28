@@ -1,16 +1,22 @@
 # Lieferantenartikel und Bestellungen
 
-Die Lieferantendetailansicht trennt „Artikel auf VL“ und „Weitere Artikel“.
-Artikel werden je Lieferant über den Artikelindex zusammengefasst; angezeigt
-wird der Name aus dessen neuester nicht stornierter Einkaufsposition.
-Bei gleichem Bestelldatum bestimmen Bestellindex und Positionskennung die
-Reihenfolge. VL-Ware wird über ihre tatsächliche Einkaufsposition dem
-Lieferanten zugeordnet. Ihre einzelnen BE-/Lagerpositionen bleiben auswählbar.
+Die Lieferantendetailansicht zeigt eine gemeinsame, alphabetisch sortierte Liste
+„Bereits eingekaufte Artikel“. Artikel werden je Lieferant über den Artikelindex
+zusammengefasst. In der Liste steht nur die eigene Artikelbezeichnung aus dem
+Artikelstamm; fehlt diese, dient der neueste nicht stornierte Einkauf als Ersatz.
+Die Lieferantenbezeichnung und eine abweichende letzte Einkaufsbezeichnung sind
+nur in der Artikeldetailansicht sichtbar. Aktuelle VL-Bestände werden klein
+unter dem jeweiligen Artikel mit Menge, Lager und aktueller BE aufgeführt.
 
-VL-Artikel gehen in den Verkaufswarenkorb für den ausgewählten Kunden. Ohne
-Kunden wird zuerst die bestehende Kundenauswahl durchlaufen. Weitere Artikel
-gehen in einen mandantenbezogenen Bestellwarenkorb für genau einen Lieferanten.
-Erneutes Hinzufügen überschreibt keine Eingaben und fasst keine Kopien zusammen.
+Die VL-Bestände gehen in den Verkaufswarenkorb für den ausgewählten Kunden.
+Ohne Kunden wird zuerst die bestehende Kundenauswahl durchlaufen. Über das
+Warenkorbsymbol am Artikel wird eine neue Bestellung angelegt. Es gibt keine
+Mehrfachauswahl. Pro Bestellung ist nur eine Artikelart (Artikelindex) zulässig;
+mehrere unabhängig bearbeitbare Positionen derselben Artikelart bleiben möglich.
+Diese Regel wird im Warenkorb und serverseitig bei Anlage, Bearbeitung und
+Finalisierung geprüft. Bestehende gemischte Entwürfe müssen vor dem Speichern
+auf eine Artikelart reduziert werden. Erneutes Hinzufügen desselben Artikels
+überschreibt keine Eingaben und fasst keine Kopien zusammen.
 
 ## Kopf und Positionen
 
@@ -34,6 +40,12 @@ Liefertermin sind beim Speichern erforderlich. Historischer EK und historischer
 Liefertermin werden separat aus derselben letzten Einkaufsposition angezeigt.
 Die Nettosumme berechnet sich als Summe aus Menge in kg / 1.000 * EK je Tonne.
 Bei fehlenden Preisen wird die Summe als unvollständig angezeigt.
+Pflichtfelder tragen ein rotes Sternchen. Fehlende Eingaben werden erst nach
+einem Speicherversuch rot markiert und mit „Pflichtfelder fehlen“ gemeldet.
+Ältere Browserwarenkörbe ohne Vorbelegungsversion werden einmal auf leere
+EK-/Termin-/Freitextfelder und die Verpackungs-Standardmenge umgestellt.
+Danach bleiben manuelle Eingaben erhalten. Bei einer unklaren Speicherantwort
+bleibt der eingefrorene ursprüngliche Inhalt vollständig unverändert.
 
 Der Ladeort ist wie die Lieferadresse beim Auftrag ein Kopffeld. Nur für alle
 ausgewählten Artikel historisch belegte Orte dieses Lieferanten sind gültig.

@@ -58,12 +58,15 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
 
 async function loadLatestPurchase(database, supplierId, articleIndex) {
   const rows = await runSQLQueryAccess(database, `
-    SELECT TOP 1 [p].[beP_Artikelindex] AS articleIndex, [p].[beP_Artikel] AS article,
+    SELECT TOP 1 [p].[beP_Artikelindex] AS articleIndex,
+      COALESCE(NULLIF(LTRIM(RTRIM([a].[agA_Artikelname])), N''), [p].[beP_Artikel]) AS article,
+      [a].[agA_Artikelname_Lieferant] AS supplierArticleName, [p].[beP_Artikel] AS lastPurchaseArticle,
       [b].[be_Verpackung] AS originalPackagingType,
       COALESCE([p].[beP_EK_EU], [p].[beP_EK_DM]) AS lastPurchasePrice,
       [p].[beP_Lieferdatum] AS lastDeliveryDate, [b].[be_Bestelldatum] AS lastOrderDate,
       [b].[be_AdresseAbhol] AS loadingLocationText
     FROM [dbo].[tblBest_Position] [p] JOIN [dbo].[tblBestellung] [b] ON [b].[be_Bestellindex] = [p].[beP_Bestellindex]
+    LEFT JOIN [dbo].[tblArt_Artikel] [a] ON [a].[agA_Artikelindex] = [p].[beP_Artikelindex]
     WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? AND LTRIM(RTRIM(COALESCE([p].[beP_Artikelindex], ''))) = ?
       AND COALESCE([p].[beP_Storno], 0) <> 1
     ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC, [p].[beP_BEposID] DESC`, [supplierId, articleIndex]);

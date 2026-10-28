@@ -128,6 +128,13 @@ test('blank EK is rejected rather than silently stored as zero', () => {
   assert.equal(f.normalizePositions(input)[0].amount, 25000);
 });
 
+test('allows copies of one article but rejects mixing article types in every purchase payload', () => {
+  const f = fixture();
+  const line = body().positions[0];
+  assert.equal(f.normalizePositions([line, { ...line, amount: 10000 }]).length, 2);
+  assert.throws(() => f.normalizePositions([line, { ...line, articleIndex: 'B' }]), (error) => error.details.code === 'PURCHASE_SINGLE_ARTICLE_REQUIRED');
+});
+
 test('edit keeps saved payment terms and authoritative packaging snapshots for an independent copy', async () => {
   const f = fixture();
   const created = (await f.request(body())).data;

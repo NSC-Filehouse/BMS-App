@@ -4,7 +4,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import { apiRequest } from '../api/client.js';
-import { packagingKey, purchaseMissingFields, createPurchaseLineId } from '../utils/purchaseCart.js';
+import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('.') : '–';
@@ -21,6 +21,8 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const [locationsLoading, setLocationsLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [locationError, setLocationError] = React.useState('');
+  const [attempted, setAttempted] = React.useState(false);
+  const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
   const update = React.useCallback((fn) => setOrder((previous) => typeof fn === 'function' ? fn(previous) : { ...previous, ...fn }), []);
   React.useEffect(() => { onChange?.(order); }, [order, onChange]);
@@ -72,13 +74,29 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
     Promise.all(ids.map(async (id) => {
       const response = await apiRequest(`/customers/${encodeURIComponent(order.supplierId)}/procured-articles/${encodeURIComponent(id)}/purchase-defaults`);
       initialHistory[id] = response.data.defaults;
-    })).then(() => alive && setHistory(initialHistory)).catch((e) => alive && setLocationError(e.message));
+    })).then(() => {
+      if (!alive) return;
+      setHistory(initialHistory);
+      if (isNew && !locked) update((previous) => ({ ...previous, positions: previous.positions.map((p) => ({
+        ...p, article: initialHistory[p.articleIndex]?.article || p.article,
+      })) }));
+    }).catch((e) => alive && setLocationError(e.message));
     return () => { alive = false; };
   }, [isNew, locationSignature, order.supplierId, locked, update]);
 
   const patchPosition = (lineId, patch) => update((previous) => ({ ...previous, positions: previous.positions.map((p) => p.lineId === lineId ? { ...p, ...patch } : p) }));
   const missing = purchaseMissingFields(order);
+  const fieldErrors = purchaseFieldErrors(order);
   const disabled = saving || locked;
+  const submit = () => {
+    if (locked) { onSave(order); return; }
+    setAttempted(true);
+    if (missing.length) {
+      requestAnimationFrame(() => editorRef.current?.querySelector('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    onSave(order);
+  };
   const copy = (lineId) => update((previous) => {
     const positions = [...previous.positions];
     const index = positions.findIndex((p) => p.lineId === lineId);
@@ -88,24 +106,23 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
     return { ...previous, positions };
   });
 
-  return <Box sx={{ display: 'grid', gap: 1.5 }}>
+  return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
     {error && <Alert severity="error">{error}</Alert>}
     {locationError && <Alert severity="error">{locationError}</Alert>}
     {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && <Alert severity="warning">Für diese Artikel gibt es keinen gemeinsamen gespeicherten Ladeort. Bitte getrennte Bestellungen anlegen.</Alert>}
-    {missing.length > 0 && <Alert severity="info">Pflichtfelder fehlen: {missing.join(', ')}.</Alert>}
     <Card><CardContent sx={{ display: 'grid', gap: 1 }}>
       <Typography variant="h6">{order.supplierName || order.supplierId}</Typography>
       <TextField label="Ansprechpartner" size="small" value={order.supplierContact || ''} onChange={(e) => update({ supplierContact: e.target.value })} disabled={disabled || loading} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
         <TextField label="Zahlungsziel" size="small" value={order.paymentConditionText || ''} InputProps={{ readOnly: true }} />
-        <TextField label="Incoterm" required select size="small" value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
+        <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        <TextField label="Ladeort" required select size="small" value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => update({ loadingLocationId: '', loadingLocationText: e.target.value })}>
+        <TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => update({ loadingLocationId: '', loadingLocationText: e.target.value })}>
           <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text}>{p.text}</MenuItem>)}
         </TextField>
-        <TextField label="Verpackungsart" required select size="small" value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
+        <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
             positions: previous.positions.map((p) => isNew && !p.amountTouched ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
@@ -114,29 +131,31 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
       <TextField label="Sonstiges" multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     <PurchaseOrderSummary positions={order.positions} />
-    {order.positions.map((p) => {
+    {order.positions.map((p, index) => {
       const last = history[p.articleIndex] || p;
-      return <Card key={p.lineId} variant="outlined"><CardContent sx={{ display: 'grid', gap: 1 }}>
+      const errors = fieldErrors.positions[index];
+      return <Card key={p.lineId} variant="outlined" sx={attempted && fieldErrors.articleType ? { borderColor: 'error.main' } : undefined}><CardContent sx={{ display: 'grid', gap: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Typography variant="subtitle1" sx={{ flex: 1 }}>{p.article}</Typography>
-          <IconButton size="small" aria-label="Position kopieren" disabled={disabled} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>
+          <IconButton size="small" color="primary" aria-label="Position kopieren" disabled={disabled} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>
           <IconButton size="small" color="error" aria-label="Position entfernen" disabled={disabled} onClick={() => update((previous) => ({ ...previous, positions: previous.positions.filter((position) => position.lineId !== p.lineId) }))}><DeleteOutlineIcon /></IconButton>
         </Box>
         <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex} · Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
-          <TextField label="Menge (kg)" required type="number" size="small" value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
+          <TextField label="Menge (kg)" required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter EK: {priceText(last.lastPurchasePrice)}</Typography>
-            <TextField fullWidth label="EK (€/t)" required type="number" size="small" value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
+            <TextField fullWidth label="EK (€/t)" required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter Liefertermin: {formatDate(last.lastDeliveryDate)}</Typography>
-            <TextField fullWidth label="Liefertermin" required type="date" size="small" value={String(p.requestedDeliveryDate || '').slice(0, 10)} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
+            <TextField fullWidth label="Liefertermin" required type="date" size="small" error={attempted && errors.requestedDeliveryDate} value={String(p.requestedDeliveryDate || '').slice(0, 10)} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
         </Box>
         <TextField label="Reserviert für" size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
         <TextField label="Positionshinweis" size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
       </CardContent></Card>;
     })}
+    {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? 'Pro Bestellung ist nur eine Artikelart möglich.' : 'Pflichtfelder fehlen.'}</Alert>}
     <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
       <Button variant="outlined" onClick={onContinue} disabled={saving || locked}>Weiter einkaufen</Button>
-      <Button variant="contained" onClick={() => onSave(order)} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError) || !locations.length || missing.length > 0))}>{saving ? <CircularProgress size={20} /> : locked ? 'Speichern erneut prüfen' : isNew ? 'Bestellentwurf speichern' : 'Speichern'}</Button>
+      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? 'Speichern erneut prüfen' : isNew ? 'Bestellentwurf speichern' : 'Speichern'}</Button>
     </Box>
   </Box>;
 }

@@ -12,7 +12,19 @@ function key() {
 function read() {
   try {
     const value = JSON.parse(localStorage.getItem(key()) || '[]');
-    return Array.isArray(value) ? value : [];
+    if (!Array.isArray(value)) return [];
+    const context = JSON.parse(localStorage.getItem(contextKey()) || '{}') || {};
+    // An uncertain save must always replay its original payload unchanged.
+    if (context.pendingPayload || value.every((item) => item.defaultsVersion === 2)) return value;
+    const next = value.map((item) => item.defaultsVersion === 2 ? item : {
+      ...item, defaultsVersion: 2,
+      originalPackagingType: item.originalPackagingType || item.packagingType || '',
+      amount: defaultPurchaseAmount(context.header?.packagingType || item.originalPackagingType || item.packagingType),
+      amountTouched: false, purchasePrice: '', requestedDeliveryDate: '', reservedFor: '', comment: '',
+    });
+    localStorage.setItem(key(), JSON.stringify(next));
+    if (context.header) localStorage.setItem(contextKey(), JSON.stringify({ ...context, header: { ...context.header, comment: '' } }));
+    return next;
   } catch {
     return [];
   }
@@ -66,7 +78,10 @@ export function addPurchaseCartItems(items, returnTo = null) {
   if (!supplier || incoming.some((item) => supplierKey(item) !== supplier)) {
     throw new Error('Der Bestellwarenkorb kann nur Artikel eines Lieferanten enthalten.');
   }
-  if (!current.length && context.header?.supplierId && supplierKey(context.header) !== supplier) {
+  if (new Set([...current, ...incoming].map(purchaseArticleKey)).size > 1) {
+    throw new Error('Pro Bestellung ist nur eine Artikelart möglich. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
+  }
+  if (!current.length && (context.header || context.clientRequestId)) {
     savePurchaseCartContext({ header: null, clientRequestId: null });
   }
   const known = new Set(current.map(purchaseArticleKey));
@@ -76,8 +91,8 @@ export function addPurchaseCartItems(items, returnTo = null) {
     if (known.has(id)) return false;
     known.add(id);
     return true;
-  }).map((item) => ({ ...item, lineId: newId(), supplierId: String(item.supplierId),
-    amount: packagingKey(chosenPackaging || item.originalPackagingType) === 'silo' ? 25000 : 24750,
+  }).map((item) => ({ ...item, lineId: newId(), defaultsVersion: 2, supplierId: String(item.supplierId),
+    amount: defaultPurchaseAmount(chosenPackaging || item.originalPackagingType),
     amountTouched: false, unit: 'kg', currency: 'EUR', purchasePrice: '', requestedDeliveryDate: '', reservedFor: '', comment: '',
   }));
   const next = [...current, ...additions];
@@ -126,6 +141,25 @@ export function packagingKey(value) {
   return text;
 }
 
+export function defaultPurchaseAmount(packaging) { return packagingKey(packaging) === 'silo' ? 25000 : 24750; }
+
+export function purchaseFieldErrors(order) {
+  return {
+    packagingTypeId: !order.packagingTypeId,
+    deliveryTermId: !order.deliveryTermId,
+    loadingLocationText: !String(order.loadingLocationText || '').trim(),
+    articleType: new Set((order.positions || []).map(purchaseArticleKey)).size > 1,
+    positions: (order.positions || []).map((item) => {
+      const date = String(item.requestedDeliveryDate || '').slice(0, 10);
+      return {
+        amount: !Number.isFinite(Number(item.amount)) || !(Number(item.amount) > 0),
+        purchasePrice: String(item.purchasePrice ?? '').trim() === '' || !Number.isFinite(Number(item.purchasePrice)) || Number(item.purchasePrice) < 0,
+        requestedDeliveryDate: !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date,
+      };
+    }),
+  };
+}
+
 export function purchaseTotals(items) {
   const positions = Array.isArray(items) ? items : [];
   const complete = positions.every((item) => String(item.purchasePrice ?? '').trim() !== '' && Number.isFinite(Number(item.purchasePrice)) && Number(item.purchasePrice) >= 0 && Number.isFinite(Number(item.amount)) && Number(item.amount) > 0);
@@ -134,16 +168,17 @@ export function purchaseTotals(items) {
 }
 
 export function purchaseMissingFields(order) {
+  const errors = purchaseFieldErrors(order);
   const missing = [];
-  if (!order.packagingTypeId) missing.push('Verpackungsart');
-  if (!order.deliveryTermId) missing.push('Incoterm');
-  if (!String(order.loadingLocationText || '').trim()) missing.push('Ladeort');
+  if (errors.packagingTypeId) missing.push('Verpackungsart');
+  if (errors.deliveryTermId) missing.push('Incoterm');
+  if (errors.loadingLocationText) missing.push('Ladeort');
+  if (errors.articleType) missing.push('Nur eine Artikelart pro Bestellung');
   if (!order.positions?.length) missing.push('Positionen');
-  (order.positions || []).forEach((item, index) => {
-    if (!Number.isFinite(Number(item.amount)) || !(Number(item.amount) > 0)) missing.push(`Menge Position ${index + 1}`);
-    if (String(item.purchasePrice ?? '').trim() === '' || !Number.isFinite(Number(item.purchasePrice)) || Number(item.purchasePrice) < 0) missing.push(`EK Position ${index + 1}`);
-    const date = String(item.requestedDeliveryDate || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) missing.push(`Liefertermin Position ${index + 1}`);
+  errors.positions.forEach((item, index) => {
+    if (item.amount) missing.push(`Menge Position ${index + 1}`);
+    if (item.purchasePrice) missing.push(`EK Position ${index + 1}`);
+    if (item.requestedDeliveryDate) missing.push(`Liefertermin Position ${index + 1}`);
   });
   return missing;
 }
