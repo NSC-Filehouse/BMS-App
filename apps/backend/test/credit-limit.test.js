@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   calculateAvailableCredit,
-  calculateCreditLimitRequest,
+  calculateCreditExposure,
   calculateTempOrderValue,
   formatCreditLimitRequestBody,
   hasBankDetails,
@@ -11,7 +11,7 @@ const {
   isCreditLimitExceeded,
   isWithinCooldown,
   mapCustomerIdentity,
-  roundCreditLimit,
+  parseCreditLimitRequestAmount,
 } = require('../src/credit-limit');
 const config = require('../src/config');
 const { queueCreditLimitMails } = require('../src/db/credit-limit-request-outbox');
@@ -61,15 +61,17 @@ test('calculates temp-order value from kg and EUR per tonne', () => {
   ]), 178000);
 });
 
-test('rounds requested credit limits using the graduated business steps', () => {
-  assert.equal(roundCreditLimit(323000), 350000);
-  assert.equal(roundCreditLimit(951), 1000);
-  assert.equal(roundCreditLimit(10001), 15000);
-  assert.equal(roundCreditLimit(100001), 150000);
+test('accepts a manually entered credit request amount to the cent without step rounding', () => {
+  assert.equal(parseCreditLimitRequestAmount('323137.45'), 323137.45);
+  assert.equal(parseCreditLimitRequestAmount('323137,45'), 323137.45);
+  assert.equal(parseCreditLimitRequestAmount('951'), 951);
+  assert.equal(parseCreditLimitRequestAmount('0'), null);
+  assert.equal(parseCreditLimitRequestAmount('-100'), null);
+  assert.equal(parseCreditLimitRequestAmount('10.001'), null);
 });
 
-test('keeps the existing proposed-limit sum and rounding calculation', () => {
-  assert.deepEqual(calculateCreditLimitRequest({
+test('calculates exposure separately from the manually entered requested limit', () => {
+  assert.deepEqual(calculateCreditExposure({
     currentOrderAmount: 323000,
     openTempOrders: [{ amount: 1000 }],
     openOrders: [{ amount: 2000 }],
@@ -78,7 +80,6 @@ test('keeps the existing proposed-limit sum and rounding calculation', () => {
     openTempOrdersAmount: 1000,
     openOrdersAmount: 2000,
     exposureAmount: 326000,
-    requestedLimit: 350000,
   });
 });
 
@@ -124,7 +125,7 @@ test('credit-limit mail body follows the requested customer and limit layout', (
       country: 'DE',
       vatId: '',
     },
-    requestedLimit: 350000,
+    requestedLimit: 323137.45,
     currentCreditLimit: 25000,
     annotation: 'Bitte zeitnah prüfen.',
     salesRepresentative: {
@@ -133,7 +134,7 @@ test('credit-limit mail body follows the requested customer and limit layout', (
     },
   });
 
-  assert.match(body, /Bitte um Prüfung und Einrichtung eines Kreditlimits\. 350\.000,00 EUR/);
+  assert.match(body, /Bitte um Prüfung und Einrichtung eines Kreditlimits\. 323\.137,45 EUR/);
   assert.match(body, /Kundennummer: 96111/);
   assert.match(body, /UNIWELL Rohrsysteme GmbH & Co\. KG/);
   assert.match(body, /Siegelfelderstraße 1/);
@@ -142,10 +143,10 @@ test('credit-limit mail body follows the requested customer and limit layout', (
   assert.match(body, /USt-IdNr\.: Nicht vorhanden!/);
   assert.match(body, /Mandant: Frupack \(FRU\)/);
   assert.match(body, /Außendienst: Daniel Behrens \(DBE\)/);
-  assert.match(body, /Kreditwunsch: 350\.000,00 EUR/);
+  assert.match(body, /Kreditwunsch: 323\.137,45 EUR/);
   assert.match(body, /Bisheriges Kreditlimit: 25\.000,00 EUR/);
   assert.match(body, /Anmerkungen: Bitte zeitnah prüfen\./);
-  assert.match(body, /350\.000,00 EUR/);
+  assert.match(body, /323\.137,45 EUR/);
   assert.doesNotMatch(body, /Kreditentscheidungshistorie/);
   assert.doesNotMatch(body, /Mandant-ID|Auslösender BMS-App-Auftrag/);
 });
@@ -202,6 +203,7 @@ test('queues a credit request only after explicit consent and does not apply req
       openTempOrders: [],
       creditContext,
       sendCreditRequest: true,
+      creditLimitAmount: 323137.45,
       annotation: 'Bitte zeitnah prüfen.',
       primaryAdEmail: '',
       mandantName: 'Mandant GmbH',
@@ -219,7 +221,7 @@ test('queues a credit request only after explicit consent and does not apply req
   try {
     const first = await runQueue([]);
     assert.equal(first.result.creditRequest.status, 'queued');
-    assert.equal(first.result.creditRequest.requestedLimit, 350000);
+    assert.equal(first.result.creditRequest.requestedLimit, 323137.45);
     const insert = first.calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('CreditLimitMailOutbox'));
     assert.equal(insert.params[3], 'credit_limit_request_user_confirmed');
     assert.equal(insert.params[7], 'auftragssteller@example.com');
@@ -265,6 +267,25 @@ test('queues a credit request only after explicit consent and does not apply req
     });
     assert.equal(noConsent.creditRequest.status, 'not_applicable');
     assert.deepEqual(noConsent.outboxIds, []);
+
+    const missingAmount = await queueCreditLimitMails({
+      query: async (sql) => ({ rows: sql.includes('SELECT TOP 1') ? [] : [{ id: 1 }] }),
+      companyId: 7,
+      customerId: 'K-1',
+      orderId: 42,
+      currentOrderAmount: 323000,
+      openTempOrders: [],
+      creditContext,
+      sendCreditRequest: true,
+      primaryAdEmail: '',
+      mandantName: 'Mandant GmbH',
+      nowIso,
+      creditTo: ['Kimaz@mlplastics.de'],
+      creditCc: [],
+      testRecipient: '',
+    });
+    assert.equal(missingAmount.creditRequest.status, 'amount_required');
+    assert.deepEqual(missingAmount.outboxIds, []);
 
     const insolvent = await queueCreditLimitMails({
       query: async () => { throw new Error('insolvent customers must not query the request state'); },

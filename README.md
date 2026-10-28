@@ -392,12 +392,13 @@ Vor dem ersten Einsatz muss zusätzlich die idempotente Migration
 `apps/backend/sql/add_credit_limit_request.sql` mit einem DDL-berechtigten
 SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden. Beim Klick auf
 „An BMS senden“ prüft die App das Kreditlimit und zeigt bei Überschreitung den
-berechneten Kreditwunsch an. Der Benutzer entscheidet ausdrücklich, ob eine
-zusätzliche Kreditlimit-Mail gesendet wird; die Auftragsmail wird in beiden
-Fällen versendet. Der bestehende Vorschlag addiert den aktuellen Auftrag,
-offene BMS-App-Aufträge und offene ERP-Aufträge und rundet in den vorhandenen
-50-, 500-, 5.000- oder 50.000-EUR-Schritten auf. Offene Rechnungen fließen in
-die Überschreitungsprüfung ein, ändern aber den bestehenden Kreditwunsch nicht.
+Dialog zur manuellen Eingabe des gewünschten Kreditlimits. Der Betrag wird
+weder aus der erwarteten Auslastung abgeleitet noch auf feste Schritte gerundet.
+Der Außendienst entscheidet ausdrücklich, ob die zusätzliche Kreditlimit-Mail
+mit dem eingegebenen Betrag gesendet wird; die Auftragsmail wird in beiden
+Fällen versendet. Für die Überschreitungsprüfung addiert die App den aktuellen
+Auftrag sowie offene BMS-App- und ERP-Aufträge. Offene Rechnungen fließen in
+diese Prüfung ein, bestimmen aber nicht den manuell eingegebenen Kreditwunsch.
 
 Die Mail verwendet den Betreff `Kreditanfrage <Kundenname>` und enthält den
 Kreditwunsch, Kunden- und Mandantendaten, den Kunden-Außendienst, das bisherige

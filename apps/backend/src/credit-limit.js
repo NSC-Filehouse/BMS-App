@@ -62,19 +62,18 @@ function calculateTempOrderValue(positions) {
   }, 0);
 }
 
-function roundCreditLimit(value) {
-  const amount = Math.max(0, Number(value) || 0);
-  const step = amount < 1000
-    ? 50
-    : amount < 10000
-      ? 500
-      : amount < 100000
-        ? 5000
-        : 50000;
-  return Math.ceil(amount / step) * step;
+function parseCreditLimitRequestAmount(value) {
+  const text = normalizeText(value);
+  const match = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(text);
+  if (!match) return null;
+
+  const wholeAmount = Number(match[1]);
+  const cents = wholeAmount * 100 + Number((match[2] || '').padEnd(2, '0'));
+  if (!Number.isSafeInteger(cents) || cents <= 0) return null;
+  return cents / 100;
 }
 
-function calculateCreditLimitRequest({ currentOrderAmount, openTempOrders = [], openOrders = [] }) {
+function calculateCreditExposure({ currentOrderAmount, openTempOrders = [], openOrders = [] }) {
   const openTempOrdersAmount = (Array.isArray(openTempOrders) ? openTempOrders : [])
     .reduce((sum, item) => sum + toAmount(item?.amount), 0);
   const openOrdersAmount = (Array.isArray(openOrders) ? openOrders : [])
@@ -85,7 +84,6 @@ function calculateCreditLimitRequest({ currentOrderAmount, openTempOrders = [], 
     openTempOrdersAmount,
     openOrdersAmount,
     exposureAmount,
-    requestedLimit: roundCreditLimit(exposureAmount),
   };
 }
 
@@ -345,7 +343,7 @@ function formatBankDetailsReminderBody({ mandantName, customer, orderId, missing
 
 module.exports = {
   calculateAvailableCredit,
-  calculateCreditLimitRequest,
+  calculateCreditExposure,
   calculateTempOrderValue,
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
@@ -359,6 +357,6 @@ module.exports = {
   mapCustomerIdentity,
   normalizeEmail,
   normalizeText,
-  roundCreditLimit,
+  parseCreditLimitRequestAmount,
   uniqueCaseInsensitive,
 };

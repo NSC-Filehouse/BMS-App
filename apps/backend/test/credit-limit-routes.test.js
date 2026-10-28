@@ -134,6 +134,8 @@ test('actual preview retains credit prompt for external customers, missing flags
     directoryError = failure;
     const response = await request('get', '/temp-orders/:id/credit-limit-preview');
     assert.equal(response.data.shouldPrompt, true);
+    assert.equal(response.data.projectedExposure, 200000);
+    assert.equal(Object.hasOwn(response.data, 'requestedLimit'), false);
   }
 });
 
@@ -150,12 +152,16 @@ test('direct finalize POST completes internal orders without credit inserts, inc
 
 test('direct finalize POST still queues credit for an external customer', async () => {
   reset('external', false);
-  const response = await request('post', '/temp-orders/:id/finalize', { sendCreditLimitRequest: true });
+  const response = await request('post', '/temp-orders/:id/finalize', {
+    sendCreditLimitRequest: true,
+    creditLimitAmount: 245000.75,
+  });
   assert.equal(response.meta.creditLimitMail.creditRequest.status, 'queued');
   const creditInsert = calls.find((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]'));
   assert.ok(creditInsert);
   assert.equal(creditInsert.params[7], 'ad@example.com');
   assert.equal(creditInsert.params[8], 'Test AD');
+  assert.match(creditInsert.params[10], /Kreditwunsch: 245\.000,75 EUR/);
   assert.deepEqual(orderMailCalls, [100]);
 });
 

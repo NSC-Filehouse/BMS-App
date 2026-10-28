@@ -7,12 +7,13 @@ const { getUserIdentityByShortCode } = require('./users');
 const {
   formatBankDetailsReminderBody,
   formatCreditLimitRequestBody,
-  calculateCreditLimitRequest,
+  calculateCreditExposure,
   hasBankDetails,
   isCreditLimitRequestRequired,
   mapCustomerIdentity,
   isEmailAddress,
   isWithinCooldown,
+  parseCreditLimitRequestAmount,
   uniqueCaseInsensitive,
 } = require('../credit-limit');
 const {
@@ -210,6 +211,7 @@ async function queueCreditLimitMails({
   mandantShortName,
   salesRepresentative,
   sendCreditRequest = false,
+  creditLimitAmount,
   annotation = '',
   nowIso,
   creditTo,
@@ -241,17 +243,22 @@ async function queueCreditLimitMails({
   const cooldownMonths = config.creditLimitMail.cooldownMonths;
   const bankReminderDue = bankReminderApplicable
     && !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
-  const creditRequestValues = calculateCreditLimitRequest({
+  const creditExposure = calculateCreditExposure({
     currentOrderAmount,
     openTempOrders,
     openOrders: creditContext.openOrders,
   });
+  const requestedLimit = parseCreditLimitRequestAmount(creditLimitAmount);
+  const creditRequestRequired = isCreditLimitRequestRequired(creditContext, creditExposure.exposureAmount);
   const creditRequestDue = Boolean(sendCreditRequest)
-    && isCreditLimitRequestRequired(creditContext, creditRequestValues.exposureAmount);
+    && requestedLimit !== null
+    && creditRequestRequired;
   if (isOwnSalesMandantCustomer(creditContext.customer)) {
     result.creditRequest = { status: 'suppressed_internal' };
-  } else if (sendCreditRequest && !creditRequestDue) {
+  } else if (sendCreditRequest && !creditRequestRequired) {
     result.creditRequest = { status: 'not_required' };
+  } else if (sendCreditRequest && requestedLimit === null) {
+    result.creditRequest = { status: 'amount_required' };
   }
   const configuredTestRecipient = asText(testRecipient);
   const effectiveCreditTo = configuredTestRecipient && isEmailAddress(configuredTestRecipient)
@@ -273,7 +280,7 @@ async function queueCreditLimitMails({
   }
 
   if (creditRequestDue) {
-    const { exposureAmount, requestedLimit } = creditRequestValues;
+    const { exposureAmount } = creditExposure;
     const clientMessageId = `bms-app:credit-limit:${stablePart(companyId)}:${stablePart(customerId)}:${stablePart(orderId)}`;
     const body = formatCreditLimitRequestBody({
       mandantName,

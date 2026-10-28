@@ -59,6 +59,13 @@ function formatPrice(value) {
   return String(value);
 }
 
+function isValidCreditLimitRequestAmount(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(text)) return false;
+  const amount = Number(text.replace(',', '.'));
+  return Number.isFinite(amount) && amount > 0;
+}
+
 function InfoRow({ label, value }) {
   return (
     <Box
@@ -106,6 +113,7 @@ export default function TempOrderDetail() {
   const [finalizing, setFinalizing] = React.useState(false);
   const [checkingCreditLimit, setCheckingCreditLimit] = React.useState(false);
   const [creditLimitPreview, setCreditLimitPreview] = React.useState(null);
+  const [creditLimitRequestAmount, setCreditLimitRequestAmount] = React.useState('');
   const [creditLimitAnnotation, setCreditLimitAnnotation] = React.useState('');
   const [creditLimitCheckError, setCreditLimitCheckError] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
@@ -269,6 +277,7 @@ export default function TempOrderDetail() {
   const openFinalizeDialog = async () => {
     setCheckingCreditLimit(true);
     setCreditLimitPreview(null);
+    setCreditLimitRequestAmount('');
     setCreditLimitAnnotation('');
     setCreditLimitCheckError('');
     try {
@@ -283,13 +292,18 @@ export default function TempOrderDetail() {
   };
 
   const finalizeOrder = async (sendCreditLimitRequest = false) => {
+    const shouldSendCreditLimitRequest = Boolean(sendCreditLimitRequest && creditLimitPreview?.shouldPrompt);
+    if (shouldSendCreditLimitRequest && !isValidCreditLimitRequestAmount(creditLimitRequestAmount)) return;
     try {
       setFinalizing(true);
       setError('');
       const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/finalize`, {
         method: 'POST',
         body: JSON.stringify({
-          sendCreditLimitRequest: Boolean(sendCreditLimitRequest && creditLimitPreview?.shouldPrompt),
+          sendCreditLimitRequest: shouldSendCreditLimitRequest,
+          creditLimitAmount: shouldSendCreditLimitRequest
+            ? Number(String(creditLimitRequestAmount).replace(',', '.'))
+            : null,
           creditLimitAnnotation: sendCreditLimitRequest ? creditLimitAnnotation.trim() : '',
         }),
       });
@@ -602,13 +616,23 @@ export default function TempOrderDetail() {
             <Box sx={{ display: 'grid', gap: 1.5 }}>
               <Alert severity="warning">
                 {t('credit_limit_exceeded_prompt', {
-                  amount: formatPrice(creditLimitPreview.requestedLimit),
                   limit: creditLimitPreview.currentCreditLimit == null
                     ? t('credit_limit_missing_value')
                     : formatPrice(creditLimitPreview.currentCreditLimit),
+                  exposure: formatPrice(creditLimitPreview.projectedExposure),
                 })}
               </Alert>
               <Typography variant="body2">{t('credit_limit_prompt_order_still_sends')}</Typography>
+              <TextField
+                type="number"
+                label={t('credit_limit_request_amount')}
+                value={creditLimitRequestAmount}
+                onChange={(event) => setCreditLimitRequestAmount(event.target.value)}
+                inputProps={{ min: 0.01, step: 0.01 }}
+                required
+                fullWidth
+                helperText={t('credit_limit_request_amount_hint')}
+              />
               <TextField
                 label={t('credit_limit_annotation')}
                 value={creditLimitAnnotation}
@@ -632,7 +656,11 @@ export default function TempOrderDetail() {
               <Button onClick={() => finalizeOrder(false)} disabled={finalizing}>
                 {finalizing ? t('temp_order_sending_bms') : t('credit_limit_no_send')}
               </Button>
-              <Button variant="contained" onClick={() => finalizeOrder(true)} disabled={finalizing}>
+              <Button
+                variant="contained"
+                onClick={() => finalizeOrder(true)}
+                disabled={finalizing || !isValidCreditLimitRequestAmount(creditLimitRequestAmount)}
+              >
                 {finalizing ? t('temp_order_sending_bms') : t('credit_limit_yes_send')}
               </Button>
             </>

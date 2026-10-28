@@ -17,7 +17,7 @@ const {
 } = require('../db/credit-limit-request-outbox');
 const {
   calculateTempOrderValue,
-  calculateCreditLimitRequest,
+  calculateCreditExposure,
   hasBankDetails,
   isEmailAddress,
   isCreditLimitRequestRequired,
@@ -2208,7 +2208,7 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
       excludeOrderId: id,
     })
     : [];
-  const requestValues = calculateCreditLimitRequest({
+  const creditExposure = calculateCreditExposure({
     currentOrderAmount,
     openTempOrders,
     openOrders: creditContext?.openOrders || [],
@@ -2218,15 +2218,14 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
     && creditContext
     && !creditContext.customer.insolvent
     && isTempOrderEditableStatus(normalizeStoredTempOrderStatus(order.ta_Status, order.ta_completed))
-    && isCreditLimitRequestRequired(creditContext, requestValues.exposureAmount),
+    && isCreditLimitRequestRequired(creditContext, creditExposure.exposureAmount),
   );
 
   sendEnvelope(res, {
     status: 200,
     data: {
       shouldPrompt,
-      requestedLimit: requestValues.requestedLimit,
-      projectedExposure: requestValues.exposureAmount,
+      projectedExposure: creditExposure.exposureAmount,
       currentCreditLimit: creditContext?.credit?.amount ?? null,
       availableCreditAmount: creditContext?.credit?.availableAmount ?? null,
       unpaidInvoicesAmount: creditContext?.credit?.unpaidInvoicesAmount ?? 0,
@@ -2653,6 +2652,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           mandantShortName: req.database?.shortName || null,
           salesRepresentative: creditSalesRepresentative,
           sendCreditRequest: req.body?.sendCreditLimitRequest === true,
+          creditLimitAmount: req.body?.creditLimitAmount,
           annotation: req.body?.creditLimitAnnotation,
           nowIso,
           creditTo: config.creditLimitMail.to,
