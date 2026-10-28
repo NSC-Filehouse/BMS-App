@@ -1,5 +1,5 @@
 import React from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, ButtonBase, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, TextField, Typography } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, ButtonBase, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, TextField, Typography } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { getPurchaseCartItems, purchaseArticleKey, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
@@ -11,6 +11,8 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
   const [working, setWorking] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
   const [detail, setDetail] = React.useState(null);
+  const [expandedVl, setExpandedVl] = React.useState(() => new Set());
+  const vlRegionId = React.useId();
   const [cart, setCart] = React.useState(getPurchaseCartItems);
   const restored = React.useRef(false);
   React.useEffect(() => { if (!loaded && !loading) onLoad(); }, [loaded, loading, onLoad]);
@@ -50,12 +52,22 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
               title={cartKeys.has(article.key) ? 'Bereits im Bestellwarenkorb – öffnen' : 'Beim Lieferanten bestellen'} onClick={() => action('purchase', article)} aria-label={`${article.article} zum Bestellwarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>}
           </Box>
           {article.positions.length > 0 && <Box sx={{ pl: 1.25, display: 'grid', gap: 0.25 }}>
-            <Typography variant="caption" color="primary">Aktuell auf VL</Typography>
-            {article.positions.map((position) => <Box key={position.id || position.productId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{Number(position.availableAmount).toLocaleString('de-DE')} {position.unit || 'kg'} · {position.warehouse} · BE {position.beNumber}</Typography>
-              <IconButton size="small" color="primary" disabled={working || !(position.availableAmount > 0)} title="In einen Kundenauftrag übernehmen"
-                onClick={() => action('sale', position)} aria-label={`${article.article} zum Auftragswarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>
-            </Box>)}
+            <ButtonBase aria-expanded={expandedVl.has(article.key)} aria-controls={`${vlRegionId}-${article.key}`}
+              aria-label={`VL-Positionen zu ${article.article}`} onClick={() => setExpandedVl((previous) => {
+                const next = new Set(previous);
+                if (next.has(article.key)) next.delete(article.key); else next.add(article.key);
+                return next;
+              })} sx={{ justifySelf: 'start', justifyContent: 'flex-start', textAlign: 'left', color: 'primary.main', gap: 0.5, py: 0.25 }}>
+              <ExpandCollapseIndicator expanded={expandedVl.has(article.key)} direction="right" />
+              <Typography variant="caption">Aktuell auf VL</Typography>
+            </ButtonBase>
+            <Collapse id={`${vlRegionId}-${article.key}`} in={expandedVl.has(article.key)} unmountOnExit>
+              {article.positions.map((position) => <Box key={position.id || position.productId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{Number(position.availableAmount).toLocaleString('de-DE')} {position.unit || 'kg'} · {position.warehouse} · BE {position.beNumber}</Typography>
+                <IconButton size="small" color="primary" disabled={working || !(position.availableAmount > 0)} title="In einen Kundenauftrag übernehmen"
+                  onClick={() => action('sale', position)} aria-label={`${article.article} zum Auftragswarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>
+              </Box>)}
+            </Collapse>
           </Box>}
         </Box>)}
       </AccordionDetails>
