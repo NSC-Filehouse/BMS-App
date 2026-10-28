@@ -9,9 +9,14 @@ Aktuelle VL-Bestände werden klein
 unter dem jeweiligen Artikel mit Menge, Lager und aktueller BE aufgeführt.
 
 Die VL-Bestände gehen in den Verkaufswarenkorb für den ausgewählten Kunden.
+In der aufgeklappten VL-Liste können mehrere Positionen per Checkbox ausgewählt
+und gemeinsam über das Warenkorbsymbol in einen Auftrag übernommen werden.
+Positionen ohne verfügbaren Bestand sind gesperrt. Die Auswahl gilt je Artikel;
+beim Zurückkehren bleiben Auswahl und aufgeklappte VL-Bereiche erhalten.
 Ohne Kunden wird zuerst die bestehende Kundenauswahl durchlaufen. Über das
-Warenkorbsymbol am Artikel wird eine neue Bestellung angelegt. Es gibt keine
-Mehrfachauswahl. Pro Bestellung ist nur eine Artikelart (Artikelindex) zulässig;
+Warenkorbsymbol am Artikel wird eine neue Bestellung angelegt. Die Auswahl für
+neue Bestellungen erfolgt weiterhin einzeln. Pro Bestellung ist nur eine
+Artikelart (Artikelindex) zulässig;
 mehrere unabhängig bearbeitbare Positionen derselben Artikelart bleiben möglich.
 Diese Regel wird im Warenkorb und serverseitig bei Anlage, Bearbeitung und
 Finalisierung geprüft. Bestehende gemischte Entwürfe müssen vor dem Speichern

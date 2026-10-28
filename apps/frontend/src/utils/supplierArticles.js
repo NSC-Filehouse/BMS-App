@@ -1,5 +1,21 @@
 import { purchaseArticleKey } from './purchaseCart.js';
 
+export function supplierVlPositionKey(position) {
+  return String(position?.productId || position?.id || '').trim();
+}
+
+export function selectedSupplierVlPositions(article, selectedKeys) {
+  const selected = new Set(Array.from(selectedKeys || [], String));
+  const seen = new Set();
+  return (article.positions || []).filter((position) => {
+    const key = supplierVlPositionKey(position);
+    const amount = Number(position.availableAmount);
+    if (!key || !selected.has(key) || seen.has(key) || !Number.isFinite(amount) || amount <= 0) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function supplierArticleList(groups, query = '') {
   const byId = new Map();
   for (const group of groups || []) {
