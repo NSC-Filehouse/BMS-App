@@ -1,5 +1,5 @@
 import React from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, ButtonBase, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, TextField, Typography } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, ButtonBase, CircularProgress, Collapse, IconButton, TextField, Typography } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { getPurchaseCartItems, purchaseArticleKey, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
@@ -10,7 +10,6 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
   const [expanded, setExpanded] = React.useState(typeof initialState?.expanded === 'boolean' ? initialState.expanded : Boolean(initialState?.expanded?.vl || initialState?.expanded?.other));
   const [working, setWorking] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
-  const [detail, setDetail] = React.useState(null);
   const [expandedVl, setExpandedVl] = React.useState(() => new Set());
   const vlRegionId = React.useId();
   const [cart, setCart] = React.useState(getPurchaseCartItems);
@@ -45,9 +44,7 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
         {!loading && loaded && !articles.length && <Typography variant="body2" color="text.secondary">Keine Artikel</Typography>}
         {articles.map((article) => <Box key={article.key} sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 0.75 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <ButtonBase onClick={() => setDetail(article)} sx={{ flex: 1, minWidth: 0, justifyContent: 'flex-start', textAlign: 'left', py: 0.75 }} aria-label={`Details zu ${article.article}`}>
-              <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{article.article}</Typography>
-            </ButtonBase>
+            <Typography variant="body2" sx={{ flex: 1, minWidth: 0, py: 0.75, overflowWrap: 'anywhere' }}>{article.article}</Typography>
             {canPurchase && <IconButton size="small" color={cartKeys.has(article.key) ? 'success' : 'primary'} disabled={working || !article.articleIndex}
               title={cartKeys.has(article.key) ? 'Bereits im Bestellwarenkorb – öffnen' : 'Beim Lieferanten bestellen'} onClick={() => action('purchase', article)} aria-label={`${article.article} zum Bestellwarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>}
           </Box>
@@ -72,14 +69,5 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
         </Box>)}
       </AccordionDetails>
     </Accordion>
-    <Dialog open={Boolean(detail)} onClose={() => setDetail(null)} fullWidth maxWidth="sm">
-      <DialogTitle>{detail?.article}</DialogTitle>
-      <DialogContent sx={{ display: 'grid', gap: 1 }}>
-        <Typography variant="body2">Artikelindex: {detail?.articleIndex || '–'}</Typography>
-        <Typography variant="body2">Artikelbezeichnung beim Lieferanten: {detail?.supplierArticleName || '–'}</Typography>
-        {detail?.lastPurchaseArticle && detail.lastPurchaseArticle !== detail.article && <Typography variant="body2">Letzte Einkaufsbezeichnung: {detail.lastPurchaseArticle}</Typography>}
-      </DialogContent>
-      <DialogActions><Button onClick={() => setDetail(null)}>Schließen</Button></DialogActions>
-    </Dialog>
   </>;
 }

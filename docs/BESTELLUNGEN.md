@@ -4,8 +4,8 @@ Die Lieferantendetailansicht zeigt eine gemeinsame, alphabetisch sortierte Liste
 „Bereits eingekaufte Artikel“. Artikel werden je Lieferant über den Artikelindex
 zusammengefasst. In der Liste steht nur die eigene Artikelbezeichnung aus dem
 Artikelstamm; fehlt diese, dient der neueste nicht stornierte Einkauf als Ersatz.
-Die Lieferantenbezeichnung und eine abweichende letzte Einkaufsbezeichnung sind
-nur in der Artikeldetailansicht sichtbar. Aktuelle VL-Bestände werden klein
+Ein Klick auf den Artikelnamen öffnet kein zusätzliches Popup.
+Aktuelle VL-Bestände werden klein
 unter dem jeweiligen Artikel mit Menge, Lager und aktueller BE aufgeführt.
 
 Die VL-Bestände gehen in den Verkaufswarenkorb für den ausgewählten Kunden.
