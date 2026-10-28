@@ -46,7 +46,8 @@ import {
 } from '../utils/customerSelection.js';
 import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
-import { addPurchaseCartItem } from '../utils/purchaseCart.js';
+import { addPurchaseCartItems, getPurchaseCartContext } from '../utils/purchaseCart.js';
+import SupplierArticles from '../components/SupplierArticles.jsx';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
@@ -325,108 +326,6 @@ function DocumentAccordionSummary({ title, controls, action }) {
   );
 }
 
-function SupplierPurchasedArticleGroups({ groups, t, onAdd }) {
-  return (Array.isArray(groups) ? groups : []).map((group, groupIndex) => {
-    const articles = Array.isArray(group?.articles) ? group.articles : [];
-    const groupAvailablePositions = Array.isArray(group?.availablePositions) ? group.availablePositions : [];
-    const groupKey = group?.id || group?.key || `${group?.name || 'group'}-${groupIndex}`;
-    return (
-      <Box key={groupKey} sx={{ display: 'grid', gap: 0.45, mt: groupIndex ? 0.45 : 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0, flexWrap: 'wrap' }}>
-          <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 600 }}>
-            {group?.name || '-'}
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {articles.length} {articles.length === 1 ? t('article_singular') : t('article_plural')}
-          </Typography>
-          {groupAvailablePositions.length > 0 && (
-            <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
-              {t('purchased_available_count', {
-                count: groupAvailablePositions.length,
-                positionLabel: getPositionLabel(groupAvailablePositions.length, t),
-              })}
-            </Typography>
-          )}
-        </Box>
-        <Box sx={{ display: 'grid', gap: 0.5, pl: 1 }}>
-          {articles.map((article, articleIndex) => (
-            (() => {
-              const articlePositions = Array.isArray(article?.availablePositions)
-                ? article.availablePositions
-                : groupAvailablePositions.filter((position) => (
-                  (article.articleIndex && position.articleIndex
-                    && String(article.articleIndex) === String(position.articleIndex))
-                  || (!article.articleIndex && !position.articleIndex && article.article === position.article)
-                  || (article.article === position.article && !position.articleIndex)
-                ));
-              return (
-                <Card key={article.id || `${article.article}-${articleIndex}`} variant="outlined">
-                  <CardContent sx={{ py: '6px !important', px: '10px !important', display: 'grid', gap: 0.35 }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.84rem', overflowWrap: 'anywhere' }}>
-                      {article.article || '-'}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                      {article.amount !== null && article.amount !== undefined
-                        ? `${formatQuantity(article.amount)} ${article.unit || ''}`.trim()
-                        : ''}
-                      {article.mfi !== null && article.mfi !== undefined ? ` · MFI ${article.mfi}` : ''}
-                      {article.purchasePricePerTonne !== null && article.purchasePricePerTonne !== undefined
-                        ? ` · ${t('purchase_price_per_tonne')}: ${formatMoney(article.purchasePricePerTonne)}`
-                        : ''}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                      {t('purchase_order_date_label')}: {formatDateOnly(article.lastOrderDate)}
-                    </Typography>
-                    {typeof onAdd === 'function' && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<ShoppingCartIcon />}
-                        onClick={() => onAdd(article)}
-                        disabled={!article.articleIndex}
-                        sx={{ justifySelf: 'start', mt: 0.25 }}
-                      >
-                        {t('purchase_add_to_cart')}
-                      </Button>
-                    )}
-                    {articlePositions.length > 0 && (
-                      <Box sx={{ display: 'grid', gap: 0.25, mt: 0.2 }}>
-                        <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
-                          {t('purchased_available_heading')}
-                        </Typography>
-                        {articlePositions.map((position, positionIndex) => {
-                          const availableAmount = getAvailableAmount(position);
-                          const positionKey = position.id || position.productId || `${position.beNumber}-${positionIndex}`;
-                          return (
-                            <Box key={positionKey} sx={{ pl: 0.75, display: 'grid', gap: 0.05 }}>
-                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                                {`${formatQuantity(availableAmount)} ${position.unit || 'kg'} · ${position.warehouse || position.warehouseId || '-'}`}
-                                {position.acquisitionPrice !== null
-                                  && position.acquisitionPrice !== undefined
-                                  && String(position.acquisitionPrice).trim() !== ''
-                                  && Number.isFinite(Number(position.acquisitionPrice))
-                                  ? ` · EP: ${formatMoney(position.acquisitionPrice)}`
-                                  : ''}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                                {`${t('product_be_number')}: ${position.beNumber || '-'}`}
-                              </Typography>
-                            </Box>
-                          );
-                        })}
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })()
-          ))}
-        </Box>
-      </Box>
-    );
-  });
-}
-
 function InfoRow({ icon, label, value, link, onClick, forceRight = false }) {
   const content = link ? (
     <Box
@@ -547,7 +446,6 @@ export default function CustomerDetail() {
   const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
   const [batchCartAdding, setBatchCartAdding] = React.useState(false);
   const [purchaseCartError, setPurchaseCartError] = React.useState('');
-  const [purchaseCartSuccess, setPurchaseCartSuccess] = React.useState('');
   const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
   const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
   const [docs, setDocs] = React.useState({
@@ -625,44 +523,38 @@ export default function CustomerDetail() {
   const salesRep = item?.kd_Aussendienst ? String(item.kd_Aussendienst).trim() : '';
   const salesRepresentatives = normalizeSalesRepresentatives(item);
 
-  const addSupplierArticleToPurchaseCart = React.useCallback(async (article) => {
-    try {
-      setPurchaseCartError('');
-      setPurchaseCartSuccess('');
-      const articleIndex = String(article?.articleIndex || '').trim();
-      if (!articleIndex) throw new Error('Für das Material fehlt der Artikelindex.');
-      const response = await apiRequest(`/customers/${encodeURIComponent(id)}/procured-articles/${encodeURIComponent(articleIndex)}/purchase-defaults`);
-      const defaults = response?.data?.defaults || {};
-      const supplier = response?.data?.supplier || { id, name };
-      addPurchaseCartItem({
-        supplierId: supplier.id || id,
-        supplierName: supplier.name || name,
-        supplierAddress: supplier.address || address,
-        articleIndex,
-        article: article.article,
-        amount: defaults.amount || 1,
-        unit: defaults.unit || article.unit || 'kg',
-        purchasePrice: defaults.purchasePrice ?? article.purchasePricePerTonne ?? '',
-        requestedDeliveryDate: defaults.suggestedDate || '',
-        supplierContact: defaults.supplierContact || '',
-        paymentConditionId: defaults.paymentConditionId ?? '',
-        paymentConditionText: defaults.paymentConditionText || '',
-        deliveryTermText: defaults.deliveryTermText || '',
-        packagingType: defaults.packagingType || '',
-        reservedFor: defaults.reservedFor || '',
-        comment: [defaults.comment, defaults.positionComment].filter(Boolean).join('\n'),
-        loadingLocationId: defaults.loadingLocationId ?? '',
-        loadingLocationText: defaults.loadingLocationText || '',
-        loadingCustomerId: response?.data?.loadingCustomerId || '',
-        sourceBestellindex: defaults.sourceBestellindex || '',
-        sourcePositionId: defaults.sourcePositionId || '',
-        sourceOrderDate: defaults.sourceOrderDate || '',
-      });
-      setPurchaseCartSuccess(t('purchase_cart_added'));
-    } catch (e) {
-      setPurchaseCartError(e?.message || t('loading_error'));
+  const supplierArticleReturnTo = React.useCallback((snapshot) => createReturnTo(location, {
+    ...location.state, detailView: 'supplier', supplierArticleState: snapshot,
+  }), [location]);
+  const addSupplierArticles = React.useCallback(async (articles, snapshot) => {
+    if (getPurchaseCartContext().pendingPayload) throw new Error('Bitte zuerst den Speicherstatus im Bestellwarenkorb prüfen.');
+    const values = await Promise.all(articles.map(async (article) => {
+      if (!article.articleIndex) throw new Error('Für das Material fehlt der Artikelindex.');
+      const response = await apiRequest(`/customers/${encodeURIComponent(id)}/procured-articles/${encodeURIComponent(article.articleIndex)}/purchase-defaults`);
+      return { ...response.data.defaults, supplierId: id, supplierName: name, articleIndex: article.articleIndex, article: response.data.defaults.article || article.article };
+    }));
+    const returnTo = supplierArticleReturnTo(snapshot);
+    addPurchaseCartItems(values, returnTo);
+    navigate('/purchase-cart', { state: { returnTo } });
+  }, [id, name, navigate, supplierArticleReturnTo]);
+  const addSupplierVlPositions = React.useCallback(async (positions, snapshot) => {
+    const cleanState = { ...location.state, detailView: 'supplier', supplierArticleState: snapshot };
+    delete cleanState.pendingSupplierCart;
+    if (!getSelectedCustomer()?.id) {
+      navigate('/customers', { state: { afterSelect: { to: location.pathname, state: { ...cleanState, pendingSupplierCart: positions } } } });
+      return;
     }
-  }, [address, id, name, t]);
+    await addProductsToOrderCart(positions.map((position) => ({ ...position, id: position.productId || position.id, storageId: position.warehouseId })));
+    const returnTo = createReturnTo(location, cleanState);
+    navigate('/order-cart', { replace: Boolean(location.state?.pendingSupplierCart), state: { returnTo, shoppingReturnTo: returnTo } });
+  }, [location, navigate]);
+  const supplierPendingRef = React.useRef(null);
+  React.useEffect(() => {
+    const pending = location.state?.pendingSupplierCart;
+    if (!pending || !getSelectedCustomer()?.id || supplierPendingRef.current === pending) return;
+    supplierPendingRef.current = pending;
+    void addSupplierVlPositions(pending, location.state?.supplierArticleState).catch((e) => setPurchaseCartError(e.message));
+  }, [addSupplierVlPositions, location.state]);
   const reminderInvoicesCount = Number(item?.reminderInvoicesCount) || 0;
   const isInsolvent = Number(item?.kd_Insolvenz) === 1;
   const hasLawyer = Number(item?.kd_Anwalt) === 1;
@@ -1554,7 +1446,13 @@ export default function CustomerDetail() {
               </AccordionDetails>
             </Accordion>
 
-            <Accordion expanded={docs.purchasedArticles.expanded} onChange={onToggleSection('purchasedArticles', purchasedArticlesEndpoint)}>
+            {isSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
+            {isSupplier && <SupplierArticles key={id} groups={docs.purchasedArticles.items} loaded={docs.purchasedArticles.loaded}
+              loading={docs.purchasedArticles.loading} error={docs.purchasedArticles.error}
+              onLoad={() => loadDocSection('purchasedArticles', purchasedArticlesEndpoint)}
+              initialState={location.state?.supplierArticleState} canPurchase={canCreatePurchaseOrder}
+              onPurchase={addSupplierArticles} onSales={addSupplierVlPositions} />}
+            {!isSupplier && <Accordion expanded={docs.purchasedArticles.expanded} onChange={onToggleSection('purchasedArticles', purchasedArticlesEndpoint)}>
               <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>
                   <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
@@ -1570,12 +1468,6 @@ export default function CustomerDetail() {
                   onChange={(event) => setPurchasedArticlesQuery(event.target.value)}
                   placeholder={t(isSupplier ? 'customer_docs_procured_articles_search' : 'customer_docs_purchased_articles_search')}
                 />
-                {isSupplier && canCreatePurchaseOrder && purchaseCartSuccess && (
-                  <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                    {purchaseCartSuccess}
-                  </Typography>
-                )}
-                {isSupplier && canCreatePurchaseOrder && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
                 {!isSupplier && batchCartSuccess && (
                   <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                     {batchCartSuccess}
@@ -1598,13 +1490,6 @@ export default function CustomerDetail() {
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>
                     {t(isSupplier ? 'customer_docs_empty_procured_articles' : 'customer_docs_empty_purchased_articles')}
                   </Typography>
-                )}
-                {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && isSupplier && (
-                  <SupplierPurchasedArticleGroups
-                    groups={filteredPurchasedArticleGroups}
-                    t={t}
-                    onAdd={canCreatePurchaseOrder ? addSupplierArticleToPurchaseCart : undefined}
-                  />
                 )}
                 {!docs.purchasedArticles.loading && !docs.purchasedArticles.error && !isSupplier && filteredPurchasedArticleGroups.map((group, groupIdx) => (
                   (() => {
@@ -1840,7 +1725,7 @@ export default function CustomerDetail() {
                   })()
                 ))}
               </AccordionDetails>
-            </Accordion>
+            </Accordion>}
 
             <Divider sx={{ my: 3 }} />
 

@@ -5,6 +5,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
+import PurchaseOrderSummary from '../components/PurchaseOrderSummary.jsx';
+import { supplierReturnTo } from '../utils/purchaseCart.js';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 
 export default function TempPurchaseOrderDetail() {
@@ -61,6 +63,7 @@ export default function TempPurchaseOrderDetail() {
           state: {
             returnTo: createReturnTo(location),
             afterSaveReturnTo: location.state?.returnTo || null,
+            shoppingReturnTo: location.state?.shoppingReturnTo || supplierReturnTo(item.supplierId),
           },
         })}>Bearbeiten</Button>}
         {editable && <Button color="error" startIcon={<DeleteOutlineIcon />} onClick={remove} disabled={working}>Löschen</Button>}
@@ -71,6 +74,7 @@ export default function TempPurchaseOrderDetail() {
         <Typography>Status: {item.status}</Typography>
         <Typography>Lieferant: {item.supplierId}</Typography>
         <Typography>Ansprechpartner: {item.supplierContact || '-'}</Typography>
+        <Typography>Zahlungsziel: {item.paymentConditionText || '-'}</Typography>
         <Typography>Ladeort: {item.loadingLocationText || '-'}</Typography>
         <Typography>Verpackung: {item.packagingType || '-'}</Typography>
         <Typography>Lieferbedingungen: {item.deliveryTermText || '-'}</Typography>
@@ -79,14 +83,17 @@ export default function TempPurchaseOrderDetail() {
         <Typography>Einkaufsmail: {item.supplierMailStatus || 'nicht versendet'}</Typography>
         {item.supplierMailLastError && <Typography color="error">{item.supplierMailLastError}</Typography>}
       </CardContent></Card>
+      <PurchaseOrderSummary positions={item.positions} />
       {(item.positions || []).map((position) => <Card key={position.id} variant="outlined"><CardContent>
         <Typography variant="subtitle1">{position.article}</Typography>
         <Typography>{position.amount} {position.unit} · EK {position.purchasePrice} {position.currency}</Typography>
         <Typography>Liefertermin: {position.requestedDeliveryDate || '-'}</Typography>
         <Typography>Reserviert für: {position.reservedFor || '-'}</Typography>
-        <Typography variant="caption">Vorherige BE: {position.sourceBestellindex || '-'}</Typography>
+        <Typography variant="caption">Ursprüngliche Verpackung: {position.originalPackagingType || item.packagingType || '-'}{position.packagingTypeChanged ? ' · Verpackung geändert' : ''}</Typography>
+        {position.comment && <Typography>Positionshinweis: {position.comment}</Typography>}
       </CardContent></Card>)}
-      {editable && <Button variant="contained" onClick={finalize} disabled={working}>{working ? <CircularProgress size={20} /> : 'An CS senden'}</Button>}
+      <Button variant="outlined" onClick={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(item.supplierId), '/suppliers')}>Weiter einkaufen</Button>
+      {editable && <Button variant="contained" onClick={finalize} disabled={working}>{working ? <CircularProgress size={20} /> : 'An BMS senden'}</Button>}
     </Box>
   );
 }

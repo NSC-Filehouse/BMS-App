@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
@@ -22,8 +23,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { SEARCH_MIN } from '../config.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { createReturnTo } from '../utils/navigation.js';
-import { getPurchaseCartCount, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
+import { getPurchaseCartCount, getPurchaseCartContext, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
 import { getTempOrderStatusColor, getTempOrderStatusLabel } from '../utils/tempOrderStatus.js';
 
 const PAGE_SIZE = 12;
@@ -136,6 +137,7 @@ export default function TempPurchaseOrdersList() {
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2, minWidth: 0 }}>
         <Typography variant="h5" sx={{ mr: 1, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('temp_purchase_orders_title')}</Typography>
+        <Button variant="outlined" onClick={() => navigateToReturn(navigate, getPurchaseCartContext().returnTo, '/suppliers')}>Weiter einkaufen</Button>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
           <IconButton aria-label="zurueck" onClick={() => load({ page: Math.max((meta.page || 1) - 1, 1), q, status, ownerScope })} disabled={(meta.page || 1) <= 1}><ArrowBackIcon /></IconButton>
           <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'center' }}>{t('page_label')} {meta.page || 1}/{totalPages || '?'}</Typography>

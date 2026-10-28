@@ -8,7 +8,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
-const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
+const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey } = require('../db/purchase-order-values');
 const { loadHolidayRows } = require('../db/holidays');
 const {
   getHolidayStatus,
@@ -32,6 +32,7 @@ function asText(value) {
 }
 
 function asNumber(value, fallback = null) {
+  if (value === null || value === undefined || String(value).trim() === '') return fallback;
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
@@ -76,6 +77,7 @@ function mapOrder(row, positions = []) {
     deliveryTermId: row.deliveryTermId === null || row.deliveryTermId === undefined ? null : Number(row.deliveryTermId),
     deliveryTermText: asText(row.deliveryTermText),
     packagingType: asText(row.packagingType),
+    packagingTypeId: asNumber(row.packagingTypeId),
     loadingLocationSource: asText(row.loadingLocationSource),
     loadingLocationId: row.loadingLocationId === null || row.loadingLocationId === undefined ? null : Number(row.loadingLocationId),
     loadingLocationText: asText(row.loadingLocationText),
@@ -98,16 +100,16 @@ function mapOrder(row, positions = []) {
       lineNo: Number(position.lineNo),
       articleIndex: asText(position.articleIndex),
       article: asText(position.article),
-      amount: asNumber(position.amount, 0),
-      unit: asText(position.unit) || 'kg',
+      amount: asNumber(position.amount, 0) * (/^(t|to|tonne[n]?)$/i.test(asText(position.unit)) ? 1000 : 1),
+      unit: 'kg',
       purchasePrice: asNumber(position.purchasePrice, 0),
       currency: asText(position.currency) || 'EUR',
       requestedDeliveryDate: asDate(position.requestedDeliveryDate),
       reservedFor: asText(position.reservedFor),
       comment: asText(position.comment),
-      sourceBestellindex: asText(position.sourceBestellindex),
-      sourcePositionId: asText(position.sourcePositionId),
-      sourceOrderDate: asDate(position.sourceOrderDate),
+      originalPackagingType: asText(position.originalPackagingType),
+      originalPackagingTypeId: asNumber(position.originalPackagingTypeId),
+      packagingTypeChanged: Boolean(position.packagingTypeChanged),
     })),
   };
 }
@@ -128,6 +130,7 @@ function orderSelectSql() {
       [tb_delivery_term_id] AS deliveryTermId,
       [tb_delivery_term_text] AS deliveryTermText,
       [tb_packaging_type] AS packagingType,
+      [tb_packaging_type_id] AS packagingTypeId,
       [tb_loading_location_source] AS loadingLocationSource,
       [tb_loading_location_id] AS loadingLocationId,
       [tb_loading_location_text] AS loadingLocationText,
@@ -148,8 +151,9 @@ function orderSelectSql() {
     FROM ${TEMP_PURCHASE_ORDER_TABLE}`;
 }
 
-async function loadPositions(orderId) {
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
+async function loadPositions(orderId, query = null) {
+  const execute = query || ((sql, params) => runSQLQuerySqlServer(config.sql.database, sql, params));
+  const result = await execute(`
     SELECT
       [tbp_id] AS id,
       [tbp_line_no] AS [lineNo],
@@ -162,157 +166,18 @@ async function loadPositions(orderId) {
       [tbp_requested_delivery_date] AS requestedDeliveryDate,
       [tbp_reserved_for] AS reservedFor,
       [tbp_comment] AS comment,
-      [tbp_source_bestellindex] AS sourceBestellindex,
-      [tbp_source_position_id] AS sourcePositionId,
-      [tbp_source_order_date] AS sourceOrderDate
+      [tbp_original_packaging_type] AS originalPackagingType,
+      [tbp_original_packaging_type_id] AS originalPackagingTypeId,
+      [tbp_packaging_type_changed] AS packagingTypeChanged
     FROM ${TEMP_PURCHASE_POSITION_TABLE}
     WHERE [tbp_tb_id] = ?
     ORDER BY [tbp_line_no] ASC
   `, [orderId]);
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(result) ? result : result.rows || [];
 }
 
-async function loadOwnDeliveryContext(database) {
-  const name = asText(database?.name);
-  const shortName = asText(database?.shortName);
-  const candidates = [name, shortName].filter(Boolean);
-  let ownCustomerId = '';
-  if (candidates.length) {
-    const normalizedCandidates = candidates.map((item) => item.toUpperCase());
-    const placeholders = candidates.map(() => '?').join(', ');
-    const exactRows = await runSQLQueryAccess(database, `
-      SELECT TOP 1 [kd_KdNR] AS customerId
-      FROM [dbo].[tblKunden]
-      WHERE (
-        UPPER(LTRIM(RTRIM(COALESCE([kd_Name1], '')))) IN (${placeholders})
-        OR UPPER(LTRIM(RTRIM(COALESCE([kd_Name2], '')))) IN (${placeholders})
-        OR UPPER(LTRIM(RTRIM(COALESCE([kd_Kurz], '')))) IN (${placeholders})
-      )
-      ORDER BY [kd_KdNR]
-    `, [
-      ...normalizedCandidates,
-      ...normalizedCandidates,
-      ...normalizedCandidates,
-    ]);
-    ownCustomerId = asText(exactRows?.[0]?.customerId);
-    if (!ownCustomerId) {
-      // Each LIKE predicate takes exactly one parameter.  A comma-separated
-      // placeholder list (`LIKE ?, ?`) is invalid SQL Server syntax and was
-      // especially visible for the Test tenant, which supplies name + shortName.
-      const name1Like = normalizedCandidates
-        .map(() => `UPPER(LTRIM(RTRIM(COALESCE([kd_Name1], '')))) LIKE ?`)
-        .join(' OR ');
-      const name2Like = normalizedCandidates
-        .map(() => `UPPER(LTRIM(RTRIM(COALESCE([kd_Name2], '')))) LIKE ?`)
-        .join(' OR ');
-      const likeRows = await runSQLQueryAccess(database, `
-        SELECT TOP 1 [kd_KdNR] AS customerId
-        FROM [dbo].[tblKunden]
-        WHERE (${name1Like} OR ${name2Like})
-        ORDER BY [kd_KdNR]
-      `, [
-        ...normalizedCandidates.map((item) => `%${item}%`),
-        ...normalizedCandidates.map((item) => `%${item}%`),
-      ]);
-      ownCustomerId = asText(likeRows?.[0]?.customerId);
-    }
-  }
-  if (!ownCustomerId) return { customerId: '', addresses: [] };
-  return {
-    customerId: ownCustomerId,
-    addresses: await loadCustomerDeliveryAddresses(database, ownCustomerId),
-  };
-}
-
-function getHistoricalLoadingLocationId(value) {
-  // Historical `be_AdresseAbhol` values are free text and do not have a
-  // delivery-address primary key.  Use a deterministic negative id for the
-  // UI selection; the persisted order keeps the authoritative text and a
-  // NULL address id.
-  let hash = 0;
-  for (const character of asText(value)) hash = ((hash * 31) + character.charCodeAt(0)) | 0;
-  const positive = Math.abs(hash % 2147483000) || 1;
-  return -positive;
-}
-
-async function loadSupplierLoadingLocations(database, supplierId) {
-  const id = asText(supplierId);
-  if (!id) return [];
-  const rows = await runSQLQueryAccess(database, `
-    SELECT TOP 500
-      [be_AdresseAbhol] AS loadingLocationText,
-      [be_Bestelldatum] AS lastOrderDate
-    FROM [dbo].[tblBestellung]
-    WHERE LTRIM(RTRIM(COALESCE([be_KdNr], ''))) = ?
-      AND LTRIM(RTRIM(COALESCE([be_AdresseAbhol], ''))) <> ''
-    ORDER BY [be_Bestelldatum] DESC, [be_Bestellindex] DESC
-  `, [id]);
-  const seen = new Set();
-  return (Array.isArray(rows) ? rows : []).reduce((result, row) => {
-    const text = asText(row?.loadingLocationText);
-    const key = text.toLocaleLowerCase('de-DE');
-    if (!text || seen.has(key)) return result;
-    seen.add(key);
-    result.push({
-      id: getHistoricalLoadingLocationId(text),
-      text,
-      source: 'supplier_order_history',
-      lastOrderDate: asDate(row?.lastOrderDate),
-      countryCode: '',
-      region: '',
-    });
-    return result;
-  }, []);
-}
-
-async function loadPurchaseLoadingContext(database, supplierId, preferredText = '') {
-  const historical = await loadSupplierLoadingLocations(database, supplierId);
-  const preferred = asText(preferredText);
-  if (historical.length) {
-    const options = [...historical];
-    if (preferred && !options.some((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === preferred.toLocaleLowerCase('de-DE'))) {
-      options.unshift({
-        id: getHistoricalLoadingLocationId(preferred),
-        text: preferred,
-        source: 'supplier_order_history',
-        lastOrderDate: null,
-        countryCode: '',
-        region: '',
-      });
-    }
-    let calendarAddress = null;
-    try {
-      const ownContext = await loadOwnDeliveryContext(database);
-      calendarAddress = ownContext.addresses[0] || null;
-    } catch {
-      // A supplier history remains usable even if the optional local calendar
-      // address cannot be resolved (for example in a sparse Test database).
-    }
-    return {
-      customerId: '',
-      addresses: options,
-      calendarAddress,
-      source: 'supplier_order_history',
-    };
-  }
-  const ownContext = await loadOwnDeliveryContext(database);
-  const options = [...ownContext.addresses];
-  if (preferred && !options.some((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === preferred.toLocaleLowerCase('de-DE'))) {
-    options.unshift({
-      id: getHistoricalLoadingLocationId(preferred),
-      text: preferred,
-      source: 'manual',
-      lastOrderDate: null,
-      countryCode: '',
-      region: '',
-    });
-  }
-  return {
-    customerId: ownContext.customerId,
-    addresses: options,
-    calendarAddress: ownContext.addresses[0] || null,
-    source: 'mandant_delivery_address',
-  };
+async function loadPurchaseLoadingContext(database, supplierId, articleIndexes) {
+  return { customerId: '', addresses: await loadPurchaseLocations(database, supplierId, articleIndexes), source: 'supplier_order_history' };
 }
 
 function normalizePurchaseOwnerScope(value) {
@@ -386,7 +251,7 @@ async function assertSupplier(database, supplierId, accessScope) {
 }
 
 async function resolveLoadingAddress(database, body) {
-  const context = await loadPurchaseLoadingContext(database, body?.supplierId, body?.loadingLocationText);
+  const context = await loadPurchaseLoadingContext(database, body?.supplierId, (body?.positions || []).map((p) => asText(p.articleIndex)));
   const rawId = asText(body?.loadingLocationId);
   const requestedText = asText(body?.loadingLocationText);
   let address = rawId ? context.addresses.find((item) => String(item.id) === rawId) || null : null;
@@ -394,11 +259,10 @@ async function resolveLoadingAddress(database, body) {
     const normalized = requestedText.toLocaleLowerCase('de-DE');
     address = context.addresses.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === normalized) || null;
   }
-  if (!address) throw createHttpError(400, 'Bitte einen Ladeort aus den bisherigen Lieferanten-Bestellungen auswählen.', { code: 'LOADING_LOCATION_REQUIRED' });
+  if (!address) throw createHttpError(400, 'Bitte einen gemeinsamen Ladeort für die ausgewählten Artikel wählen. Ohne gemeinsamen Ladeort sind getrennte Bestellungen erforderlich.', { code: 'LOADING_LOCATION_REQUIRED' });
   const text = asText(address.text) || asText(body?.loadingLocationText);
   if (!text) throw createHttpError(400, 'Die ausgewählte Lieferadresse hat keinen lesbaren Ladeort.', { code: 'LOADING_LOCATION_REQUIRED' });
-  const numericId = Number(address.id);
-  const id = Number.isInteger(numericId) && numericId >= 0 ? numericId : null;
+  const id = null;
   return { context, address, text, id, source: address.source || context.source };
 }
 
@@ -408,6 +272,8 @@ function normalizePositions(rawPositions) {
   return list.map((item, index) => {
     const amount = asNumber(item?.amount, null);
     const price = asNumber(item?.purchasePrice, null);
+    const unit = asText(item?.unit || 'kg').toLowerCase();
+    if (!['kg', 't', 'to', 'tonne', 'tonnen'].includes(unit)) throw createHttpError(400, 'Die Bestellmenge muss in kg oder Tonnen angegeben sein.', { code: 'PURCHASE_POSITION_INVALID' });
     const article = asText(item?.article);
     if (!article || amount === null || amount <= 0 || price === null || price < 0) {
       throw createHttpError(400, `Position ${index + 1} ist unvollständig.`, { code: 'PURCHASE_POSITION_INVALID', lineNo: index + 1 });
@@ -415,23 +281,22 @@ function normalizePositions(rawPositions) {
     const requestedDeliveryDate = asDate(item?.requestedDeliveryDate);
     if (!requestedDeliveryDate) throw createHttpError(400, `Position ${index + 1} benötigt ein gültiges Lieferdatum.`, { code: 'PURCHASE_DELIVERY_DATE_REQUIRED', lineNo: index + 1 });
     return {
+      id: asNumber(item?.id),
       articleIndex: asText(item?.articleIndex) || null,
       article,
-      amount,
-      unit: asText(item?.unit) || 'kg',
+      amount: ['t', 'to', 'tonne', 'tonnen'].includes(unit) ? amount * 1000 : amount,
+      unit: 'kg',
       purchasePrice: price,
-      currency: asText(item?.currency) || 'EUR',
+      currency: 'EUR',
       requestedDeliveryDate,
       reservedFor: asText(item?.reservedFor) || null,
       comment: asText(item?.comment) || null,
-      sourceBestellindex: asText(item?.sourceBestellindex) || null,
-      sourcePositionId: asText(item?.sourcePositionId) || null,
-      sourceOrderDate: asDate(item?.sourceOrderDate),
+      copyOfPositionId: asNumber(item?.copyOfPositionId),
     };
   });
 }
 
-async function loadOrderForUser(id, companyId, userShortCode, isFullAccess, forUpdate = false) {
+async function loadOrderForUser(id, companyId, userShortCode, isFullAccess) {
   const ownerSql = isFullAccess ? '' : `AND [tb_created_by] = ?`;
   const params = isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
   const rows = await runSQLQuerySqlServer(config.sql.database, `
@@ -444,111 +309,73 @@ async function loadOrderForUser(id, companyId, userShortCode, isFullAccess, forU
 router.get('/purchase-order-loading-locations', requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.query?.supplierId);
-  if (supplierId) await assertSupplier(req.database, supplierId, accessScope);
-  const context = await loadPurchaseLoadingContext(req.database, supplierId, req.query?.preferredText);
-  sendEnvelope(res, {
-    status: 200,
-    data: context.addresses,
-    meta: {
-      mandant: req.mandant,
-      ownCustomerId: context.customerId,
-      count: context.addresses.length,
-      source: context.source,
-      calendarCustomerId: context.customerId || null,
-    },
-    error: null,
-  });
+  await assertSupplier(req.database, supplierId, accessScope);
+  const ids = Array.isArray(req.query?.articleIndex) ? req.query.articleIndex : [req.query?.articleIndex].filter(Boolean);
+  const context = await loadPurchaseLoadingContext(req.database, supplierId, ids);
+  sendEnvelope(res, { data: context.addresses, meta: { count: context.addresses.length, source: context.source } });
+}));
+
+router.get('/purchase-order-options', requireMandant, asyncHandler(async (req, res) => {
+  const supplierId = asText(req.query?.supplierId);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  await assertSupplier(req.database, supplierId, scope);
+  const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
+  const [options, defaults] = await Promise.all([loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang)]);
+  sendEnvelope(res, { data: { ...options, defaults } });
 }));
 
 router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.params.supplierId);
   const articleIndex = asText(req.params.articleIndex);
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
-  const supplier = await assertSupplier(req.database, supplierId, accessScope);
-  const rows = await runSQLQueryAccess(req.database, `
-    SELECT TOP 1
-      [b].[be_Bestellindex] AS sourceBestellindex,
-      [b].[be_Bestelldatum] AS sourceOrderDate,
-      [b].[be_KontaktpersonBE] AS supplierContact,
-      [b].[be_ZahlText] AS paymentConditionId,
-      [b].[be_Lieferbedingung] AS deliveryTermText,
-      [b].[be_Verpackung] AS packagingType,
-      [b].[be_BemerkungBE] AS comment,
-      [b].[be_AdresseAbhol] AS loadingLocationText,
-      [p].[beP_BEposID] AS sourcePositionId,
-      [p].[beP_Artikelindex] AS articleIndex,
-      [p].[beP_Artikel] AS article,
-      [p].[beP_Anzahl] AS amount,
-      [p].[beP_Einheit] AS unit,
-      COALESCE([p].[beP_EK_EU], [p].[beP_EK_DM]) AS purchasePrice,
-      [p].[beP_Lieferdatum] AS requestedDeliveryDate,
-      [p].[beP_VLbemerkung] AS reservedFor,
-      [p].[beP_Zusatztext] AS positionComment
-    FROM [dbo].[tblBest_Position] [p]
-    INNER JOIN [dbo].[tblBestellung] [b]
-      ON [b].[be_Bestellindex] = [p].[beP_Bestellindex]
-    WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ?
-      AND LTRIM(RTRIM(COALESCE([p].[beP_Artikelindex], ''))) = ?
-      AND COALESCE([p].[beP_Storno], 0) <> 1
-    ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC, [p].[beP_BEposID] DESC
-  `, [supplierId, articleIndex]);
-  const source = rows?.[0] || null;
-  let paymentConditionText = '';
-  if (source?.paymentConditionId) {
-    const paymentRows = await runSQLQuerySqlServer(config.sql.database, `
-      SELECT TOP 1 [zaS_Zahl_Text] AS text
-      FROM [dbo].[tblZahltext_Sprachen]
-      WHERE [zaS_ID] = ? AND LOWER(COALESCE([zaS_SprachID], '')) = ?
-    `, [Number(source.paymentConditionId), String(req.header('x-lang') || 'de').toLowerCase() === 'en' ? 'en' : 'de']);
-    paymentConditionText = asText(paymentRows?.[0]?.text);
-  }
-  const context = await loadPurchaseLoadingContext(req.database, supplierId, source?.loadingLocationText);
-  const { profile, holidays } = await loadWorkingCalendar(context.calendarAddress || null);
-  let suggestedDate = asDate(source?.requestedDeliveryDate);
-  const sourceOrderDate = asDate(source?.sourceOrderDate);
-  if (sourceOrderDate && suggestedDate) {
-    const leadDays = Math.max(1, Math.round((new Date(`${suggestedDate}T00:00:00Z`) - new Date(`${sourceOrderDate}T00:00:00Z`)) / 86400000));
-    const today = new Date();
-    const todayKey = today.toISOString().slice(0, 10);
-    const raw = new Date(`${todayKey}T00:00:00Z`);
-    raw.setUTCDate(raw.getUTCDate() + leadDays);
-    suggestedDate = getNextWorkingDate(raw.toISOString().slice(0, 10), profile, holidays);
-  }
-  if (!suggestedDate) {
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    suggestedDate = getNextWorkingDate(tomorrow.toISOString().slice(0, 10), profile, holidays);
-  }
-  const loadingText = asText(source?.loadingLocationText);
-  const normalized = loadingText.toLocaleLowerCase('de-DE');
-  const preferred = context.addresses.find((address) => (
-    String(address.text || '').toLocaleLowerCase('de-DE') === normalized
-    || String(address.addressNo || '').toLocaleLowerCase('de-DE') === normalized
-    || String(address.short || '').toLocaleLowerCase('de-DE') === normalized
-  )) || null;
-  sendEnvelope(res, {
-    status: 200,
-    data: {
-      supplier: {
-        id: supplierId,
-        name: asText(supplier.kd_Name1 || supplier.kd_Name2),
-        address: [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '),
-      },
-      defaults: source ? {
-        ...source,
-        paymentConditionText,
-        suggestedDate,
-        loadingLocationId: preferred ? preferred.id : (loadingText ? getHistoricalLoadingLocationId(loadingText) : null),
-        loadingLocationText: preferred?.text || loadingText,
-        purchasePrice: asNumber(source.purchasePrice, 0),
-      } : { suggestedDate, loadingLocationId: null, loadingLocationText: '' },
-      loadingLocations: context.addresses,
-      loadingCustomerId: context.customerId,
-    },
-    meta: { mandant: req.mandant, sourceFound: Boolean(source) },
-    error: null,
-  });
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const supplier = await assertSupplier(req.database, supplierId, scope);
+  const source = await loadLatestPurchase(req.database, supplierId, articleIndex);
+  if (!source) throw createHttpError(404, 'Für diesen Artikel gibt es keinen Einkauf bei diesem Lieferanten.', { code: 'PURCHASE_ARTICLE_NOT_FOUND' });
+  sendEnvelope(res, { data: {
+    supplier: { id: supplierId, name: asText(supplier.kd_Name1 || supplier.kd_Name2) },
+    defaults: { ...source, lastDeliveryDate: asDate(source.lastDeliveryDate), lastOrderDate: asDate(source.lastOrderDate), amount: packagingKey(source.originalPackagingType) === 'silo' ? 25000 : 24750, unit: 'kg', purchasePrice: '', requestedDeliveryDate: '', reservedFor: '', comment: '' },
+  } });
 }));
+
+async function preparePurchase(req, supplierId, rawPositions, existing = null, storedPositions = []) {
+  const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
+  const [options, terms] = await Promise.all([loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang)]);
+  const packaging = findPackaging(options.packagingTypes, req.body?.packagingType, req.body?.packagingTypeId);
+  const incoterm = options.incoterms.find((item) => Number(item.id) === Number(req.body?.deliveryTermId));
+  if (!packaging || !incoterm) throw createHttpError(400, 'Bitte Verpackungsart und Incoterm auswählen.', { code: 'PURCHASE_HEADER_INVALID' });
+  const positions = normalizePositions(rawPositions);
+  const latestByArticle = new Map();
+  for (const position of positions) {
+    if (!position.articleIndex) throw createHttpError(400, 'Artikelindex fehlt.', { code: 'PURCHASE_POSITION_INVALID' });
+    if (!latestByArticle.has(position.articleIndex)) latestByArticle.set(position.articleIndex, await loadLatestPurchase(req.database, supplierId, position.articleIndex));
+    const latest = latestByArticle.get(position.articleIndex);
+    if (!latest) throw createHttpError(400, 'Der Artikel gehört nicht zum gewählten Lieferanten.', { code: 'PURCHASE_POSITION_INVALID' });
+    const stored = storedPositions.find((p) => p.id === (position.id || position.copyOfPositionId) && p.articleIndex === position.articleIndex);
+    const original = stored?.originalPackagingType || (stored ? existing?.packagingType : latest.originalPackagingType);
+    const originalOption = findPackaging(options.packagingTypes, original);
+    position.article = asText(latest.article);
+    position.originalPackagingType = asText(original) || null;
+    position.originalPackagingTypeId = originalOption?.id || null;
+    position.packagingTypeChanged = originalOption ? packaging.id !== originalOption.id : packagingKey(packaging.text) !== packagingKey(original);
+  }
+  // New orders use authoritative supplier terms; edits keep their saved terms.
+  const payment = existing || terms;
+  const loading = await resolveLoadingAddress(req.database, { ...req.body, supplierId, positions });
+  await validateWorkingDates(positions, loading.address);
+  return { positions, loading, packaging, incoterm, payment };
+}
+
+async function insertPurchasePositions(query, id, positions, user, now, createdBy = user, createdAt = now) {
+  for (let i = 0; i < positions.length; i += 1) {
+    const p = positions[i];
+    await query(`INSERT INTO ${TEMP_PURCHASE_POSITION_TABLE} (
+      [tbp_tb_id],[tbp_line_no],[tbp_article_index],[tbp_article],[tbp_amount],[tbp_unit],[tbp_purchase_price],[tbp_currency],
+      [tbp_requested_delivery_date],[tbp_reserved_for],[tbp_comment],[tbp_original_packaging_type],[tbp_original_packaging_type_id],[tbp_packaging_type_changed],
+      [tbp_created_by],[tbp_create_date],[tbp_last_modified_by],[tbp_last_modified_date]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, p.currency, p.requestedDeliveryDate, p.reservedFor, p.comment,
+      p.originalPackagingType, p.originalPackagingTypeId, p.packagingTypeChanged ? 1 : 0, createdBy, createdAt, user, now]);
+  }
+}
 
 router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -607,74 +434,69 @@ router.get('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req,
 }));
 
 router.post('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.body?.supplierId);
-  if (!supplierId) throw createHttpError(400, 'Lieferant fehlt.', { code: 'SUPPLIER_REQUIRED' });
-  const supplier = await assertSupplier(req.database, supplierId, accessScope);
-  const positions = normalizePositions(req.body?.positions);
-  const loading = await resolveLoadingAddress(req.database, req.body);
-  await validateWorkingDates(positions, loading.address || null);
+  const supplier = await assertSupplier(req.database, supplierId, scope);
   const companyId = Number(req.database?.firmaId || 0);
-  const userShortCode = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
+  const user = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
   const clientRequestId = isUuid(req.body?.clientRequestId) ? asText(req.body.clientRequestId) : crypto.randomUUID();
   const now = new Date().toISOString();
-  const supplierName = asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId;
-  const supplierAddress = [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', ');
+  const prior = await runSQLQuerySqlServer(config.sql.database, `${orderSelectSql()} WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
+  if (prior[0]) {
+    if (asText(prior[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
+    sendEnvelope(res, { data: mapOrder(prior[0], await loadPositions(prior[0].id)), meta: { alreadyCreated: true } });
+    return;
+  }
+  const { positions, loading, packaging, incoterm, payment } = await preparePurchase(req, supplierId, req.body?.positions);
   const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
-    const existing = await query(`SELECT TOP 1 * FROM ${TEMP_PURCHASE_ORDER_TABLE} WHERE [tb_company_id] = ? AND [tb_client_request_id] = ?`, [companyId, clientRequestId]);
-    if (existing.rows?.[0]) return existing.rows[0];
-    const result = await query(`
-      INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
-        [tb_company_id], [tb_client_request_id], [tb_supplier_id], [tb_supplier_name], [tb_supplier_address], [tb_supplier_contact],
-        [tb_payment_condition_changed], [tb_payment_condition_id], [tb_payment_condition_text], [tb_delivery_term_id], [tb_delivery_term_text],
-        [tb_packaging_type], [tb_loading_location_source], [tb_loading_location_id], [tb_loading_location_text], [tb_loading_location_changed],
-        [tb_comment], [tb_status], [tb_created_by], [tb_create_date], [tb_last_modified_by], [tb_last_modified_date]
-      ) OUTPUT INSERTED.* VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-    `, [companyId, clientRequestId, supplierId, supplierName, supplierAddress, asText(req.body?.supplierContact) || null,
-      req.body?.paymentConditionChanged ? 1 : 0, asNumber(req.body?.paymentConditionId), asText(req.body?.paymentConditionText) || null,
-      asNumber(req.body?.deliveryTermId), asText(req.body?.deliveryTermText) || null, asText(req.body?.packagingType) || null,
-      loading.source, loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0,
-      asText(req.body?.comment) || null, userShortCode, now, userShortCode, now]);
-    const order = result.rows?.[0];
-    for (let i = 0; i < positions.length; i += 1) {
-      const p = positions[i];
-      await query(`
-        INSERT INTO ${TEMP_PURCHASE_POSITION_TABLE} (
-          [tbp_tb_id], [tbp_line_no], [tbp_article_index], [tbp_article], [tbp_amount], [tbp_unit], [tbp_purchase_price], [tbp_currency],
-          [tbp_requested_delivery_date], [tbp_reserved_for], [tbp_comment], [tbp_source_bestellindex], [tbp_source_position_id], [tbp_source_order_date],
-          [tbp_created_by], [tbp_create_date], [tbp_last_modified_by], [tbp_last_modified_date]
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [order.tb_id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, p.currency, p.requestedDeliveryDate,
-        p.reservedFor, p.comment, p.sourceBestellindex, p.sourcePositionId, p.sourceOrderDate, userShortCode, now, userShortCode, now]);
+    const retry = await query(`${orderSelectSql()} WITH (UPDLOCK, HOLDLOCK) WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
+    if (retry.rows[0]) {
+      if (asText(retry.rows[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
+      return mapOrder(retry.rows[0], await loadPositions(retry.rows[0].id, query));
     }
-    return order;
+    const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
+      [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
+      [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
+      [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
+      [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
+      OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,0,?,0,?,?,?,?)`,
+    [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
+      [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
+      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,
+      asText(req.body?.comment) || null, user, now, user, now]);
+    const id = result.rows[0].id;
+    await insertPurchasePositions(query, id, positions, user, now);
+    const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
+    return mapOrder(saved.rows[0], await loadPositions(id, query));
   });
-  sendEnvelope(res, { status: 201, data: mapOrder(created, await loadPositions(created.tb_id)), meta: { mandant: req.mandant }, error: null });
+  sendEnvelope(res, { status: 201, data: created, meta: { mandant: req.mandant } });
 }));
 
 router.put('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
-  const userShortCode = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
-  const existing = await loadOrderForUser(id, companyId, userShortCode, accessScope.isFullAccess);
+  const user = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
+  const existing = await loadOrderForUser(id, companyId, user, scope.isFullAccess);
   if (!existing) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   if (!isEditable(normalizeStatus(existing.status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
-  const supplier = await assertSupplier(req.database, asText(req.body?.supplierId || existing.supplierId), accessScope);
-  const positions = normalizePositions(req.body?.positions);
-  const loading = await resolveLoadingAddress(req.database, req.body);
-  await validateWorkingDates(positions, loading.address || null);
+  if (req.body?.supplierId && asText(req.body.supplierId) !== existing.supplierId) throw createHttpError(400, 'Der Lieferant einer Bestellung kann nicht geändert werden.');
+  await assertSupplier(req.database, existing.supplierId, scope);
+  const storedPositions = await loadPositions(id);
+  const { positions, loading, packaging, incoterm } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
   const now = new Date().toISOString();
-  await withSqlTransaction(config.sql.database, async ({ query }) => {
-    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_id]=?, [tb_supplier_name]=?, [tb_supplier_address]=?, [tb_supplier_contact]=?, [tb_payment_condition_changed]=?, [tb_payment_condition_id]=?, [tb_payment_condition_text]=?, [tb_delivery_term_id]=?, [tb_delivery_term_text]=?, [tb_packaging_type]=?, [tb_loading_location_source]=?, [tb_loading_location_id]=?, [tb_loading_location_text]=?, [tb_loading_location_changed]=?, [tb_comment]=?, [tb_last_modified_by]=?, [tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierId || existing.supplierId), asText(supplier.kd_Name1 || supplier.kd_Name2), [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null, req.body?.paymentConditionChanged ? 1 : 0, asNumber(req.body?.paymentConditionId), asText(req.body?.paymentConditionText) || null, asNumber(req.body?.deliveryTermId), asText(req.body?.deliveryTermText) || null, asText(req.body?.packagingType) || null, loading.source, loading.id, loading.text, req.body?.loadingLocationChanged ? 1 : 0, asText(req.body?.comment) || null, userShortCode, now, id, companyId]);
-    await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id] = ?`, [id]);
-    for (let i = 0; i < positions.length; i += 1) {
-      const p = positions[i];
-      await query(`INSERT INTO ${TEMP_PURCHASE_POSITION_TABLE} ([tbp_tb_id],[tbp_line_no],[tbp_article_index],[tbp_article],[tbp_amount],[tbp_unit],[tbp_purchase_price],[tbp_currency],[tbp_requested_delivery_date],[tbp_reserved_for],[tbp_comment],[tbp_source_bestellindex],[tbp_source_position_id],[tbp_source_order_date],[tbp_created_by],[tbp_create_date],[tbp_last_modified_by],[tbp_last_modified_date]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, p.currency, p.requestedDeliveryDate, p.reservedFor, p.comment, p.sourceBestellindex, p.sourcePositionId, p.sourceOrderDate, existing.createdBy || userShortCode, existing.createdAt || now, userShortCode, now]);
-    }
+  const updated = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
+    if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
+      [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
+      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text, asText(req.body?.comment) || null, user, now, id, companyId]);
+    await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
+    await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
+    const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
+    return mapOrder(saved.rows[0], await loadPositions(id, query));
   });
-  const row = await loadOrderForUser(id, companyId, userShortCode, accessScope.isFullAccess);
-  sendEnvelope(res, { status: 200, data: mapOrder(row, await loadPositions(id)), meta: { mandant: req.mandant }, error: null });
+  sendEnvelope(res, { data: updated, meta: { mandant: req.mandant } });
 }));
 
 router.delete('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
@@ -705,21 +527,27 @@ router.post('/temp-purchase-orders/:id/finalize', requireMandant, asyncHandler(a
   if (!mailValidation.ok) throw createHttpError(503, 'CS-Mail-Konfiguration fehlt.', { code: 'PURCHASE_CS_MAIL_CONFIG_MISSING', missing: mailValidation.missing || [] });
   const csRecipient = resolveOrderMailRecipient(companyId, config.orderMail);
   if (!csRecipient.ok) throw createHttpError(422, 'Kein CS-Mail-Empfänger für den Mandanten konfiguriert.', { code: 'PURCHASE_CS_MAIL_RECIPIENT_MISSING' });
-  const row = await loadOrderForUser(id, companyId, userShortCode, accessScope.isFullAccess);
-  if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
-  const positions = await loadPositions(id);
-  if (!positions.length) throw createHttpError(400, 'Die Bestellung benötigt mindestens eine Position.', { code: 'PURCHASE_POSITIONS_REQUIRED' });
-  if (normalizeStatus(row.status) === STATUS.APP_FINALIZED || normalizeStatus(row.status) === STATUS.CS_ACCEPTED) {
-    sendEnvelope(res, { status: 200, data: mapOrder(row, positions), meta: { alreadyFinalized: true }, error: null });
+  const now = new Date().toISOString();
+  const finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const ownerSql = accessScope.isFullAccess ? '' : ' AND [tb_created_by]=?';
+    const ownerParams = accessScope.isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
+    const current = await query(`${orderSelectSql()} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?${ownerSql}`, ownerParams);
+    const row = current.rows[0];
+    if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
+    const positions = await loadPositions(id, query);
+    if ([STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
+    normalizePositions(positions);
+    const loading = await resolveLoadingAddress(req.database, { ...row, positions });
+    await validateWorkingDates(positions, loading.address);
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_status]=1,[tb_return_comment]=NULL,[tb_completed_by]=?,[tb_closing_date]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=? AND [tb_status] IN (0,3)`, [userShortCode, now, userShortCode, now, id, companyId]);
+    return { mapped: mapOrder({ ...row, status: 1, returnComment: '', completedBy: userShortCode, closingDate: now, lastModifiedBy: userShortCode, lastModifiedAt: now }, positions), alreadyFinalized: false };
+  });
+  const mapped = finalized.mapped;
+  const updatedPositions = mapped.positions;
+  if (finalized.alreadyFinalized) {
+    sendEnvelope(res, { data: mapped, meta: { alreadyFinalized: true } });
     return;
   }
-  const loading = await resolveLoadingAddress(req.database, row);
-  await validateWorkingDates(positions.map((p) => ({ requestedDeliveryDate: p.requestedDeliveryDate })), loading.address || null);
-  const now = new Date().toISOString();
-  await runSQLQuerySqlServer(config.sql.database, `UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_status]=1, [tb_return_comment]=NULL, [tb_completed_by]=?, [tb_closing_date]=?, [tb_last_modified_by]=?, [tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=? AND [tb_status] IN (0,3)`, [userShortCode, now, userShortCode, now, id, companyId]);
-  const updated = await loadOrderForUser(id, companyId, userShortCode, accessScope.isFullAccess);
-  const updatedPositions = await loadPositions(id);
-  const mapped = mapOrder(updated, updatedPositions);
   let csMail = { queued: false, reason: 'not_available' };
   try {
     csMail = await queuePurchaseOrderCsMail({
@@ -755,7 +583,7 @@ router.post('/temp-purchase-orders/:id/finalize', requireMandant, asyncHandler(a
         type: 'purchase_order',
         product: asText(position.article) || asText(position.articleIndex) || '-',
         productId: asText(position.articleIndex),
-        beNumber: asText(position.sourceBestellindex),
+        beNumber: asText(mapped.bmsPurchaseOrderNumber),
         amountKg: Number(position.amount),
         unit: asText(position.unit) || 'kg',
         referenceId: String(id),
@@ -764,7 +592,6 @@ router.post('/temp-purchase-orders/:id/finalize', requireMandant, asyncHandler(a
           tempPurchaseOrderId: id,
           supplierId: mapped.supplierId,
           supplierName: mapped.supplierName,
-          sourceBestellindex: position.sourceBestellindex || null,
         },
       }));
       if (timelineEntries.length) await appendTimelineEntries(timelineEntries);

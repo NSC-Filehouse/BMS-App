@@ -92,6 +92,10 @@ export default function OrderCart() {
   };
 
   const handleContinueShopping = () => {
+    if (location.state?.shoppingReturnTo?.pathname) {
+      navigateToReturn(navigate, location.state.shoppingReturnTo, '/customers');
+      return;
+    }
     if (location.state?.fromVl || location.state?.returnTo?.pathname === '/vl') {
       handleBack();
       return;

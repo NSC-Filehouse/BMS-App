@@ -1,5 +1,5 @@
 const PURCHASE_ORDER_MAIL_SUBJECT = 'BMS-App Bestellung an Lieferant';
-const PURCHASE_ORDER_CS_MAIL_SUBJECT = 'BMS-App: neue Bestellung für CS';
+const PURCHASE_ORDER_CS_MAIL_SUBJECT = 'BMS-App: neue Bestellung für BMS';
 
 function text(value) {
   return value === null || value === undefined ? '' : String(value).trim();
@@ -52,7 +52,8 @@ function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantSho
       line('Gewünschter Liefertermin', date(position?.requestedDeliveryDate)),
       line('Reserviert für', position?.reservedFor),
       line('Positionshinweis', position?.comment),
-      line('Vorherige BE', position?.sourceBestellindex),
+      line('Ursprüngliche Verpackung', position?.originalPackagingType || order?.packagingType),
+      line('Verpackung geändert', position?.packagingTypeChanged ? 'Ja' : 'Nein'),
     );
   });
   return lines.join('\r\n');

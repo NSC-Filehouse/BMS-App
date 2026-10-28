@@ -1671,9 +1671,16 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     WHERE COALESCE([b].[be_KdNr], '') IN (${supplierPlaceholders})
       AND COALESCE([p].[beP_Artikel], '') <> ''
       AND COALESCE([p].[beP_Storno], 0) <> 1
-    ORDER BY [b].[be_Bestelldatum] DESC, [p].[beP_Artikel] ASC
+    ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC, [p].[beP_BEposID] DESC
   `, supplierContext.supplierNumbers);
-  const purchasedRows = Array.isArray(rows) ? rows : [];
+  // Pick the newest historical spelling BEFORE grouping, so one article ID
+  // cannot create separate groups through old article names.
+  const newestNames = new Map();
+  const purchasedRows = (Array.isArray(rows) ? rows : []).map((row) => {
+    const id = toText(row.articleIndex).toLocaleLowerCase('de-DE');
+    if (id && !newestNames.has(id)) newestNames.set(id, toText(row.article));
+    return { ...row, article: newestNames.get(id) || toText(row.article) };
+  });
   const articleIndexes = [...new Set(purchasedRows.map((row) => toText(row.articleIndex)).filter(Boolean))];
   const articleMetaMap = new Map();
   if (articleIndexes.length) {
@@ -1727,12 +1734,17 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       [article].[agA_Artikelgruppe] AS articleGroupId,
       [articleGroup].[ag_Gruppenname] AS articleGroupName
     FROM ${PRODUCTS_VIEW_SQL}
+    INNER JOIN [dbo].[tblBest_Position] AS [supplierPosition]
+      ON [supplierPosition].[beP_BEposID] = [availability].[Bestell-Pos]
+    INNER JOIN [dbo].[tblBestellung] AS [supplierOrder]
+      ON [supplierOrder].[be_Bestellindex] = [supplierPosition].[beP_Bestellindex]
     LEFT JOIN [dbo].[tblArt_Artikel] AS [article]
       ON [article].[agA_Artikelindex] = [availability].[beP_Artikelindex]
     LEFT JOIN [dbo].[tblArtikelgruppe] AS [articleGroup]
       ON [articleGroup].[ag_Gruppenindex] = [article].[agA_Artikelgruppe]
+    WHERE [supplierOrder].[be_KdNr] IN (${supplierPlaceholders})
     ORDER BY [availability].[Artikel], [availability].[Bestell-Pos], [availability].[Lagerort]
-  `, []);
+  `, supplierContext.supplierNumbers);
   const currentViewRows = Array.isArray(viewRows) ? viewRows : [];
   const tempPlanning = await loadTempOrderPlanning({
     companyId: req.database?.firmaId,
@@ -1768,7 +1780,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       });
     }
     const groupEntry = groups.get(group.key);
-    const childKey = `${articleIndex}\u0000${article}`;
+    const childKey = articleIndex ? `id:${articleIndex.toLocaleLowerCase('de-DE')}` : `name:${article.toLocaleLowerCase('de-DE').replace(/\s+/g, ' ')}`;
     const eu = Number(row.purchasePricePerTonneEu);
     const dm = Number(row.purchasePricePerTonneDm);
     const purchasePricePerTonne = Number.isFinite(eu) ? eu : (Number.isFinite(dm) ? dm : null);
@@ -1869,7 +1881,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     group.availablePositionMap.set(productId, position);
     group.availablePositions.push(position);
 
-    const childKey = `${articleIndex}\u0000${article}`;
+    const childKey = articleIndex ? `id:${articleIndex.toLocaleLowerCase('de-DE')}` : `name:${article.toLocaleLowerCase('de-DE').replace(/\s+/g, ' ')}`;
     const child = group.articleMap.get(childKey)
       || (articleIndex
         ? group.articles.find((candidate) => candidate.articleIndex === articleIndex)
