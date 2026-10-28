@@ -59,7 +59,7 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
                 return next;
               })} sx={{ justifySelf: 'start', justifyContent: 'flex-start', textAlign: 'left', color: 'primary.main', gap: 0.5, py: 0.25 }}>
               <ExpandCollapseIndicator expanded={expandedVl.has(article.key)} direction="right" />
-              <Typography variant="caption">Aktuell auf VL</Typography>
+              <Typography variant="caption">Aktuell auf VL ({article.positions.length})</Typography>
             </ButtonBase>
             <Collapse id={`${vlRegionId}-${article.key}`} in={expandedVl.has(article.key)} unmountOnExit>
               {article.positions.map((position) => <Box key={position.id || position.productId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
