@@ -108,6 +108,7 @@ export default function TempPurchaseOrdersList() {
               <Typography variant="caption" sx={{ color: getTempOrderStatusColor(item.status), fontWeight: 600 }}>{getTempOrderStatusLabel(t, item.status)}</Typography>
               {(item.positions || []).map((p, index) => <Box key={p.id || index} sx={{ mt: 0.75, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {formatPurchaseNumber(p.amount)} kg · {p.article || '–'} · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>
+                {p.masterArticleName && p.masterArticleName !== p.article && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName}</Typography>}
                 <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
               </Box>)}
             </Box>

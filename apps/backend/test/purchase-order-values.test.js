@@ -4,6 +4,28 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { commonLoadingLocations, findPackaging, packagingKey } = require('../src/db/purchase-order-values');
 
+test('supplier purchase names and internal names stay separate through defaults and legacy draft enrichment', async () => {
+  const mod = { exports: {} }, calls = [];
+  new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-values.js'), 'utf8'))((name) => {
+    if (name === '../config') return {};
+    return { runSQLQueryAccess: async (_database, sql, params) => {
+      calls.push({ sql, params });
+      return [{ article: 'Supplier product', masterArticleName: 'Our master name' }];
+    } };
+  }, mod);
+  const source = await mod.exports.loadLatestPurchase({}, 'TOTAL', 'A');
+  assert.equal(source.article, 'Supplier product');
+  assert.match(calls[0].sql, /COALESCE\(NULLIF\(LTRIM\(RTRIM\(\[a\]\.\[agA_Artikelname_Lieferant\]/);
+  assert.deepEqual(calls[0].params, ['TOTAL', 'A']);
+  const result = await mod.exports.enrichPurchaseArticleNames({}, 'TOTAL', [
+    { articleIndex: 'A', article: 'Our master name', masterArticleName: 'Forged name' },
+    { articleIndex: 'A', article: 'Supplier spelling stored at ordering' },
+  ]);
+  assert.equal(result[0].article, 'Supplier product');
+  assert.equal(result[0].masterArticleName, 'Our master name');
+  assert.equal(result[1].article, 'Supplier spelling stored at ordering');
+});
+
 test('only offers common supplier/article locations without manufacturing an address PK', () => {
   const rows = [
     { articleIndex: 'A', loadingLocationText: 'Hamburg' },

@@ -79,6 +79,7 @@ export default function TempPurchaseOrderDetail() {
       <Box sx={{ display: 'grid', gap: 1, mt: 1.25, minWidth: 0 }}>
         {(item.positions || []).map((p, index) => <Box key={p.id} sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1.5, p: 1.25, display: 'grid', gap: 0.35, minWidth: 0, overflowWrap: 'anywhere' }}>
           <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {p.article || '–'}</Typography>
+          {p.masterArticleName && p.masterArticleName !== p.article && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName}</Typography>}
           <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex || '–'}</Typography>
           <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
           <Typography variant="caption" color="text.secondary">Menge: {formatPurchaseNumber(p.amount)} kg · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>

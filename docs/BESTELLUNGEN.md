@@ -128,3 +128,13 @@ historische tbp_source_*-Felder angewiesen ist. Status 2 und tb_bestellindex
 werden weiterhin von dieser Übernahme gesetzt. Das SQL-Upgrade, produktive
 Datenänderungen und ein Serverneustart werden durch einen Code-Push nicht
 automatisch ausgeführt.
+
+## Lieferantenbezeichnungen und Rechnungen (29.10.2026)
+
+In „Bereits eingekaufte Artikel“ ist die Lieferantenbezeichnung führend. Fehlt sie im Artikelstamm, wird die letzte beim Lieferanten verwendete Bestellbezeichnung genutzt. Unsere interne Bezeichnung bleibt ein separates Feld und erscheint nur beim Bestellen bzw. in Bestellansichten klein unter der Lieferantenbezeichnung. Speichern, Kopieren und Finalisieren übernehmen den Lieferantennamen in tbp_article; vorhandene Entwürfe mit unserer aktuellen Stammdatenbezeichnung werden vor der Übergabe korrigiert. Bereits finalisierte Datensätze werden dabei nicht umgeschrieben. Die interne Bezeichnung wird lesend aus dem jeweiligen Mandanten ergänzt; neue Spalten sind nicht erforderlich.
+
+NT-Artikel werden ausschließlich aus der Einkaufsliste ausgeblendet. Erkannt wird NT als separates Kennzeichen im Gruppennamen, Stammdaten-, Lieferanten- oder letzten Einkaufsnamen. Bestehende Bestellungen, Rechnungen und Optionen bleiben sichtbar.
+
+Das Rechnungs-Accordion lädt weiterhin nur Eingangsbelege (tblBelege.be_EinAus=2) des geöffneten Lieferantenkontos. Die Suche filtert innerhalb des gewählten Zeit-/Zahlungsstatus nach Rechnungsnummer, BE-/Positionsnummer und Materialbezeichnungen. Die Verknüpfung verwendet Lieferantenkonto plus beP_LiefRGnr; ein vorhandenes Positions-Rechnungsdatum muss zum Belegdatum passen. Dadurch werden gleichlautende Nummern anderer Lieferanten bzw. Jahre nicht vermischt. Ein Beleg ohne verknüpfte Position bleibt über seine Rechnungsnummer auffindbar; eine fehlende BE-Zuordnung wird nicht aus Freitext erraten.
+
+Keine Schema-/DDL-Migration für diese Erweiterung erforderlich.

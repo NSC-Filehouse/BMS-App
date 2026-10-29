@@ -15,6 +15,10 @@ function InvoiceCard({ invoice, isSupplier, t, formatDate, formatMoney }) {
         <Typography variant="caption" sx={{ fontWeight: 600 }}>
           {t(credit ? 'credit_note_number_label' : 'invoice_number_label')}: {invoice.invoiceNumber || '-'}
         </Typography>
+        {isSupplier && invoice.orderNumbers?.length > 0 && <Typography variant="caption" color="text.secondary">BE: {invoice.orderNumbers.join(', ')}</Typography>}
+        {isSupplier && invoice.materials?.length > 0 && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+          {[...new Set(invoice.materials.map(material => material.article).filter(Boolean))].join(' · ')}
+        </Typography>}
         {isSupplier && invoice.supplierNumber && (
           <Typography variant="caption">{t('supplier_number_label')}: {invoice.supplierNumber}</Typography>
         )}

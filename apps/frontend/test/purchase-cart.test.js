@@ -7,6 +7,16 @@ global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (ke
 beforeEach(() => { storage.clear(); localStorage.setItem('bms.mandant', 'FRU'); });
 const item = (id, packaging = 'Sackware') => ({ supplierId: '42', articleIndex: id, article: `Artikel ${id}`, originalPackagingType: packaging });
 
+test('supplier name remains primary and the separate internal name survives shopping and independent copies', () => {
+  addPurchaseCartItems([{ ...item('A'), article: 'Supplier grade', masterArticleName: 'Our material name' }]);
+  const [first] = getPurchaseCartItems();
+  duplicatePurchaseCartItem(first.lineId);
+  for (const row of getPurchaseCartItems()) {
+    assert.equal(row.article, 'Supplier grade');
+    assert.equal(row.masterArticleName, 'Our material name');
+  }
+});
+
 test('new purchase lines start empty and use the packaging load, with one article per ID', () => {
   addPurchaseCartItems([item('A', 'Siloware'), { ...item('A'), article: 'Alter Name', purchasePrice: 900, requestedDeliveryDate: '2025-01-01', amount: 123 }]);
   const rows = getPurchaseCartItems();

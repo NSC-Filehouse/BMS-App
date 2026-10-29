@@ -41,6 +41,9 @@ const {
 } = require('../order-pdf');
 const { loadCustomerInvoiceTimeline } = require('../db/customer-invoices');
 
+const { supplierArticleDisplay, isNtSupplierArticle } = require('../supplier-article-display');
+const { loadSupplierInvoiceLinks } = require('../db/supplier-invoice-links');
+
 const router = express.Router();
 require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer, mapRepresentatives });
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
@@ -1227,12 +1230,14 @@ router.get('/customers/:id/purchase-orders', requireMandant, asyncHandler(async 
       SELECT
         [p].[beP_Bestellindex] AS orderIndex,
         [p].[beP_Artikel] AS article,
+        [a].[agA_Artikelname] AS masterArticleName,[a].[agA_Artikelname_Lieferant] AS supplierArticleName,
         [p].[beP_Anzahl] AS amount,
         [p].[beP_Einheit] AS unit,
         [p].[beP_Lieferdatum] AS deliveryDate,
         [p].[beP_EK_EU] AS purchasePricePerTonneEu,
         [p].[beP_EK_DM] AS purchasePricePerTonneDm
       FROM [dbo].[tblBest_Position] [p]
+      LEFT JOIN [dbo].[tblArt_Artikel] [a] ON [a].[agA_Artikelindex]=[p].[beP_Artikelindex]
       WHERE [p].[beP_Bestellindex] IN (${positionPlaceholders})
       ORDER BY [p].[beP_Bestellindex] ASC, [p].[beP_PosNr] ASC
     `, indices);
@@ -1243,7 +1248,8 @@ router.get('/customers/:id/purchase-orders', requireMandant, asyncHandler(async 
       const eu = Number(row.purchasePricePerTonneEu);
       const dm = Number(row.purchasePricePerTonneDm);
       posMap.get(key).push({
-        article: toText(row.article),
+        article: supplierArticleDisplay(row),
+        masterArticleName: toText(row.masterArticleName),
         amount: row.amount,
         unit: toText(row.unit),
         deliveryDate: row.deliveryDate || null,
@@ -1533,6 +1539,10 @@ router.get('/customers/:id/supplier-invoices', requireMandant, asyncHandler(asyn
     ORDER BY [x].[be_Datum] DESC, [x].[be_LfdNR] DESC
   `, [...supplierContext.supplierNumbers, ...dateFilter.params]);
 
+  const links = rows.length ? await loadSupplierInvoiceLinks(req.database, supplierContext.supplierNumbers, {
+    scopeSql: scopeFilterSql, dateSql: dateFilter.sql, dateParams: dateFilter.params,
+  }) : new Map();
+
   const data = (Array.isArray(rows) ? rows : []).map((row, index) => {
     const rgGrossEu = Number(row.rgGrossEu);
     const grossEu = Number(row.grossEu);
@@ -1541,6 +1551,7 @@ router.get('/customers/:id/supplier-invoices', requireMandant, asyncHandler(asyn
     return {
       id: toText(row.receiptId) || `${toText(row.invoiceNumber) || 'supplier-invoice'}-${index + 1}`,
       invoiceNumber: toText(row.invoiceNumber),
+      ...(links.get(toText(row.receiptId)) || { orderNumbers: [], positionNumbers: [], materials: [] }),
       invoiceDate: row.invoiceDate || null,
       dueDate: row.dueDate || null,
       paymentDate: row.paymentDate || null,
@@ -1769,6 +1780,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     if (!article) continue;
     const articleIndex = toText(row.articleIndex);
     const meta = articleMetaMap.get(articleIndex) || {};
+    if (isNtSupplierArticle({ ...meta, article, lastPurchaseArticle: article })) continue;
     const group = resolvePurchasedArticleGroup({
       article,
       articleIndex,
@@ -1812,7 +1824,8 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
     const mfi = textMfi !== null ? textMfi : (Number.isFinite(masterMfi) ? masterMfi : null);
     const child = {
       id: `${customerId}-procured-article-${group.key}-${groupEntry.articles.length + 1}`,
-      article: toText(meta.masterArticleName) || article,
+      article: supplierArticleDisplay({ ...meta, lastPurchaseArticle: article }),
+      masterArticleName: toText(meta.masterArticleName),
       supplierArticleName: toText(meta.supplierArticleName),
       lastPurchaseArticle: article,
       articleIndex: articleIndex || null,

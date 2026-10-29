@@ -49,6 +49,7 @@ import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { addPurchaseCartItems, getPurchaseCartContext } from '../utils/purchaseCart.js';
 import SupplierArticles from '../components/SupplierArticles.jsx';
 import SupplierOptions from '../components/SupplierOptions.jsx';
+import { filterSupplierInvoices } from '../utils/supplierInvoices.js';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
@@ -416,6 +417,7 @@ export default function CustomerDetail() {
   const [orderScope, setOrderScope] = React.useState('open');
   const [orderYear, setOrderYear] = React.useState(CURRENT_YEAR);
   const [invoiceScope, setInvoiceScope] = React.useState('open');
+  const [supplierInvoiceQuery, setSupplierInvoiceQuery] = React.useState('');
   const [invoiceYear, setInvoiceYear] = React.useState(CURRENT_YEAR);
   const [activityScope, setActivityScope] = React.useState('3m');
   const [activityYear, setActivityYear] = React.useState(CURRENT_YEAR);
@@ -671,6 +673,8 @@ export default function CustomerDetail() {
   const orderEndpoint = isSupplier
     ? `/customers/${encodeURIComponent(id)}/purchase-orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`
     : `/customers/${encodeURIComponent(id)}/orders?scope=${encodeURIComponent(orderScope)}&year=${encodeURIComponent(orderYear)}`;
+  const visibleInvoices = isSupplier ? filterSupplierInvoices(docs.invoices.items, supplierInvoiceQuery) : docs.invoices.items;
+  React.useEffect(() => { setSupplierInvoiceQuery(''); }, [id, isSupplier]);
   const invoiceEndpoint = isSupplier
     ? `/customers/${encodeURIComponent(id)}/supplier-invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`
     : `/customers/${encodeURIComponent(id)}/invoices?scope=${encodeURIComponent(invoiceScope)}&year=${encodeURIComponent(invoiceYear)}`;
@@ -1408,6 +1412,7 @@ export default function CustomerDetail() {
                       {(Array.isArray(order.positions) ? order.positions : []).map((pos, pIdx) => (
                         <Typography key={`${order.id || idx}-pos-${pIdx}`} variant="caption" sx={{ lineHeight: 1.2 }}>
                           {`${pIdx + 1}. ${pos.amount ?? '-'} ${pos.unit || ''}; ${pos.article || '-'}; ${formatDateOnly(pos.deliveryDate)}; ${t(isSupplier ? 'purchase_order_price_per_tonne' : 'order_sale_price_per_tonne')}: ${formatMoney(isSupplier ? pos.purchasePricePerTonne : pos.salePricePerTonne)}`}
+                          {isSupplier && pos.masterArticleName && pos.masterArticleName !== pos.article && <Box component="span" sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem' }}>Unsere Bezeichnung: {pos.masterArticleName}</Box>}
                         </Typography>
                       ))}
                     </CardContent>
@@ -1431,15 +1436,17 @@ export default function CustomerDetail() {
                 )}
               />
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
+                {isSupplier && <TextField size="small" fullWidth label={t('supplier_invoices_search')}
+                  value={supplierInvoiceQuery} onChange={event => setSupplierInvoiceQuery(event.target.value)} sx={{ mb: 0.5 }} />}
                 {docs.invoices.loading && <CircularProgress size={20} />}
                 {docs.invoices.error && <Alert severity="error">{docs.invoices.error}</Alert>}
-                {!docs.invoices.loading && !docs.invoices.error && docs.invoices.items.length === 0 && (
+                {!docs.invoices.loading && !docs.invoices.error && visibleInvoices.length === 0 && (
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_invoices')}</Typography>
                 )}
                 {!docs.invoices.loading && !docs.invoices.error && (
                   <CustomerInvoiceDocuments
                     key={`${id}-${isSupplier}-${invoiceScope}-${invoiceYear}`}
-                    items={docs.invoices.items}
+                    items={visibleInvoices}
                     isSupplier={isSupplier}
                     t={t}
                     formatDate={formatDateOnly}

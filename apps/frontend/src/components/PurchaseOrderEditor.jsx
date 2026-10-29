@@ -80,6 +80,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
       setHistory(initialHistory);
       if (isNew && !locked) update((previous) => ({ ...previous, positions: previous.positions.map((p) => ({
         ...p, article: initialHistory[p.articleIndex]?.article || p.article,
+        masterArticleName: initialHistory[p.articleIndex]?.masterArticleName || p.masterArticleName,
       })) }));
     }).catch((e) => alive && setLocationError(e.message));
     return () => { alive = false; };
@@ -146,6 +147,8 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           <IconButton size="small" color="primary" aria-label="Position kopieren" disabled={disabled} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>
           <IconButton size="small" color="error" aria-label="Position entfernen" disabled={disabled} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>
         </Box>
+        {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName || last.masterArticleName}</Typography>}
         <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Artikelindex: {p.articleIndex} · Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
           <TextField label="Menge (kg)" required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />

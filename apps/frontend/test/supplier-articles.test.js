@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { supplierArticleList, selectedSupplierVlPositions, supplierVlPositionKey } from '../src/utils/supplierArticles.js';
 
-test('mixes VL and historical articles alphabetically by our name without the supplier heading', () => {
+test('sorts historical and VL articles by supplier name and keeps our name out of the list', () => {
   const rows = supplierArticleList([
     { name: 'Group Z', articles: [{ articleIndex: 'Z', article: 'Zeta', supplierArticleName: 'ABC Supplier', availablePositions: [] }] },
     { name: 'Group A', articles: [{ articleIndex: 'B', article: 'Beta', supplierArticleName: 'ZZZ Supplier', availablePositions: [{ id: 'BE-1', beNumber: 'BE-1', warehouse: 'Hamburg' }] }, { articleIndex: 'A', article: 'Alpha', availablePositions: [] }] },
   ]);
-  assert.deepEqual(rows.map((row) => row.article), ['Alpha', 'Beta', 'Zeta']);
-  assert.equal(rows[1].positions[0].id, 'BE-1');
+  assert.deepEqual(rows.map((row) => row.article), ['ABC Supplier', 'Alpha', 'ZZZ Supplier']);
+  assert.equal(rows[2].positions[0].id, 'BE-1');
   assert.equal(rows[0].groupName, undefined);
   assert.equal(supplierArticleList([{ articles: rows.map((row) => ({ ...row, availablePositions: row.positions })) }], 'hamburg').length, 1);
 });
@@ -18,6 +18,17 @@ test('merges duplicate article IDs while retaining different VL stock positions'
   const rows = supplierArticleList(groups);
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0].positions.map((p) => p.id), ['1', '2']);
+});
+
+test('NT classification is excluded using metadata or any available article name, without matching letters inside a word', () => {
+  const rows = supplierArticleList([{ articles: [
+    { articleIndex: 'A', article: 'Our name', supplierArticleName: 'Grade NT' },
+    { articleIndex: 'B', article: 'Grade', masterArticleName: 'PP NT MFI 12' },
+    { articleIndex: 'C', article: 'NT-Material' },
+    { articleIndex: 'D', article: 'Internal', supplierArticleName: 'Supplier product', lastPurchaseArticle: 'PPC NT' },
+    { articleIndex: 'E', article: 'Continental grade', supplierArticleName: 'Prime 1640' },
+  ] }]);
+  assert.deepEqual(rows.map(row => row.article), ['Prime 1640']);
 });
 
 test('VL multi-selection retains each selected BE/warehouse position and its original order data', () => {

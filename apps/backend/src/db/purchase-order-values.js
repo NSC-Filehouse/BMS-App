@@ -59,7 +59,8 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
 async function loadLatestPurchase(database, supplierId, articleIndex) {
   const rows = await runSQLQueryAccess(database, `
     SELECT TOP 1 [p].[beP_Artikelindex] AS articleIndex,
-      COALESCE(NULLIF(LTRIM(RTRIM([a].[agA_Artikelname])), N''), [p].[beP_Artikel]) AS article,
+      COALESCE(NULLIF(LTRIM(RTRIM([a].[agA_Artikelname_Lieferant])), N''), [p].[beP_Artikel]) AS article,
+      [a].[agA_Artikelname] AS masterArticleName,
       [a].[agA_Artikelname_Lieferant] AS supplierArticleName, [p].[beP_Artikel] AS lastPurchaseArticle,
       [b].[be_Verpackung] AS originalPackagingType,
       COALESCE([p].[beP_EK_EU], [p].[beP_EK_DM]) AS lastPurchasePrice,
@@ -72,6 +73,20 @@ async function loadLatestPurchase(database, supplierId, articleIndex) {
       AND COALESCE([p].[beP_Storno], 0) <> 1
     ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC, [p].[beP_BEposID] DESC`, [supplierId, articleIndex]);
   return rows[0] || null;
+}
+
+async function enrichPurchaseArticleNames(database, supplierId, positions) {
+  const ids = [...new Set(positions.map(position => text(position.articleIndex)).filter(Boolean))];
+  const sources = new Map(await Promise.all(ids.map(async id => [id, await loadLatestPurchase(database, supplierId, id)])));
+  return positions.map(position => {
+    const source = sources.get(text(position.articleIndex));
+    const masterArticleName = text(source?.masterArticleName);
+    const storedName = text(position.article);
+    // Preserve an already stored supplier spelling; recognize legacy drafts saved with our master name.
+    const article = !storedName || masterArticleName && normalized(storedName) === normalized(masterArticleName)
+      ? text(source?.article) || storedName : storedName;
+    return { ...position, article, masterArticleName };
+  });
 }
 
 function commonLoadingLocations(rows, articleIndexes) {
@@ -110,4 +125,4 @@ function findPackaging(options, value, id) {
     || options.find((option) => option.aliases.some((alias) => packagingKey(alias) === packagingKey(value)));
 }
 
-module.exports = { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };
+module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };

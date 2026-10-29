@@ -8,7 +8,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
-const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey } = require('../db/purchase-order-values');
+const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
 const { loadHolidayRows } = require('../db/holidays');
 const {
   getHolidayStatus,
@@ -100,6 +100,7 @@ function mapOrder(row, positions = []) {
       lineNo: Number(position.lineNo),
       articleIndex: asText(position.articleIndex),
       article: asText(position.article),
+      masterArticleName: asText(position.masterArticleName),
       amount: asNumber(position.amount, 0) * (/^(t|to|tonne[n]?)$/i.test(asText(position.unit)) ? 1000 : 1),
       unit: 'kg',
       purchasePrice: asNumber(position.purchasePrice, 0),
@@ -445,7 +446,7 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
   `, [...params, offset, pageSize]);
   const data = [];
-  for (const row of (Array.isArray(rows) ? rows : [])) data.push(mapOrder(row, await loadPositions(row.id)));
+  for (const row of (Array.isArray(rows) ? rows : [])) data.push(mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))));
   sendEnvelope(res, {
     status: 200,
     data,
@@ -467,7 +468,7 @@ router.get('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req,
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const row = await loadOrderForUser(Number(req.params.id), Number(req.database?.firmaId || 0), asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
   if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
-  sendEnvelope(res, { status: 200, data: mapOrder(row, await loadPositions(row.id)), meta: { mandant: req.mandant }, error: null });
+  sendEnvelope(res, { status: 200, data: mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))), meta: { mandant: req.mandant }, error: null });
 }));
 
 router.post('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res) => {
@@ -568,6 +569,13 @@ router.post('/temp-purchase-orders/:id/finalize', requireMandant, asyncHandler(a
     if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
     const positions = await loadPositions(id, query);
     if ([STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
+    const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
+    for (const position of namedPositions) {
+      const stored = positions.find(item => item.id === position.id);
+      if (stored.article !== position.article) await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET [tbp_article]=?,[tbp_last_modified_by]=?,[tbp_last_modified_date]=? WHERE [tbp_id]=? AND [tbp_tb_id]=?`,
+        [position.article, userShortCode, now, position.id, id]);
+      Object.assign(stored, position);
+    }
     normalizePositions(positions);
     const loading = await resolveLoadingAddress(req.database, { ...row, positions });
     await validateWorkingDates(positions, loading.address);

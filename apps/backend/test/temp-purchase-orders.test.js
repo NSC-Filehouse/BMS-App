@@ -40,6 +40,7 @@ function fixture(options = {}) {
       for (const match of sql.split('SET ')[1].split('WHERE')[0].matchAll(/\[(\w+)\]\s*=\s*(\?|NULL|\d+)/g)) row[match[1]] = match[2] === '?' ? params[index++] : match[2] === 'NULL' ? null : Number(match[2]);
       return { rows: [] };
     }
+    if (sql.startsWith('UPDATE positions')) { const row=lines.find(p=>p.tbp_id===params[3] && p.tbp_tb_id===params[4]); row.tbp_article=params[0]; return { rows: [] }; }
     if (sql.startsWith('DELETE FROM positions')) { lines.splice(0, lines.length, ...lines.filter((p) => p.tbp_tb_id !== params[0])); return { rows: [] }; }
     if (sql.includes('INSERT INTO')) {
       const columns = sql.slice(sql.indexOf('(') + 1, sql.indexOf(')')).match(/\w+/g);
@@ -66,6 +67,7 @@ function fixture(options = {}) {
     loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }], incoterms: [{ id: 1, text: 'FCA' }] }),
     loadSupplierTerms: async () => ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
     loadLatestPurchase: async (_db, _supplier, article) => article === 'A' ? { article: 'Neuester Name', originalPackagingType: 'Sackware' } : null,
+    enrichPurchaseArticleNames: async (_db, _supplier, positions) => positions.map(p => ({ ...p, article: p.article === 'Unsere Bezeichnung' ? 'Neuester Name' : p.article, masterArticleName: 'Unsere Bezeichnung' })),
     loadPurchaseLocations: async () => options.locations || [{ id: 'Hamburg', text: 'Hamburg' }],
     findPackaging: (options, value, id) => options.find((p) => p.id === Number(id) || p.text === value),
     packagingKey: (value) => value,
@@ -180,6 +182,19 @@ test('finalize locks the saved order and publishes current purchase identity, ne
   await f.request({}, 'post', '/temp-purchase-orders/:id/finalize');
   assert.equal(f.timeline.length, 1);
   await assert.rejects(f.request(body(), 'put', '/temp-purchase-orders/:id'), /nicht mehr bearbeitbar/);
+});
+
+test('legacy internal article names are replaced before hand-off and remain supplier names in persistence and timeline', async () => {
+  const f = fixture();
+  await f.request(body());
+  f.lines[0].tbp_article = 'Unsere Bezeichnung';
+  const detail = (await f.request({}, 'get', '/temp-purchase-orders/:id')).data;
+  assert.equal(detail.positions[0].article, 'Neuester Name');
+  assert.equal(detail.positions[0].masterArticleName, 'Unsere Bezeichnung');
+  const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+  assert.equal(sent.positions[0].article, 'Neuester Name');
+  assert.equal(f.lines[0].tbp_article, 'Neuester Name');
+  assert.equal(f.timeline[0].product, 'Neuester Name');
 });
 
 test('rejects a location outside the supplier/article selection before creating anything', async () => {
