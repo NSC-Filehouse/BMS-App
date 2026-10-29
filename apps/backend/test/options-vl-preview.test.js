@@ -49,7 +49,7 @@ require.cache[require.resolve('../src/db/temp-order-planning')] = { exports: { .
 require.cache[require.resolve('../src/options/read')] = { exports: {
   loadOffers: async (companyIds, options = {}) => {
     capturedOptions = { companyIds, ...options };
-    return offers.filter(o => companyIds.includes(o.sourceMandantId) && (!options.optionId || o.id === options.optionId))
+    return offers.filter(o => (!companyIds || companyIds.includes(o.sourceMandantId)) && (!options.optionId || o.id === options.optionId))
       .map(offer => ({ ...offer, positions: offer.positions.filter(item => options.includeExpired || !item.expired) }))
       .filter(offer => offer.positions.length);
   },
@@ -98,15 +98,15 @@ test('search filters options with the same MFI parser as stock before computing 
   assert.equal(response.meta.total, 1);
   assert.equal(response.data[0].optionPositionId, 604);
 });
-test('group preview scopes option sources and preserves the original tenant on detail reads', async () => {
+test('group preview scopes stocks while shared option details ignore the selected VL tenant', async () => {
   const response = await (await fetch(`${base}/vl/entries?vlScope=frupack-group`)).json();
   assert.equal(response.meta.viewMandants.length, 5);
   assert.equal(response.data.filter(row => row.kind === 'option').length, 1);
   assert.deepEqual(reads, [3,10,11,12,19]);
-  assert.equal((await fetch(`${base}/options/197?preview=1&vlScope=frupack-group&vlMandantId=99`)).status, 403);
-  assert.equal((await fetch(`${base}/options/197?preview=1&vlMandantId=10`)).status, 403);
+  assert.equal((await fetch(`${base}/options/197?preview=1&vlScope=frupack-group&vlMandantId=99`)).status, 200);
+  assert.equal((await fetch(`${base}/options/197?preview=1&vlMandantId=10`)).status, 200);
 });
-test('expired detail remains readable only under the requested authorized source', async () => {
+test('preview can read expired positions from the shared pool', async () => {
   const response = await (await fetch(`${base}/options/197?preview=1&vlMandantId=3`)).json();
   assert.equal(response.data.positions[0].id, 602);
   assert.equal(response.data.readOnly, false);
@@ -124,6 +124,22 @@ test('foreign group details are read only and cannot be assigned through an acti
   } finally { offers.pop(); }
 });
 
+test('shared options appear once in every VL scope while stocks retain their authorized source', async () => {
+  offers.push({ id: 199, sourceMandantId: 2, supplierName: 'Borealis', positions: [{ ...currentPosition, id: 605 }] });
+  try {
+    for (const suffix of ['', '?vlScope=frupack-group']) {
+      reads = [];
+      const result = await (await fetch(`${base}/vl/entries${suffix}`)).json();
+      const shared = result.data.filter(row => row.kind === 'option' && row.optionId === 199);
+      assert.equal(shared.length, 1);
+      assert.equal(shared[0].sourceMandantId, 2);
+      assert.equal(shared[0].id, 'option:2:199:605');
+      assert.equal(capturedOptions.companyIds, null);
+      assert.ok(!reads.includes(2));
+    }
+  } finally { offers.pop(); }
+});
+
 test('mLLDPE preserves its stored VL subgroup without loading the article catalog', () => {
   const { buildOptionEntries } = require('../src/options/vl-preview');
   const entries = buildOptionEntries([{ id: 1, supplierName: 'INEOS', positions: [{ id: 2, articleName: 'mLLDPE OG', articleIndex: '008', mfi: 17,
@@ -132,7 +148,7 @@ test('mLLDPE preserves its stored VL subgroup without loading the article catalo
 });
 
 test('own assignment persists the decision and queues Reader learning in one transaction', async () => {
-  const response = await fetch(`${base}/options/197/positions/602/article`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ articleIndex: '00417' }) });
+  const response = await fetch(`${base}/options/197/positions/602/article`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ articleIndex: '00417', acknowledgeUnverifiedMfi: true }) });
   assert.equal(response.status, 200);
   assert.equal(writes.length, 2);
   assert.match(writes[1].sql, /UPDLOCK,HOLDLOCK/);

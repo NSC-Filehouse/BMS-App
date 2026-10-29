@@ -48,6 +48,7 @@ import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { addPurchaseCartItems, getPurchaseCartContext } from '../utils/purchaseCart.js';
 import SupplierArticles from '../components/SupplierArticles.jsx';
+import SupplierOptions from '../components/SupplierOptions.jsx';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
@@ -1305,6 +1306,8 @@ export default function CustomerDetail() {
                 ))}
               </AccordionDetails>
             </Accordion>}
+
+            {isSupplier && features.options && <SupplierOptions key={`${contactMandant}-${id}`} supplierId={id} mandant={contactMandant} />}
 
             <Accordion expanded={docs.orders.expanded} onChange={onToggleSection('orders', orderEndpoint)}>
               <DocumentAccordionSummary

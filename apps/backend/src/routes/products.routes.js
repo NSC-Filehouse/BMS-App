@@ -352,28 +352,26 @@ router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.
   const { page, pageSize, q } = parseListParams(req.query, { page: 1, pageSize: 100, sort: 'vl', dir: 'ASC' });
   const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause(req.query);
-  const offers = await loadOffers(databases.map(database => Number(database.firmaId)), { includeExpired: false });
+  const offers = await loadOffers(null, { includeExpired: false });
   const batches = await Promise.all(databases.map(async database => {
     const stocks = await runSQLQueryAccess(database, `SELECT * FROM ${VIEW_SQL} ${whereSql}`, params).catch(error => {
       if (scope) throw createHttpError(503, 'Frupack Gruppe konnte nicht vollständig geladen werden.', { code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: database.firmaId });
       throw error;
     });
-    const ownOffers = offers.filter(offer => Number(offer.sourceMandantId) === Number(database.firmaId));
-    const options = ownOffers.length ? buildOptionEntries(ownOffers, database) : [];
-    const filteredOptions = options.flatMap(entry => {
-      if (req.query?.plastic && entry.plastic !== req.query.plastic || req.query?.sub && entry.plasticSubCategory !== req.query.sub
-        || req.query?.subEmpty === '1' && entry.plasticSubCategory) return [];
-      const matched = filterProductRows([entry.searchRow], search)[0];
-      if (!matched) return [];
-      const { searchRow, ...result } = entry;
-      return [{ ...result, ...(matched.searchMatch ? { searchMatch: matched.searchMatch } : {}) }];
-    });
     return { database, entries: [...filterProductRows(stocks || [], search).map(row => {
       const item = mapProductRow(row, database);
       return { ...item, kind: 'stock', positionKey: getVlPositionKey(item) };
-    }), ...filteredOptions] };
+    })] };
   }));
-  const all = sortGroupVlItems(batches.flatMap(batch => batch.entries));
+  const filteredOptions = buildOptionEntries(offers, req.database).flatMap(entry => {
+    if (req.query?.plastic && entry.plastic !== req.query.plastic || req.query?.sub && entry.plasticSubCategory !== req.query.sub
+      || req.query?.subEmpty === '1' && entry.plasticSubCategory) return [];
+    const matched = filterProductRows([entry.searchRow], search)[0];
+    if (!matched) return [];
+    const { searchRow, ...result } = entry;
+    return [{ ...result, ...(matched.searchMatch ? { searchMatch: matched.searchMatch } : {}) }];
+  });
+  const all = sortGroupVlItems([...batches.flatMap(batch => batch.entries), ...filteredOptions]);
   const data = all.slice((page - 1) * pageSize, page * pageSize);
   const planning = new Map(await Promise.all(databases.map(async database => [Number(database.firmaId),
     await loadProductPlanning(req, database, data.filter(item => item.kind === 'stock' && Number(item.sourceMandantId) === Number(database.firmaId)))])));

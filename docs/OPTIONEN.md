@@ -5,6 +5,37 @@ DB04-Datenbank `BMS`, Schema `BMSApp`. `tblOptionen` enthält den Angebotskopf,
 `tblOptionenPositionen` die angebotenen Materialien oder Chargen. Eine Option
 kann mehrere Positionen haben. Alle Spalten tragen `op_` beziehungsweise `opp_`.
 
+## Gemeinsamer Lieferantenbestand (29.10.2026)
+
+Optionen gelten mandantenübergreifend. `op_MandantID` dokumentiert weiterhin
+die Importherkunft und den Kontext bestehender Artikelabgleiche; es begrenzt
+die Sichtbarkeit von Optionen nicht. Optionsübersicht, Details und die
+Optionszeilen der VL lesen den gemeinsamen Bestand. Lagerbestände behalten
+ihre bisherigen Mandantengrenzen. Die bestehende Pilotfreigabe bleibt bestehen.
+
+In der Lieferantenansicht steht ein zunächst geschlossenes Accordion „Optionen“
+über „Bestellungen“. `/customers/:id/options` prüft die Sichtbarkeit des geöffneten
+Firmenkontos und ermittelt dessen Lieferantenfamilie aus Namen bzw. Domain.
+Bekannte Namensvarianten (etwa Total und Total Petrochemicals) erhalten dieselbe
+Kennung. Hanwha TotalEnergies und Total-Chem bleiben getrennte Anbieter.
+Für weitere Anbieter können vorhandene geprüfte Kontoverbindungen helfen.
+Die Herkunftsmandanten der passenden Angebote spielen beim Abruf keine Rolle.
+
+Die Liste lädt beim Aufklappen und zeigt gültige Materialpositionen mit Menge,
+Preis und Ablaufdatum. Ein Klick öffnet die Option an der jeweiligen Position;
+der Zurück-Pfeil stellt Accordion und Scrollposition wieder her und lädt neu.
+Das Entfernen einer gemeinsamen Option wirkt für alle Mandanten. Artikelzuordnung,
+Neuberechnung und Zugriff auf Einkaufsbelege bleiben an den jeweiligen
+BMS-Datenbankkontext gebunden; fremde Optionsherkunft schaltet diese UI aus.
+
+OptionReader verwendet denselben Lieferantenkennungsvertrag. Interne Weiterleiter
+werden nicht als Ersatzlieferant gespeichert; ein unklarer Anbieter bleibt
+„Unbekannter Lieferant“ mit Prüfhinweis. Widersprüche zwischen bekanntem Anbieter
+und Antwortadresse gehen zur Prüfung. Dokumentempfänger und Postfach bestimmen
+die Sichtbarkeit nicht. Inhaltsduplikate werden beim Speichern auch über
+Herkunftsmandanten hinweg erkannt. Bereits importierte Datensätze werden durch
+dieses Codeupdate nicht rückwirkend geändert oder erneut eingelesen.
+
 ## Datenvertrag für den späteren Mail-/PDF-Import
 
 - `op_company_id` ist die technische Mandanten-ID. `op_source_key` muss je
@@ -24,11 +55,10 @@ kann mehrere Positionen haben. Alle Spalten tragen `op_` beziehungsweise `opp_`.
   `opp_internal_article_name` bleibt leer, solange keine geprüfte Zuordnung
   vorliegt.
 
-Die API filtert zusätzlich nach dem aktiven, berechtigten Mandanten und nach
-dem aktuellen Datum in der Zeitzone Europe/Berlin. Eine abweichende
+Die API filtert nach dem aktuellen Datum in der Zeitzone Europe/Berlin. Eine abweichende
 `opp_valid_until` ersetzt die Kopf-Frist für diese Position. Beide Optionen-
-Screens sind nur lesend. IDs, Importstatus und Quelldetails erscheinen nicht
-als Nutzerdaten.
+Screens verwenden den gemeinsamen Bestand; die oben beschriebenen Aktionen
+behalten ihren jeweiligen Kontext.
 
 ## Pilot und Beispiele
 

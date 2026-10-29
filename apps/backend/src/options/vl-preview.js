@@ -2,9 +2,11 @@ function buildOptionEntries(offers, database) {
   return offers.flatMap(offer => offer.positions.map(position => {
     const plastic = position.plastic || 'Optionen';
     const plasticSubCategory = position.plasticSubCategory ?? 'Zuordnung offen';
-    const id = `option:${database.firmaId}:${offer.id}:${position.id}`;
+    const sourceMandantId = offer.sourceMandantId ?? database.firmaId;
+    const sourceMandantName = offer.sourceMandantName || (Number(sourceMandantId) === Number(database.firmaId) ? database.name : '');
+    const id = `option:${sourceMandantId}:${offer.id}:${position.id}`;
     return {
-      kind: 'option', id, positionKey: id, sourceMandantId: database.firmaId, sourceMandantName: database.name,
+      kind: 'option', id, positionKey: id, sourceMandantId, sourceMandantName,
       article: position.internalArticleName || position.articleName, articleName: position.articleName,
       articleIndex: position.articleIndex || null, plastic, plasticSubCategory,
       mfi: position.mfi, mfiMeasured: null, mfiTestMethod: position.mfiTestCondition,

@@ -1,6 +1,7 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
+const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
 function berlinDate() {
@@ -33,19 +34,22 @@ function mapPosition(row,today) {
   position.matchStatus = row.matchStatus || 'unmatched';
   return position;
 }
-async function loadOffers(companyIds, { includeExpired = false, optionId = null } = {}) {
-  if (!companyIds.length) return [];
-  const today = berlinDate(), marks = companyIds.map(() => '?').join(',');
+async function loadOffers(companyIds = [], { includeExpired = false, optionId = null } = {}) {
+  if (companyIds && !companyIds.length) return [];
+  // null selects the shared pool; arrays retain explicit source filtering.
+  const today = berlinDate();
+  const scope = companyIds ? `o.op_MandantID IN (${companyIds.map(() => '?').join(',')})` : '1=1';
+  const scopeParams = companyIds || [];
   const heads = await runSQLQuerySqlServer(config.sql.database, `SELECT o.op_id AS id, o.op_MandantID AS sourceMandantId,
-    o.op_Lieferantenname AS supplierName, o.op_Lieferantenkennung AS supplierKey, o.op_Angebotsnummer AS externalOfferNo,
+    o.op_Lieferantenname AS supplierName, o.op_Lieferantenkennung AS supplierKey, o.op_Antwortadresse AS supplierReplyTo, o.op_Angebotsnummer AS externalOfferNo,
     o.op_GueltigBis AS validUntil, o.op_QuellGueltigBis AS sourceValidUntil, o.op_IstDemo AS isDemo,
     o.op_Incoterm AS incoterm, o.op_Ladeort AS loadingLocation, o.op_Verpackung AS packagingText,
     o.op_Konditionen AS termsText, o.op_Kommentar AS comment, o.op_Nachverhandelbar AS negotiable,
     o.op_NachverhandelbarQuelle AS negotiableEvidence
-    FROM ${appTableSql('options')} o WHERE o.op_MandantID IN (${marks})
+    FROM ${appTableSql('options')} o WHERE ${scope}
       AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
-    ORDER BY o.op_GueltigBis,o.op_id DESC`, [...companyIds, today, ...(optionId == null ? [] : [optionId])]);
+    ORDER BY o.op_GueltigBis,o.op_id DESC`, [...scopeParams, today, ...(optionId == null ? [] : [optionId])]);
   if (!heads.length) return [];
   // Scope positions through their header, without a potentially >2100-ID IN list.
   const positions = await runSQLQuerySqlServer(config.sql.database, `SELECT p.opp_id AS id,p.opp_op_id AS optionId,
@@ -82,11 +86,12 @@ async function loadOffers(companyIds, { includeExpired = false, optionId = null 
     FROM ${appTableSql('optionPositions')} p JOIN ${appTableSql('options')} o ON o.op_id=p.opp_op_id
     LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
-    WHERE o.op_MandantID IN (${marks}) AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
+    WHERE ${scope} AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
       ${includeExpired ? '' : 'AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?'}
-    ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...companyIds, today, ...(optionId == null ? [] : [optionId]), ...(includeExpired ? [] : [today])]);
+    ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), ...(includeExpired ? [] : [today])]);
   const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
+    supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
   positions.forEach(row => byId.get(Number(row.optionId))?.positions.push(mapPosition(row,today)));
   return [...byId.values()].filter(offer => offer.positions.length);

@@ -75,7 +75,7 @@ export default function OptionDetail() {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
       <IconButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></IconButton>
       <Typography variant="h5">{t('option_detail_title')}</Typography>
-      {offer && !offer.readOnly && <Button color="error" disabled={deleting} onClick={deleteOption} sx={{ ml: 'auto' }}>{t('option_delete')}</Button>}
+      {offer && <Button color="error" disabled={deleting} onClick={deleteOption} sx={{ ml: 'auto' }}>{t('option_delete')}</Button>}
     </Box>
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
@@ -118,7 +118,7 @@ export default function OptionDetail() {
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
         <InfoRow label={t('option_loading')} value={position.loadingText} />
         <InfoRow label={position.normalization ? (lang==='en'?'Original import notes':'Ursprüngliche Importhinweise') : t('option_comment')} value={position.comment} />
-        <ArticleAssignment optionId={offer.id} position={position} onAssigned={() => setRevision((value) => value + 1)} sourceQuery={sourceQuery} readOnly={offer.readOnly} />
+        {!offer.readOnly && <ArticleAssignment optionId={offer.id} position={position} onAssigned={() => setRevision((value) => value + 1)} sourceQuery={sourceQuery} readOnly={offer.readOnly} />}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
       </CardContent></Card>)}
     </>}

@@ -1165,6 +1165,13 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
   });
 }));
 
+// Supplier options are shared across all import mandants.
+router.get('/customers/:id/options', requireMandant, require('../middlewares/pilot-feature.middleware').requirePilotFeature('options'), asyncHandler(async (req, res) => {
+  const { customer } = await requireVisibleCustomerOrSupplier(req, req.params.id);
+  const { offers, supplierIdentified } = await require('../options/supplier-offers').loadSupplierOffers(req.database, customer);
+  sendEnvelope(res, { data: offers, meta: { mandant: req.mandant, sharedOptions: true, supplierIdentified } });
+}));
+
 router.get('/customers/:id/purchase-orders', requireMandant, asyncHandler(async (req, res) => {
   const customerId = toText(req.params.id);
   const lang = resolveLang(req);

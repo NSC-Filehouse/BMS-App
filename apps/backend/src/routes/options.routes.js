@@ -18,14 +18,13 @@ function positiveId(value) {
  return id;
 }
 router.get('/options',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- sendEnvelope(res,{data:await loadOffers([Number(req.database.firmaId)]),meta:{mandant:req.mandant}});
+ sendEnvelope(res,{data:await loadOffers(null),meta:{mandant:req.mandant}});
 }));
 router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const database=await resolveVlDatabase(req,req.query?.vlMandantId);
- const offers=await loadOffers([Number(database.firmaId)],{optionId:positiveId(req.params.id),includeExpired:req.query?.preview==='1'});
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id),includeExpired:req.query?.preview==='1'});
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- sendEnvelope(res,{data:{...offers[0],readOnly:Number(database.firmaId)!==Number(req.database.firmaId)},
-  meta:{mandant:req.mandant,viewMandantId:database.firmaId,preview:req.query?.preview==='1'}});
+ sendEnvelope(res,{data:{...offers[0],readOnly:Number(offers[0].sourceMandantId)!==Number(req.database.firmaId)},
+  meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true,preview:req.query?.preview==='1'}});
 }));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
@@ -116,7 +115,7 @@ router.delete('/options/:id',requireMandant,requirePilotFeature('options'),async
  const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
  const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE ${OPTIONS} SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
   op_GeaendertVon=?,op_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.op_id AS id
-  WHERE op_id=? AND op_MandantID=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'`,[actor,actor,positiveId(req.params.id),Number(req.database.firmaId)]);
+  WHERE op_id=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'`,[actor,actor,positiveId(req.params.id)]);
  if(!rows.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();
 }));
