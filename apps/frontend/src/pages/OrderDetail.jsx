@@ -149,6 +149,8 @@ export default function OrderDetail() {
       await addProductsToOrderCart([{
         id: item.productId,
         article: item.article,
+        articleIndex: item.articleIndex,
+        beNumber: item.beNumber || item.orderNumber,
         warehouse: item.warehouse,
         warehouseId: item.warehouseId,
         unit: item.unit || 'kg',

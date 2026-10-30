@@ -197,6 +197,7 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       r.[bePR_reserviertVon] AS reservedBy,
       r.[bePR_gueltigBis] AS createdAt,
       v.[Artikel] AS article,
+      v.[beP_Artikelindex] AS articleIndex,
       v.[EP] AS price,
       v.[Einheit] AS unit,
       v.[Menge] AS amount,
@@ -225,6 +226,8 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
       ? buildProductId(row.article, row.warehouse, row.beNumber, row.plastic, row.plasticSubCategory)
       : null,
     orderNumber: row.beNumber || row.id,
+    beNumber: row.beNumber,
+    articleIndex: row.articleIndex || null,
     clientName: null,
     distributor: sourceDatabase?.name || req.mandant,
     article: row.article || row.beNumber || null,

@@ -64,6 +64,7 @@ test('reservation positions keep reservation metadata and use the reserved amoun
   addOrderCartItemsWithDefaults([{
     id: 'product-1',
     article: 'Reservierter Artikel',
+    articleIndex: 'A-123',
     beNumber: 'BE-1',
     warehouseId: 'L1',
     amount: 1200,
@@ -76,6 +77,9 @@ test('reservation positions keep reservation metadata and use the reserved amoun
 
   const [item] = getOrderCartItems();
   assert.equal(item.quantityKg, 200);
+  assert.equal(item.beNumber, 'BE-1');
+  assert.equal(item.articleIndex, 'A-123');
+  assert.equal(item.warehouseId, 'L1');
   assert.equal(item.reservationInKg, 200);
   assert.equal(item.reservationDate, '2030-05-17T00:00:00.000Z');
 });
