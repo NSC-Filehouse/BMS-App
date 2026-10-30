@@ -1722,7 +1722,6 @@ export default function TempOrderForm() {
       messages.push(t('validation_contact_required'));
     }
     if (!form.incotermId) messages.push(t('validation_incoterm_required'));
-    if (!packagingSelectionState.complete) messages.push(t('validation_original_packaging_required'));
     if (!effectivePackagingType) messages.push(t('validation_packaging_required'));
     if (!isEdit && !form.packagingTypeId) messages.push(t('validation_packaging_required'));
     if (!String(form.deliveryAddress || '').trim()) messages.push(t(isFca ? 'validation_pickup_address_required' : 'validation_delivery_address_required'));

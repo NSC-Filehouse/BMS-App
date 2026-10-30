@@ -187,6 +187,8 @@ function packagingTypesEqual(left, right) {
 function packagingTypesChanged(selectedType, selectedTypeId, originalType, originalTypeId) {
   const selectedId = asInt(selectedTypeId, 0);
   const originalId = asInt(originalTypeId, 0);
+  // The order selection applies even when the original packaging is unknown.
+  if (!asText(originalType) && originalId <= 0) return false;
   if (selectedId > 0 && originalId > 0) return selectedId !== originalId;
   return !packagingTypesEqual(selectedType, originalType);
 }
@@ -289,6 +291,15 @@ async function loadPackagingTypeInfo(database, beNumber) {
     packagingType,
     packagingTypeId: await loadPackagingTypeIdByText(packagingType),
   };
+}
+
+async function loadOptionalOriginalPackagingTypeInfo(database, beNumber) {
+  try {
+    return await loadPackagingTypeInfo(database, beNumber);
+  } catch (error) {
+    logger.warn(`Ursprüngliche Verpackungsart für ${beNumber} nicht verfügbar: ${error.message}`);
+    return { packagingType: '', packagingTypeId: null };
+  }
 }
 
 async function loadRepresentativeById(database, customerId, representativeId) {
@@ -754,7 +765,6 @@ function validateFinalOrder(order, positions) {
   const invalidPosition = positions.find((position) => (
     !asText(position?.beNumber)
     || !asText(position?.warehouse)
-    || !asText(position?.originalPackagingType)
     || !position?.deliveryDate
     || Number(position?.amountInKg) <= 0
     || Number(position?.price) <= 0
@@ -1971,14 +1981,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       requestedArticle: raw?.article,
       canonicalArticle: productContext.article,
     });
-    const originalPackagingTypeInfo = await loadPackagingTypeInfo(sourceDatabase, beNumber);
-    const originalPackagingType = originalPackagingTypeInfo.packagingType;
-    if (!originalPackagingType) {
-      throw createHttpError(400, 'Original packaging type is missing for position.', {
-        code: 'INVALID_TEMP_ORDER_PAYLOAD',
-        beNumber,
-      });
-    }
+    const originalPackagingTypeInfo = await loadOptionalOriginalPackagingTypeInfo(sourceDatabase, beNumber);
+    const originalPackagingType = originalPackagingTypeInfo.packagingType || null;
     const packagingTypeChanged = packagingTypesChanged(
       orderLevel.packagingType,
       orderLevel.packagingTypeId,
@@ -2355,7 +2359,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   for (const position of (missingPackagingRows || [])) {
     const beNumber = asText(position.beNumber);
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
-    const originalPackagingTypeInfo = await loadPackagingTypeInfo(sourceDatabase, beNumber);
+    const originalPackagingTypeInfo = await loadOptionalOriginalPackagingTypeInfo(sourceDatabase, beNumber);
     if (originalPackagingTypeInfo.packagingType) {
       resolvedMissingPackaging.set(Number(position.id), originalPackagingTypeInfo);
     }
@@ -2472,12 +2476,6 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         const originalPackagingTypeId = asInt(position.originalPackagingTypeId, 0)
           || asInt(resolvedPackaging?.packagingTypeId, 0)
           || await loadPackagingTypeIdByText(originalPackagingType);
-        if (!originalPackagingType) {
-          throw createHttpError(400, 'Original packaging type is missing for position.', {
-            code: 'INVALID_TEMP_ORDER_PAYLOAD',
-            beNumber: position.beNumber,
-          });
-        }
         const packagingTypeChanged = packagingTypesChanged(
           mappedOrder.packagingType,
           mappedOrder.packagingTypeId,
@@ -2495,7 +2493,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
                 [tap_LastModifiedBy] = ?,
                 [tap_LastModifiedDate] = ?
             WHERE [tap_id] = ? AND [tap_ta_id] = ?
-          `, [originalPackagingType, originalPackagingTypeId || null, packagingTypeChanged ? 1 : 0, userShortCode, nowIso, position.id, id]);
+          `, [originalPackagingType || null, originalPackagingTypeId || null, packagingTypeChanged ? 1 : 0, userShortCode, nowIso, position.id, id]);
           position.originalPackagingType = originalPackagingType;
           position.originalPackagingTypeId = originalPackagingTypeId || null;
           position.packagingTypeChanged = packagingTypeChanged;
@@ -2917,15 +2915,9 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
         packagingType: storedOriginalPackagingType,
         packagingTypeId: asInt(snapshotPosition?.originalPackagingTypeId, 0) || await loadPackagingTypeIdByText(storedOriginalPackagingType),
       }
-      : await loadPackagingTypeInfo(sourceDatabase, beNumber);
-    const originalPackagingType = loadedPackagingTypeInfo.packagingType;
+      : await loadOptionalOriginalPackagingTypeInfo(sourceDatabase, beNumber);
+    const originalPackagingType = loadedPackagingTypeInfo.packagingType || null;
     const originalPackagingTypeId = loadedPackagingTypeInfo.packagingTypeId;
-    if (!originalPackagingType) {
-      throw createHttpError(400, 'Original packaging type is missing for position.', {
-        code: 'INVALID_TEMP_ORDER_PAYLOAD',
-        beNumber,
-      });
-    }
     const packagingTypeChanged = packagingTypesChanged(
       orderLevel.packagingType,
       orderLevel.packagingTypeId,

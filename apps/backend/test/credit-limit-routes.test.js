@@ -9,6 +9,7 @@ let order;
 let customer;
 let creditValues;
 let pickupRows;
+let originalPackagingLookupError;
 const pickupQueries = [];
 const position = {
   id: 1, lineNo: 1, beNumber: '3-02-26-001-01', article: 'Article',
@@ -25,6 +26,10 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   directoryError = false;
   concurrentCustomerId = '';
   pickupQueries.length = 0;
+  originalPackagingLookupError = false;
+  position.originalPackagingType = 'Sackware';
+  position.originalPackagingTypeId = 1;
+  position.packagingTypeChanged = false;
   pickupRows = [{ warehouseId: 'L1', isStrecke: true, pickupName1: 'Factory', pickupStreet: 'Plant road 1', pickupPostalCode: '7190', pickupCity: 'Feluy', pickupCountry: 'B', countryCode: 'BE' }];
   order = {
     ta_id: 42, ta_company_id: companyId, ta_ClientReferenceId: customerId, ta_CreatedBy: 'NSC',
@@ -45,7 +50,7 @@ async function sqlQuery(database, sql, params = []) {
     if (directoryError) throw new Error('directory unavailable');
     return [{ mandantId: 7, customerId: '14104' }, { mandantId: 5, customerId: 'LF0400' }];
   }
-  if (sql.includes('NULLIF(LTRIM(RTRIM(COALESCE(p.[tap_Verpackungsart]')) return [];
+  if (sql.includes('NULLIF(LTRIM(RTRIM(COALESCE(p.[tap_Verpackungsart]')) return position.originalPackagingType ? [] : [position];
   if (sql.includes('SUM(')) return [];
   if (sql.includes('INSERT INTO') && sql.includes('[OrderMailOutbox]')) return [{ id: 100 }];
   if (sql.includes('INSERT INTO') && sql.includes('[CreditLimitMailOutbox]')) return [{ id: 101 }];
@@ -69,6 +74,10 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryFx: async () => { throw new Error('Unexpected FX query'); },
   runSQLQuerySqlServer: sqlQuery,
   runSQLQueryAccess: async (database, sql) => {
+    if (sql.includes('AS packagingType')) {
+      if (originalPackagingLookupError) throw new Error('Original packaging lookup unavailable');
+      return [];
+    }
     if (sql.includes('AS warehouseName1')) { pickupQueries.push(sql); return pickupRows; }
     if (sql.includes('FROM [dbo].[tblKunden]')) return [customer];
     if (sql.includes('tblKun_KreditLimit')) return [{ ...creditValues }];
@@ -160,6 +169,22 @@ test('direct finalize POST completes internal orders without credit inserts, inc
     assert.equal(response.data.orderStatus, 1);
     assert.equal(response.meta.creditLimitMail.creditRequest.status, 'suppressed_internal');
     assert.equal(calls.some((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]')), false);
+    assert.deepEqual(orderMailCalls, [100]);
+  }
+});
+
+test('finalization sends the selected order packaging even without an original packaging value', async () => {
+  for (const lookupFails of [false, true]) {
+    reset();
+    position.originalPackagingType = null;
+    position.originalPackagingTypeId = null;
+    position.packagingTypeChanged = true;
+    originalPackagingLookupError = lookupFails;
+    const response = await request('post', '/temp-orders/:id/finalize');
+    assert.equal(response.data.orderStatus, 1);
+    assert.equal(position.packagingTypeChanged, false);
+    const insert = calls.find(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]'));
+    assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('Verpackungsart: Sackware')));
     assert.deepEqual(orderMailCalls, [100]);
   }
 });

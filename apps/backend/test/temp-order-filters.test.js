@@ -166,6 +166,13 @@ test('uses packaging ids for change detection when both ids are available', () =
   assert.equal(packagingTypesChanged('Bags', 78, 'Sackware', 79), true);
 });
 
+test('unknown original packaging does not imply a packaging change', () => {
+  assert.equal(packagingTypesChanged('Sackware', 78, null, null), false);
+  assert.equal(packagingTypesChanged('Big Bags', 79, '  ', undefined), false);
+  assert.equal(packagingTypesChanged('Sackware', 78, '', 79), true);
+  assert.equal(packagingTypesChanged('Sackware', 78, 'Big Bags', null), true);
+});
+
 test('adds a carried reservation back to the temp-order availability', () => {
   const position = { productContext: { amount: 1000, reserved: 250 } };
 

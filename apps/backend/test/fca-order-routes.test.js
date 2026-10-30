@@ -7,6 +7,8 @@ let savedPositions;
 let writes;
 let nextId = 42;
 let pickupReads;
+let sourcePackagingType;
+let sourcePackagingError;
 const positionColumns = ['tap_id', 'tap_ta_id', 'tap_line_no', 'tap_be_number', 'tap_Artikelindex', 'tap_article', 'tap_Artikelname_Original',
   'tap_Artikelname_Gewechselt', 'tap_amount_in_kg', 'tap_warehouse', 'tap_price', 'tap_ep', 'tap_delivery_date', 'tap_ValutaDatum',
   'tap_about', 'tap_mfi', 'tap_wpz_id', 'tap_wpz_original', 'tap_wpz_comment', 'tap_Verpackungsart', 'tap_Verpackungsart_id',
@@ -16,7 +18,10 @@ const orderColumns = ['ta_id', 'ta_company_id', 'ta_ClientReferenceId', 'ta_Kund
   'ta_special_payment_id', 'ta_delivery_type_id', 'ta_delivery_type', 'ta_packaging_type', 'ta_packaging_type_id', 'ta_delivery_address',
   'ta_delivery_address_id', 'ta_delivery_address_changed', 'ta_completed', 'ta_Status', 'ta_CreatedBy', 'ta_CreateDate', 'ta_LastModifiedBy', 'ta_LastModifiedDate'];
 
-function reset() { order = null; savedPositions = []; writes = []; pickupReads = 0; }
+function reset() {
+  order = null; savedPositions = []; writes = []; pickupReads = 0;
+  sourcePackagingType = 'Sackware'; sourcePackagingError = false;
+}
 function insertFields(sql, params) {
   const columns = sql.match(/INSERT INTO[^\n]+\(([\s\S]*?)\)\s*(?:OUTPUT|VALUES)/i)[1];
   return Object.fromEntries([...columns.matchAll(/\[([^\]]+)\]/g)].map((match, index) => [match[1], params[index]]));
@@ -36,7 +41,8 @@ function mappedPosition(row) {
 }
 async function sqlQuery(database, sql, params = []) {
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) return (params[1] === 'tbl_Temp_Auftrag' ? orderColumns : positionColumns).map(col => ({ col }));
-  if (sql.includes('[spT_ID]')) return [{ id: 1, text: 'Sackware' }];
+  if (sql.includes('[spT_ID]')) return params.length === 5 && params[0] === 'big bags'
+    ? [{ id: 2, text: 'Big Bags' }] : [{ id: 1, text: 'Sackware' }];
   if (sql.includes('[tblZahltext_Sprachen]')) return [{ id: 1, text: '30 Tage' }];
   if (sql.includes('INSERT INTO') && sql.includes('[tbl_Temp_Auftrag]')) {
     writes.push(sql); order = { ...insertFields(sql, params), ta_id: nextId++ }; return [order];
@@ -65,7 +71,10 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     }
     if (sql.includes('[tblLieferbedingungen]')) return [{ id: params[0], text: Number(params[0]) === 1 ? 'FCA / Free Carrier' : 'CPT / Frachtfrei' }];
     if (sql.includes('[tblKunden]')) return [{ paymentTextId: 1 }];
-    if (sql.includes('AS packagingType')) return [{ packagingType: 'Sackware' }];
+    if (sql.includes('AS packagingType')) {
+      if (sourcePackagingError) throw new Error('Original packaging lookup unavailable');
+      return [{ packagingType: sourcePackagingType }];
+    }
     if (sql.includes('AS mfiBase')) return [{ articleIndex: 'A1', article: 'Product', warehouse: 'Strecke/Feluy', amount: 1000, reserved: 0, mfiBase: 2 }];
     return [];
   },
@@ -125,6 +134,47 @@ test('ordinary CPT orders retain the validated customer delivery-address ID', as
   assert.equal(response.data.deliveryAddress, 'Customer warehouse');
   assert.equal(response.data.deliveryAddressId, 51);
   assert.equal(pickupReads, 0);
+});
+
+test('create, edit and copy use the order packaging when the original is missing or unavailable', async () => {
+  for (const lookupFails of [false, true]) {
+    reset();
+    sourcePackagingType = null;
+    sourcePackagingError = lookupFails;
+    const created = await request('post', payload({ incotermId: 2 }));
+    assert.equal(created.data.packagingType, 'Sackware');
+    assert.equal(savedPositions[0].tap_Verpackungsart, null);
+    assert.equal(savedPositions[0].tap_Verpackungsart_id, null);
+    assert.equal(Boolean(savedPositions[0].tap_Verpackungsart_Gewechselt), false);
+
+    const edited = await request('put', payload({ incotermId: 2, positions: [{ ...payload().positions[0], id: 1 }] }));
+    assert.equal(edited.data.packagingType, 'Sackware');
+    assert.equal(savedPositions[0].tap_Verpackungsart, null);
+    assert.equal(Boolean(savedPositions[0].tap_Verpackungsart_Gewechselt), false);
+
+    await request('post', payload({ incotermId: 2 }));
+    assert.equal(savedPositions.at(-1).tap_Verpackungsart, null);
+    assert.equal(Boolean(savedPositions.at(-1).tap_Verpackungsart_Gewechselt), false);
+  }
+});
+
+test('known original packaging and its change marker survive editing even if the source is later missing', async () => {
+  reset();
+  sourcePackagingType = 'Big Bags';
+  await request('post', payload({ incotermId: 2 }));
+  assert.equal(savedPositions[0].tap_Verpackungsart, 'Big Bags');
+  assert.equal(Boolean(savedPositions[0].tap_Verpackungsart_Gewechselt), true);
+  sourcePackagingError = true;
+  await request('put', payload({ incotermId: 2, positions: [{ ...payload().positions[0], id: 1 }] }));
+  assert.equal(savedPositions[0].tap_Verpackungsart, 'Big Bags');
+  assert.equal(Boolean(savedPositions[0].tap_Verpackungsart_Gewechselt), true);
+});
+
+test('unknown original packaging still requires a valid order packaging selection', async () => {
+  reset();
+  sourcePackagingType = null;
+  await assert.rejects(request('post', payload({ incotermId: 2, packagingTypeId: null })), error => error.status === 400);
+  assert.equal(writes.length, 0);
 });
 
 test('different FCA source addresses reject the create before any SQL write', async () => {
