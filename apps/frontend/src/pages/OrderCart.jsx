@@ -180,6 +180,7 @@ export default function OrderCart() {
 
   const validate = () => {
     const messages = [];
+    const sourceMessages = [];
     const nextFieldErrors = {};
     const pushFieldError = (rowId, field) => {
       const key = String(rowId || '');
@@ -187,6 +188,11 @@ export default function OrderCart() {
       nextFieldErrors[key][field] = true;
     };
     for (const x of items) {
+      if (!String(x.beNumber || '').trim() || !String(x.warehouseId || '').trim()) {
+        const message = `${x.article || '-'}: ${t('validation_position_source_required')}`;
+        messages.push(message);
+        sourceMessages.push(message);
+      }
       const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
       if (foreignMandant) {
         messages.push(t('article_from_mandant_readonly', { name: foreignMandant }));
@@ -239,7 +245,7 @@ export default function OrderCart() {
         group.items.forEach((item) => pushFieldError(getCartLineId(item), 'quantityKg'));
       }
     }
-    return { messages, nextFieldErrors };
+    return { messages, nextFieldErrors, sourceMessages };
   };
 
   return (
@@ -445,10 +451,10 @@ export default function OrderCart() {
             <Button
               variant="contained"
               onClick={() => {
-                const { messages, nextFieldErrors } = validate();
+                const { messages, nextFieldErrors, sourceMessages } = validate();
                 if (messages.length) {
                   setFieldErrors(nextFieldErrors);
-                  setError(t('validation_fill_required_fields'));
+                  setError(sourceMessages.length ? sourceMessages.join(' ') : t('validation_fill_required_fields'));
                   return;
                 }
                 setFieldErrors({});

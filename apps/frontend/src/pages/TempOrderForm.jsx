@@ -39,7 +39,8 @@ import { getMandant } from '../utils/mandant.js';
 import { createCustomerOperationId } from '../utils/customerCreation.js';
 import { buildDeliveryAddressDraft, deliveryAddressContextMatches, deliveryAddressStorageKey, keepDeliveryAddressPending, readDeliveryAddressPending, resolveDeliveryAddressSelection } from '../utils/deliveryAddressOperation.js';
 import { findForeignMandantName } from '../utils/mandantPrefix.js';
-import { clearOrderCart } from '../utils/orderCart.js';
+import { clearOrderCart, getOrderCartItems } from '../utils/orderCart.js';
+import { recoverOrderPositionSource } from '../utils/orderPositionSource.js';
 import { clearTempOrderDraft, loadTempOrderDraft, saveTempOrderDraft } from '../utils/tempOrderDraft.js';
 import { checkResumeSession } from '../utils/resumeSession.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
@@ -1137,7 +1138,7 @@ export default function TempOrderForm() {
 
       if (!source?.beNumber || !source?.warehouseId) {
         if (Array.isArray(sourceItems) && sourceItems.length > 0) {
-          setPositions(sourceItems.map((x, idx) => ({
+          setPositions(sourceItems.map((x, idx) => recoverOrderPositionSource({
             id: null,
             clientKey: x.clientKey || createClientPositionKey(x.beNumber || `cart-${idx}`),
             productId: x.productId || x.id || null,
@@ -1208,9 +1209,11 @@ export default function TempOrderForm() {
 
   const restoreDraft = React.useCallback(() => {
     if (!pendingDraft) return;
+    const sources = [...positions, ...getOrderCartItems()];
+    const restoredPositions = pendingDraft.positions.map((position) => recoverOrderPositionSource(position, sources));
     packagingTouchedRef.current = true;
     setForm((previous) => ({ ...previous, ...pendingDraft.form }));
-    setPositions(pendingDraft.positions);
+    setPositions(restoredPositions);
     setRemoveAttachmentIds(Array.isArray(pendingDraft.removeAttachmentIds) ? pendingDraft.removeAttachmentIds : []);
     setRestoredFilesMissing(Boolean(pendingDraft.hadPendingAttachments));
     setDraftOriginalModifiedAt(String(pendingDraft.serverModifiedAt || ''));
@@ -1262,7 +1265,7 @@ export default function TempOrderForm() {
     }
     draftBaselineRef.current = JSON.stringify({
       form: pendingDraft.form,
-      positions: pendingDraft.positions,
+      positions: restoredPositions,
       removeAttachmentIds: Array.isArray(pendingDraft.removeAttachmentIds) ? pendingDraft.removeAttachmentIds : [],
       hadPendingAttachments: Boolean(pendingDraft.hadPendingAttachments),
       serverModifiedAt: String(pendingDraft.serverModifiedAt || ''),
@@ -1272,7 +1275,7 @@ export default function TempOrderForm() {
     draftTouchedRef.current = true;
     draftReadyKeyRef.current = draftScopeKey;
     setDraftDecisionReady(true);
-  }, [draftScopeKey, isEdit, loadCustomerPaymentDefault, loadCustomerRepresentatives, loadDeliveryAddresses, pendingDraft, serverModifiedAt, t]);
+  }, [draftScopeKey, isEdit, loadCustomerPaymentDefault, loadCustomerRepresentatives, loadDeliveryAddresses, pendingDraft, positions, serverModifiedAt, t]);
 
   const discardDraft = React.useCallback(() => {
     clearTempOrderDraft(draftContext);
@@ -1732,6 +1735,9 @@ export default function TempOrderForm() {
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
+      if (!String(pos.beNumber || '').trim() || !String(pos.warehouseId || '').trim()) {
+        messages.push(`${pos.article || '-'}: ${t('validation_position_source_required')}`);
+      }
       const foreignMandant = findForeignMandantName(pos.beNumber, mandants, activeMandant);
       if (foreignMandant) {
         messages.push(`${pos.article || pos.beNumber}: ${t('article_from_mandant_readonly', { name: foreignMandant })}`);

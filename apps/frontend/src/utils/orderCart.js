@@ -1,5 +1,6 @@
 import { getMandant } from './mandant.js';
 import { nextWeekday } from './deliveryDate.js';
+import { recoverOrderPositionSource } from './orderPositionSource.js';
 
 export const ORDER_CART_CHANGED = 'bms-order-cart-changed';
 
@@ -16,12 +17,12 @@ function read() {
     return arr.map((item, index) => {
       const productId = String(item?.productId || item?.id || '');
       const lineId = String(item?.lineId || item?.id || `${productId || 'cart-line'}-${index}`);
-      return {
+      return recoverOrderPositionSource({
         ...item,
         id: productId,
         productId,
         lineId,
-      };
+      });
     });
   } catch {
     return [];

@@ -84,6 +84,19 @@ test('reservation positions keep reservation metadata and use the reserved amoun
   assert.equal(item.reservationDate, '2030-05-17T00:00:00.000Z');
 });
 
+test('reading an old reservation cart repairs the missing BE while retaining split rows and user inputs', () => {
+  const productId = 'PPR 10232 natur Total||Hamburg||3-02-26-123-01||PP||';
+  const rows = ['line-1', 'line-2'].map((lineId, index) => ({ id: productId, lineId,
+    beNumber: '', warehouseId: 'LG0031', quantityKg: 5000, salePrice: 1400 + index,
+    deliveryDate: `2030-05-${17 + index}`, reservationInKg: 10000, wpzComment: 'Kundenetikett' }));
+  localStorage.setItem('bms.orderCart.BMS.FRU', JSON.stringify(rows));
+  const restored = getOrderCartItems();
+  assert.equal(restored.length, 2);
+  for (let index = 0; index < rows.length; index++) {
+    assert.deepEqual(restored[index], { ...rows[index], productId, beNumber: '3-02-26-123-01' });
+  }
+});
+
 test('adding an existing position keeps every user-edited cart value', () => {
   addOrderCartItemsWithDefaults([{
     id: 'product-1',
