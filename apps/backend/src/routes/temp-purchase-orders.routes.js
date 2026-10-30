@@ -21,7 +21,7 @@ const { appendTimelineEntries } = require('../db/timeline');
 const TIMELINE_TABLE = appTableSql('timeline');
 
 const router = express.Router();
-router.use(requirePilotFeature('purchaseOrders'));
+const requirePurchaseOrders = requirePilotFeature('purchaseOrders');
 const TEMP_PURCHASE_ORDER_TABLE = appTableSql('tempPurchaseOrder');
 const TEMP_PURCHASE_POSITION_TABLE = appTableSql('tempPurchaseOrderPosition');
 
@@ -341,7 +341,7 @@ async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess)
   });
 }
 
-router.get('/purchase-order-loading-locations', requireMandant, asyncHandler(async (req, res) => {
+router.get('/purchase-order-loading-locations', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.query?.supplierId);
   await assertSupplier(req.database, supplierId, accessScope);
@@ -350,7 +350,7 @@ router.get('/purchase-order-loading-locations', requireMandant, asyncHandler(asy
   sendEnvelope(res, { data: context.addresses, meta: { count: context.addresses.length, source: context.source } });
 }));
 
-router.get('/purchase-order-options', requireMandant, asyncHandler(async (req, res) => {
+router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.query?.supplierId);
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   await assertSupplier(req.database, supplierId, scope);
@@ -359,7 +359,7 @@ router.get('/purchase-order-options', requireMandant, asyncHandler(async (req, r
   sendEnvelope(res, { data: { ...options, defaults } });
 }));
 
-router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requireMandant, asyncHandler(async (req, res) => {
+router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.params.supplierId);
   const articleIndex = asText(req.params.articleIndex);
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -412,7 +412,7 @@ async function insertPurchasePositions(query, id, positions, user, now, createdB
   }
 }
 
-router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res) => {
+router.get('/temp-purchase-orders', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const userShortCode = asText(req.userIdentity?.shortCode);
   const companyId = Number(req.database?.firmaId || 0);
@@ -464,14 +464,14 @@ router.get('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res
   });
 }));
 
-router.get('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
+router.get('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const row = await loadOrderForUser(Number(req.params.id), Number(req.database?.firmaId || 0), asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
   if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   sendEnvelope(res, { status: 200, data: mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))), meta: { mandant: req.mandant }, error: null });
 }));
 
-router.post('/temp-purchase-orders', requireMandant, asyncHandler(async (req, res) => {
+router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.body?.supplierId);
   const supplier = await assertSupplier(req.database, supplierId, scope);
@@ -510,7 +510,7 @@ router.post('/temp-purchase-orders', requireMandant, asyncHandler(async (req, re
   sendEnvelope(res, { status: 201, data: created, meta: { mandant: req.mandant } });
 }));
 
-router.put('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
+router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
@@ -542,7 +542,7 @@ router.put('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req,
   sendEnvelope(res, { data: updated, meta: { mandant: req.mandant } });
 }));
 
-router.delete('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (req, res) => {
+router.delete('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
@@ -551,7 +551,7 @@ router.delete('/temp-purchase-orders/:id', requireMandant, asyncHandler(async (r
   res.status(204).end();
 }));
 
-router.post('/temp-purchase-orders/:id/finalize', requireMandant, asyncHandler(async (req, res) => {
+router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);

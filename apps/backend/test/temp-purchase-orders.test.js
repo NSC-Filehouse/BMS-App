@@ -13,7 +13,7 @@ function fixture(options = {}) {
   const csMails = [];
   let failDelete = false;
   let failRead = false;
-  const router = { use() {}, get(path, ...handlers) { routes.push({ method: 'get', path, handlers }); }, post(path, ...handlers) { routes.push({ method: 'post', path, handlers }); }, put(path, ...handlers) { routes.push({ method: 'put', path, handlers }); }, delete(path, ...handlers) { routes.push({ method: 'delete', path, handlers }); } };
+  const router = options.routing ? require('express').Router() : { use() {}, get(path, ...handlers) { routes.push({ method: 'get', path, handlers }); }, post(path, ...handlers) { routes.push({ method: 'post', path, handlers }); }, put(path, ...handlers) { routes.push({ method: 'put', path, handlers }); }, delete(path, ...handlers) { routes.push({ method: 'delete', path, handlers }); } };
   const project = (sql, row) => Object.fromEntries([...sql.matchAll(/\[(tbp?_\w+)\] AS (?:\[([^\]]+)\]|(\w+))/g)].map((match) => [match[2] || match[3], row[match[1]]]));
   const query = async (sql, params = []) => {
     assert.equal((sql.match(/\?/g) || []).length, params.length, `SQL parameter count: ${sql}`);
@@ -74,7 +74,8 @@ function fixture(options = {}) {
   };
   const dependencies = {
     crypto: require('node:crypto'), express: { Router: () => router }, '../config': { sql: { database: 'mock' } }, '../logger': {}, '../utils': require('../src/utils'),
-    '../middlewares/mandant.middleware': { requireMandant() {} }, '../middlewares/pilot-feature.middleware': { requirePilotFeature: () => () => {} },
+    '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
+    '../middlewares/pilot-feature.middleware': options.routing ? require('../src/middlewares/pilot-feature.middleware') : { requirePilotFeature: () => () => {} },
     '../db/access': {
       runSQLQueryAccess: async () => [{ ok: 1 }], runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows,
       withSqlTransaction: async (_db, work) => {
@@ -99,8 +100,66 @@ function fixture(options = {}) {
     const res = { status(status) { this.statusCode = status; return this; }, json(payload) { resolve({ status: this.statusCode, ...payload }); }, end() { resolve({ status: this.statusCode }); } };
     routes.find((r) => r.path === route && r.method === method).handlers.at(-1)(req, res, reject);
   });
-  return { request, headers, lines, calls, timeline, mails, csMails, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
+  return { router, request, headers, lines, calls, timeline, mails, csMails, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
 }
+
+function routedRequest(router, method, url, userIdentity) {
+  return new Promise((resolve, reject) => {
+    const req = { method, url, userIdentity, query: { supplierId: '42' }, params: {},
+      database: { firmaId: 1 }, header: () => 'de' };
+    const res = { status() { return this; }, json: resolve };
+    router.handle(req, res, (error) => error ? reject(error) : resolve({ next: true }));
+  });
+}
+
+const ordinaryUser = { shortCode: 'AD', active: true };
+
+test('ordinary users reach the delivery calendar and other routes mounted after purchases', async () => {
+  const { router } = fixture({ routing: true });
+  const calendarModule = { exports: {} };
+  const dependencies = {
+    express: require('express'), '../utils': require('../src/utils'),
+    '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
+    '../db/delivery-addresses': {}, '../db/holidays': {}, '../logger': {},
+    '../delivery-calendar': require('../src/delivery-calendar'),
+  };
+  new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/routes/delivery-calendar.routes.js'), 'utf8'))((name) => {
+    assert.ok(name in dependencies, name); return dependencies[name];
+  }, calendarModule);
+  const api = require('express').Router();
+  api.use(router);
+  api.use(calendarModule.exports);
+  const result = await new Promise((resolve, reject) => {
+    api.handle({ method: 'POST', url: '/delivery-calendar/check', userIdentity: ordinaryUser,
+      body: { dates: ['2026-11-01'] } }, { status() { return this; }, json: resolve }, reject);
+  });
+  assert.equal(result.data[0].isWeekend, true);
+  for (const [method, url] of [['GET', '/timeline'], ['POST', '/push/subscribe'], ['GET', '/options']]) {
+    assert.deepEqual(await routedRequest(router, method, url, ordinaryUser), { next: true });
+  }
+});
+
+test('every purchase route still rejects ordinary users before accessing data', async () => {
+  const f = fixture({ routing: true });
+  const routes = f.router.stack.filter((layer) => layer.route).map((layer) => layer.route);
+  assert.equal(routes.length, 9);
+  for (const route of routes) {
+    const url = route.path.replace(/:[^/]+/g, '1');
+    for (const method of Object.keys(route.methods)) {
+      await assert.rejects(routedRequest(f.router, method.toUpperCase(), url, ordinaryUser), (error) =>
+        error.status === 403 && error.details.code === 'PILOT_FEATURE_FORBIDDEN');
+    }
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('verified pilot users can still load purchase options', async () => {
+  const f = fixture({ routing: true });
+  const result = await routedRequest(f.router, 'GET', '/purchase-order-options', {
+    shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true,
+  });
+  assert.equal(result.data.defaults.paymentConditionId, 17);
+});
 
 const body = () => ({ supplierId: '42', clientRequestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', packagingTypeId: 79, deliveryTermId: 1, paymentConditionText: 'Manipuliert', paymentConditionId: 999,
   loadingLocationText: 'Hamburg', positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
