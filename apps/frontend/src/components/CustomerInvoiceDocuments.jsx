@@ -1,4 +1,5 @@
 import React from 'react';
+import { useBackDisclosure } from './DisclosureBack.jsx';
 import { Box, Button, Card, CardContent, Collapse, Typography } from '@mui/material';
 
 function InvoiceCard({ invoice, isSupplier, t, formatDate, formatMoney }) {
@@ -64,6 +65,7 @@ function InvoiceCard({ invoice, isSupplier, t, formatDate, formatMoney }) {
 function AttachedCredit(props) {
   const { invoice, t } = props;
   const [expanded, setExpanded] = React.useState(false);
+  useBackDisclosure(expanded, () => setExpanded(false));
   const panelId = React.useId();
   const buttonId = React.useId();
   return (

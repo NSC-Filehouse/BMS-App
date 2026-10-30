@@ -34,6 +34,8 @@ Die Kopfzeile ist in allen regulären Screens sichtbar. Sie enthält:
 
 Ein Strich bei „Kunde“ bedeutet, dass noch kein Kunde für einen neuen Auftrag ausgewählt wurde.
 
+Der Zurück-Pfeil oben in einer Seite schließt beim ersten Tippen alle dort geöffneten Bereiche, einschließlich ihrer Unterbereiche. Die Seite bleibt dabei geöffnet; Eingaben, Suchfilter und Auswahlen bleiben erhalten. Ein weiteres Tippen führt zum bisherigen Rücksprungziel. Ist kein Bereich geöffnet, führt bereits das erste Tippen zurück. Das gilt auch für Ansprechpartner, Aktivitäten und aufgeklappte Auftragspositionen.
+
 ### 3.2 Seitenmenü
 
 Das Seitenmenü wird über das Menüsymbol geöffnet und über das X, durch Tippen außerhalb des Menüs oder nach Auswahl eines Menüpunktes wieder geschlossen.

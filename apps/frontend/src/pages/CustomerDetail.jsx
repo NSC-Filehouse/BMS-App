@@ -1,6 +1,6 @@
 import React from 'react';
+import { BackAwareAccordion as Accordion, DisclosureBackButton, useBackDisclosure } from '../components/DisclosureBack.jsx';
 import {
-  Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
@@ -579,6 +579,10 @@ export default function CustomerDetail() {
     ? 'success.main'
     : 'error.main';
   const representatives = normalizeRepresentatives(item);
+  useBackDisclosure(representatives.some(rep => expandedRepresentatives[rep.key]), () => setExpandedRepresentatives({}));
+  useBackDisclosure(activities.some(activity => expandedActivities[activity.id]), () => setExpandedActivities({}));
+  useBackDisclosure(Object.values(expandedPurchasedArticleGroups).some(Boolean), () => setExpandedPurchasedArticleGroups({}), { active: !isSupplier && docs.purchasedArticles.expanded });
+  useBackDisclosure(Object.values(expandedPurchasedHistoryGroups).some(Boolean), () => setExpandedPurchasedHistoryGroups({}), { active: !isSupplier && docs.purchasedArticles.expanded });
   const selectableContactRankings = getSelectableContactRankings(representatives);
   const isSelectedCustomer = Boolean(
     selectedCustomer?.id && String(selectedCustomer.id) === String(id),
@@ -1080,9 +1084,9 @@ export default function CustomerDetail() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={handleBack} sx={{ mt: 0.25 }}>
+        <DisclosureBackButton aria-label="back" onClick={handleBack} sx={{ mt: 0.25 }}>
           <ArrowBackIcon />
-        </IconButton>
+        </DisclosureBackButton>
         <Box sx={{ minWidth: 0 }}>
           {!loading && !error && item && (
             <Box

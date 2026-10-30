@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Box, CircularProgress, IconButton, Typography } from '@mui/material';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
+import { Alert, Box, CircularProgress, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -47,7 +48,7 @@ export default function TempPurchaseOrderForm() {
   const back = () => navigateToReturn(navigate, location.state?.returnTo, `/temp-purchase-orders/${encodeURIComponent(id)}`);
   if (!order) return error ? <Alert severity="error">{error}</Alert> : <CircularProgress />;
   return <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', display: 'grid', gap: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}><IconButton onClick={back} disabled={saving} aria-label="zurück"><ArrowBackIcon /></IconButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>Bestellung bearbeiten</Typography></Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>Bestellung bearbeiten</Typography></Box>
     {error && <Alert severity="error">{error}</Alert>}
     {isTempOrderEditableStatus(order.status)
       ? <PurchaseOrderEditor key={order.id} initialOrder={order} onSave={save} onDelete={remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Accordion, AccordionSummary, AccordionDetails, Alert, Box, Button, ButtonBase, CircularProgress, Typography } from '@mui/material';
+import { BackAwareAccordion as Accordion } from './DisclosureBack.jsx';
+import { AccordionSummary, AccordionDetails, Alert, Box, Button, ButtonBase, CircularProgress, Typography } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';

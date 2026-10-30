@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, IconButton, Typography } from '@mui/material';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArticleAssignment from '../components/OptionArticleAssignment.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -73,7 +74,7 @@ export default function OptionDetail() {
 
   return <Box sx={{ width: '100%', maxWidth: 900, minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-      <IconButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></IconButton>
+      <DisclosureBackButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
       <Typography variant="h5">{t('option_detail_title')}</Typography>
       {offer && <Button color="error" disabled={deleting} onClick={deleteOption} sx={{ ml: 'auto' }}>{t('option_delete')}</Button>}
     </Box>

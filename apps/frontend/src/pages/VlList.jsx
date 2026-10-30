@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -926,12 +927,12 @@ export default function VlList() {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             {location.state?.returnTo?.pathname && (
-              <IconButton
+              <DisclosureBackButton
                 aria-label={t('back_label')}
                 onClick={() => navigateToReturn(navigate, location.state.returnTo, '/customers')}
               >
                 <ArrowBackIcon />
-              </IconButton>
+              </DisclosureBackButton>
             )}
             <Typography variant="h5">{t('vl_title')}</Typography>
           </Box>

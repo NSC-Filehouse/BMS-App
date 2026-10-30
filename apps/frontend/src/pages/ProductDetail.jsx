@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -607,9 +608,9 @@ export default function ProductDetail({ modal = false }) {
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <IconButton aria-label="back" onClick={handleBack}>
+          <DisclosureBackButton aria-label="back" onClick={handleBack}>
             <ArrowBackIcon />
-          </IconButton>
+          </DisclosureBackButton>
           <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {item?.article || id}
           </Typography>

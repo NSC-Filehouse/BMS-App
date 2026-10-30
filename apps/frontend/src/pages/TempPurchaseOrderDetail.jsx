@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, IconButton, Typography } from '@mui/material';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -48,7 +49,7 @@ export default function TempPurchaseOrderDetail() {
   const editable = item && isTempOrderEditableStatus(item.status);
   return <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-      <IconButton aria-label="Zurück" onClick={back} disabled={working}><ArrowBackIcon /></IconButton>
+      <DisclosureBackButton aria-label="Zurück" onClick={back} disabled={working}><ArrowBackIcon /></DisclosureBackButton>
       <Box sx={{ minWidth: 0 }}>
         {item?.bmsPurchaseOrderNumber && <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main', overflowWrap: 'anywhere' }}>BE: {item.bmsPurchaseOrderNumber}</Typography>}
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{item?.supplierName || `Bestellung ${id}`}</Typography>

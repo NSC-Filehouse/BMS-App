@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -8,7 +9,6 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
-  IconButton,
   Radio,
   RadioGroup,
   Switch,
@@ -192,9 +192,9 @@ export default function Settings() {
               <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {t('settings_title')}
               </Typography>
-              <IconButton aria-label="back" onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/customers')} size="small">
+              <DisclosureBackButton aria-label="back" onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/customers')} size="small">
                 <ArrowBackIcon />
-              </IconButton>
+              </DisclosureBackButton>
             </Box>
 
             <Box sx={{ display: 'grid', gap: 1 }}>

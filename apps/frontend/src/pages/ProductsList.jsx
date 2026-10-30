@@ -1,6 +1,6 @@
 import React from 'react';
+import { BackAwareAccordion as Accordion } from '../components/DisclosureBack.jsx';
 import {
-  Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,

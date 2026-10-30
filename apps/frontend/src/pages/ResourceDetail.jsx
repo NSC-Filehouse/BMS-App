@@ -1,11 +1,11 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
   Card,
   CardContent,
   CircularProgress,
-  IconButton,
   Table,
   TableBody,
   TableCell,
@@ -52,9 +52,9 @@ export default function ResourceDetail({ resourceKey }) {
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="zurueck" onClick={() => navigateToReturn(navigate, location.state?.returnTo, `/${resource.key}`)}>
+        <DisclosureBackButton aria-label="zurueck" onClick={() => navigateToReturn(navigate, location.state?.returnTo, `/${resource.key}`)}>
           <ArrowBackIcon />
-        </IconButton>
+        </DisclosureBackButton>
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {resource.label} Detail
         </Typography>

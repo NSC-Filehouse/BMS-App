@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackScope } from './DisclosureBack.jsx';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
@@ -438,7 +439,7 @@ export default function Layout() {
             {t('resume_connection_problem')}
           </Alert>
         )}
-        <Outlet />
+        <DisclosureBackScope key={currentLocation.pathname}><Outlet /></DisclosureBackScope>
       </Box>
     </Box>
   );

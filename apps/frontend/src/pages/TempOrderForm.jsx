@@ -1,6 +1,6 @@
 import React from 'react';
+import { BackAwareAccordion as Accordion, DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
-  Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
@@ -1905,7 +1905,7 @@ export default function TempOrderForm() {
       />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton
+        <DisclosureBackButton
           aria-label="back"
           onClick={() => navigateToReturn(
             navigate,
@@ -1914,7 +1914,7 @@ export default function TempOrderForm() {
           )}
         >
           <ArrowBackIcon />
-        </IconButton>
+        </DisclosureBackButton>
         <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
           {isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}
         </Typography>

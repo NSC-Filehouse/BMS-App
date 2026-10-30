@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -7,7 +8,6 @@ import {
   CardContent,
   CircularProgress,
   Divider,
-  IconButton,
   Typography,
 } from '@mui/material';
 import BusinessIcon from '@mui/icons-material/Business';
@@ -135,9 +135,9 @@ export default function EmployeeDetail() {
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={handleBack} sx={{ mt: 0.25 }}>
+        <DisclosureBackButton aria-label="back" onClick={handleBack} sx={{ mt: 0.25 }}>
           <ArrowBackIcon />
-        </IconButton>
+        </DisclosureBackButton>
         <Box sx={{ minWidth: 0, py: 0.75 }}>
           <Typography variant="h5" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {t('employee_detail_title')}

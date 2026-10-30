@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -6,7 +7,6 @@ import {
   CardContent,
   CircularProgress,
   Divider,
-  IconButton,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -111,9 +111,9 @@ export default function ProductWpzDetail() {
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={handleBack}>
+        <DisclosureBackButton aria-label="back" onClick={handleBack}>
           <ArrowBackIcon />
-        </IconButton>
+        </DisclosureBackButton>
         <Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {t('wpz_title')}
         </Typography>

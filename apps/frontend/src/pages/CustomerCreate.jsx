@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import { Alert, Box, Button, Card, CardContent, Checkbox, CircularProgress, FormControlLabel, IconButton, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -211,7 +212,7 @@ export default function CustomerCreate() {
   const privatePerson = getCustomerSalutationType(draft.stammdaten.anrede, context.lists.anreden.eintraege) === 'private';
   const copied = context.targetMandant === context.stammMandant || result?.data?.kopien?.some((entry) => entry.mandant === context.targetMandant && ['angelegt', 'bereitsVorhanden'].includes(entry.status));
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', pb: 2 }}>
-    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}><IconButton aria-label={w.back} disabled={busy} onClick={back}><ArrowBackIcon /></IconButton><Typography variant="h5">{w.title}</Typography></Stack>
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}><DisclosureBackButton aria-label={w.back} disabled={busy} onClick={back}><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5">{w.title}</Typography></Stack>
     {result ? <Stack spacing={2}>
       <Alert severity={result.meta?.state === 'partial' ? 'warning' : 'success'}>{result.meta?.state === 'partial' ? w.partial : w.created}</Alert>
       <Card><CardContent><Typography variant="h6">{result.data.uebernommen?.name1}</Typography><Typography>{w.number}: <b>{result.data.kundennummer}</b></Typography><Typography>{w.target}: {result.data.mandant}</Typography>

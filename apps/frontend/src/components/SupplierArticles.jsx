@@ -1,5 +1,6 @@
 import React from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, ButtonBase, Checkbox, CircularProgress, Collapse, IconButton, TextField, Typography } from '@mui/material';
+import { BackAwareAccordion as Accordion, useBackDisclosure } from './DisclosureBack.jsx';
+import { AccordionDetails, AccordionSummary, Alert, Box, ButtonBase, Checkbox, CircularProgress, Collapse, IconButton, TextField, Typography } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { getPurchaseCartItems, purchaseArticleKey, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
@@ -12,6 +13,7 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
   const [actionError, setActionError] = React.useState('');
   const [expandedVl, setExpandedVl] = React.useState(() => new Set(initialState?.expandedVl || []));
   const [selectedVl, setSelectedVl] = React.useState(() => new Set(initialState?.selectedVl || []));
+  useBackDisclosure(expandedVl.size > 0, () => setExpandedVl(new Set()), { active: expanded });
   const vlRegionId = React.useId();
   const [cart, setCart] = React.useState(getPurchaseCartItems);
   const restored = React.useRef(false);

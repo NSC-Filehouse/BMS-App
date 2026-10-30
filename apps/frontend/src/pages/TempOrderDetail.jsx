@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   Alert,
   Box,
@@ -11,7 +12,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
   TextField,
   Typography,
 } from '@mui/material';
@@ -320,7 +320,7 @@ export default function TempOrderDetail() {
   return (
     <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', overflowX: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
-        <IconButton aria-label="back" onClick={handleBack}><ArrowBackIcon /></IconButton>
+        <DisclosureBackButton aria-label="back" onClick={handleBack}><ArrowBackIcon /></DisclosureBackButton>
         <Box sx={{ minWidth: 0 }}>
           {item?.orderIndex && (
             <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
