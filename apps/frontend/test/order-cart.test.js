@@ -139,6 +139,25 @@ test('temporarily empty cart inputs are persisted instead of restoring stale val
   assert.equal(item.salePrice, '');
 });
 
+test('an explicit zero sales price survives storage, refresh and a position split', () => {
+  const product = { id: 'sample-1', article: 'Free sample', availableAmount: 100, acquisitionPrice: 1000 };
+  addOrderCartItemsWithDefaults([product]);
+  updateOrderCartSalePrice('sample-1', '0');
+  assert.equal(getOrderCartItems()[0].salePrice, 0);
+
+  addOrderCartItemsWithDefaults([product]);
+  assert.equal(getOrderCartItems()[0].salePrice, 0);
+  updateOrderCartQuantity('sample-1', 25);
+  addOrderCartRemainder('sample-1');
+  const items = getOrderCartItems();
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map(item => item.salePrice), [0, 0]);
+
+  updateOrderCartSalePrice(items[0].lineId, '');
+  assert.equal(getOrderCartItems()[0].salePrice, '');
+  assert.equal(getOrderCartItems()[1].salePrice, 0);
+});
+
 test('edited cart article names persist and survive a product refresh', () => {
   addOrderCartItemsWithDefaults([{
     id: 'product-1',

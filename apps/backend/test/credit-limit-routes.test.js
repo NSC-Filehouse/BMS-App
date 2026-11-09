@@ -28,6 +28,7 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   pickupQueries.length = 0;
   originalPackagingLookupError = false;
   position.originalPackagingType = 'Sackware';
+  position.price = 2000;
   position.originalPackagingTypeId = 1;
   position.packagingTypeChanged = false;
   pickupRows = [{ warehouseId: 'L1', isStrecke: true, pickupName1: 'Factory', pickupStreet: 'Plant road 1', pickupPostalCode: '7190', pickupCity: 'Feluy', pickupCountry: 'B', countryCode: 'BE' }];
@@ -170,6 +171,30 @@ test('direct finalize POST completes internal orders without credit inserts, inc
     assert.equal(response.meta.creditLimitMail.creditRequest.status, 'suppressed_internal');
     assert.equal(calls.some((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]')), false);
     assert.deepEqual(orderMailCalls, [100]);
+  }
+});
+
+test('free samples have zero order value and finalize with an explicit zero VK in the order mail', async () => {
+  for (const price of [0, '0.00']) {
+    reset();
+    position.price = price;
+    const preview = await request('get', '/temp-orders/:id/credit-limit-preview');
+    assert.equal(preview.data.currentOrderAmount, 0);
+    const response = await request('post', '/temp-orders/:id/finalize');
+    assert.equal(response.data.orderStatus, 1);
+    const insert = calls.find(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]'));
+    assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('VK: 0,00 EUR/t')));
+    assert.deepEqual(orderMailCalls, [100]);
+  }
+});
+
+test('finalization rejects missing, negative and invalid sales prices without queuing a mail', async () => {
+  for (const price of [undefined, null, '', ' ', -1, -0.01, NaN, Infinity, 'abc', false, [], {}]) {
+    reset();
+    position.price = price;
+    await assert.rejects(request('post', '/temp-orders/:id/finalize'), error => error.status === 400 && error.details.code === 'INVALID_TEMP_ORDER_PAYLOAD');
+    assert.equal(calls.some(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]')), false);
+    assert.equal(orderMailCalls.length, 0);
   }
 });
 

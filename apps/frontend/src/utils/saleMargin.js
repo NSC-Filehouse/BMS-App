@@ -1,3 +1,5 @@
+import { isValidSalePrice } from './salePrice.js';
+
 export function calculateSaleMarginAmount(amountInKg, salePricePerTonne, costPricePerTonne) {
   const quantity = Number(amountInKg);
   const salePrice = Number(salePricePerTonne);
@@ -6,8 +8,7 @@ export function calculateSaleMarginAmount(amountInKg, salePricePerTonne, costPri
   if (
     !Number.isFinite(quantity)
     || quantity <= 0
-    || !Number.isFinite(salePrice)
-    || salePrice <= 0
+    || !isValidSalePrice(salePricePerTonne)
     || !Number.isFinite(costPrice)
     || costPrice <= 0
   ) {

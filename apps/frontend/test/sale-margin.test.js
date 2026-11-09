@@ -11,8 +11,16 @@ test('supports positive and negative total margins', () => {
   assert.equal(calculateSaleMarginAmount(1000, 1200, 1000), 200);
 });
 
+test('shows the cost of free samples as a negative margin', () => {
+  assert.equal(calculateSaleMarginAmount(25, 0, 1000), -25);
+  assert.equal(calculateSaleMarginAmount(25, '0.00', 1000), -25);
+});
+
 test('does not calculate a margin with incomplete or invalid values', () => {
   assert.equal(calculateSaleMarginAmount('', 1200, 1000), null);
   assert.equal(calculateSaleMarginAmount(23500, '', 1000), null);
+  assert.equal(calculateSaleMarginAmount(23500, null, 1000), null);
+  assert.equal(calculateSaleMarginAmount(23500, ' ', 1000), null);
+  assert.equal(calculateSaleMarginAmount(23500, -0.01, 1000), null);
   assert.equal(calculateSaleMarginAmount(23500, 1200, 0), null);
 });

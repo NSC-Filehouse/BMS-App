@@ -37,6 +37,7 @@ import { getSelectedCustomer } from '../utils/customerSelection.js';
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import { isValidSalePrice } from '../utils/salePrice.js';
 import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus } from '../utils/deliveryDate.js';
@@ -209,9 +210,8 @@ export default function OrderCart() {
         messages.push(t('validation_cart_quantity_not_above_available'));
         pushFieldError(getCartLineId(x), 'quantityKg');
       }
-      const salePrice = Number(x.salePrice);
-      if (!Number.isFinite(salePrice) || salePrice <= 0) {
-        messages.push(t('validation_sale_price_positive'));
+      if (!isValidSalePrice(x.salePrice)) {
+        messages.push(t('validation_sale_price_nonnegative'));
         pushFieldError(getCartLineId(x), 'salePrice');
       }
       if (!String(x.deliveryDate || '').trim()) {
@@ -406,11 +406,11 @@ export default function OrderCart() {
                   label={t('order_sale_price')}
                   value={row.salePrice ?? ''}
                   onChange={(e) => onSalePriceChange(lineId, e.target.value)}
-                  inputProps={{ min: 0.01, step: 'any' }}
+                  inputProps={{ min: 0, step: 'any' }}
                   size="small"
                   required
                   error={Boolean(rowErr.salePrice)}
-                  helperText={rowErr.salePrice ? t('validation_sale_price_positive') : ''}
+                  helperText={rowErr.salePrice ? t('validation_sale_price_nonnegative') : ''}
                 />
                 <SaleMarginHint amountInKg={row.quantityKg} salePrice={row.salePrice} costPrice={row.acquisitionPrice} />
                 <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>

@@ -543,6 +543,15 @@ function asInt(value, fallback = 0) {
   return Math.round(n);
 }
 
+function asSalePrice(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (String(value).trim() === '') return null;
+  const price = Number(value);
+  // Validate before rounding to the existing integer price storage.
+  if (!Number.isFinite(price) || price < 0) return null;
+  return Math.round(price);
+}
+
 function parseDeliveryAddressId(value) {
   if (value === undefined || value === null || asText(value) === '') {
     return { provided: false, id: null };
@@ -767,7 +776,7 @@ function validateFinalOrder(order, positions) {
     || !asText(position?.warehouse)
     || !position?.deliveryDate
     || Number(position?.amountInKg) <= 0
-    || Number(position?.price) <= 0
+    || asSalePrice(position?.price) === null
     || Number(position?.costPrice) <= 0
   ));
   if (invalidPosition) {
@@ -1952,7 +1961,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     const warehouseId = asText(raw?.warehouseId);
     const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : (body?.deliveryDate ? new Date(body.deliveryDate) : null);
     const amountInKg = asInt(raw?.amountInKg, 0);
-    const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
+    const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
@@ -1964,7 +1973,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (!valutaDateState.valid) {
       throw createHttpError(400, 'Invalid valuta date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
-    if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
@@ -2863,7 +2872,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     const warehouseId = asText(raw?.warehouseId);
     const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : (body?.deliveryDate ? new Date(body.deliveryDate) : null);
     const amountInKg = asInt(raw?.amountInKg, 0);
-    const salePricePerKg = asInt(raw?.salePricePerKg ?? raw?.pricePerKg, 0);
+    const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     if (!beNumber || !warehouseId) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
@@ -2871,7 +2880,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
       throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
-    if (amountInKg <= 0 || salePricePerKg <= 0 || costPricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);

@@ -45,6 +45,7 @@ import { clearTempOrderDraft, loadTempOrderDraft, saveTempOrderDraft } from '../
 import { checkResumeSession } from '../utils/resumeSession.js';
 import WpzCommentField from '../components/WpzCommentField.jsx';
 import SaleMarginHint from '../components/SaleMarginHint.jsx';
+import { isValidSalePrice } from '../utils/salePrice.js';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import PickupAddressField from '../components/PickupAddressField.jsx';
@@ -1746,7 +1747,6 @@ export default function TempOrderForm() {
         messages.push(`${pos.beNumber}: ${t('validation_article_name_required')}`);
       }
       const amount = Number(pos.amountInKg);
-      const salePrice = Number(pos.price);
       const costPrice = Number(pos.costPrice);
       if (!String(pos.deliveryDate || '').trim()) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
@@ -1754,8 +1754,8 @@ export default function TempOrderForm() {
       if (!Number.isFinite(amount) || amount <= 0) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_amount_positive')}`);
       }
-      if (!Number.isFinite(salePrice) || salePrice <= 0) {
-        messages.push(`${pos.article || pos.beNumber}: ${t('validation_sale_price_positive')}`);
+      if (!isValidSalePrice(pos.price)) {
+        messages.push(`${pos.article || pos.beNumber}: ${t('validation_sale_price_nonnegative')}`);
       }
       if (!Number.isFinite(costPrice) || costPrice <= 0) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_price_positive')}`);
@@ -2457,7 +2457,7 @@ export default function TempOrderForm() {
                                 label={t('order_sale_price')}
                                 value={x.price ?? ''}
                                 onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, price: e.target.value } : p)))}
-                                inputProps={{ min: 0.01, step: 'any' }}
+                                inputProps={{ min: 0, step: 'any' }}
                                 size="small"
                               />
                               <SaleMarginHint amountInKg={x.amountInKg} salePrice={x.price} costPrice={x.costPrice} />
@@ -2735,7 +2735,7 @@ export default function TempOrderForm() {
             label={t('order_sale_price')}
             value={addPosSalePrice}
             onChange={(e) => setAddPosSalePrice(e.target.value)}
-            inputProps={{ min: 0.01, step: 'any' }}
+            inputProps={{ min: 0, step: 'any' }}
             fullWidth
           />
           <SaleMarginHint amountInKg={addPosQty} salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
@@ -2805,8 +2805,8 @@ export default function TempOrderForm() {
                 setAddPosError(t('validation_price_positive'));
                 return;
               }
-              if (!Number.isFinite(salePrice) || salePrice <= 0) {
-                setAddPosError(t('validation_sale_price_positive'));
+              if (!isValidSalePrice(addPosSalePrice)) {
+                setAddPosError(t('validation_sale_price_nonnegative'));
                 return;
               }
               if (!String(addPosDeliveryDate || '').trim()) {

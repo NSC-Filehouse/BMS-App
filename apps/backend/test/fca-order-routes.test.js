@@ -136,6 +136,47 @@ test('ordinary CPT orders retain the validated customer delivery-address ID', as
   assert.equal(pickupReads, 0);
 });
 
+test('zero sales prices survive creating, editing and copying an order', async () => {
+  reset();
+  const zeroPayload = payload({ positions: [{ ...payload().positions[0], salePricePerKg: 0 }] });
+  const created = await request('post', zeroPayload);
+  assert.equal(savedPositions[0].tap_price, 0);
+  assert.equal(created.data.positions[0].price, 0);
+
+  const edited = await request('put', { ...zeroPayload, positions: [{ ...zeroPayload.positions[0], id: 1, salePricePerKg: '0.00' }] });
+  assert.equal(savedPositions[0].tap_price, 0);
+  assert.equal(edited.data.positions[0].price, 0);
+
+  const copied = await request('post', { ...zeroPayload, positions: [{ ...zeroPayload.positions[0], salePricePerKg: edited.data.positions[0].price }] });
+  assert.notEqual(copied.data.id, created.data.id);
+  assert.equal(savedPositions.at(-1).tap_price, 0);
+  assert.equal(copied.data.positions[0].price, 0);
+});
+
+test('the legacy pricePerKg input accepts an explicit zero when creating and editing', async () => {
+  reset();
+  const legacyPayload = payload({ positions: [{ ...payload().positions[0], salePricePerKg: undefined, pricePerKg: 0 }] });
+  const created = await request('post', legacyPayload);
+  assert.equal(created.data.positions[0].price, 0);
+  const edited = await request('put', { ...legacyPayload, positions: [{ ...legacyPayload.positions[0], id: 1 }] });
+  assert.equal(edited.data.positions[0].price, 0);
+});
+
+test('create and update reject missing, negative and invalid sales prices before writing', async () => {
+  for (const price of [undefined, null, '', ' ', -1, -0.01, '-0.01', 'abc', 'Infinity', false, true, [], [0], {}]) {
+    reset();
+    const invalidPayload = payload({ positions: [{ ...payload().positions[0], salePricePerKg: price }] });
+    await assert.rejects(request('post', invalidPayload), error => error.status === 400 && error.details.code === 'INVALID_TEMP_ORDER_PAYLOAD');
+    assert.equal(writes.length, 0);
+
+    await request('post', payload());
+    writes.length = 0;
+    await assert.rejects(request('put', invalidPayload), error => error.status === 400 && error.details.code === 'INVALID_TEMP_ORDER_PAYLOAD');
+    assert.equal(writes.length, 0);
+    assert.equal(savedPositions[0].tap_price, 2000);
+  }
+});
+
 test('create, edit and copy use the order packaging when the original is missing or unavailable', async () => {
   for (const lookupFails of [false, true]) {
     reset();
