@@ -112,6 +112,8 @@ const config = {
 
   dailyVlMail: {
     enabled: toBool(process.env.BMS_DAILY_VL_MAIL_ENABLED, false),
+    fromAddress: String(process.env.BMS_DAILY_VL_MAIL_FROM_ADDRESS || '').trim().toLowerCase(),
+    fromDisplayName: String(process.env.BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME || '').trim(),
     recipient: String(
       process.env.BMS_DAILY_VL_MAIL_RECIPIENT || 'verfuegbarkeitsliste@mlplastics.de',
     ).trim().toLowerCase(),

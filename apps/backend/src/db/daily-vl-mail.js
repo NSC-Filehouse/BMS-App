@@ -282,6 +282,8 @@ async function processDailyVlMail(outboxId, today) {
     const delivery = await sendOrderMail({
       orderMailConfig: config.orderMail,
       mailServiceConfig: config.mailService,
+      fromAddress: config.dailyVlMail.fromAddress,
+      fromDisplayName: config.dailyVlMail.fromDisplayName,
       recipients: item.recipients,
       subject: item.subject,
       body: item.body,

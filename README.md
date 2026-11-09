@@ -330,11 +330,19 @@ gesteuert bzw. angepasst werden:
 
 ```dotenv
 BMS_DAILY_VL_MAIL_ENABLED=true
+BMS_DAILY_VL_MAIL_FROM_ADDRESS=verfuegbarkeitsliste@mlholding.org
+BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME="Verfügbarkeitsliste - MLHolding GmbH"
 BMS_DAILY_VL_MAIL_RECIPIENT=verfuegbarkeitsliste@mlplastics.de
 BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS=1,6,8,13,14,15,17,18
 BMS_DAILY_VL_MAIL_WESTPOLY_COMPANY_ID=9
 BMS_DAILY_VL_MAIL_WESTPOLY_RECIPIENTS=kimaz@mlplastics.de,m.winkler@mlholding.org,altendorf@westpoly.de,goede@mlholding.org
 ```
+
+Absenderadresse und Anzeigename gelten nur für die täglichen VL-Mails, sowohl
+beim MailService als auch beim EWS-Fallback. Beide Versandwege benötigen die
+Berechtigung, mit dieser Adresse zu senden. Ohne die beiden Absenderwerte bleibt
+der bisherige Standardabsender bestehen. Verkaufsmeldungen nach Auftragsabschluss
+behalten ihre eigene Absenderlogik.
 
 `BMS_DAILY_VL_MAIL_ENABLED` muss in der Produktionskonfiguration auf `true`
 stehen. In Entwicklungs- und Testumgebungen bleibt der Standard `false`, damit
