@@ -109,6 +109,7 @@ export default function TempOrderDetail() {
   const [item, setItem] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [creditMailWarning, setCreditMailWarning] = React.useState(false);
   const [finalizeOpen, setFinalizeOpen] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
   const [checkingCreditLimit, setCheckingCreditLimit] = React.useState(false);
@@ -143,6 +144,7 @@ export default function TempOrderDetail() {
     try {
       setLoading(true);
       setError('');
+      setCreditMailWarning(false);
       const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}`);
       setItem(res?.data || null);
     } catch (e) {
@@ -297,6 +299,7 @@ export default function TempOrderDetail() {
     try {
       setFinalizing(true);
       setError('');
+      setCreditMailWarning(false);
       const res = await apiRequest(`/temp-orders/${encodeURIComponent(id)}/finalize`, {
         method: 'POST',
         body: JSON.stringify({
@@ -308,6 +311,8 @@ export default function TempOrderDetail() {
         }),
       });
       setItem(res?.data || null);
+      setCreditMailWarning(res?.meta?.creditLimitMail?.status === 'failed'
+        || res?.meta?.creditLimitMailStatuses?.includes('failed') === true);
       setFinalizeOpen(false);
     } catch (e) {
       setFinalizeOpen(false);
@@ -363,6 +368,7 @@ export default function TempOrderDetail() {
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {creditMailWarning && <Alert severity="warning" sx={{ mb: 2 }}>{t('credit_limit_optional_mail_failed')}</Alert>}
 
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>

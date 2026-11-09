@@ -212,12 +212,12 @@ async function queueCreditLimitMails({
     };
   }
 
-  const bankReminderApplicable = creditContext.credit.amount === 0;
-  const state = await loadStateForUpdate(query, companyId, customerId);
-  const now = new Date(nowIso);
-  const cooldownMonths = config.creditLimitMail.cooldownMonths;
-  const bankReminderDue = bankReminderApplicable
-    && !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
+  const bankReminderApplicable = creditContext.credit.amount === 0
+    && !hasBankDetails(creditContext.customer);
+  const canSendBankReminder = bankReminderApplicable && isEmailAddress(primaryAdEmail);
+  if (bankReminderApplicable && !canSendBankReminder) {
+    result.bankReminder = { status: 'skipped_missing_primary_ad_email' };
+  }
   const creditExposure = calculateCreditExposure({
     currentOrderAmount,
     unpaidInvoicesAmount: creditContext.credit.unpaidInvoicesAmount,
@@ -234,6 +234,15 @@ async function queueCreditLimitMails({
   } else if (sendCreditRequest && requestedLimit === null) {
     result.creditRequest = { status: 'amount_required' };
   }
+  // Declining a credit request must not touch its tables unless an independent
+  // bank-details reminder can actually be sent.
+  if (!creditRequestDue && !canSendBankReminder) return result;
+
+  const state = await loadStateForUpdate(query, companyId, customerId);
+  const now = new Date(nowIso);
+  const cooldownMonths = config.creditLimitMail.cooldownMonths;
+  const bankReminderDue = canSendBankReminder
+    && !isWithinCooldown(state?.lastBankReminderAt, now, cooldownMonths);
   const configuredTestRecipient = asText(testRecipient);
   const effectiveCreditTo = configuredTestRecipient && isEmailAddress(configuredTestRecipient)
     ? [configuredTestRecipient]
@@ -249,7 +258,7 @@ async function queueCreditLimitMails({
     : uniqueCaseInsensitive(configuredCreditCc.filter((address) => !effectiveCreditTo.some((to) => to.toLowerCase() === String(address).trim().toLowerCase())));
 
   let stateId = state?.id || 0;
-  if ((creditRequestDue || (!hasBankDetails(creditContext.customer) && bankReminderDue && isEmailAddress(primaryAdEmail))) && !stateId) {
+  if ((creditRequestDue || bankReminderDue) && !stateId) {
     stateId = await ensureState(query, companyId, customerId);
   }
 
@@ -301,10 +310,8 @@ async function queueCreditLimitMails({
     };
   }
 
-  if (bankReminderApplicable && !hasBankDetails(creditContext.customer)) {
-    if (!isEmailAddress(primaryAdEmail)) {
-      result.bankReminder = { status: 'skipped_missing_primary_ad_email' };
-    } else if (!bankReminderDue) {
+  if (canSendBankReminder) {
+    if (!bankReminderDue) {
       result.bankReminder = {
         status: 'suppressed_cooldown',
         lastReminderAt: state?.lastBankReminderAt || null,

@@ -2282,7 +2282,6 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         return {
           alreadyFinalized: true,
           outboxId: existingOutbox ? Number(existingOutbox.id) : null,
-          creditNotifications: { outboxIds: [] },
           timelineEntries: [],
         };
       }
@@ -2510,10 +2509,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         outboxId = Number(outboxResult.rows[0]?.id);
       }
 
-      let creditNotifications = { outboxIds: [] };
-      if (creditLimitContext && config.creditLimitMail.enabled) {
-        creditNotifications = await queueCreditLimitMails({
-          query,
+      const creditNotificationOptions = creditLimitContext && config.creditLimitMail.enabled
+        ? {
           companyId,
           customerId: mappedOrder.clientReferenceId,
           orderId: id,
@@ -2538,8 +2535,8 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
           creditFromAddress: orderMailSender.onBehalfOfAddress,
           creditFromDisplayName: orderMailSender.onBehalfOfDisplayName,
           testRecipient: config.orderMail.testRecipient,
-        });
-      }
+        }
+        : null;
 
       const timelineExistsResult = await query(`
         SELECT TOP 1 1 AS ok
@@ -2599,12 +2596,12 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
 
       // Sales pushes are sent by the status-2 ERP reconciliation once the
       // actual au_Aussendienst is available.
-      return { alreadyFinalized: false, outboxId, creditNotifications, timelineEntries };
+      return { alreadyFinalized: false, outboxId, creditNotificationOptions, timelineEntries };
     });
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
     if (message.includes('invalid column name') && (message.includes('ta_closing_date') || message.includes('ta_completedby') || message.includes('ta_status') || message.includes('ta_return_comment') || message.includes('tap_verpackungsart'))
-      || message.includes('invalid object name') && (message.includes('ordermailoutbox') || message.includes('creditlimitrequeststate') || message.includes('creditlimitmailoutbox'))) {
+      || message.includes('invalid object name') && message.includes('ordermailoutbox')) {
       throw createHttpError(503, 'Temp order finalization migration is missing.', { code: 'TEMP_ORDER_FINALIZATION_SCHEMA_MISSING' });
     }
     throw error;
@@ -2613,9 +2610,28 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const mailResult = finalized.outboxId
     ? await processOrderMailOutboxById(finalized.outboxId)
     : { processed: false, status: 'not_available' };
+  // Optional notifications use their own transaction after the order and its
+  // outbox have committed. Even an aborted SQL transaction cannot undo the order.
+  let creditNotifications = { outboxIds: [] };
+  if (finalized.creditNotificationOptions) {
+    try {
+      creditNotifications = await withSqlTransaction(config.sql.database, ({ query }) => queueCreditLimitMails({
+        ...finalized.creditNotificationOptions,
+        query,
+      }));
+    } catch (error) {
+      logger.error(`Optionale Kreditlimit-/Bankdaten-Mails fuer Temp-Auftrag ${id} konnten nicht eingereiht werden. Der Auftrag bleibt gesendet.`, error);
+      creditNotifications = { outboxIds: [], status: 'failed', code: 'CREDIT_LIMIT_MAIL_QUEUE_FAILED' };
+    }
+  }
   const creditMailResults = [];
-  for (const outboxId of finalized.creditNotifications?.outboxIds || []) {
-    creditMailResults.push(await processCreditLimitMailOutboxById(outboxId));
+  for (const outboxId of creditNotifications.outboxIds) {
+    try {
+      creditMailResults.push(await processCreditLimitMailOutboxById(outboxId));
+    } catch (error) {
+      logger.error(`Optionale Kreditlimit-/Bankdaten-Mail ${outboxId} fuer Temp-Auftrag ${id} konnte nicht verarbeitet werden. Der Auftrag bleibt gesendet.`, error);
+      creditMailResults.push({ status: 'failed' });
+    }
   }
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT TOP 1 ${await getTempOrderHeaderSelectSql()}
@@ -2640,7 +2656,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       alreadyFinalized: finalized.alreadyFinalized,
       mailStatus: mailResult.status,
       creditLimitLookupStatus,
-      creditLimitMail: finalized.creditNotifications || { outboxIds: [] },
+      creditLimitMail: creditNotifications,
       creditLimitMailStatuses: creditMailResults.map((result) => result.status),
     },
     error: null,

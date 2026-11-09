@@ -12,6 +12,10 @@ let pickupRows;
 let originalPackagingLookupError;
 let stockAmount;
 let plannedOrders;
+let creditSqlFailure;
+let creditProcessingFailure;
+let activeTransaction;
+const transactions = [];
 const pickupQueries = [];
 const position = {
   id: 1, lineNo: 1, beNumber: '3-02-26-001-01', article: 'Article',
@@ -31,6 +35,10 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   originalPackagingLookupError = false;
   stockAmount = 200000;
   plannedOrders = [];
+  creditSqlFailure = '';
+  creditProcessingFailure = false;
+  activeTransaction = null;
+  transactions.length = 0;
   position.amountInKg = 100000;
   position.originalPackagingType = 'Sackware';
   position.price = 2000;
@@ -48,7 +56,10 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
 }
 
 async function sqlQuery(database, sql, params = []) {
-  calls.push({ database, sql, params });
+  calls.push({ database, sql, params, transaction: activeTransaction });
+  if (creditSqlFailure && sql.includes(creditSqlFailure)) {
+    throw new Error(`Invalid object name ${creditSqlFailure}`);
+  }
   if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) {
     return (params[1] === 'tbl_Temp_Auftrag' ? Object.keys(order) : positionColumns).map((col) => ({ col }));
@@ -97,9 +108,25 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     if (sql.includes('tblKun_KreditLimit')) return [{ ...creditValues }];
     return [];
   },
-  withSqlTransaction: async (database, work) => work({
-    query: async (sql, params) => ({ rows: await sqlQuery(database, sql, params) }),
-  }),
+  withSqlTransaction: async (database, work) => {
+    const transaction = { status: 'active' };
+    const previousOrder = { ...order };
+    transactions.push(transaction);
+    activeTransaction = transaction;
+    try {
+      const result = await work({
+        query: async (sql, params) => ({ rows: await sqlQuery(database, sql, params) }),
+      });
+      transaction.status = 'committed';
+      return result;
+    } catch (error) {
+      transaction.status = 'rolled_back';
+      order = previousOrder;
+      throw error;
+    } finally {
+      activeTransaction = null;
+    }
+  },
 } };
 require.cache[require.resolve('../src/db/customer-access')] = { exports: {
   getCustomerAccessScope: async () => ({ isFullAccess: true }),
@@ -114,13 +141,21 @@ require.cache[require.resolve('../src/db/customer-order-requirements')] = { expo
   loadCustomerOrderRequirements: async () => ({ customerFound: true, missingFields: [] }),
 } };
 require.cache[require.resolve('../src/db/order-mail-outbox')] = { exports: {
-  processOrderMailOutboxById: async (id) => { orderMailCalls.push(id); return { status: 'sent' }; },
+  processOrderMailOutboxById: async (id) => {
+    assert.equal(activeTransaction, null);
+    assert.equal(transactions[0].status, 'committed');
+    orderMailCalls.push(id);
+    return { status: 'sent' };
+  },
 } };
 const creditOutboxPath = require.resolve('../src/db/credit-limit-request-outbox');
 const creditOutbox = require(creditOutboxPath);
 require.cache[creditOutboxPath] = { exports: {
   ...creditOutbox,
-  processCreditLimitMailOutboxById: async () => ({ status: 'sent' }),
+  processCreditLimitMailOutboxById: async () => {
+    if (creditProcessingFailure) throw new Error('Credit mail processing unavailable');
+    return { status: 'sent' };
+  },
 } };
 const mailPath = require.resolve('../src/mail/order-mail');
 require.cache[mailPath] = { exports: {
@@ -240,6 +275,84 @@ test('direct finalize POST still queues credit for an external customer', async 
   assert.equal(creditInsert.params[8], 'Test AD');
   assert.match(creditInsert.params[10], /Kreditwunsch: 245\.000,75 EUR/);
   assert.deepEqual(orderMailCalls, [100]);
+  assert.notEqual(creditInsert.transaction, calls.find(call => call.sql.includes('SET [ta_Status] = 1')).transaction);
+  assert.equal(creditInsert.transaction.status, 'committed');
+});
+
+test('Vorkasse finalization after Nein never reads credit state when no bank reminder is needed', async () => {
+  for (const amount of [0, null]) {
+    reset('external', false);
+    order.ta_special_payment_text = 'Vorkasse';
+    creditValues.amount = amount;
+    creditSqlFailure = '[CreditLimitRequestState]';
+    const response = await request('post', '/temp-orders/:id/finalize', { sendCreditLimitRequest: false });
+    assert.equal(response.data.orderStatus, 1);
+    assert.equal(response.meta.creditLimitMail.creditRequest.status, 'not_applicable');
+    assert.equal(calls.some(call => call.sql.includes('[CreditLimitRequestState]')), false);
+    assert.equal(calls.some(call => call.sql.includes('[CreditLimitMailOutbox]')), false);
+    assert.deepEqual(orderMailCalls, [100]);
+  }
+});
+
+test('optional credit SQL failures roll back only notifications and preserve the committed order', async () => {
+  for (const sendCreditLimitRequest of [false, true]) {
+    for (const table of ['[CreditLimitRequestState]', '[CreditLimitMailOutbox]']) {
+      reset('external', false);
+      order.ta_special_payment_text = 'Vorkasse';
+      if (!sendCreditLimitRequest) {
+        customer.iban = '';
+        customer.mainSalesRepresentative = 'AD';
+      }
+      creditSqlFailure = table;
+      const response = await request('post', '/temp-orders/:id/finalize', {
+        sendCreditLimitRequest, creditLimitAmount: 245000,
+      });
+      assert.equal(response.data.orderStatus, 1);
+      assert.equal(order.ta_Status, 1);
+      assert.equal(response.meta.creditLimitMail.status, 'failed');
+      assert.equal(response.meta.creditLimitMail.code, 'CREDIT_LIMIT_MAIL_QUEUE_FAILED');
+      assert.deepEqual(response.meta.creditLimitMail.outboxIds, []);
+      assert.deepEqual(transactions.map(transaction => transaction.status), ['committed', 'rolled_back']);
+      assert.deepEqual(orderMailCalls, [100]);
+    }
+  }
+});
+
+test('Nein still permits an independent bank reminder without sending a credit request', async () => {
+  reset('external', false);
+  customer.iban = '';
+  customer.mainSalesRepresentative = 'AD';
+  const response = await request('post', '/temp-orders/:id/finalize', { sendCreditLimitRequest: false });
+  assert.equal(response.data.orderStatus, 1);
+  assert.equal(response.meta.creditLimitMail.creditRequest.status, 'not_applicable');
+  assert.equal(response.meta.creditLimitMail.bankReminder.status, 'queued');
+  const inserts = calls.filter(call => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]'));
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].params[3], 'bank_details_reminder');
+  assert.deepEqual(orderMailCalls, [100]);
+});
+
+test('optional credit worker failures cannot turn a sent order into a failed response', async () => {
+  reset('external', false);
+  creditProcessingFailure = true;
+  const response = await request('post', '/temp-orders/:id/finalize', {
+    sendCreditLimitRequest: true, creditLimitAmount: 245000,
+  });
+  assert.equal(response.data.orderStatus, 1);
+  assert.equal(response.meta.creditLimitMail.creditRequest.status, 'queued');
+  assert.deepEqual(response.meta.creditLimitMailStatuses, ['failed']);
+  assert.deepEqual(orderMailCalls, [100]);
+});
+
+test('a repeated finalize does not queue optional notifications again', async () => {
+  reset('external', false);
+  const body = { sendCreditLimitRequest: true, creditLimitAmount: 245000 };
+  await request('post', '/temp-orders/:id/finalize', body);
+  const insertCount = calls.filter(call => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]')).length;
+  const response = await request('post', '/temp-orders/:id/finalize', body);
+  assert.equal(response.meta.alreadyFinalized, true);
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO') && call.sql.includes('[CreditLimitMailOutbox]')).length, insertCount);
+  assert.deepEqual(response.meta.creditLimitMail.outboxIds, []);
 });
 
 test('concurrent customer change cannot reuse the previously loaded internal exemption', async () => {

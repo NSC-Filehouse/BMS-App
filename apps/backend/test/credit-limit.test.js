@@ -357,3 +357,54 @@ test('queues credit requests from unpaid invoices plus current order and ignores
     config.creditLimitMail.enabled = previousEnabled;
   }
 });
+
+test('does not query notification tables when neither a credit request nor a bank reminder can be sent', async () => {
+  const previousEnabled = config.creditLimitMail.enabled;
+  config.creditLimitMail.enabled = true;
+  const common = {
+    query: async () => { throw new Error('Unexpected notification table access'); },
+    companyId: 7, customerId: 'K-1', orderId: 42,
+    currentOrderAmount: 1000, nowIso: '2026-11-09T10:00:00.000Z',
+  };
+  try {
+    for (const scenario of [
+      { customer: { iban: 'DE123' }, amount: 0, sendCreditRequest: false },
+      { customer: {}, amount: null, sendCreditRequest: false },
+      { customer: {}, amount: 5000, sendCreditRequest: true, creditLimitAmount: 6000, expectedCredit: 'not_required' },
+      { customer: { iban: 'DE123' }, amount: 0, sendCreditRequest: true, expectedCredit: 'amount_required' },
+      { customer: {}, amount: 0, primaryAdEmail: 'invalid', expectedBank: 'skipped_missing_primary_ad_email' },
+    ]) {
+      const result = await queueCreditLimitMails({
+        ...common, ...scenario,
+        creditContext: { customer: scenario.customer, credit: { amount: scenario.amount } },
+      });
+      assert.deepEqual(result.outboxIds, []);
+      assert.equal(result.creditRequest.status, scenario.expectedCredit || 'not_applicable');
+      assert.equal(result.bankReminder.status, scenario.expectedBank || 'not_applicable');
+    }
+  } finally {
+    config.creditLimitMail.enabled = previousEnabled;
+  }
+});
+
+test('bank reminders respect their cooldown after a declined credit request', async () => {
+  const previousEnabled = config.creditLimitMail.enabled;
+  config.creditLimitMail.enabled = true;
+  try {
+    const result = await queueCreditLimitMails({
+      query: async (sql) => {
+        assert.ok(sql.trimStart().startsWith('SELECT'));
+        return { rows: [{ id: 1, lastBankReminderAt: '2026-11-08T10:00:00.000Z' }] };
+      },
+      companyId: 7, customerId: 'K-1', orderId: 42,
+      currentOrderAmount: 1000, nowIso: '2026-11-09T10:00:00.000Z',
+      creditContext: { customer: {}, credit: { amount: 0 } },
+      sendCreditRequest: false, primaryAdEmail: 'ad@example.com',
+    });
+    assert.equal(result.creditRequest.status, 'not_applicable');
+    assert.equal(result.bankReminder.status, 'suppressed_cooldown');
+    assert.deepEqual(result.outboxIds, []);
+  } finally {
+    config.creditLimitMail.enabled = previousEnabled;
+  }
+});
