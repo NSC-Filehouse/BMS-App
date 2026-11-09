@@ -40,6 +40,7 @@ function mappedPosition(row) {
   };
 }
 async function sqlQuery(database, sql, params = []) {
+  if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) return (params[1] === 'tbl_Temp_Auftrag' ? orderColumns : positionColumns).map(col => ({ col }));
   if (sql.includes('[spT_ID]')) return params.length === 5 && params[0] === 'big bags'
     ? [{ id: 2, text: 'Big Bags' }] : [{ id: 1, text: 'Sackware' }];

@@ -5,6 +5,11 @@ const { appTableSql } = require('./app-tables');
 const { getDatabaseConnectionForCompanyId } = require('./databases');
 const { getUserIdentityByShortCode } = require('./users');
 const {
+  withTempOrderAvailabilityLock,
+  loadCurrentOrderPositions,
+  assertTempOrderPositionsAvailable,
+} = require('./temp-order-availability');
+const {
   sendOrderMail,
   resolveOrderMailRecipient,
   validateOrderMailConfig,
@@ -82,35 +87,78 @@ async function resolveMissingOrderMailSender(item) {
 }
 
 async function claimSpecificOutboxItem(outboxId) {
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
-    UPDATE ${OUTBOX_TABLE} WITH (ROWLOCK, UPDLOCK, READPAST)
-    SET [om_Status] = N'sending',
-        [om_AttemptCount] = [om_AttemptCount] + 1,
-        [om_LockedAt] = SYSUTCDATETIME(),
-        [om_LastModifiedDate] = SYSUTCDATETIME()
-    OUTPUT
-      INSERTED.[om_ID] AS id,
-      INSERTED.[om_OrderID] AS orderId,
-      INSERTED.[om_CompanyID] AS companyId,
-      INSERTED.[om_Recipient] AS recipient,
-      INSERTED.[om_RecipientSource] AS recipientSource,
-      INSERTED.[om_FromAddress] AS fromAddress,
-      INSERTED.[om_FromDisplayName] AS fromDisplayName,
-      INSERTED.[om_OnBehalfOfAddress] AS onBehalfOfAddress,
-      INSERTED.[om_OnBehalfOfDisplayName] AS onBehalfOfDisplayName,
-      INSERTED.[om_Subject] AS subject,
-      INSERTED.[om_Body] AS body,
-      INSERTED.[om_Status] AS status,
-      INSERTED.[om_AttemptCount] AS attemptCount
-    WHERE [om_ID] = ?
-      AND [om_AttemptCount] < ?
-      AND (
-        [om_Status] IN (N'pending', N'failed')
-        OR ([om_Status] = N'sending' AND [om_LockedAt] < DATEADD(MINUTE, -10, SYSUTCDATETIME()))
-      )
-      AND ([om_NextAttemptAt] IS NULL OR [om_NextAttemptAt] <= SYSUTCDATETIME())
-  `, [outboxId, config.orderMail.maxAttempts]);
-  return mapOutboxRow(Array.isArray(rows) && rows.length ? rows[0] : null);
+  const owners = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT [om_CompanyID] AS companyId FROM ${OUTBOX_TABLE} WHERE [om_ID] = ?
+  `, [outboxId]);
+  if (!owners[0]) return null;
+  return withTempOrderAvailabilityLock(owners[0].companyId, async ({ query }) => {
+    const result = await query(`
+      UPDATE ${OUTBOX_TABLE} WITH (ROWLOCK, UPDLOCK, READPAST)
+      SET [om_Status] = N'sending',
+          [om_AttemptCount] = [om_AttemptCount] + 1,
+          [om_LockedAt] = SYSUTCDATETIME(),
+          [om_LastModifiedDate] = SYSUTCDATETIME()
+      OUTPUT
+        INSERTED.[om_ID] AS id,
+        INSERTED.[om_OrderID] AS orderId,
+        INSERTED.[om_CompanyID] AS companyId,
+        INSERTED.[om_Recipient] AS recipient,
+        INSERTED.[om_RecipientSource] AS recipientSource,
+        INSERTED.[om_FromAddress] AS fromAddress,
+        INSERTED.[om_FromDisplayName] AS fromDisplayName,
+        INSERTED.[om_OnBehalfOfAddress] AS onBehalfOfAddress,
+        INSERTED.[om_OnBehalfOfDisplayName] AS onBehalfOfDisplayName,
+        INSERTED.[om_Subject] AS subject,
+        INSERTED.[om_Body] AS body,
+        INSERTED.[om_Status] AS status,
+        INSERTED.[om_AttemptCount] AS attemptCount
+      WHERE [om_ID] = ?
+        AND [om_AttemptCount] < ?
+        AND (
+          [om_Status] IN (N'pending', N'failed')
+          OR ([om_Status] = N'sending' AND [om_LockedAt] < DATEADD(MINUTE, -10, SYSUTCDATETIME()))
+        )
+        AND ([om_NextAttemptAt] IS NULL OR [om_NextAttemptAt] <= SYSUTCDATETIME())
+    `, [outboxId, config.orderMail.maxAttempts]);
+    const item = mapOutboxRow(result.rows?.[0]);
+    if (!item) return null;
+    try {
+      const order = (await query(`
+        SELECT [ta_Status] AS orderStatus, [ta_CreatedBy] AS createdBy
+        FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
+        WHERE [ta_id] = ? AND [ta_company_id] = ?
+      `, [item.orderId, item.companyId])).rows?.[0];
+      if (!order || ![1, 2].includes(Number(order.orderStatus))) {
+        throw new Error('Auftrag ist nicht zum Versand an BMS freigegeben.');
+      }
+      // An already booked BMS order is reflected in BMS stock. Its notification
+      // can still be retried, but it must not claim the same stock again.
+      if (Number(order.orderStatus) === 1) {
+        const positions = (await query(`
+          SELECT [tap_be_number] AS beNumber, [tap_warehouse] AS warehouseId,
+            [tap_amount_in_kg] AS amountInKg, [tap_reservation_in_kg] AS reservationInKg
+          FROM ${TEMP_ORDER_POSITION_TABLE} WHERE [tap_ta_id] = ?
+        `, [item.orderId])).rows || [];
+        if (!positions.length) throw new Error('Auftrag enthält keine Positionen.');
+        const database = await getDatabaseConnectionForCompanyId(item.companyId);
+        await assertTempOrderPositionsAvailable({
+          companyId: item.companyId,
+          excludeOrderId: item.orderId,
+          positions: await loadCurrentOrderPositions(database, positions, order.createdBy, { allowAnyReservation: true }),
+          query,
+        });
+      }
+    } catch (error) {
+      await query(`
+        UPDATE ${OUTBOX_TABLE}
+        SET [om_Status] = N'failed', [om_LockedAt] = NULL, [om_LastError] = ?,
+          [om_NextAttemptAt] = ?, [om_LastModifiedDate] = SYSUTCDATETIME()
+        WHERE [om_ID] = ?
+      `, [String(error.message).slice(0, 2000), nextRetryDate(item.attemptCount), item.id]);
+      return { ...item, availabilityError: error.message };
+    }
+    return item;
+  });
 }
 
 async function findNextOutboxId() {
@@ -222,9 +270,14 @@ async function releaseReservationsForSentOrders(limit = 25) {
 async function processOrderMailOutboxById(outboxId) {
   const item = await claimSpecificOutboxItem(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
+  if (item.availabilityError) {
+    logger.warn(`Auftragsmail ${item.id} nicht versendet: ${item.availabilityError}`);
+    return { processed: true, status: 'failed', error: item.availabilityError };
+  }
   const configuredRecipient = resolveOrderMailRecipient(item.companyId, config.orderMail);
   const effectiveRecipient = configuredRecipient.ok ? configuredRecipient.address : item.recipient;
 
+  let delivered = false;
   try {
     const sender = await resolveMissingOrderMailSender(item);
     const delivery = await sendOrderMail({
@@ -241,6 +294,7 @@ async function processOrderMailOutboxById(outboxId) {
       clientMessageId: `bms-app:order:${item.orderId}`,
       isBodyHtml: true,
     });
+    delivered = true;
     await runSQLQuerySqlServer(config.sql.database, `
       UPDATE ${OUTBOX_TABLE}
       SET [om_Status] = N'sent',
@@ -261,6 +315,12 @@ async function processOrderMailOutboxById(outboxId) {
     logger.info(`Auftragsmail ${item.id} fuer Auftrag ${item.orderId} ueber ${delivery.transport} angenommen an ${effectiveRecipient}.`);
     return { processed: true, status: 'sent', recipient: effectiveRecipient, transport: delivery.transport };
   } catch (error) {
+    if (delivered) {
+      // The recipient already accepted the mail. Retain the sending claim if
+      // persisting that result fails; releasing stock here could oversell it.
+      logger.error(`Versand von Auftragsmail ${item.id} angenommen, Status konnte nicht gespeichert werden`, error);
+      return { processed: true, status: 'sending', recipient: effectiveRecipient };
+    }
     const message = asText(error?.message || error).slice(0, 2000) || 'Unbekannter EWS-Fehler';
     const exhausted = item.attemptCount >= config.orderMail.maxAttempts;
     await runSQLQuerySqlServer(config.sql.database, `

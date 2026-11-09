@@ -10,6 +10,8 @@ let customer;
 let creditValues;
 let pickupRows;
 let originalPackagingLookupError;
+let stockAmount;
+let plannedOrders;
 const pickupQueries = [];
 const position = {
   id: 1, lineNo: 1, beNumber: '3-02-26-001-01', article: 'Article',
@@ -27,6 +29,9 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   concurrentCustomerId = '';
   pickupQueries.length = 0;
   originalPackagingLookupError = false;
+  stockAmount = 200000;
+  plannedOrders = [];
+  position.amountInKg = 100000;
   position.originalPackagingType = 'Sackware';
   position.price = 2000;
   position.originalPackagingTypeId = 1;
@@ -44,6 +49,7 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
 
 async function sqlQuery(database, sql, params = []) {
   calls.push({ database, sql, params });
+  if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) {
     return (params[1] === 'tbl_Temp_Auftrag' ? Object.keys(order) : positionColumns).map((col) => ({ col }));
   }
@@ -52,6 +58,12 @@ async function sqlQuery(database, sql, params = []) {
     return [{ mandantId: 7, customerId: '14104' }, { mandantId: 5, customerId: 'LF0400' }];
   }
   if (sql.includes('NULLIF(LTRIM(RTRIM(COALESCE(p.[tap_Verpackungsart]')) return position.originalPackagingType ? [] : [position];
+  if (sql.includes('AS ownerShortCode')) {
+    const statuses = sql.match(/COALESCE\(o\.\[ta_Status\], 0\) IN \(([^)]+)\)/)[1].split(',').map(Number);
+    const excludedId = sql.includes('o.[ta_id] <> ?') ? params[1] : null;
+    return plannedOrders.filter((planned) => statuses.includes(planned.status) && planned.id !== excludedId)
+      .map((planned) => ({ beNumber: position.beNumber, warehouseId: position.warehouse, ownerShortCode: 'MBÜ', amountInKg: planned.amount }));
+  }
   if (sql.includes('SUM(')) return [];
   if (sql.includes('INSERT INTO') && sql.includes('[OrderMailOutbox]')) return [{ id: 100 }];
   if (sql.includes('INSERT INTO') && sql.includes('[CreditLimitMailOutbox]')) return [{ id: 101 }];
@@ -75,6 +87,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryFx: async () => { throw new Error('Unexpected FX query'); },
   runSQLQuerySqlServer: sqlQuery,
   runSQLQueryAccess: async (database, sql) => {
+    if (sql.includes('AS mfiBase')) return [{ amount: stockAmount, reserved: 0, storageId: 'L1' }];
     if (sql.includes('AS packagingType')) {
       if (originalPackagingLookupError) throw new Error('Original packaging lookup unavailable');
       return [];
@@ -274,4 +287,39 @@ test('legacy FCA orders with a customer delivery-address FK must be reviewed bef
   await assert.rejects(request('post', '/temp-orders/:id/finalize'), error => error.status === 409 && error.details.code === 'TEMP_ORDER_PICKUP_ADDRESS_REVIEW_REQUIRED');
   assert.equal(calls.some(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]')), false);
   assert.equal(orderMailCalls.length, 0);
+});
+
+test('finalize ignores a competing draft and checks stock inside the serialized transaction', async () => {
+  reset('14104', true);
+  stockAmount = 23375;
+  position.amountInKg = 23375;
+  plannedOrders = [{ id: 403, status: 0, amount: 11000 }];
+  const result = await request('post', '/temp-orders/:id/finalize');
+  assert.equal(result.data.orderStatus, 1);
+  assert.equal(orderMailCalls.length, 1);
+  const lockIndex = calls.findIndex((call) => call.sql.includes('sp_getapplock'));
+  const planningIndex = calls.findIndex((call) => call.sql.includes('AS ownerShortCode'));
+  const statusIndex = calls.findIndex((call) => call.sql.includes('SET [ta_Status] = 1'));
+  assert.ok(lockIndex >= 0 && planningIndex > lockIndex && statusIndex > planningIndex);
+});
+
+test('finalize rejects stock claimed by a returned order before changing status or queuing mail', async () => {
+  reset('14104', true);
+  stockAmount = 23375;
+  position.amountInKg = 23375;
+  plannedOrders = [{ id: 403, status: 3, amount: 11000 }];
+  await assert.rejects(request('post', '/temp-orders/:id/finalize'),
+    (error) => error.details.code === 'TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE' && error.details.availableAmount === 12375);
+  assert.equal(order.ta_Status, 0);
+  assert.equal(orderMailCalls.length, 0);
+  assert.ok(!calls.some((call) => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]')));
+});
+
+test('finalize of a returned order excludes its own existing claim', async () => {
+  reset('14104', true, 3, 3);
+  stockAmount = 23375;
+  position.amountInKg = 23375;
+  plannedOrders = [{ id: 42, status: 3, amount: 23375 }];
+  const result = await request('post', '/temp-orders/:id/finalize');
+  assert.equal(result.data.orderStatus, 1);
 });

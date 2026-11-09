@@ -41,6 +41,7 @@ import { isValidSalePrice } from '../utils/salePrice.js';
 import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus } from '../utils/deliveryDate.js';
+import { refreshOrderCartAvailability } from '../utils/orderCartAvailability.js';
 
 function formatPrice(value) {
   const n = Number(value);
@@ -78,6 +79,23 @@ export default function OrderCart() {
   const [editingArticleId, setEditingArticleId] = React.useState('');
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const activeMandant = getMandant();
+  const [refreshingAvailability, setRefreshingAvailability] = React.useState(false);
+  const availabilityRequestRef = React.useRef(null);
+
+  const refreshAvailability = React.useCallback(() => {
+    if (availabilityRequestRef.current) return availabilityRequestRef.current;
+    setRefreshingAvailability(true);
+    const promise = refreshOrderCartAvailability(apiRequest)
+      .then((current) => { setItems(current); return current; })
+      .catch((e) => { setError(t('cart_availability_refresh_failed')); throw e; })
+      .finally(() => { availabilityRequestRef.current = null; setRefreshingAvailability(false); });
+    availabilityRequestRef.current = promise;
+    return promise;
+  }, [t]);
+
+  React.useEffect(() => {
+    void refreshAvailability().catch(() => {});
+  }, [refreshAvailability]);
 
   const handleBack = () => {
     let returnTo = location.state?.returnTo;
@@ -179,16 +197,16 @@ export default function OrderCart() {
     setEditingArticleValue('');
   }, [editingArticleValue, t]);
 
-  const validate = () => {
+  const validate = (currentItems = items) => {
     const messages = [];
     const sourceMessages = [];
     const nextFieldErrors = {};
-    const pushFieldError = (rowId, field) => {
+    const pushFieldError = (rowId, field, reason = true) => {
       const key = String(rowId || '');
       if (!nextFieldErrors[key]) nextFieldErrors[key] = {};
-      nextFieldErrors[key][field] = true;
+      nextFieldErrors[key][field] = reason;
     };
-    for (const x of items) {
+    for (const x of currentItems) {
       if (!String(x.beNumber || '').trim() || !String(x.warehouseId || '').trim()) {
         const message = `${x.article || '-'}: ${t('validation_position_source_required')}`;
         messages.push(message);
@@ -201,14 +219,14 @@ export default function OrderCart() {
       const qty = Number(x.quantityKg);
       if (!Number.isFinite(qty) || qty <= 0) {
         messages.push(t('validation_cart_quantity_positive'));
-        pushFieldError(getCartLineId(x), 'quantityKg');
+        pushFieldError(getCartLineId(x), 'quantityKg', 'positive');
         continue;
       }
       const hasAvailable = x.availableAmount !== null && x.availableAmount !== undefined && x.availableAmount !== '';
       const available = hasAvailable ? Number(x.availableAmount) : Number.NaN;
       if (Number.isFinite(available) && qty > available) {
         messages.push(t('validation_cart_quantity_not_above_available'));
-        pushFieldError(getCartLineId(x), 'quantityKg');
+        pushFieldError(getCartLineId(x), 'quantityKg', 'above_available');
       }
       if (!isValidSalePrice(x.salePrice)) {
         messages.push(t('validation_sale_price_nonnegative'));
@@ -226,7 +244,7 @@ export default function OrderCart() {
     }
 
     const totalsBySource = new Map();
-    for (const x of items) {
+    for (const x of currentItems) {
       const sourceKey = `${String(x.beNumber || x.productId || x.id || '')}\u001f${String(x.warehouseId || '')}`;
       const current = totalsBySource.get(sourceKey) || { items: [], total: 0, available: null };
       const quantity = Number(x.quantityKg);
@@ -242,7 +260,11 @@ export default function OrderCart() {
     for (const group of totalsBySource.values()) {
       if (group.available !== null && group.total > group.available) {
         messages.push(t('validation_cart_quantity_not_above_available'));
-        group.items.forEach((item) => pushFieldError(getCartLineId(item), 'quantityKg'));
+        group.items.forEach((item) => {
+          if (nextFieldErrors[getCartLineId(item)]?.quantityKg !== 'positive') {
+            pushFieldError(getCartLineId(item), 'quantityKg', 'above_available');
+          }
+        });
       }
     }
     return { messages, nextFieldErrors, sourceMessages };
@@ -375,7 +397,9 @@ export default function OrderCart() {
                     size="small"
                     required
                     error={Boolean(rowErr.quantityKg)}
-                    helperText={rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
+                    helperText={rowErr.quantityKg === 'above_available'
+                      ? t('validation_cart_quantity_available', { amount: formatQuantity(row.availableAmount), unit: row.unit || 'kg' })
+                      : rowErr.quantityKg ? t('validation_cart_quantity_positive') : ''}
                     sx={{
                       flex: splitRemainder !== null && !foreignMandant && !Number(row.reservationInKg) ? '0 0 50%' : 1,
                       minWidth: 0,
@@ -450,8 +474,11 @@ export default function OrderCart() {
             </Button>
             <Button
               variant="contained"
-              onClick={() => {
-                const { messages, nextFieldErrors, sourceMessages } = validate();
+              disabled={refreshingAvailability}
+              onClick={async () => {
+                let currentItems;
+                try { currentItems = await refreshAvailability(); } catch { return; }
+                const { messages, nextFieldErrors, sourceMessages } = validate(currentItems);
                 if (messages.length) {
                   setFieldErrors(nextFieldErrors);
                   setError(sourceMessages.length ? sourceMessages.join(' ') : t('validation_fill_required_fields'));
@@ -459,7 +486,7 @@ export default function OrderCart() {
                 }
                 setFieldErrors({});
                 setError('');
-                const sourceItems = items.map((x) => {
+                const sourceItems = currentItems.map((x) => {
                   const wpz = normalizeWpzFields(x);
                   return {
                     productId: x.productId || x.id,

@@ -168,6 +168,16 @@ export function getOrderCartItems() {
   return read();
 }
 
+export function updateOrderCartAvailability(positions) {
+  const bySource = new Map(positions.map((position) => [getSourceKey(position), position.availableAmount]));
+  const next = read().map((item) => {
+    const available = bySource.get(getSourceKey(item));
+    return Number.isFinite(available) ? { ...item, availableAmount: Math.max(available, 0) } : item;
+  });
+  write(next);
+  return next;
+}
+
 export function getOrderCartCount() {
   return read().length;
 }

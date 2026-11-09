@@ -9,7 +9,7 @@ const {
   normalizePlanningKeys,
 } = require('../src/db/temp-order-planning');
 
-test('temp planning only includes status 0 and 1, not already booked status 2', () => {
+test('temp planning claims sent and returned orders but not drafts or already booked orders', () => {
   const query = buildTempOrderPlanningQuery({
     companyId: 7,
     excludeOrderId: 42,
@@ -20,10 +20,13 @@ test('temp planning only includes status 0 and 1, not already booked status 2', 
     ],
   });
 
-  assert.deepEqual(ACTIVE_TEMP_ORDER_STATUSES, [0, 1]);
+  assert.deepEqual(ACTIVE_TEMP_ORDER_STATUSES, [1, 3]);
+  assert.equal(ACTIVE_TEMP_ORDER_STATUSES.includes(0), false);
   assert.equal(ACTIVE_TEMP_ORDER_STATUSES.includes(2), false);
-  assert.match(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1\)/);
-  assert.doesNotMatch(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(0, 1, 2\)/);
+  assert.match(query.sql, /COALESCE\(o\.\[ta_Status\], 0\) IN \(1, 3\)/);
+  assert.match(query.sql, /o\.\[ta_Status\] = 3 OR NOT EXISTS/);
+  assert.match(query.sql, /mail\.\[om_Status\] = N'failed'/);
+  assert.match(query.sql, /mail\.\[om_SentAt\] IS NULL/);
   assert.match(query.sql, /o\.\[ta_id\] <> \?/);
   assert.match(query.sql, /FROM \(VALUES \(\?, \?\), \(\?, \?\)\)/);
   assert.deepEqual(query.params, [7, 42, 'BE-1', 'L-1', 'BE-2', 'L-2']);

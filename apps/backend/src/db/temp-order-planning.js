@@ -4,9 +4,10 @@ const { appTableSql } = require('./app-tables');
 
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
-// Status 2 is already booked in the ERP. Keeping it here would subtract the
-// same quantity a second time from the current VL.
-const ACTIVE_TEMP_ORDER_STATUSES = Object.freeze([0, 1]);
+const ORDER_MAIL_OUTBOX_TABLE = appTableSql('orderMailOutbox');
+// Drafts do not claim stock. Sent orders and orders returned for corrections do.
+// Status 2 is already included in BMS stock and must not be subtracted again.
+const ACTIVE_TEMP_ORDER_STATUSES = Object.freeze([1, 3]);
 
 function asText(value) {
   if (value === null || value === undefined) return '';
@@ -39,6 +40,12 @@ function buildTempOrderPlanningQuery({ companyId, keys = [], excludeOrderId = nu
   const clauses = [
     'o.[ta_company_id] = ?',
     `COALESCE(o.[ta_Status], 0) IN (${ACTIVE_TEMP_ORDER_STATUSES.join(', ')})`,
+    `(o.[ta_Status] = 3 OR NOT EXISTS (
+      SELECT 1 FROM ${ORDER_MAIL_OUTBOX_TABLE} AS mail
+      WHERE mail.[om_OrderID] = o.[ta_id]
+        AND mail.[om_Status] = N'failed'
+        AND mail.[om_SentAt] IS NULL
+    ))`,
   ];
 
   if (excludeOrderId !== null && excludeOrderId !== undefined && asText(excludeOrderId)) {
@@ -121,10 +128,12 @@ function mapTempOrderPlanningRows(rows, currentOwnerShortCode = '') {
   return planning;
 }
 
-async function loadTempOrderPlanning({ companyId, keys = [], excludeOrderId = null, currentOwnerShortCode = '' } = {}) {
+async function loadTempOrderPlanning({ companyId, keys = [], excludeOrderId = null, currentOwnerShortCode = '', query: transactionQuery = null } = {}) {
   const query = buildTempOrderPlanningQuery({ companyId, keys, excludeOrderId });
   if (!query.keys.length) return new Map();
-  const rows = await runSQLQuerySqlServer(config.sql.database, query.sql, query.params);
+  const rows = transactionQuery
+    ? (await transactionQuery(query.sql, query.params)).rows
+    : await runSQLQuerySqlServer(config.sql.database, query.sql, query.params);
   return mapTempOrderPlanningRows(rows, currentOwnerShortCode);
 }
 

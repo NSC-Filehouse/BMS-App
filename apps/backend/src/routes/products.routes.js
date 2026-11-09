@@ -13,6 +13,8 @@ const {
 } = require('../vl-group');
 const { appendTimelineEntries } = require('../db/timeline');
 const { productAvailabilitySource } = require('../db/product-availability');
+const { loadCurrentOrderPositions, calculateTempOrderAvailableAmount } = require('../db/temp-order-availability');
+const { getCustomerAccessScope } = require('../db/customer-access');
 const { parseProductSearch, filterProductRows, searchMetadata } = require('../product-search');
 const {
   getTempOrderPlanningEntry,
@@ -585,6 +587,39 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
     data: { exists: true, wpzId: Number(row?.bePZ_ID || null), beNumber, fields },
     meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
     error: null,
+  });
+}));
+
+// Refresh cart limits by stable BE/warehouse keys, including sold-out positions.
+router.post('/products/availability', requireMandant, asyncHandler(async (req, res) => {
+  const positions = req.body?.positions;
+  if (!Array.isArray(positions) || positions.length > 100 || positions.some((position) => (
+    !asText(position?.beNumber) || !asText(position?.warehouseId)
+  ))) {
+    throw createHttpError(400, 'Invalid availability positions.', { code: 'INVALID_AVAILABILITY_POSITIONS' });
+  }
+  for (const position of positions) {
+    const sourceId = parseMandantIdFromBeNumber(position.beNumber);
+    if (sourceId !== null && Number(sourceId) !== Number(req.database.firmaId)) {
+      throw createHttpError(403, 'Fremde VL-Mandanten sind nur lesbar.', { code: 'FOREIGN_VL_READ_ONLY' });
+    }
+  }
+  const hasCarriedReservation = positions.some((position) => Number(position.reservationInKg) > 0);
+  const allowAnyReservation = hasCarriedReservation
+    ? (await getCustomerAccessScope(req.userIdentity, req.database)).isFullAccess
+    : false;
+  const current = await loadCurrentOrderPositions(req.database, positions, req.userIdentity?.shortCode, { allowAnyReservation });
+  const planning = await loadTempOrderPlanning({ companyId: req.database.firmaId, keys: current });
+  sendEnvelope(res, {
+    data: current.map((position, index) => ({
+      beNumber: asText(positions[index].beNumber),
+      warehouseId: asText(positions[index].warehouseId),
+      availableAmount: calculateTempOrderAvailableAmount(
+        position,
+        Math.min(Math.max(Number(position.reservationInKg) || 0, 0), position.productContext.reserved),
+        getTempOrderPlanningEntry(planning, position.beNumber, position.warehouseId).totalAmountKg,
+      ),
+    })),
   });
 }));
 

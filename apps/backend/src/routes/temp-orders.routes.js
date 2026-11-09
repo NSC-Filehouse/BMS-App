@@ -30,12 +30,13 @@ const {
   validateOrderMailConfig,
 } = require('../mail/order-mail');
 const logger = require('../logger');
-const { productAvailabilitySource } = require('../db/product-availability');
 const {
-  buildTempPlanningKey,
-  getTempOrderPlanningEntry,
-  loadTempOrderPlanning,
-} = require('../db/temp-order-planning');
+  loadProductContext,
+  calculateTempOrderAvailableAmount,
+  assertTempOrderPositionsAvailable,
+  loadCurrentOrderPositions,
+  withTempOrderAvailabilityLock,
+} = require('../db/temp-order-availability');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { isFcaIncoterm } = require('../incoterm');
 const { loadPickupAddresses, assertSinglePickupAddress, normalizePickupAddressInput } = require('../db/pickup-addresses');
@@ -105,7 +106,6 @@ function attachmentUploadMiddleware(req, res, next) {
     next(err);
   });
 }
-const VIEW_SQL = productAvailabilitySource('availability');
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const TEMP_ORDER_ATTACHMENT_TABLE = appTableSql('tempOrderAttachment');
 const TEMP_ORDER_POSITION_TABLE = appTableSql('tempOrderPosition');
@@ -867,72 +867,6 @@ function resolveColumn(columns, candidates) {
   return null;
 }
 
-async function loadProductContext(database, beNumber, warehouseId) {
-  const sqlByStorageId = `
-    SELECT TOP 1
-      [beP_Artikelindex] AS articleIndex,
-      [Artikel] AS article,
-      [Lagerort] AS warehouse,
-      [Menge] AS amount,
-      [bePR_Anzahl] AS reserved,
-      [beP_VLbemerkung] AS about,
-      [beP_Additive] AS packaging,
-      [beP_MFIgemessen] AS mfiMeasured,
-      [beP_MFI] AS mfiBase
-    FROM ${VIEW_SQL}
-    WHERE COALESCE([Bestell-Pos], '') = ?
-      AND COALESCE([bePL_LagerID], '') = ?
-  `;
-  const rowsByStorageId = await runSQLQueryAccess(database, sqlByStorageId, [beNumber, warehouseId]);
-  let row = Array.isArray(rowsByStorageId) && rowsByStorageId.length ? rowsByStorageId[0] : null;
-
-  // Backward compatibility: older position rows might store Lagerort text in tap_warehouse.
-  if (!row) {
-    const sqlByWarehouseName = `
-      SELECT TOP 1
-        [beP_Artikelindex] AS articleIndex,
-        [Artikel] AS article,
-        [Lagerort] AS warehouse,
-        [Menge] AS amount,
-        [bePR_Anzahl] AS reserved,
-        [beP_VLbemerkung] AS about,
-        [beP_Additive] AS packaging,
-        [beP_MFIgemessen] AS mfiMeasured,
-        [beP_MFI] AS mfiBase
-      FROM ${VIEW_SQL}
-      WHERE COALESCE([Bestell-Pos], '') = ?
-        AND COALESCE([Lagerort], '') = ?
-    `;
-    const rowsByWarehouseName = await runSQLQueryAccess(database, sqlByWarehouseName, [beNumber, warehouseId]);
-    row = Array.isArray(rowsByWarehouseName) && rowsByWarehouseName.length ? rowsByWarehouseName[0] : null;
-  }
-
-  if (!row) {
-    throw createHttpError(404, 'Product availability row not found for reservation.', {
-      code: 'PRODUCT_AVAILABILITY_NOT_FOUND',
-      beNumber,
-      warehouseId,
-    });
-  }
-
-  const measured = Number(row.mfiMeasured);
-  const base = Number(row.mfiBase);
-  const mfi = Number.isFinite(measured)
-    ? String(measured)
-    : (Number.isFinite(base) ? String(base) : asText(row.mfiMeasured || row.mfiBase));
-
-  return {
-    articleIndex: asText(row.articleIndex),
-    article: asText(row.article),
-    warehouse: asText(row.warehouse),
-    amount: Number(row.amount) || 0,
-    reserved: Number(row.reserved) || 0,
-    about: asText(row.about),
-    packaging: asText(row.packaging),
-    mfi,
-  };
-}
-
 async function loadReservationForOrder(database, beNumber, warehouseId, userShortCode, isFullAccess = false) {
   const ownerSql = isFullAccess
     ? ''
@@ -991,58 +925,6 @@ async function resolveReservationInput({ database, beNumber, warehouseId, raw, u
       ? reservationDate.toISOString()
       : null,
   };
-}
-
-function calculateTempOrderAvailableAmount(position, reservationInKg = 0, plannedAmount = 0) {
-  const baseAmount = Math.max(
-    (Number(position?.productContext?.amount) || 0)
-      - (Number(position?.productContext?.reserved) || 0),
-    0,
-  ) + Math.max(Number(reservationInKg) || 0, 0);
-  return Math.max(baseAmount - (Number(plannedAmount) || 0), 0);
-}
-
-async function assertTempOrderPositionsAvailable({ companyId, positions, excludeOrderId = null }) {
-  const normalizedPositions = Array.isArray(positions) ? positions : [];
-  if (!normalizedPositions.length) return;
-
-  const planning = await loadTempOrderPlanning({
-    companyId,
-    excludeOrderId,
-    keys: normalizedPositions,
-  });
-  const requestedByKey = new Map();
-
-  for (const position of normalizedPositions) {
-    const key = buildTempPlanningKey(position.beNumber, position.warehouseId);
-    const current = requestedByKey.get(key) || { position, amountInKg: 0, reservationInKg: 0 };
-    current.amountInKg += Number(position.amountInKg) || 0;
-    current.reservationInKg += Math.max(Number(position.reservationInKg) || 0, 0);
-    requestedByKey.set(key, current);
-  }
-
-  for (const { position, amountInKg, reservationInKg } of requestedByKey.values()) {
-    const productReserved = Number(position.productContext?.reserved);
-    const reservationCredit = Number.isFinite(productReserved) && productReserved > 0
-      ? Math.min(reservationInKg, productReserved)
-      : reservationInKg;
-    const plannedAmount = getTempOrderPlanningEntry(
-      planning,
-      position.beNumber,
-      position.warehouseId,
-    ).totalAmountKg;
-    const availableAmount = calculateTempOrderAvailableAmount(position, reservationCredit, plannedAmount);
-    if (amountInKg > availableAmount + 0.000001) {
-      throw createHttpError(400, `Temp order amount exceeds available quantity (${availableAmount}).`, {
-        code: 'TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE',
-        availableAmount,
-        plannedAmount,
-        requestedAmount: amountInKg,
-        beNumber: position.beNumber,
-        warehouseId: position.warehouseId,
-      });
-    }
-  }
 }
 
 async function loadDeliveryType(database, beNumber) {
@@ -2376,7 +2258,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   let finalized;
   const tempOrderHeaderSelectSql = await getTempOrderHeaderSelectSql();
   try {
-    finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    finalized = await withTempOrderAvailabilityLock(companyId, async ({ query }) => {
       const orderResult = await query(`
         SELECT TOP 1 ${tempOrderHeaderSelectSql}
         FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
@@ -2518,6 +2400,12 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         }
       }
       validateFinalOrder(mappedOrder, positions);
+      await assertTempOrderPositionsAvailable({
+        companyId,
+        excludeOrderId: id,
+        positions: await loadCurrentOrderPositions(req.database, positions, orderRow.ta_CreatedBy, { allowAnyReservation: true }),
+        query,
+      });
 
       const recipient = resolveOrderMailRecipient(companyId, config.orderMail);
       if (!recipient.ok) {
@@ -3054,9 +2942,9 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   ];
   updateParams.push(id, companyId, ...ownerFilter.params);
   const nowIso = new Date().toISOString();
-  await withSqlTransaction(config.sql.database, async ({ query }) => {
+  await withTempOrderAvailabilityLock(companyId, async ({ query }) => {
     const lockedOrderResult = await query(`
-      SELECT TOP 1 [ta_completed] AS completed, [ta_Status] AS orderStatus
+      SELECT TOP 1 [ta_completed] AS completed, [ta_Status] AS orderStatus, [ta_CreatedBy] AS createdBy
       FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
       WHERE [ta_id] = ? AND [ta_company_id] = ?
         ${ownerFilter.whereSql}
@@ -3068,6 +2956,13 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (!isTempOrderEditableStatus(lockedOrder.orderStatus, lockedOrder.completed)) {
       throw createHttpError(409, 'Finalized temp order cannot be edited.', { code: 'TEMP_ORDER_FINALIZED', id });
     }
+
+    await assertTempOrderPositionsAvailable({
+      companyId,
+      excludeOrderId: id,
+      positions: await loadCurrentOrderPositions(req.database, normalizedPositions, lockedOrder.createdBy, { allowAnyReservation: true }),
+      query,
+    });
 
     const updateResult = await query(updateSql, updateParams);
     if (!Number(updateResult.rowsAffected[0] || 0)) {

@@ -184,8 +184,12 @@ const errorTexts = {
     en: 'The database migration for packaging changes is missing.',
   },
   TEMP_ORDER_AMOUNT_EXCEEDS_AVAILABLE: {
-    de: (d) => `Die angeforderte Menge ueberschreitet die verfuegbare Restmenge (${d?.availableAmount ?? 0}).`,
-    en: (d) => `The requested amount exceeds the remaining available quantity (${d?.availableAmount ?? 0}).`,
+    de: (d) => `Die gewünschte Menge ist nicht mehr verfügbar. Aktuell verfügbar: ${Number(d?.availableAmount ?? 0).toLocaleString('de-DE')} kg.`,
+    en: (d) => `The requested quantity is no longer available. Currently available: ${Number(d?.availableAmount ?? 0).toLocaleString('en-GB')} kg.`,
+  },
+  TEMP_ORDER_AVAILABILITY_BUSY: {
+    de: 'Die Verfügbarkeit wird gerade geprüft. Bitte erneut versuchen.',
+    en: 'Availability is currently being checked. Please try again.',
   },
 };
 

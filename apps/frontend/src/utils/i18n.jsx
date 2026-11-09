@@ -601,6 +601,8 @@ const translations = {
     validation_delivery_range_invalid: 'Lieferstart darf nicht nach Lieferende liegen.',
     validation_cart_quantity_positive: 'Warenkorb-Menge muss größer als 0 sein.',
     validation_cart_quantity_not_above_available: 'Warenkorb-Menge darf nicht größer als verfügbar sein.',
+    validation_cart_quantity_available: 'Die gewünschte Menge überschreitet die verfügbare Menge von {amount} {unit}.',
+    cart_availability_refresh_failed: 'Die aktuelle Verfügbarkeit konnte nicht geladen werden. Bitte erneut versuchen.',
   },
   en: {
     app_title: 'BMS App',
@@ -1192,6 +1194,8 @@ const translations = {
     validation_delivery_range_invalid: 'Delivery start must not be after delivery end.',
     validation_cart_quantity_positive: 'Cart quantity must be greater than 0.',
     validation_cart_quantity_not_above_available: 'Cart quantity must not be greater than available.',
+    validation_cart_quantity_available: 'The requested quantity exceeds the available quantity of {amount} {unit}.',
+    cart_availability_refresh_failed: 'Current availability could not be loaded. Please try again.',
   },
 };
 
