@@ -1,4 +1,5 @@
 const path = require('path');
+const { normalizeDailyVlSenderName } = require('./daily-vl-sender');
 
 function toBool(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -113,7 +114,7 @@ const config = {
   dailyVlMail: {
     enabled: toBool(process.env.BMS_DAILY_VL_MAIL_ENABLED, false),
     fromAddress: String(process.env.BMS_DAILY_VL_MAIL_FROM_ADDRESS || '').trim().toLowerCase(),
-    fromDisplayName: String(process.env.BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME || '').trim(),
+    fromDisplayName: normalizeDailyVlSenderName(process.env.BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME),
     recipient: String(
       process.env.BMS_DAILY_VL_MAIL_RECIPIENT || 'verfuegbarkeitsliste@mlplastics.de',
     ).trim().toLowerCase(),

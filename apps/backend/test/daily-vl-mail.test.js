@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.BMS_DAILY_VL_MAIL_FROM_ADDRESS = ' Verfuegbarkeitsliste@MLHolding.org ';
-process.env.BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME = ' Verfügbarkeitsliste - MLHolding GmbH ';
+process.env.BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME = ' Verf\uFFFDgbarkeitsliste - MLHolding GmbH ';
 const config = require('../src/config');
 const EWS = require('ews-javascript-api');
 const { sendOrderMail } = require('../src/mail/order-mail');
@@ -51,7 +51,7 @@ config.mailService = {
   timeoutMs: 1000,
 };
 
-test('daily VL uses the configured sender in the MailService request', async (t) => {
+test('daily VL repairs the damaged configured sender before submitting to MailService', async (t) => {
   assert.equal(config.dailyVlMail.fromAddress, 'verfuegbarkeitsliste@mlholding.org');
   assert.equal(config.dailyVlMail.fromDisplayName, 'Verfügbarkeitsliste - MLHolding GmbH');
   const requests = [];

@@ -331,7 +331,7 @@ gesteuert bzw. angepasst werden:
 ```dotenv
 BMS_DAILY_VL_MAIL_ENABLED=true
 BMS_DAILY_VL_MAIL_FROM_ADDRESS=verfuegbarkeitsliste@mlholding.org
-BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME="Verfügbarkeitsliste - MLHolding GmbH"
+BMS_DAILY_VL_MAIL_FROM_DISPLAY_NAME="Verf\u00fcgbarkeitsliste - MLHolding GmbH"
 BMS_DAILY_VL_MAIL_RECIPIENT=verfuegbarkeitsliste@mlplastics.de
 BMS_DAILY_VL_MAIL_EXCLUDED_MANDANT_IDS=1,6,8,13,14,15,17,18
 BMS_DAILY_VL_MAIL_WESTPOLY_COMPANY_ID=9
@@ -343,6 +343,11 @@ beim MailService als auch beim EWS-Fallback. Beide Versandwege benötigen die
 Berechtigung, mit dieser Adresse zu senden. Ohne die beiden Absenderwerte bleibt
 der bisherige Standardabsender bestehen. Verkaufsmeldungen nach Auftragsabschluss
 behalten ihre eigene Absenderlogik.
+
+Im Anzeigenamen wird `\u00fc` als `ü` gelesen. Diese ASCII-Schreibweise bleibt
+auch beim Kopieren über ANSI-Editoren erhalten; korrektes UTF-8 mit einem
+direkten `ü` funktioniert weiterhin. Der bekannte beschädigte Wortlaut
+`Verf�gbarkeitsliste` wird für diesen Absender ebenfalls korrigiert.
 
 `BMS_DAILY_VL_MAIL_ENABLED` muss in der Produktionskonfiguration auf `true`
 stehen. In Entwicklungs- und Testumgebungen bleibt der Standard `false`, damit
