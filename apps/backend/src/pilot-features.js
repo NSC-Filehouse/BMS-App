@@ -16,6 +16,7 @@ function pilotFeaturesForIdentity(identity) {
     user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId
   ));
   return {
+    offers: enabled,
     purchaseOrders: enabled,
     options: enabled,
     optionsVlPreview: enabled,

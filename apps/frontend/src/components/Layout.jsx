@@ -237,6 +237,7 @@ export default function Layout() {
         <NavItem to="/customers" label={t('customers_title')} onClick={closeDrawer} />
         <NavItem to="/suppliers" label={t('suppliers_title')} onClick={closeDrawer} />
         <NavItem to="/orders" label={t('orders_title')} onClick={closeDrawer} />
+        {features.offers && <NavItem to="/temp-offers" label={t('customer_docs_offers')} onClick={closeDrawer} />}
         <NavItem to="/temp-orders" label={t('temp_orders_title')} onClick={closeDrawer} />
         {features.options && <NavItem to="/options" label={t('options_title')} onClick={closeDrawer} />}
         {features.forecast && <NavItem to="/forecast" label={t('forecast_title')} onClick={closeDrawer} />}

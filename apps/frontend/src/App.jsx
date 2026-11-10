@@ -29,6 +29,9 @@ import OrderCreate from './pages/OrderCreate.jsx';
 import TempOrdersList from './pages/TempOrdersList.jsx';
 import TempOrderDetail from './pages/TempOrderDetail.jsx';
 import TempOrderForm from './pages/TempOrderForm.jsx';
+import TempOffersList from './pages/TempOffersList.jsx';
+import TempOfferEditor from './pages/TempOfferEditor.jsx';
+import TempOfferDetail from './pages/TempOfferDetail.jsx';
 import TempPurchaseOrdersList from './pages/TempPurchaseOrdersList.jsx';
 import TempPurchaseOrderDetail from './pages/TempPurchaseOrderDetail.jsx';
 import TempPurchaseOrderForm from './pages/TempPurchaseOrderForm.jsx';
@@ -184,6 +187,13 @@ function AppRoutes() {
           }
         />
 
+        <Route
+          path="/temp-offers"
+          element={<MandantGuard><FeatureGuard feature="offers"><TempOffersList /></FeatureGuard></MandantGuard>}
+        />
+        <Route path="/temp-offers/new" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
+        <Route path="/temp-offers/:id" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferDetail /></FeatureGuard></MandantGuard>} />
+        <Route path="/temp-offers/:id/edit" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
         <Route
           path="/temp-orders"
           element={

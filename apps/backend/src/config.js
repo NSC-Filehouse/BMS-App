@@ -160,6 +160,8 @@ const config = {
     },
     appSchema: (process.env.BMS_SQL_APP_SCHEMA || 'BMSApp').trim(),
     appTables: {
+      tempOffer: 'tbl_Temp_Angebot',
+      tempOfferPosition: 'tbl_Temp_Ang_Position',
       timeline: (process.env.BMS_SQL_APP_TABLE_TIMELINE || 'Timeline').trim(),
       pushSubscription: (process.env.BMS_SQL_APP_TABLE_PUSH_SUBSCRIPTION || 'PushSubscription').trim(),
       pushMandantSetting: (process.env.BMS_SQL_APP_TABLE_PUSH_MANDANT_SETTING || 'PushMandantSetting').trim(),

@@ -5,13 +5,13 @@ import { apiRequest } from '../api/client.js';
 
 const FeatureContext = React.createContext({
   loading: true,
-  features: { purchaseOrders: false, options: false, forecast: false },
+  features: { offers: false, purchaseOrders: false, options: false, forecast: false },
 });
 
 export function FeatureProvider({ children }) {
   const [state, setState] = React.useState({
     loading: true,
-    features: { purchaseOrders: false, options: false, forecast: false },
+    features: { offers: false, purchaseOrders: false, options: false, forecast: false },
   });
 
   React.useEffect(() => {
@@ -19,13 +19,14 @@ export function FeatureProvider({ children }) {
     apiRequest('/me')
       .then((me) => {
         if (active) setState({ loading: false, features: {
+          offers: Boolean(me?.identityResolved && me?.features?.offers),
           purchaseOrders: Boolean(me?.identityResolved && me?.features?.purchaseOrders),
           options: Boolean(me?.identityResolved && me?.features?.options),
           forecast: Boolean(me?.identityResolved && me?.features?.forecast),
         } });
       })
       .catch(() => {
-        if (active) setState({ loading: false, features: { purchaseOrders: false, options: false, forecast: false } });
+        if (active) setState({ loading: false, features: { offers: false, purchaseOrders: false, options: false, forecast: false } });
       });
     return () => { active = false; };
   }, []);

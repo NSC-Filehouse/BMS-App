@@ -51,6 +51,7 @@ import SupplierArticles from '../components/SupplierArticles.jsx';
 import SupplierOptions from '../components/SupplierOptions.jsx';
 import { filterSupplierInvoices } from '../utils/supplierInvoices.js';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
+import { offerStatus, money as offerMoney } from '../utils/offers.js';
 import { getSelectableContactRankings, normalizeContactRanking } from '../utils/contactRanking.js';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
@@ -414,6 +415,7 @@ export default function CustomerDetail() {
   const [selectedCustomer, setSelectedCustomerState] = React.useState(() => getSelectedCustomer());
   const [offerScope, setOfferScope] = React.useState('3m');
   const [offerYear, setOfferYear] = React.useState(CURRENT_YEAR);
+  const [appOffers, setAppOffers] = React.useState({ items: [], loading: false, error: '' });
   const [orderScope, setOrderScope] = React.useState('open');
   const [orderYear, setOrderYear] = React.useState(CURRENT_YEAR);
   const [invoiceScope, setInvoiceScope] = React.useState('open');
@@ -514,6 +516,15 @@ export default function CustomerDetail() {
       ? true
       : Boolean(item?.isSupplier);
   const { features } = useFeatureAccess();
+  React.useEffect(() => {
+    if (!features.offers || !docs.offers.expanded) return;
+    let active = true;
+    setAppOffers({ items: [], loading: true, error: '' });
+    apiRequest(`/temp-offers?customerId=${encodeURIComponent(id)}&scope=${offerScope}&year=${offerYear}&pageSize=50`)
+      .then(result => { if (active) setAppOffers({ items: result.data || [], loading: false, error: '' }); })
+      .catch(e => { if (active) setAppOffers({ items: [], loading: false, error: e.message }); });
+    return () => { active = false; };
+  }, [features.offers, docs.offers.expanded, id, contactMandant, offerScope, offerYear]);
   const canManageSupplier = Boolean(item?.canManageSupplier);
   const canCreatePurchaseOrder = canManageSupplier && features.purchaseOrders;
   const description = item?.kd_Notiz ? String(item.kd_Notiz) : '';
@@ -1282,6 +1293,11 @@ export default function CustomerDetail() {
             {!isSupplier && <Accordion expanded={docs.offers.expanded} onChange={onToggleSection('offers', offerEndpoint)}>
               <DocumentAccordionSummary
                 title={t('customer_docs_offers')}
+                action={features.offers && <Button size="small" variant="outlined"
+                  sx={{ minWidth: 34, px: 0.75, py: 0.1, lineHeight: 1.4 }}
+                  onClick={() => navigate('/temp-offers/new', { state: { customerId: id, returnTo: createReturnTo(location) } })}>
+                  NEU
+                </Button>}
                 controls={docs.offers.expanded && (
                   <DocumentScopeControls
                     t={t}
@@ -1295,10 +1311,22 @@ export default function CustomerDetail() {
               <AccordionDetails sx={{ display: 'grid', gap: 0.6, px: 1.25, py: 0.75 }}>
                 {docs.offers.loading && <CircularProgress size={20} />}
                 {docs.offers.error && <Alert severity="error">{docs.offers.error}</Alert>}
-                {!docs.offers.loading && !docs.offers.error && docs.offers.items.length === 0 && (
+                {features.offers && appOffers.loading && <CircularProgress size={20} />}
+                {features.offers && appOffers.error && <Alert severity="error">{appOffers.error}</Alert>}
+                {features.offers && appOffers.items.map(offer => <Card key={`app-offer-${offer.id}`} variant="outlined">
+                  <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
+                    <Button sx={{ justifyContent: 'flex-start', p: 0 }} onClick={() => navigate(`/temp-offers/${offer.id}`, { state: { returnTo: createReturnTo(location) } })}>
+                      {offer.bmsOfferNumber || `AN-${offer.id}`} · {offer.title || offer.customerName}
+                    </Button>
+                    <Typography variant="caption">{offerStatus(offer.status)} · {formatDateOnly(offer.offerDate)} · {offerMoney(offer.totalAmount, offer.currency)}</Typography>
+                    {(offer.positions || []).map((p, i) => <Typography key={i} variant="caption">{i + 1}. {p.article} · {p.quantity} {p.unit} · {p.price} {offer.currency}/{p.priceBasis} {p.unit}</Typography>)}
+                  </CardContent>
+                </Card>)}
+                {features.offers && appOffers.items.length >= 50 && <Button onClick={() => navigate('/temp-offers', { state: { listState: { customerId: id } } })}>Alle eigenen Angebote dieses Kunden</Button>}
+                {!docs.offers.loading && !docs.offers.error && docs.offers.items.length === 0 && (!features.offers || !appOffers.items.length) && (
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_offers')}</Typography>
                 )}
-                {!docs.offers.loading && !docs.offers.error && docs.offers.items.map((offer, idx) => (
+                {!docs.offers.loading && !docs.offers.error && docs.offers.items.filter(offer => !features.offers || !appOffers.items.some(app => app.bmsOfferNumber && app.bmsOfferNumber === offer.id)).map((offer, idx) => (
                   <Card key={`${offer.id || idx}-offer`} variant="outlined">
                     <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                       <Typography variant="caption">{t('contact_label')}: {offer.contact || '-'}</Typography>

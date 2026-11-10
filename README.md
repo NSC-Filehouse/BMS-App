@@ -1,5 +1,12 @@
 # BMS-App (Monorepo Scaffold)
 
+## Angebote (Pilot MFR, NSC, AKI)
+
+Eigene Angebote mit aktivem BMS-Artikelkatalog, Kundenwechsel beim Kopieren und
+optionaler Bestandsreservierung: [Bedienung, SQL-Einrichtung und externer
+BMS-Importvertrag](docs/ANGEBOTE.md). Die Freigabe erzeugt keine Verkaufsbuchung,
+Mail oder Push-Nachricht.
+
 ## Kunden über die BMS-Kunden-API anlegen
 
 Das blaue Plus neben der Seitennavigation öffnet die Kundenanlage. Es erscheint
