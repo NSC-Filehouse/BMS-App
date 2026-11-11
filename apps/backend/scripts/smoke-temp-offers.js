@@ -50,9 +50,10 @@ async function main() {
   let checkedId;
   try {
     await originalTransaction(config.sql.database, async ({ query }) => {
+      let readQueue = Promise.resolve();
       access.runSQLQuerySqlServer = async (db, sql, params) =>
         db === config.sql.database
-          ? (await query(sql, params)).rows
+          ? (await (readQueue = readQueue.then(() => query(sql, params)))).rows
           : originalQuery(db, sql, params);
       access.withSqlTransaction = async (_db, work) => work({ query });
       const app = express();
@@ -85,20 +86,30 @@ async function main() {
       }
       try {
         const groups = await call('/temp-offers/article-groups');
+        const ml = await call('/temp-offers/article-groups?q=ML1803');
+        assert.equal(ml.status, 200);
+        assert.equal(ml.json.data.length, 2);
+        assert.ok(ml.json.data.every((g) => /ML1803/i.test(g.name)));
+        console.log(
+          'PASS: ML1803 finds both active master articles by name, grouped exactly like VL.',
+        );
         assert.equal(groups.status, 200);
         assert.ok(groups.json.data.length > 0);
         const articles = await call('/temp-offers/articles?pageSize=2');
         assert.equal(articles.status, 200);
         assert.ok(articles.json.meta.total > 0);
+        const meta = await call('/temp-offers/meta');
+        assert.equal(meta.status, 200);
         const defaults = await call(
           `/temp-offers/customer-defaults/${customer.kd_KdNR}`,
         );
         assert.equal(defaults.status, 200);
         const body = {
           customerId: customer.kd_KdNR,
-          offerDate: '2026-11-10',
+          packagingId: meta.json.data.packagingTypes[0].id,
+          deliveryTermsId: meta.json.data.incoterms[0].id,
           clientRequestId: crypto.randomUUID(),
-          title: 'Rollback SQL smoke',
+
           positions: [
             {
               ...article,
@@ -120,7 +131,7 @@ async function main() {
         assert.equal(created.status, 201, JSON.stringify(created.json));
         checkedId = created.json.data.id;
         assert.equal(created.json.data.positions.length, 2);
-        assert.equal(created.json.data.netAmount, 45595);
+        assert.equal(created.json.data.totalAmount, 45595);
         const replay = await call('/temp-offers', 'POST', body);
         assert.equal(replay.json.data.id, checkedId);
         const list = await call(
@@ -135,7 +146,7 @@ async function main() {
         );
         const edited = await call(`/temp-offers/${checkedId}`, 'PUT', {
           ...body,
-          title: 'Rollback edited',
+
           version: created.json.data.version,
         });
         assert.equal(edited.status, 200, JSON.stringify(edited.json));
@@ -199,7 +210,6 @@ async function main() {
         if (!stock) continue;
         const { header, positions } = normalize({
           customerId: customer.kd_KdNR,
-          offerDate: '2026-11-10',
           positions: [
             {
               ...stock,

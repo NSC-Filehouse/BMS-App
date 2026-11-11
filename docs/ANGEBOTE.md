@@ -1,120 +1,116 @@
 # Angebote in der App
 
-Die neue Funktion ist über `offers` nur für die verifizierten aktiven
-Pilotidentitäten MFR, NSC und AKI freigeschaltet. Die Backend-Prüfung verwendet
-Kürzel, Personalnummer und SAM-Konto wie bei Bestellungen. Jeder Benutzer sieht
-und bearbeitet ausschließlich seine eigenen App-Angebote im aktiven Mandanten,
-auch mit sonstigem Vollzugriff. Bestehende lesende BMS-Kundenangebote bleiben
-unverändert berechtigt.
+Die Funktion ist ausschließlich für die verifizierten aktiven Identitäten MFR,
+NSC und AKI freigeschaltet. Jeder sieht nur eigene App-Angebote im aktiven
+Mandanten, auch mit sonstigem Vollzugriff. Die bestehende lesende Anzeige von
+BMS-Angeboten beim Kunden behält ihre Berechtigungen.
 
-## Bedienung
+## Bedienung wie beim Auftrag
 
-Im Burgermenü steht Angebote vor Aufträge. Das Plus erstellt einen Entwurf.
-Beim Kunden öffnet der umrahmte Button NEU im Angebote-Accordion direkt die
-aktive Artikelauswahl mit dem Kunden als Vorgabe. Die Auswahl durchsucht
-`tblArt_Artikel` (`COALESCE(agA_Deaktiv,0)=0`) und gruppiert nach Artikelgruppe,
-Kunststofftyp und Untergruppe. Fehlende Gruppenzuordnungen bleiben sichtbar.
-Bestand und VL-Freigabe begrenzen den Katalog nicht. Die bestehende Artikelseite
-und der Auftragswarenkorb werden durch diesen Ablauf nicht verändert.
+Im Burgermenü steht Angebote vor Aufträge. Die Liste verwendet wie die
+Auftragsliste eine Suche, Statusschaltflächen, Zeitraum-Radiobuttons,
+Seitennavigation und das Plus. Beim Kunden startet der eingerahmte Button NEU.
 
-Positionen können ergänzt, entfernt und für Preisstaffeln dupliziert werden.
-Artikelindex, Name, Menge, Einheit, Preisbasis, Preis, Texte und Lieferangaben
-werden gespeichert. Preise werden ausdrücklich je Preisbasis gerechnet, z. B.
-11.000 kg × 2.650 EUR / 1.000 kg = 29.150 EUR. Die API berechnet Zeilenbeträge,
-Rabatt, Steuer und Summen mit ganzzahliger Dezimalrechnung und Cent-Rundung.
-Artikel und Kunden werden vor dem Speichern serverseitig geprüft.
+Der Editor folgt dem Auftragsformular: Kunden-Autocomplete, Kundenname,
+Adresse, Ansprechpartner, Kundenreferenz, Incoterm, Verpackungsart,
+Liefer-/Abholadresse, aktuelle Zahlungsbedingung und optionale abweichende
+Zahlungsbedingung. Danach folgen interne Bemerkungen und Positionen in einem
+Formularfluss. Verpackung und Zahlungsbedingungen stammen aus denselben
+BMS-Stammdaten wie beim Auftrag. Der doppelte Zahlungstext als Freitextfeld
+entfällt. Der Kontakt wird mit Top 1, ersatzweise Top 2, dann Top 3 vorbelegt.
+Unbewertete Kontakte werden nicht automatisch ausgewählt: Bitte wählen.
 
-Für Kunden kopieren öffnet zuerst die Kundenauswahl. Positionen, Mengen,
-Staffeln, Preise und Texte bleiben erhalten. Adresse, Kontakt, Abteilung,
-Kundenreferenz und Zahlungsbedingungen werden für den Zielkunden neu gesetzt.
-Eine Kopie hat neue IDs, aktuelles Datum, Status Entwurf, keine BMS-Nummer und
-keine Reservierung. Datumsgültigkeit wird neu erfasst; Positionsliefertermine
-bleiben zur Prüfung erhalten. Der Ursprungsdatensatz wird nicht verändert.
-Kundenwechsel im Editor erhält ebenfalls alle Positionen und Preise.
+Der Unterschied zur Auftragserfassung ist die Quelle: Die Artikelauswahl liest
+alle aktiven Artikel aus dbo.tblArt_Artikel, unabhängig von VL und Bestand.
+In der Oberfläche heißt sie einfach Artikel. Suchfeld und Seitennavigation
+bleiben außerhalb des scrollbaren Ergebnisbereichs stehen. Suchergebnisse
+werden mit resolveProductGroup wie in der gruppierten VL nach Stammbuchartikel
+zusammengefasst. Lieferantenbezeichnung, frühere Bezeichnung, Produktnummer und
+Handelsname werden ebenfalls durchsucht. Produktcodes wie ML1803, ML 1803
+und ML-1803 werden unabhängig von diesen Trennzeichen gefunden. ML1803 liefert
+in den geprüften Mandanten beide aktiven Artikel 01298 und 01299; der inaktive
+Artikel 05787 bleibt ausgeschlossen. Allgemeine Artikelgruppen ersetzen keine
+konkreten Artikeltreffer.
 
-Ungespeicherte Entwürfe werden in der Browsersitzung pro Benutzer, Mandant und
-Vorgang wiederherstellbar gehalten. Veraltete Serverversionen werden bei der
-Bearbeitung nicht unbemerkt überschrieben. Die Druckansicht unterdrückt interne
-Bemerkungen und Reservierungsdetails sowie optional die Gesamtsummen. Sie ist
-eine App-Druckansicht, kein BMS-Dokumentenexport.
+Das Plus im Positionsbereich öffnet die Artikelauswahl und anschließend den
+Hinzufügen-Dialog mit Menge, Verkaufspreis, Liefer-/Valutadatum, EP und
+WPZ-Anweisung. Positionen sind wie beim Auftrag aufklappbar. Der Artikelname
+lässt sich mit dem Stiftsymbol bearbeiten; der Papierkorb steht unten rechts.
+Das Löschen der letzten gespeicherten Position bestätigt die Löschung des
+Angebots mitsamt seiner eigenen unveränderten Reservierungen.
 
-## SQL-Einrichtung
+Kopieren fragt nach dem Zielkunden. Artikel, Mengen, Preise, Liefertermine und
+WPZ-Anweisungen bleiben erhalten. Kundenbezogene Kontakte, Referenz,
+Adressen und Zahlungsbedingungen werden für den Zielkunden neu gesetzt.
+Reservierungen, Angebotsnummer und technische Positions-IDs werden nicht kopiert.
+Jede Preisstaffel bleibt eine eigene Position. Angebote werden nicht automatisch
+zu Aufträgen. Entwürfe werden pro Benutzer, Mandant und Vorgang in der
+Browsersitzung wiederherstellbar gehalten; Versionskonflikte verhindern
+unbemerktes Überschreiben.
 
-`apps/backend/sql/add_temp_offer.sql` erstellt idempotent und transaktional in der
-zentralen Datenbank BMS die Tabellen `BMSApp.tbl_Temp_Angebot` und
-`BMSApp.tbl_Temp_Ang_Position`. Das Skript wurde am 10.11.2026 mit Windows-
-Authentifizierung als `DOMKIMAZ\n.schroeder` ausgeführt. Der App-SQL-Benutzer
-besitzt die nötigen DML-Rechte. Die Laufzeitanwendung bleibt bei ihrer bisherigen
-SQL-Verbindung; es werden keine Windows-Zugangsdaten gespeichert.
+## Datenmodell und Umstellung am 11.11.2026
 
-Angebote werden nicht in `temp-order-planning` aufgenommen. Auch die Freigabe
-erzeugt keine Auftrags-/Verkaufsereignisse, Kreditlimit-Anfrage, Mail oder Push.
+Das Modell enthält die Auftrags-relevanten Kopf-/Positionsdaten sowie die
+separate Angebotssteuerung. Dokumentensprache, Anfrage-Metadaten, Abteilung,
+Angebotstitel, Gültigkeit, Währungsauswahl, Einleitungs-/Schlusstext,
+Rabatt-/Steuer-/Druckfelder, Muster-/Abgelehnt-Markierungen und alternative
+Positionstexte wurden aus dem App-Modell entfernt. Preise bleiben Dezimalwerte;
+Einheit und Preisbasis sind intern für die korrekte Betragsberechnung nötig.
+Die Währung ist wie beim Auftrag EUR. Summen werden aus Positionen berechnet.
 
-## Optionale Reservierung
+1. Neue Installation: apps/backend/sql/add_temp_offer.sql erstellt direkt die
+   gekürzten Tabellen BMSApp.tbl_Temp_Angebot und BMSApp.tbl_Temp_Ang_Position.
+2. Bestehende Installation: prepare_temp_offer_order_layout.sql vor dem
+   Backendwechsel anwenden. Es ergänzt die Auftragsfelder und macht veraltete
+   Pflichtspalten nullable, damit alter und neuer Backendstand während der
+   Umstellung funktionieren. Dieses Skript wurde bereits mit der Windows-
+   Anmeldung DOMKIMAZ\n.schroeder angewendet.
+3. Danach neuen Backend-/Frontendstand bereitstellen und den Backendprozess
+   regulär neu starten. Die App führt keinen automatischen Produktionsneustart aus.
+4. Erst danach compact_temp_offer_order_layout.sql mit Windows-Authentifizierung
+   auf BMS ausführen. Es entfernt die veralteten Spalten. Noch vorhandene
+   Legacy-Werte führen zum Abbruch, damit keine Daten still verloren gehen;
+   diese Werte müssen zuerst exportiert bzw. bewusst migriert werden.
 
-Standard ist aus. Pro Position kann eine konkrete eigene Bestellposition mit
-Lager, einer Reservierungsmenge in kg und Enddatum gewählt werden. Die
-Angebotsmenge selbst ist bestandsunabhängig. Ohne Bestandsquelle gibt es keine
-Reservierung. Wiederholte Artikel bleiben eigenständige Angebotspositionen;
-dieselbe Bestandsposition/Lager-Kombination darf innerhalb eines Angebots nur
-einmal reserviert werden.
+Die endgültige Kürzung wird nicht vor dem Backendwechsel ausgeführt, weil der
+noch laufende alte Code diese Spalten liest. Der neue Code verwendet die alten
+Spalten nicht mehr. Die Kürzung ist idempotent und mit minimaler Kopf-/Positions-
+Speicherung in einer Windows-SQL-Transaktion geprüft und zurückgerollt.
+Das Prüfskript ist apps/backend/scripts/check-temp-offer-layout.ps1.
 
-Speichern und Reservierung laufen in einer gemeinsamen zentralen SQL-
-Transaktion mit qualifiziertem Zugriff auf die Mandantendatenbank. Die
-Verfügbarkeitsprüfung verwendet denselben zentralen `sp_getapplock` wie die
-Auftragsübergabe und berücksichtigt offene Temp-Aufträge. Bestehende fremde
-Reservierungen werden abgewiesen. Die Angebotsposition hält BE-Nummer, Lager
-und die technische Reservierungs-Rowversion. Bearbeiten/Löschen entfernt nur
-die unveränderte, demselben Ersteller zugeordnete Reservierung. Externe Änderungen
-führen zum Konflikt und zum Rollback; das Angebot bleibt erhalten. Auch nach
-externer Löschung wird eine noch angeforderte Reservierung nicht still neu
-erzeugt. In diesem Fall Reservierung im Entwurf ausdrücklich deaktivieren.
+## Reservierung und externer BMS-Import
 
-Die Bemerkung lautet sinngemäß „Reserviert für App-Angebot AN-…, Kunde …,
-erstellt von …“. Hierfür wird kein Timeline-/Push-Endpunkt aufgerufen.
+Ohne ausdrücklich aktivierte Reservierung beeinflussen Angebote keine
+Verfügbarkeiten. Eine Reservierung benötigt BE-Position, Lager, passende Menge
+in kg und Enddatum. Sie ist standardmäßig aus. Bestehende fremde Reservierungen
+werden nicht überschrieben; die Zuordnung enthält die technische Rowversion.
+Änderungen außerhalb des Angebots führen zum Konflikt. Speichern und
+Reservieren erfolgen atomar unter demselben zentralen Verfügbarkeits-Lock wie
+Auftragsübergaben. Offene Temp-Aufträge werden bei der Reservierung abgezogen.
+Kopieren legt keine Reservierung an. Es entstehen keine Verkaufsereignisse,
+Mails, Pushs oder Kreditlimit-Anfragen.
 
-## Vertrag für die externe BMS-Übernahme
-
-Der BMS-Importer liegt außerhalb dieses Repositories. Die neue App stellt die
-Temp-Daten und die Freigabe bereit; ein bestehender Auftragsimport verarbeitet
-die Angebotstabellen nicht automatisch. Vor produktiver ERP-Übernahme muss
-der externe Importer um folgenden Vertrag ergänzt werden:
-
-| Feld | Bedeutung |
-|---|---|
-| `tag_id` | Stabile App-Vorgangs-ID; Import muss anhand dieser ID idempotent sein |
-| `tag_company_id` | Zielmandant; Ziel-DB wird aus `dbo.tblMandant` aufgelöst |
-| `tag_status=0` | Bearbeitbarer Entwurf; nicht importieren |
-| `tag_status=1` | Vom Ersteller ausdrücklich zur Übernahme freigegeben |
-| `tag_status=2` | Erfolgreich in BMS übernommen; `tag_bms_offer_number` erforderlich |
-| `tag_status=3` | Nacharbeit; verständlicher Grund in `tag_return_comment` |
-| `tag_released_at` | Freigabezeit in UTC |
-| `tag_version` | Rowversion zum Schutz gegen parallele Änderungen |
-| `tagp_offer_id` / `tagp_line_no` | Zugehörigkeit und unveränderte Positionsreihenfolge |
-| `tagp_article_index` | Technischer `agA_Artikelindex`, kein Namensabgleich |
-| `tagp_price_basis` | Explizite Preisbasis; bei Übernahme in BMS korrekt umrechnen |
-
-Kopfdaten gehen fachlich nach `tblAngebot`, Positionen nach `tblAng_Position`.
-Kunde und Artikel müssen im Zielmandanten gültig sein. Die BMS-Angebotsnummer
-muss durch die bestehende ERP-Nummernvergabe reserviert werden, nicht mittels
-`MAX+1`. Erst nach atomarer erfolgreicher Übernahme setzt der Importer Status 2
-und die BMS-Nummer. Unbestätigte/unsichere Übernahmen dürfen beim Retry kein
-zweites Angebot erzeugen. Bestehende Reservierungen werden nicht erneut angelegt
-und nicht als Verkaufsbuchung behandelt. Mengenstaffeln bleiben Einzelzeilen.
-`anP_Auftrag` bleibt aus. Keine Auftragserzeugung und keine automatische Mail.
-
-Die App zeigt importierte eigene Angebote mit BMS-Nummer; der Kundenbereich
-unterdrückt den entsprechenden doppelten historischen BMS-Eintrag. Eine spätere
-Umwandlung in einen Auftrag gehört nicht zu dieser Ausbaustufe.
+Der externe BMS-Importer liegt außerhalb dieses Repositories. Die Freigabe
+setzt tag_status=1; Status 0 ist Entwurf, 2 erfolgreich übernommen und
+3 Nacharbeit. Bei Erfolg muss der Importer tag_bms_offer_number setzen, bei
+Nacharbeit tag_return_comment. Der Import muss über tag_id idempotent sein.
+Die Zielmandanten-ID ist tag_company_id; Kunde und Artikel sind technische
+Schlüssel des Zielmandanten. Die Nummernvergabe muss den bestehenden ERP-
+Mechanismus verwenden, niemals MAX+1. Angebotsdatum wird aus tag_created_at
+abgeleitet. Zahlungs-, Verpackungs- und Incoterm-IDs werden serverseitig geprüft;
+Lieferadress-IDs sind technische kdL_ID-Werte, bei manuellen/Abholadressen NULL.
+Positionsdaten umfassen Menge, Einheit, Preisbasis, VK, EP, Liefer-/Valutadatum
+und WPZ-Anweisung. BMS-Muster-/Auftrag-/Abgelehnt-Flags bleiben bei Neuanlage aus.
+Preisstaffeln dürfen nicht zusammengeführt werden. Die Übernahme erzeugt keinen
+Verkauf und keine zweite Reservierung.
 
 ## Prüfungen
 
-Backend-/Frontend-Tests prüfen insbesondere Preise, Kopieren, Eigentümer- und
-Mandantentrennung, Versionskonflikte, Freigabe und Reservierungskonflikte.
-Der explizite Live-Smokecheck wird im Backend mit
-`OFFER_SQL_SMOKE=1 node scripts/smoke-temp-offers.js` ausgeführt (in PowerShell
-die Variable vorher mit `$env:OFFER_SQL_SMOKE='1'` setzen). Er prüft echte
-SQL-Abfragen und temporäre Schreibvorgänge ausschließlich in einer am Ende
+Backend-/Frontend-Tests prüfen Preisberechnung, Kontakt-Rangfolge, Kundenwechsel,
+Kopieren, Eigentümer-/Mandantentrennung, Versions- und Reservierungskonflikte.
+OFFER_SQL_SMOKE=1 node scripts/smoke-temp-offers.js im Backend prüft echte
+SQL-Abfragen und den Speichervorgang inklusive ML1803-Suche in einer am Ende
 zurückgerollten Transaktion. Identity-Zähler können dabei weiterlaufen.
-Er startet keine Hintergrundworker. Ein erfolgreicher Smokecheck belegt weder
-Deployment noch den externen BMS-Import oder tatsächlichen Dokumentversand.
+Der Windows-Strukturtest führt auch das Kürzungsskript nur im Rollback aus.
+Beide Prüfungen starten keine Hintergrundworker. Lokale Tests belegen kein
+Deployment und keine tatsächliche Übernahme durch den externen Importer.

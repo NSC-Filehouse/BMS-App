@@ -75,34 +75,24 @@ function normalize(body = {}) {
     customerId: text(body.customerId, 10),
     contactId: body.contactId ? number(body.contactId, 0, 2147483647) : null,
     contact: text(body.contact, 50),
-    department: text(body.department, 50),
-    offerDate: date(body.offerDate, true),
-    language: text(body.language || 'DE', 2).toUpperCase(),
-    inquiryDate: date(body.inquiryDate),
-    inquiryVia: text(body.inquiryVia, 15),
-    customerReference: text(body.customerReference, 50),
-    title: text(body.title, 100),
-    validUntil: date(body.validUntil),
-    currency: text(body.currency || 'EUR', 3).toUpperCase(),
+    customerReference: text(body.customerReference, 20),
     paymentId: body.paymentId ? number(body.paymentId, 0, 2147483647) : null,
     paymentText: text(body.paymentText, 1000),
+    specialPaymentCondition: body.specialPaymentCondition === true,
+    deliveryTermsId: body.deliveryTermsId
+      ? number(body.deliveryTermsId, 0, 2147483647)
+      : null,
     deliveryTerms: text(body.deliveryTerms, 250),
+    packagingId: body.packagingId ? number(body.packagingId, 0, 32767) : null,
     packaging: text(body.packaging, 100),
-    intro: text(body.intro),
-    closingText: text(body.closingText),
+    deliveryAddressId: body.deliveryAddressId
+      ? number(body.deliveryAddressId, 0, 2147483647)
+      : null,
+    deliveryAddress: text(body.deliveryAddress, 1000),
+    deliveryAddressManual: body.deliveryAddressManual === true,
     internalNote: text(body.internalNote),
-    discountPercent: number(body.discountPercent ?? 0, 3, 100),
-    vatPercent: number(body.vatPercent ?? 19, 3, 100),
-    printTotals: body.printTotals !== false,
   };
-  if (
-    !header.customerId ||
-    !['DE', 'EN'].includes(header.language) ||
-    !/^[A-Z]{3}$/.test(header.currency)
-  )
-    invalid('Kunde, Sprache oder Währung fehlt bzw. ist ungültig.');
-  if (header.validUntil && header.validUntil < header.offerDate)
-    invalid('Gültigkeit liegt vor dem Angebotsdatum.');
+  if (!header.customerId) invalid('Bitte einen Kunden auswählen.');
   if (
     !Array.isArray(body.positions) ||
     !body.positions.length ||
@@ -123,12 +113,17 @@ function normalize(body = {}) {
       unit: text(p.unit || 'KG', 50),
       price: number(p.price, 4),
       priceBasis: number(p.priceBasis ?? 1000, 0, 1000000),
-      description: text(p.description),
-      alternativeText: text(p.alternativeText, 50),
       deliveryDate: date(p.deliveryDate),
-      deliveryText: text(p.deliveryText, 1000),
-      sample: p.sample === true,
-      rejected: p.rejected === true,
+      valutaDate: date(p.valutaDate || p.deliveryDate),
+      costPrice: number(
+        p.costPrice === '' || p.costPrice == null ? 0 : p.costPrice,
+        4,
+      ),
+      wpzOriginal: p.wpzOriginal !== false,
+      wpzComment:
+        p.wpzOriginal !== false
+          ? 'Original verwenden'
+          : text(p.wpzComment, 1000),
       reserve: p.reserve === true,
       beNumber: p.reserve ? text(p.beNumber, 17) : null,
       warehouseId: p.reserve ? text(p.warehouseId, 6) : null,
@@ -153,17 +148,15 @@ function normalize(body = {}) {
       invalid(
         'Für eine Reservierung werden eine Bestandsposition, Lager und eine passende Menge in kg benötigt.',
       );
+    if (!position.wpzOriginal && !position.wpzComment)
+      invalid('Bitte eine WPZ-Anweisung angeben.');
     return position;
   });
-  const calculated = totals(
-    positions,
-    header.discountPercent,
-    header.vatPercent,
-  );
+  const calculated = totals(positions, 0, 0);
   positions.forEach((p, i) => {
     p.total = calculated.lineTotals[i];
   });
   delete calculated.lineTotals;
-  return { header: { ...header, ...calculated }, positions };
+  return { header, positions };
 }
 module.exports = { normalize, totals, text, date, uuid };

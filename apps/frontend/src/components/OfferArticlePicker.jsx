@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
@@ -12,33 +11,51 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
+  InputAdornment,
   TextField,
   Typography,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SearchIcon from '@mui/icons-material/Search';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import { BackAwareAccordion as Accordion } from './DisclosureBack.jsx';
+import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-
-function ArticleLeaf({ group, q, selected, toggle, en }) {
-  const [expanded, setExpanded] = React.useState(false);
+export default function OfferArticlePicker({ open, onClose, onAdd }) {
+  const { lang } = useI18n();
+  const en = lang === 'en';
+  const [search, setSearch] = React.useState('');
+  const [q, setQ] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [result, setResult] = React.useState(null);
-  const [error, setError] = React.useState('');
+  const [selected, setSelected] = React.useState({});
   const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
   React.useEffect(() => {
-    if (!expanded) return;
+    if (open) {
+      setSelected({});
+      setSearch('');
+      setQ('');
+      setPage(1);
+    }
+  }, [open]);
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  React.useEffect(() => {
+    if (!open) return;
     let active = true;
     setLoading(true);
     setError('');
-    const p = new URLSearchParams({
-      q,
-      page: String(page),
-      pageSize: '30',
-      groupId: group.groupId ?? '',
-      plasticId: group.plasticId ?? '',
-      subId: group.subId ?? '',
-    });
-    apiRequest(`/temp-offers/articles?${p}`)
+    apiRequest(
+      `/temp-offers/article-groups?${new URLSearchParams({ q, page: String(page), pageSize: '40' })}`,
+    )
       .then((r) => {
         if (active) setResult(r);
       })
@@ -51,155 +68,7 @@ function ArticleLeaf({ group, q, selected, toggle, en }) {
     return () => {
       active = false;
     };
-  }, [expanded, page, q, group.groupId, group.plasticId, group.subId]);
-  return (
-    <Accordion
-      expanded={expanded}
-      onChange={(_, v) => setExpanded(v)}
-      disableGutters
-    >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography>
-          {group.sub || group.plastic || (en ? 'Articles' : 'Artikel')} (
-          {group.total})
-        </Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        {loading && <CircularProgress size={22} />}{' '}
-        {error && <Alert severity="error">{error}</Alert>}
-        {!loading &&
-          (result?.data || []).map((a) => (
-            <Box
-              key={a.articleIndex}
-              sx={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                py: 0.5,
-              }}
-            >
-              <Checkbox
-                checked={Boolean(selected[a.articleIndex])}
-                onChange={() => toggle(a)}
-                inputProps={{ 'aria-label': a.article }}
-              />
-              <Box
-                component="button"
-                type="button"
-                onClick={() => toggle(a)}
-                sx={{
-                  border: 0,
-                  background: 'none',
-                  color: 'inherit',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  p: 1,
-                  minWidth: 0,
-                }}
-              >
-                <Typography fontWeight={600} sx={{ overflowWrap: 'anywhere' }}>
-                  {a.article}
-                </Typography>
-                <Typography variant="caption">
-                  {a.articleIndex}
-                  {a.productNumber ? ` · ${a.productNumber}` : ''}
-                  {a.mfi != null
-                    ? ` · MFI ${a.mfi}${a.mfiTo != null ? `–${a.mfiTo}` : ''}`
-                    : ''}
-                </Typography>
-              </Box>
-            </Box>
-          ))}
-        {Number(result?.meta?.total) > 30 && (
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
-            <Button
-              disabled={page === 1 || loading}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              ←
-            </Button>
-            <Typography>
-              {page} / {Math.ceil(result.meta.total / 30)}
-            </Typography>
-            <Button
-              disabled={page * 30 >= result.meta.total || loading}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              →
-            </Button>
-          </Box>
-        )}
-      </AccordionDetails>
-    </Accordion>
-  );
-}
-export default function OfferArticlePicker({ open, onClose, onAdd }) {
-  const { lang } = useI18n();
-  const en = lang === 'en';
-  const [search, setSearch] = React.useState('');
-  const [q, setQ] = React.useState('');
-  const [groups, setGroups] = React.useState([]);
-  const [selected, setSelected] = React.useState({});
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-  React.useEffect(() => {
-    if (open) {
-      setSelected({});
-      setSearch('');
-      setQ('');
-    }
-  }, [open]);
-  React.useEffect(() => {
-    const timer = setTimeout(() => setQ(search.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-  React.useEffect(() => {
-    if (!open) return;
-    let active = true;
-    setLoading(true);
-    setError('');
-    apiRequest(`/temp-offers/article-groups?q=${encodeURIComponent(q)}`)
-      .then((r) => {
-        if (active) setGroups(r.data || []);
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [open, q]);
-  const tree = React.useMemo(() => {
-    const map = new Map();
-    for (const g of groups) {
-      const key = String(g.groupId ?? '');
-      if (!map.has(key))
-        map.set(key, {
-          name:
-            g.groupName ||
-            (en ? 'Without article group' : 'Ohne Artikelgruppe'),
-          plastics: new Map(),
-          total: 0,
-        });
-      const parent = map.get(key);
-      parent.total += Number(g.total);
-      const pk = String(g.plasticId ?? '');
-      if (!parent.plastics.has(pk))
-        parent.plastics.set(pk, {
-          name: g.plastic || (en ? 'Other' : 'Sonstige'),
-          groups: [],
-          total: 0,
-        });
-      const p = parent.plastics.get(pk);
-      p.groups.push(g);
-      p.total += Number(g.total);
-    }
-    return [...map.entries()];
-  }, [groups, en]);
+  }, [open, q, page]);
   const toggle = (a) =>
     setSelected((prev) => {
       const next = { ...prev };
@@ -208,12 +77,19 @@ export default function OfferArticlePicker({ open, onClose, onAdd }) {
       return next;
     });
   const count = Object.keys(selected).length;
+  const pages = Math.max(1, Math.ceil((result?.meta?.total || 0) / 40));
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>
-        {en ? 'Select active BMS articles' : 'Aktive BMS-Artikel auswählen'}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="md"
+      PaperProps={{ sx: { height: '85vh', maxHeight: '90vh' } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        {en ? 'Select articles' : 'Artikel auswählen'}
       </DialogTitle>
-      <DialogContent>
+      <Box sx={{ px: 3, pb: 1, flexShrink: 0 }}>
         <TextField
           fullWidth
           size="small"
@@ -224,50 +100,119 @@ export default function OfferArticlePicker({ open, onClose, onAdd }) {
           }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ my: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ opacity: 0.6 }} />
+              </InputAdornment>
+            ),
+          }}
         />
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mt: 0.5,
+          }}
+        >
+          <Typography variant="caption">
+            {result?.meta?.totalArticles || 0} {en ? 'articles' : 'Artikel'}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              size="small"
+              disabled={loading || page === 1}
+              aria-label={en ? 'Previous page' : 'Vorherige Seite'}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="caption">
+              {page}/{pages}
+            </Typography>
+            <IconButton
+              size="small"
+              disabled={loading || page >= pages}
+              aria-label={en ? 'Next page' : 'Nächste Seite'}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              <ArrowForwardIcon />
+            </IconButton>
+          </Box>
+        </Box>
+      </Box>
+      <DialogContent
+        dividers
+        sx={{ p: 1.5, overflowY: 'auto', flex: 1, minHeight: 0 }}
+      >
         {error && <Alert severity="error">{error}</Alert>}
         {loading ? (
-          <CircularProgress />
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+            <CircularProgress />
+          </Box>
         ) : (
-          tree.map(([key, g]) => (
-            <Accordion key={`${q}|${key}`} disableGutters>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography fontWeight={600}>
-                  {g.name} ({g.total})
+          (result?.data || []).map((group) => (
+            <Accordion key={`${q}|${group.key}`} disableGutters>
+              <AccordionSummary
+                expandIcon={<ExpandCollapseIndicator accordion />}
+              >
+                <Typography
+                  variant="body2"
+                  fontWeight={700}
+                  sx={{ overflowWrap: 'anywhere' }}
+                >
+                  {group.name} ({group.availableCount})
                 </Typography>
               </AccordionSummary>
               <AccordionDetails sx={{ p: 1 }}>
-                {[...g.plastics.entries()].map(([pk, p]) => (
-                  <Accordion key={pk} disableGutters>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography>
-                        {p.name} ({p.total})
+                {group.positions.map((a) => (
+                  <Box
+                    key={a.articleIndex}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Checkbox
+                      checked={Boolean(selected[a.articleIndex])}
+                      onChange={() => toggle(a)}
+                      inputProps={{ 'aria-label': a.article }}
+                    />
+                    <Button
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'grid',
+                        textAlign: 'left',
+                        justifyContent: 'start',
+                        textTransform: 'none',
+                        color: 'text.primary',
+                      }}
+                      onClick={() => toggle(a)}
+                    >
+                      <Typography variant="body2" fontWeight={600}>
+                        {a.article}
                       </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails sx={{ p: 0.5 }}>
-                      {p.groups.map((s) => (
-                        <ArticleLeaf
-                          key={`${s.subId ?? ''}`}
-                          group={s}
-                          q={q}
-                          selected={selected}
-                          toggle={toggle}
-                          en={en}
-                        />
-                      ))}
-                    </AccordionDetails>
-                  </Accordion>
+                      <Typography variant="caption" color="text.secondary">
+                        {a.articleIndex}
+                        {a.productNumber ? ` · ${a.productNumber}` : ''}
+                        {a.mfi != null
+                          ? ` · MFI ${a.mfi}${a.mfiTo != null ? `–${a.mfiTo}` : ''}`
+                          : ''}
+                      </Typography>
+                    </Button>
+                  </Box>
                 ))}
               </AccordionDetails>
             </Accordion>
           ))
         )}
-        {!loading && !tree.length && (
+        {!loading && !error && !result?.data?.length && (
           <Typography>
-            {en
-              ? 'No active articles found.'
-              : 'Keine aktiven Artikel gefunden.'}
+            {en ? 'No articles found.' : 'Keine Artikel gefunden.'}
           </Typography>
         )}
       </DialogContent>

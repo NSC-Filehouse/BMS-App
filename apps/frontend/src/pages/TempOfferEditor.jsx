@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -12,112 +13,129 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   MenuItem,
-  Tab,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { getMandant } from '../utils/mandant.js';
 import { getSelectedCustomer } from '../utils/customerSelection.js';
-import { createCustomerOperationId } from '../utils/customerCreation.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn } from '../utils/navigation.js';
 import {
   blankOffer,
   changeOfferCustomer,
   copyOffer,
-  estimateOffer,
-  money,
   newOfferPosition,
 } from '../utils/offers.js';
+import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import OfferCustomerPicker from '../components/OfferCustomerPicker.jsx';
 import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
-import OfferPositionEditor from '../components/OfferPositionEditor.jsx';
+import OfferPositionEditor, {
+  OfferPositionFields,
+} from '../components/OfferPositionEditor.jsx';
 
-function formDates(o) {
-  const date = (v) => (v ? String(v).slice(0, 10) : '');
-  return {
-    ...o,
-    offerDate: date(o.offerDate),
-    inquiryDate: date(o.inquiryDate),
-    validUntil: date(o.validUntil),
-    positions: o.positions.map((p) => ({
-      ...p,
-      deliveryDate: date(p.deliveryDate),
-      reserveUntil: date(p.reserveUntil),
-    })),
-  };
-}
+const dates = (o) => ({
+  ...o,
+  positions: o.positions.map((p) => ({
+    ...p,
+    deliveryDate: p.deliveryDate ? String(p.deliveryDate).slice(0, 10) : '',
+    valutaDate: p.valutaDate ? String(p.valutaDate).slice(0, 10) : '',
+    reserveUntil: p.reserveUntil ? String(p.reserveUntil).slice(0, 10) : '',
+  })),
+});
 export default function TempOfferEditor() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const en = lang === 'en';
   const mandant = getMandant();
   const copyId = location.state?.copyFrom;
   const initialCustomer = location.state?.customerId;
+  const returnTo = location.state?.returnTo;
   const [form, setForm] = React.useState(blankOffer);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
-  const [customerOpen, setCustomerOpen] = React.useState(false);
-  const [articleOpen, setArticleOpen] = React.useState(false);
+  const [options, setOptions] = React.useState({
+    payments: [],
+    packagingTypes: [],
+    incoterms: [],
+  });
   const [defaults, setDefaults] = React.useState({
     contacts: [],
-    payments: [],
+    deliveryAddresses: [],
   });
-  const [tab, setTab] = React.useState(0);
+  const [customerQuery, setCustomerQuery] = React.useState('');
+  const [customers, setCustomers] = React.useState([]);
+  const [copyCustomerOpen, setCopyCustomerOpen] = React.useState(false);
+  const [articleOpen, setArticleOpen] = React.useState(false);
+  const [pending, setPending] = React.useState([]);
+  const [candidate, setCandidate] = React.useState(null);
+  const [positionError, setPositionError] = React.useState('');
   const [dirty, setDirty] = React.useState(false);
   const [leave, setLeave] = React.useState(false);
+  const [deleteLast, setDeleteLast] = React.useState(false);
   const [draft, setDraft] = React.useState(null);
   const [draftKey, setDraftKey] = React.useState('');
-  const returnTo = location.state?.returnTo;
   React.useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
     (async () => {
-      const me = await apiRequest('/me');
-      const key = `bms.offerDraft.v1.${me.userId}.${mandant}.${copyId ? `copy-${copyId}` : id || 'new'}`;
+      const [me, meta] = await Promise.all([
+        apiRequest('/me'),
+        apiRequest('/temp-offers/meta'),
+      ]);
+      const opts = meta.data;
       let next = id
-        ? formDates((await apiRequest(`/temp-offers/${id}`)).data)
+        ? dates((await apiRequest(`/temp-offers/${id}`)).data)
         : copyId
-          ? formDates(
-              copyOffer((await apiRequest(`/temp-offers/${copyId}`)).data),
-            )
+          ? dates(copyOffer((await apiRequest(`/temp-offers/${copyId}`)).data))
           : blankOffer();
       if (id && ![0, 3].includes(next.status)) {
         navigate(`/temp-offers/${id}`, { replace: true, state: { returnTo } });
         return;
       }
-      let customerDefaults = null;
+      if (!next.deliveryTermsId) {
+        const incoterm =
+          opts.incoterms.find((i) => /^FCA\b/i.test(i.text)) ||
+          opts.incoterms[0];
+        next = {
+          ...next,
+          deliveryTermsId: incoterm?.id || null,
+          deliveryTerms: incoterm?.text || '',
+        };
+      }
+      let d = { contacts: [], deliveryAddresses: [] };
       const customerId =
         next.customerId ||
         (!id && !copyId ? initialCustomer || getSelectedCustomer()?.id : null);
       if (customerId) {
-        customerDefaults = (
+        d = (
           await apiRequest(
-            `/temp-offers/customer-defaults/${encodeURIComponent(customerId)}?language=${next.language}`,
+            `/temp-offers/customer-defaults/${encodeURIComponent(customerId)}`,
           )
         ).data;
-        if (!next.customerId)
-          next = changeOfferCustomer(next, customerDefaults);
+        if (!next.customerId) next = changeOfferCustomer(next, d);
       }
       if (!active) return;
       setForm(next);
-      setDefaults(customerDefaults || { contacts: [], payments: [] });
-      setDraftKey(key);
+      setOptions(opts);
+      setDefaults(d);
+      setCustomerQuery(next.customerName || '');
       setDirty(false);
+      const key = `bms.offerDraft.v2.${me.userId}.${mandant}.${copyId ? `copy-${copyId}` : id || 'new'}`;
+      setDraftKey(key);
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem(key) || 'null');
-      } catch {
-        /* optional browser draft */
-      }
+      } catch {}
       if (
         saved?.form &&
         Array.isArray(saved.form.positions) &&
@@ -125,8 +143,8 @@ export default function TempOfferEditor() {
         (!id || saved.form.version === next.version)
       )
         setDraft(saved.form);
-      else if (!next.customerId) setCustomerOpen(true);
-      else if (!id && !copyId && initialCustomer) setArticleOpen(true);
+      else if (copyId && !next.customerId) setCopyCustomerOpen(true);
+      else if (initialCustomer && !id && !copyId) setArticleOpen(true);
     })()
       .catch((e) => {
         if (active) setError(e.message);
@@ -137,20 +155,40 @@ export default function TempOfferEditor() {
     return () => {
       active = false;
     };
-  }, [id, copyId, initialCustomer, mandant, navigate]); // Location return state must not reset a form.
+  }, [id, copyId, initialCustomer, mandant, navigate]);
+  React.useEffect(() => {
+    let active = true;
+    const q = customerQuery.trim();
+    if (q.length < 3) return;
+    const timer = setTimeout(
+      () =>
+        apiRequest(
+          `/customers?q=${encodeURIComponent(q)}&includeInactive=1&pageSize=30`,
+        )
+          .then((r) => {
+            if (active) setCustomers(r.data || []);
+          })
+          .catch((e) => {
+            if (active) setError(e.message);
+          }),
+      300,
+    );
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [customerQuery]);
   React.useEffect(() => {
     if (!dirty || !draftKey || draft) return;
-    const h = setTimeout(() => {
+    const timer = setTimeout(() => {
       try {
         sessionStorage.setItem(
           draftKey,
           JSON.stringify({ at: Date.now(), form }),
         );
-      } catch {
-        /* optional */
-      }
-    }, 400);
-    return () => clearTimeout(h);
+      } catch {}
+    }, 350);
+    return () => clearTimeout(timer);
   }, [form, dirty, draftKey, draft]);
   React.useEffect(() => {
     if (!dirty) return;
@@ -163,52 +201,52 @@ export default function TempOfferEditor() {
   }, [dirty]);
   function patch(values) {
     setDirty(true);
-    setForm((prev) => ({ ...prev, ...values }));
+    setForm((p) => ({ ...p, ...values }));
   }
-  async function selectCustomer(customerId) {
+  async function chooseCustomer(customerId) {
+    if (!customerId) return;
     setSaving(true);
     setError('');
     try {
       const d = (
         await apiRequest(
-          `/temp-offers/customer-defaults/${encodeURIComponent(customerId)}?language=${form.language}`,
+          `/temp-offers/customer-defaults/${encodeURIComponent(customerId)}`,
         )
       ).data;
       setDefaults(d);
-      setForm((prev) => changeOfferCustomer(prev, d));
+      setForm((p) => changeOfferCustomer(p, d));
+      setCustomerQuery(d.customerName);
       setDirty(true);
-      setCustomerOpen(false);
-      if (!form.positions.length && !id) setArticleOpen(true);
+      setCopyCustomerOpen(false);
     } catch (e) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
   }
+  const clearDraft = () => {
+    try {
+      sessionStorage.removeItem(draftKey);
+    } catch {}
+  };
+  const back = () =>
+    navigateToReturn(
+      navigate,
+      returnTo,
+      id ? `/temp-offers/${id}` : '/temp-offers',
+    );
   async function save(e) {
     e.preventDefault();
-    if (!form.customerId) {
-      setCustomerOpen(true);
-      return;
-    }
-    if (!form.positions.length) {
-      setError(en ? 'Please add articles.' : 'Bitte Artikel hinzufügen.');
-      return;
-    }
     setSaving(true);
     setError('');
     try {
-      const res = await apiRequest(id ? `/temp-offers/${id}` : '/temp-offers', {
-        method: id ? 'PUT' : 'POST',
-        body: JSON.stringify(form),
-      });
-      try {
-        sessionStorage.removeItem(draftKey);
-      } catch {
-        /* optional */
-      }
+      const result = await apiRequest(
+        id ? `/temp-offers/${id}` : '/temp-offers',
+        { method: id ? 'PUT' : 'POST', body: JSON.stringify(form) },
+      );
+      clearDraft();
       setDirty(false);
-      navigate(`/temp-offers/${res.data.id}`, {
+      navigate(`/temp-offers/${result.data.id}`, {
         replace: true,
         state: { returnTo },
       });
@@ -218,43 +256,99 @@ export default function TempOfferEditor() {
       setSaving(false);
     }
   }
-  const field = (key, label, extra = {}) => (
-    <TextField
-      size="small"
-      label={label}
-      value={form[key] ?? ''}
-      onChange={(e) => patch({ [key]: e.target.value })}
-      {...extra}
-    />
-  );
-  const sums = estimateOffer(form);
-  const back = () =>
-    navigateToReturn(
-      navigate,
-      returnTo,
-      id ? `/temp-offers/${id}` : '/temp-offers',
-    );
-  if (loading) return <CircularProgress />;
-  if (error && !form.customerId && !customerOpen && !draft)
+  async function deleteOffer() {
+    setSaving(true);
+    setError('');
+    try {
+      await apiRequest(`/temp-offers/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ version: form.version }),
+      });
+      clearDraft();
+      setDirty(false);
+      navigateToReturn(navigate, returnTo, '/temp-offers');
+    } catch (e) {
+      setError(e.message);
+      setDeleteLast(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+  function removePosition(index) {
+    if (id && form.positions.length === 1) {
+      setDeleteLast(true);
+      return;
+    }
+    patch({ positions: form.positions.filter((_, i) => i !== index) });
+  }
+  function receiveArticles(articles) {
+    setArticleOpen(false);
+    setPending(articles.slice(1));
+    setCandidate(newOfferPosition(articles[0]));
+    setPositionError('');
+  }
+  function addPosition() {
+    if (
+      !(Number(candidate.quantity) > 0) ||
+      candidate.price === '' ||
+      Number(candidate.price) < 0 ||
+      !candidate.deliveryDate
+    ) {
+      setPositionError(
+        en
+          ? 'Please enter quantity, sales price and delivery date.'
+          : 'Bitte Menge, Verkaufspreis und Lieferdatum angeben.',
+      );
+      return;
+    }
+    patch({ positions: [...form.positions, candidate] });
+    setPositionError('');
+    if (pending.length) {
+      setCandidate(newOfferPosition(pending[0]));
+      setPending(pending.slice(1));
+    } else setCandidate(null);
+  }
+  const isFca = /^FCA\b/i.test(form.deliveryTerms);
+  const selectedCustomer = form.customerId
+    ? { kd_KdNR: form.customerId, kd_Name1: form.customerName }
+    : null;
+  const customerOptions =
+    selectedCustomer &&
+    !customers.some((c) => String(c.kd_KdNR) === String(form.customerId))
+      ? [selectedCustomer, ...customers]
+      : customers;
+  if (loading)
     return (
-      <Alert
-        severity="error"
-        action={<Button onClick={back}>{en ? 'Back' : 'Zurück'}</Button>}
-      >
-        {error}
-      </Alert>
+      <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+        <CircularProgress />
+      </Box>
     );
   return (
     <Box
-      component="form"
-      noValidate
-      onSubmit={save}
-      sx={{ maxWidth: 1000, mx: 'auto', display: 'grid', gap: 2, minWidth: 0 }}
+      sx={{
+        maxWidth: 900,
+        width: '100%',
+        minWidth: 0,
+        mx: 'auto',
+        overflowX: 'hidden',
+      }}
     >
       <Box
-        sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          mb: 2,
+          minWidth: 0,
+        }}
       >
-        <Typography variant="h5" sx={{ flex: 1 }}>
+        <DisclosureBackButton
+          aria-label="back"
+          onClick={() => (dirty ? setLeave(true) : back())}
+        >
+          <ArrowBackIcon />
+        </DisclosureBackButton>
+        <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
           {id
             ? en
               ? 'Edit offer'
@@ -265,284 +359,388 @@ export default function TempOfferEditor() {
                 : 'Angebot kopieren'
               : en
                 ? 'New offer'
-                : 'Neues Angebot'}
+                : 'Angebot anlegen'}
         </Typography>
-        <Button onClick={() => (dirty ? setLeave(true) : back())}>
-          {en ? 'Back' : 'Zurück'}
-        </Button>
       </Box>
-      {error && <Alert severity="error">{error}</Alert>}
-      <Card>
-        <CardContent sx={{ display: 'grid', gap: 1.5 }}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'start' }}>
-            <Box sx={{ flex: 1 }}>
-              <Typography fontWeight={700}>
-                {form.customerName ||
-                  (en ? 'No customer selected' : 'Kein Kunde gewählt')}
-              </Typography>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
-                {form.customerId} · {form.customerAddress}
-              </Typography>
-            </Box>
-            <Button disabled={saving} onClick={() => setCustomerOpen(true)}>
-              {en ? 'Change customer' : 'Kunde ändern'}
-            </Button>
-          </Box>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 1,
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      <Card sx={{ width: '100%', minWidth: 0 }}>
+        <CardContent
+          component="form"
+          noValidate
+          onSubmit={save}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}
+        >
+          <Autocomplete
+            options={customerOptions}
+            value={selectedCustomer}
+            inputValue={customerQuery}
+            isOptionEqualToValue={(a, b) =>
+              String(a.kd_KdNR) === String(b.kd_KdNR)
+            }
+            getOptionLabel={(o) =>
+              String(o.kd_Name1 || o.kd_Name2 || o.kd_KdNR || '')
+            }
+            filterOptions={(x) => x}
+            onChange={(_, v) => {
+              if (v) {
+                void chooseCustomer(v.kd_KdNR);
+                return;
+              }
+              const empty = {
+                customerId: '',
+                customerName: '',
+                customerAddress: '',
+                contacts: [],
+                deliveryAddresses: [],
+                paymentId: null,
+                paymentText: '',
+              };
+              setDefaults(empty);
+              setCustomerQuery('');
+              setDirty(true);
+              setForm((previous) => changeOfferCustomer(previous, empty));
             }}
+            onInputChange={(_, v, reason) => {
+              if (reason === 'input') setCustomerQuery(v);
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label={t('customer_select')} fullWidth />
+            )}
+          />
+          <TextField
+            label={t('order_customer')}
+            value={form.customerName}
+            onChange={(e) => patch({ customerName: e.target.value })}
+            fullWidth
+          />
+          <TextField
+            label={t('address_label')}
+            value={form.customerAddress}
+            fullWidth
+            disabled
+          />
+          <TextField
+            select
+            label={t('contact_label')}
+            SelectProps={{ displayEmpty: true }}
+            InputLabelProps={{ shrink: true }}
+            value={form.contactId || ''}
+            disabled={!form.customerId || !defaults.contacts.length}
+            onChange={(e) => {
+              const c = defaults.contacts.find(
+                (c) => Number(c.id) === Number(e.target.value),
+              );
+              patch({ contactId: c?.id || null, contact: c?.name || '' });
+            }}
+            fullWidth
           >
-            {field('offerDate', en ? 'Offer date' : 'Angebotsdatum', {
-              type: 'date',
-              required: true,
-              InputLabelProps: { shrink: true },
-            })}
-            {field('language', en ? 'Document language' : 'Dokumentsprache', {
-              select: true,
-              children: [
-                <MenuItem key="DE" value="DE">
-                  Deutsch
-                </MenuItem>,
-                <MenuItem key="EN" value="EN">
-                  English
-                </MenuItem>,
-              ],
-            })}
+            <MenuItem value="">
+              {en ? 'Please select' : 'Bitte wählen'}
+            </MenuItem>
+            {defaults.contacts.map((c) => (
+              <MenuItem key={c.id} value={c.id}>
+                <Box sx={{ display: 'grid' }}>
+                  <Typography variant="body2">{c.name}</Typography>
+                  {(c.ranking || c.position || c.email) && (
+                    <Typography variant="caption" color="text.secondary">
+                      {[
+                        c.ranking ? `Top ${c.ranking}` : '',
+                        c.position,
+                        c.email,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label={en ? 'Customer reference' : 'Kundenreferenz'}
+            value={form.customerReference}
+            onChange={(e) => patch({ customerReference: e.target.value })}
+            inputProps={{ maxLength: 20 }}
+            fullWidth
+          />
+          <TextField
+            select
+            label={t('incoterm_label')}
+            value={form.deliveryTermsId || ''}
+            onChange={(e) => {
+              const i = options.incoterms.find(
+                (i) => Number(i.id) === Number(e.target.value),
+              );
+              patch({
+                deliveryTermsId: i?.id || null,
+                deliveryTerms: i?.text || '',
+                deliveryAddressId: null,
+                deliveryAddress: '',
+                deliveryAddressManual: /^FCA\b/i.test(i?.text || ''),
+              });
+            }}
+            fullWidth
+          >
+            <MenuItem value="" disabled>
+              {en ? 'Please select' : 'Bitte wählen'}
+            </MenuItem>
+            {options.incoterms.map((i) => (
+              <MenuItem key={i.id} value={i.id}>
+                {i.text}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label={t('packaging_type_label')}
+            value={form.packagingId || ''}
+            onChange={(e) => {
+              const p = options.packagingTypes.find(
+                (p) => Number(p.id) === Number(e.target.value),
+              );
+              patch({ packagingId: p?.id || null, packaging: p?.text || '' });
+            }}
+            fullWidth
+          >
+            <MenuItem value="" disabled>
+              {t('packaging_type_select')}
+            </MenuItem>
+            {options.packagingTypes.map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                {p.text}
+              </MenuItem>
+            ))}
+          </TextField>
+          {isFca || form.deliveryAddressManual ? (
             <TextField
-              size="small"
+              label={t(
+                isFca ? 'pickup_address_label' : 'delivery_address_label',
+              )}
+              value={form.deliveryAddress}
+              onChange={(e) =>
+                patch({
+                  deliveryAddress: e.target.value,
+                  deliveryAddressId: null,
+                  deliveryAddressManual: true,
+                })
+              }
+              fullWidth
+            />
+          ) : (
+            <TextField
               select
-              label={en ? 'Contact' : 'Ansprechpartner'}
-              value={form.contactId || ''}
+              label={t('delivery_address_label')}
+              value={form.deliveryAddressId || ''}
               onChange={(e) => {
-                const c = defaults.contacts.find(
-                  (c) => Number(c.id) === Number(e.target.value),
+                const a = defaults.deliveryAddresses.find(
+                  (a) => String(a.id) === String(e.target.value),
                 );
                 patch({
-                  contactId: c?.id || null,
-                  contact: c?.name || '',
-                  department: c?.department || '',
+                  deliveryAddressId: a?.id || null,
+                  deliveryAddress: a?.text || '',
                 });
               }}
+              fullWidth
             >
-              <MenuItem value="">—</MenuItem>
-              {defaults.contacts.map((c) => (
-                <MenuItem key={c.id} value={c.id}>
-                  {c.name}
+              <MenuItem value="">
+                {defaults.deliveryAddresses.length
+                  ? en
+                    ? 'Please select'
+                    : 'Bitte wählen'
+                  : '-'}
+              </MenuItem>
+              {defaults.deliveryAddresses.map((a) => (
+                <MenuItem key={a.id} value={a.id} sx={{ whiteSpace: 'normal' }}>
+                  {a.text}
                 </MenuItem>
               ))}
             </TextField>
-            {field('department', en ? 'Department' : 'Abteilung', {
-              inputProps: { maxLength: 50 },
-            })}
-            {field(
-              'customerReference',
-              en ? 'Customer reference' : 'Kundenreferenz',
-              { inputProps: { maxLength: 50 } },
-            )}
-            {field('title', en ? 'Offer title' : 'Angebotstitel', {
-              inputProps: { maxLength: 100 },
-            })}
-            {field('inquiryDate', en ? 'Inquiry date' : 'Anfrage vom', {
-              type: 'date',
-              InputLabelProps: { shrink: true },
-            })}
-            {field('inquiryVia', en ? 'Inquiry via' : 'Anfrage per', {
-              inputProps: { maxLength: 15 },
-            })}
-            {field('validUntil', en ? 'Valid until' : 'Gültig bis', {
-              type: 'date',
-              InputLabelProps: { shrink: true },
-            })}
-          </Box>
-        </CardContent>
-      </Card>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
-        <Tab label={en ? 'Positions' : 'Positionen'} />
-        <Tab label={en ? 'Basic data' : 'Basisdaten'} />
-        <Tab label={en ? 'Internal note' : 'Interne Bemerkung'} />
-      </Tabs>
-      <Box sx={{ display: tab === 0 ? 'grid' : 'none', gap: 1 }}>
-        <Button
-          variant="outlined"
-          onClick={() => setArticleOpen(true)}
-          disabled={saving || !form.customerId}
-        >
-          {en ? 'Add active BMS articles' : 'Aktive BMS-Artikel hinzufügen'}
-        </Button>
-        {form.positions.map((p, i) => (
-          <OfferPositionEditor
-            key={p.lineKey}
-            position={p}
-            index={i}
-            en={en}
-            currency={form.currency}
-            onChange={(values) =>
-              patch({
-                positions: form.positions.map((x, j) =>
-                  j === i ? { ...x, ...values } : x,
-                ),
-              })
-            }
-            onRemove={() =>
-              patch({ positions: form.positions.filter((_, j) => j !== i) })
-            }
-            onDuplicate={() =>
-              patch({
-                positions: form.positions.flatMap((x, j) =>
-                  j === i
-                    ? [
-                        x,
-                        {
-                          ...x,
-                          lineKey: createCustomerOperationId(),
-                          id: undefined,
-                          reserve: false,
-                          reservationVersion: null,
-                          beNumber: null,
-                          warehouseId: null,
-                          reserveQuantity: null,
-                          reserveUntil: null,
-                        },
-                      ]
-                    : [x],
-                ),
-              })
-            }
-          />
-        ))}
-      </Box>
-      <Card sx={{ display: tab === 1 ? 'block' : 'none' }}>
-        <CardContent sx={{ display: 'grid', gap: 1 }}>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 1,
-            }}
+          )}
+          <Typography
+            variant="caption"
+            sx={{ color: 'text.secondary', pl: 0.5, mt: -0.35 }}
           >
-            {field('currency', en ? 'Currency' : 'Währung', {
-              inputProps: { maxLength: 3 },
-            })}
+            {t('current_payment_condition')}:{' '}
+            {defaults.paymentText || t('payment_select_placeholder')}
+          </Typography>
+          <FormControlLabel
+            sx={{ m: 0 }}
+            control={
+              <Checkbox
+                checked={form.specialPaymentCondition}
+                onChange={(e) =>
+                  patch(
+                    e.target.checked
+                      ? { specialPaymentCondition: true }
+                      : {
+                          specialPaymentCondition: false,
+                          paymentId: defaults.paymentId || null,
+                          paymentText: defaults.paymentText || '',
+                        },
+                  )
+                }
+              />
+            }
+            label={t('special_payment_condition')}
+          />
+          {(form.specialPaymentCondition || !defaults.paymentId) && (
             <TextField
               select
-              size="small"
-              label={en ? 'Payment terms' : 'Zahlungsbedingungen'}
+              label={t('special_payment_text_label')}
               value={form.paymentId || ''}
               onChange={(e) => {
-                const p = defaults.payments.find(
+                const p = options.payments.find(
                   (p) => Number(p.id) === Number(e.target.value),
                 );
                 patch({ paymentId: p?.id || null, paymentText: p?.text || '' });
               }}
+              fullWidth
             >
-              <MenuItem value="">—</MenuItem>
-              {defaults.payments.map((p) => (
+              <MenuItem value="" disabled>
+                {t('payment_select_placeholder')}
+              </MenuItem>
+              {options.payments.map((p) => (
                 <MenuItem key={p.id} value={p.id}>
                   {p.text}
                 </MenuItem>
               ))}
             </TextField>
-          </Box>
-          {field('paymentText', en ? 'Payment text' : 'Zahlungstext', {
-            multiline: true,
-          })}
-          {field('deliveryTerms', en ? 'Delivery terms' : 'Lieferbedingungen', {
-            inputProps: { maxLength: 250 },
-          })}
-          {field('packaging', en ? 'Packaging' : 'Verpackung', {
-            inputProps: { maxLength: 100 },
-          })}
-          {field('intro', en ? 'Introduction' : 'Einleitungstext', {
-            multiline: true,
-            minRows: 2,
-          })}
-          {field('closingText', en ? 'Closing text' : 'Schlusstext', {
-            multiline: true,
-            minRows: 2,
-          })}
-        </CardContent>
-      </Card>
-      <Box sx={{ display: tab === 2 ? 'block' : 'none' }}>
-        {field('internalNote', en ? 'Internal note' : 'Interne Bemerkung', {
-          fullWidth: true,
-          multiline: true,
-          minRows: 4,
-        })}
-      </Box>
-      <Card>
-        <CardContent sx={{ display: 'grid', gap: 1 }}>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            {field('discountPercent', en ? 'Discount %' : 'Rabatt %', {
-              type: 'number',
-              inputProps: { min: 0, max: 100, step: 0.001 },
-            })}
-            {field('vatPercent', en ? 'VAT %' : 'MwSt. %', {
-              type: 'number',
-              inputProps: { min: 0, max: 100, step: 0.001 },
-            })}
-          </Box>
-          {[
-            ['netAmount', en ? 'Net' : 'Nettosumme'],
-            ['discountAmount', en ? 'Discount' : 'Rabattbetrag'],
-            ['subtotal', en ? 'Subtotal' : 'Zwischensumme'],
-            ['vatAmount', en ? 'VAT' : 'MwSt.-Betrag'],
-            ['totalAmount', en ? 'Total' : 'Gesamtsumme'],
-          ].map(([key, label]) => (
-            <Box
-              key={key}
-              sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}
-            >
-              <Typography fontWeight={key === 'totalAmount' ? 700 : 400}>
-                {label}
-              </Typography>
-              <Typography fontWeight={key === 'totalAmount' ? 700 : 400}>
-                {money(sums[key], form.currency)}
-              </Typography>
-            </Box>
-          ))}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={form.printTotals}
-                onChange={(e) => patch({ printTotals: e.target.checked })}
-              />
-            }
-            label={en ? 'Print totals' : 'Summen ausdrucken'}
+          )}
+          <TextField
+            label={en ? 'Internal note' : 'Interne Bemerkungen'}
+            value={form.internalNote}
+            onChange={(e) => patch({ internalNote: e.target.value })}
+            multiline
+            minRows={3}
+            fullWidth
           />
+          <Box sx={{ mt: 1 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                mb: 1.25,
+                minWidth: 0,
+              }}
+            >
+              <Typography variant="subtitle2">
+                {t('order_positions_count')}: {form.positions.length}
+              </Typography>
+              <IconButton
+                size="small"
+                color="primary"
+                aria-label="add-position"
+                disabled={!form.customerId}
+                onClick={() => setArticleOpen(true)}
+              >
+                <AddCircleOutlineIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {form.positions.map((p, i) => (
+                <OfferPositionEditor
+                  key={p.lineKey}
+                  position={p}
+                  onChange={(values) =>
+                    patch({
+                      positions: form.positions.map((x, j) =>
+                        j === i ? { ...x, ...values } : x,
+                      ),
+                    })
+                  }
+                  onRemove={() => removePosition(i)}
+                />
+              ))}
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={saving || !form.customerId || !form.positions.length}
+            >
+              {t('save_label')}
+            </Button>
+          </Box>
         </CardContent>
       </Card>
-      <Button
-        type="submit"
-        variant="contained"
-        disabled={saving || !form.customerId || !form.positions.length}
-      >
-        {saving ? (
-          <CircularProgress size={22} />
-        ) : en ? (
-          'Save offer'
-        ) : (
-          'Angebot speichern'
-        )}
-      </Button>
       <OfferCustomerPicker
-        open={customerOpen}
-        copy={Boolean(copyId)}
-        onClose={() => setCustomerOpen(false)}
-        onSelect={selectCustomer}
+        open={copyCustomerOpen}
+        copy
+        onClose={() => setCopyCustomerOpen(false)}
+        onSelect={chooseCustomer}
       />
       <OfferArticlePicker
         open={articleOpen}
         onClose={() => setArticleOpen(false)}
-        onAdd={(articles) => {
-          patch({
-            positions: [...form.positions, ...articles.map(newOfferPosition)],
-          });
-          setArticleOpen(false);
-        }}
+        onAdd={receiveArticles}
       />
+      <Dialog
+        open={Boolean(candidate)}
+        onClose={() => setCandidate(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>{t('product_select')}</DialogTitle>
+        <DialogContent
+          sx={{ display: 'grid', gap: 1.25, pt: '16px !important' }}
+        >
+          {positionError && <Alert severity="error">{positionError}</Alert>}
+          {candidate && (
+            <>
+              <TextField
+                label={t('product_select')}
+                value={candidate.article}
+                InputProps={{ readOnly: true }}
+                fullWidth
+              />
+              <OfferPositionFields
+                position={candidate}
+                onChange={(v) => setCandidate((p) => ({ ...p, ...v }))}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCandidate(null)}>{t('back_label')}</Button>
+          <Button variant="contained" onClick={addPosition}>
+            {en ? 'Add' : 'Hinzufügen'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={deleteLast}
+        onClose={() => !saving && setDeleteLast(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {en ? 'Delete last position?' : 'Letzte Position löschen?'}
+        </DialogTitle>
+        <DialogContent>
+          {en
+            ? 'Deleting the last position also deletes this offer and its own reservations.'
+            : 'Mit der letzten Position wird auch dieses Angebot einschließlich seiner eigenen Reservierungen gelöscht.'}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={saving} onClick={() => setDeleteLast(false)}>
+            {t('back_label')}
+          </Button>
+          <Button
+            disabled={saving}
+            color="error"
+            variant="contained"
+            onClick={deleteOffer}
+          >
+            {t('delete_label')}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={leave} onClose={() => setLeave(false)}>
         <DialogTitle>
           {en
@@ -555,11 +753,7 @@ export default function TempOfferEditor() {
           </Button>
           <Button
             onClick={() => {
-              try {
-                sessionStorage.removeItem(draftKey);
-              } catch {
-                /* optional */
-              }
+              clearDraft();
               setDirty(false);
               back();
             }}
@@ -574,21 +768,11 @@ export default function TempOfferEditor() {
             ? 'Restore unsaved offer?'
             : 'Ungespeichertes Angebot wiederherstellen?'}
         </DialogTitle>
-        <DialogContent>
-          {en
-            ? 'A draft from this session is available.'
-            : 'Für diesen Vorgang liegt ein Entwurf aus dieser Sitzung vor.'}
-        </DialogContent>
         <DialogActions>
           <Button
             onClick={() => {
-              try {
-                sessionStorage.removeItem(draftKey);
-              } catch {
-                /* optional */
-              }
+              clearDraft();
               setDraft(null);
-              if (!form.customerId) setCustomerOpen(true);
             }}
           >
             {en ? 'Discard' : 'Verwerfen'}
@@ -600,17 +784,17 @@ export default function TempOfferEditor() {
               setDraft(null);
               if (draft.customerId) {
                 try {
-                  setDefaults(
-                    (
-                      await apiRequest(
-                        `/temp-offers/customer-defaults/${encodeURIComponent(draft.customerId)}?language=${draft.language}`,
-                      )
-                    ).data,
-                  );
+                  const d = (
+                    await apiRequest(
+                      `/temp-offers/customer-defaults/${encodeURIComponent(draft.customerId)}`,
+                    )
+                  ).data;
+                  setDefaults(d);
+                  setCustomerQuery(draft.customerName);
                 } catch (e) {
                   setError(e.message);
                 }
-              } else setCustomerOpen(true);
+              }
             }}
           >
             {en ? 'Restore' : 'Wiederherstellen'}

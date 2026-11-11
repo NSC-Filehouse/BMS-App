@@ -1,5 +1,4 @@
 import { createCustomerOperationId as createId } from './customerCreation.js';
-
 export const offerStatus = (status, en = false) =>
   (en
     ? ['Draft', 'Released for BMS import', 'Imported into BMS', 'Rework']
@@ -9,10 +8,14 @@ export const offerStatus = (status, en = false) =>
         'In BMS übernommen',
         'Nacharbeit',
       ])[Number(status)] || '-';
-export function today() {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(
+export const today = () =>
+  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(
     new Date(),
   );
+export function tomorrow() {
+  const d = new Date(`${today()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 export function blankOffer() {
   return {
@@ -21,27 +24,54 @@ export function blankOffer() {
     customerAddress: '',
     contactId: null,
     contact: '',
-    department: '',
-    offerDate: today(),
-    language: 'DE',
-    currency: 'EUR',
-    title: '',
     customerReference: '',
-    inquiryDate: '',
-    inquiryVia: '',
-    validUntil: '',
     paymentId: null,
     paymentText: '',
+    specialPaymentCondition: false,
+    deliveryTermsId: null,
     deliveryTerms: '',
+    packagingId: null,
     packaging: '',
-    intro: '',
-    closingText: '',
+    deliveryAddressId: null,
+    deliveryAddress: '',
+    deliveryAddressManual: false,
     internalNote: '',
-    discountPercent: 0,
-    vatPercent: 19,
-    printTotals: true,
     positions: [],
     clientRequestId: createId(),
+  };
+}
+export function defaultOfferContact(contacts = []) {
+  return (
+    [1, 2, 3]
+      .map((rank) =>
+        contacts.find(
+          (c) =>
+            Number(c.ranking) === rank && c.id && String(c.name || '').trim(),
+        ),
+      )
+      .find(Boolean) || null
+  );
+}
+export function changeOfferCustomer(offer, defaults) {
+  const contact = defaultOfferContact(defaults.contacts);
+  const address =
+    defaults.deliveryAddresses?.length === 1
+      ? defaults.deliveryAddresses[0]
+      : null;
+  return {
+    ...offer,
+    customerId: defaults.customerId,
+    customerName: defaults.customerName,
+    customerAddress: defaults.customerAddress,
+    contactId: contact?.id || null,
+    contact: contact?.name || '',
+    customerReference: '',
+    paymentId: defaults.paymentId,
+    paymentText: defaults.paymentText,
+    specialPaymentCondition: false,
+    deliveryAddressId: address?.id || null,
+    deliveryAddress: address?.text || '',
+    deliveryAddressManual: false,
   };
 }
 export function copyOffer(source) {
@@ -54,19 +84,18 @@ export function copyOffer(source) {
     clientRequestId: createId(),
     status: 0,
     bmsOfferNumber: '',
-    offerDate: today(),
-    validUntil: '',
     customerId: '',
     customerName: '',
     customerAddress: '',
     contactId: null,
     contact: '',
-    department: '',
     customerReference: '',
-    inquiryDate: '',
-    inquiryVia: '',
     paymentId: null,
     paymentText: '',
+    specialPaymentCondition: false,
+    deliveryAddressId: null,
+    deliveryAddress: '',
+    deliveryAddressManual: false,
     createdBy: undefined,
     createdAt: undefined,
     modifiedAt: undefined,
@@ -85,65 +114,44 @@ export function copyOffer(source) {
   }));
   return result;
 }
-export function changeOfferCustomer(offer, defaults) {
-  return {
-    ...offer,
-    customerId: defaults.customerId,
-    customerName: defaults.customerName,
-    customerAddress: defaults.customerAddress,
-    contactId: null,
-    contact: '',
-    department: '',
-    customerReference: '',
-    paymentId: defaults.paymentId,
-    paymentText: defaults.paymentText,
-  };
-}
 export function newOfferPosition(article) {
   return {
     lineKey: createId(),
     articleIndex: article.articleIndex,
     article: article.article,
+    masterArticle: article.article,
     quantity: '',
     unit: article.unit || 'KG',
     price: '',
     priceBasis: /^kg$/i.test(article.unit || 'KG') ? 1000 : 1,
-    description: article.description || '',
-    alternativeText: '',
-    deliveryDate: '',
-    deliveryText: '',
-    sample: false,
-    rejected: false,
+    costPrice: article.costPrice ?? '',
+    deliveryDate: tomorrow(),
+    valutaDate: tomorrow(),
+    wpzOriginal: true,
+    wpzComment: 'Original verwenden',
     reserve: false,
   };
 }
-export function estimateOffer(offer) {
-  const scaled = (value, digits) =>
+export function positionTotal(p) {
+  const scaled = (v, n) =>
     BigInt(
-      Math.max(0, Math.min(999999999, Number(value) || 0))
-        .toFixed(digits)
+      Math.max(0, Math.min(999999999, Number(v) || 0))
+        .toFixed(n)
         .replace('.', ''),
     );
-  const divide = (n, d) => (n + d / 2n) / d;
-  const net = offer.positions.reduce(
-    (sum, p) =>
-      sum +
-      divide(
-        scaled(p.quantity, 3) * scaled(p.price, 4),
-        BigInt(Math.max(1, Math.trunc(Number(p.priceBasis) || 1))) * 100000n,
-      ),
-    0n,
+  const d =
+    BigInt(Math.max(1, Math.trunc(Number(p.priceBasis) || 1))) * 100000n;
+  return (
+    Number((scaled(p.quantity, 3) * scaled(p.price, 4) + d / 2n) / d) / 100
   );
-  const discount = divide(net * scaled(offer.discountPercent, 3), 100000n);
-  const subtotal = net - discount;
-  const vat = divide(subtotal * scaled(offer.vatPercent, 3), 100000n);
-  return {
-    netAmount: Number(net) / 100,
-    discountAmount: Number(discount) / 100,
-    subtotal: Number(subtotal) / 100,
-    vatAmount: Number(vat) / 100,
-    totalAmount: Number(subtotal + vat) / 100,
-  };
+}
+export function estimateOffer(offer) {
+  const net =
+    offer.positions.reduce(
+      (sum, p) => sum + Math.round(positionTotal(p) * 100),
+      0,
+    ) / 100;
+  return { netAmount: net, totalAmount: net };
 }
 export const money = (n, currency = 'EUR') =>
   `${Number(n || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;

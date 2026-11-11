@@ -1316,10 +1316,10 @@ export default function CustomerDetail() {
                 {features.offers && appOffers.items.map(offer => <Card key={`app-offer-${offer.id}`} variant="outlined">
                   <CardContent sx={{ py: '8px !important', px: '10px !important', display: 'grid', gap: 0.25 }}>
                     <Button sx={{ justifyContent: 'flex-start', p: 0 }} onClick={() => navigate(`/temp-offers/${offer.id}`, { state: { returnTo: createReturnTo(location) } })}>
-                      {offer.bmsOfferNumber || `AN-${offer.id}`} · {offer.title || offer.customerName}
+                      {offer.bmsOfferNumber || `AN-${offer.id}`} · {offer.customerName}
                     </Button>
-                    <Typography variant="caption">{offerStatus(offer.status)} · {formatDateOnly(offer.offerDate)} · {offerMoney(offer.totalAmount, offer.currency)}</Typography>
-                    {(offer.positions || []).map((p, i) => <Typography key={i} variant="caption">{i + 1}. {p.article} · {p.quantity} {p.unit} · {p.price} {offer.currency}/{p.priceBasis} {p.unit}</Typography>)}
+                    <Typography variant="caption">{offerStatus(offer.status)} · {formatDateOnly(offer.createdAt)} · {offerMoney(offer.totalAmount)}</Typography>
+                    {(offer.positions || []).map((p, i) => <Typography key={i} variant="caption">{i + 1}. {p.article} · {p.quantity} {p.unit} · {p.price} EUR/{p.priceBasis} {p.unit}</Typography>)}
                   </CardContent>
                 </Card>)}
                 {features.offers && appOffers.items.length >= 50 && <Button onClick={() => navigate('/temp-offers', { state: { listState: { customerId: id } } })}>Alle eigenen Angebote dieses Kunden</Button>}

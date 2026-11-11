@@ -8,10 +8,35 @@ const express = require('express');
 const { normalize, totals } = require('../src/offers/values');
 const { headerFields, positionFields } = require('../src/offers/storage');
 const crypto = require('node:crypto');
+const {
+  compact,
+  catalogWhere,
+  groupArticles,
+} = require('../src/offers/catalog');
+const { resolveProductGroup } = require('../src/product-grouping');
+
+test('offer code search includes supplier and former names and grouping uses the VL article identity', () => {
+  assert.equal(compact('ML 1803'), 'ml1803');
+  assert.equal(compact('ML-1803'), 'ml1803');
+  const where = catalogWhere({ q: 'ML1803' });
+  assert.deepEqual(where.params, ['%ml1803%']);
+  assert.match(where.sql, /agA_Artikelname_Lieferant/);
+  assert.match(where.sql, /agA_AlteBezeichnung/);
+  assert.doesNotMatch(where.sql, /ag_Gruppenname/);
+  const article = {
+    articleIndex: '01298',
+    article: 'PE ML1803 Absorber',
+    masterArticleName: 'PE ML1803 Absorber',
+  };
+  const group = groupArticles([article])[0];
+  assert.equal(group.key, resolveProductGroup(article).key);
+  assert.equal(group.name, 'PE ML1803 Absorber');
+});
 
 const input = () => ({
   customerId: '100',
-  offerDate: '2026-11-10',
+  packagingId: 1,
+  deliveryTermsId: 1,
   clientRequestId: crypto.randomUUID(),
   positions: [
     {
@@ -37,8 +62,8 @@ test('offer price basis, repeated article lines and decimal cent rounding follow
   assert.equal(n.positions.length, 2);
   assert.equal(n.positions[0].total, 29150);
   assert.equal(n.positions[1].total, 16445);
-  assert.equal(n.header.netAmount, 45595);
-  assert.equal(n.header.totalAmount, 54258.05);
+  assert.equal(totals(n.positions, 0, 0).netAmount, 45595);
+  assert.equal(totals(n.positions, 0, 0).totalAmount, 45595);
   assert.deepEqual(
     totals([{ quantity: 1, price: 1.005, priceBasis: 1 }], 0, 0),
     {
@@ -50,21 +75,17 @@ test('offer price basis, repeated article lines and decimal cent rounding follow
       totalAmount: 1.01,
     },
   );
-  assert.equal(
-    normalize({ ...input(), discountPercent: 100 }).header.totalAmount,
-    0,
-  );
+  assert.equal(totals(n.positions, 100, 0).totalAmount, 0);
 });
 test('invalid units, dates, quantities, prices, discount and reservation amounts cannot enter SQL', () => {
   for (const change of [
-    { offerDate: '2026-02-30' },
-    { discountPercent: 101 },
-    { vatPercent: -1 },
+    { deliveryAddressId: -1 },
     { positions: [] },
     { customerId: '' },
   ])
     assert.throws(() => normalize({ ...input(), ...change }), { status: 400 });
   for (const change of [
+    { deliveryDate: '2026-02-30' },
     { quantity: 0 },
     { price: -1 },
     { priceBasis: 0 },
@@ -262,6 +283,13 @@ async function fixture(t) {
           }
         },
       },
+      '../offers/terms': {
+        loadOfferOptions: async () => ({
+          payments: [],
+          packagingTypes: [{ id: 1, text: 'Sackware' }],
+          incoterms: [{ id: 1, text: 'FCA' }],
+        }),
+      },
       '../db/customer-access': {
         getCustomerAccessScope: async () => ({ isFullAccess: true }),
         loadVisibleCustomer: async (_db, id) =>
@@ -347,9 +375,10 @@ test('saving preserves repeated articles, validates customer, retries without du
   result = await call(`/temp-offers/${id}`, 'PUT', {
     ...body,
     version: originalVersion,
-    title: 'Geändert',
+    internalNote: 'Geändert',
   });
   assert.equal(result.status, 200);
+  assert.equal(result.json.data.internalNote, 'Geändert');
   assert.equal(state.positions.length, 2);
   assert.equal(
     (

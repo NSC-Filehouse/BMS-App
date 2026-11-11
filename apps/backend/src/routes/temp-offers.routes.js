@@ -19,7 +19,14 @@ const {
   loadTempOrderPlanning,
   getTempOrderPlanningEntry,
 } = require('../db/temp-order-planning');
-const { normalize, text, uuid } = require('../offers/values');
+const { normalize, text, uuid, totals } = require('../offers/values');
+const {
+  catalogWhere,
+  catalogSelect,
+  groupArticles,
+} = require('../offers/catalog');
+const { loadOfferOptions } = require('../offers/terms');
+const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const {
   H,
   P,
@@ -91,13 +98,17 @@ async function customer(req, id) {
     });
   return row;
 }
-async function paymentOptions(language) {
-  return runSQLQuerySqlServer(
-    config.sql.database,
-    `SELECT zaS_ID AS id,zaS_Zahl_Text AS text FROM dbo.tblZahltext_Sprachen WHERE LOWER(zaS_SprachID)=? ORDER BY zaS_ID`,
-    [language === 'EN' ? 'en' : 'de'],
-  );
-}
+const language = (req) =>
+  String(req.header('x-lang') || 'de').toLowerCase() === 'en' ? 'en' : 'de';
+router.get(
+  '/temp-offers/meta',
+  ...gate,
+  asyncHandler(async (req, res) =>
+    sendEnvelope(res, {
+      data: await loadOfferOptions(req.database, language(req)),
+    }),
+  ),
+);
 router.get(
   '/temp-offers/customer-defaults/:customerId',
   ...gate,
@@ -105,17 +116,26 @@ router.get(
     const c = await customer(req, text(req.params.customerId, 10));
     const contacts = await runSQLQueryAccess(
       req.database,
-      `SELECT kdA_lfdNR AS id,LTRIM(RTRIM(CONCAT(kdA_Anrede,N' ',kdA_Vorname,N' ',kdA_Name))) AS name,kdA_Position AS department
-    FROM dbo.tblKun_Ansprech WHERE kdA_KdNR=? ORDER BY ISNULL(kdA_Ranking,9),kdA_Name,kdA_Vorname`,
+      `SELECT kdA_lfdNR AS id,LTRIM(RTRIM(CONCAT(kdA_Anrede,N' ',kdA_Vorname,N' ',kdA_Name))) AS name,kdA_Position AS position,kdA_eMail AS email,kdA_Ranking AS ranking FROM dbo.tblKun_Ansprech WHERE kdA_KdNR=? ORDER BY ISNULL(kdA_Ranking,9),kdA_Name,kdA_Vorname`,
       [c.kd_KdNR],
     );
-    const payments = await paymentOptions(
-      String(req.query.language || 'DE').toUpperCase(),
+    const options = await loadOfferOptions(req.database, language(req));
+    const addresses = await loadCustomerDeliveryAddresses(
+      req.database,
+      c.kd_KdNR,
     );
+    const defaultContact = [1, 2, 3]
+      .map((rank) =>
+        contacts.find(
+          (c) =>
+            Number(c.ranking) === rank && c.id && String(c.name || '').trim(),
+        ),
+      )
+      .find(Boolean);
     sendEnvelope(res, {
       data: {
         customerId: c.kd_KdNR,
-        customerName: [c.kd_Name1, c.kd_Name2].filter(Boolean).join(' '),
+        customerName: c.kd_Name1 || c.kd_Name2 || '',
         customerAddress: [
           c.kd_Strasse,
           [c.kd_PLZ, c.kd_Ort].filter(Boolean).join(' '),
@@ -124,76 +144,57 @@ router.get(
           .filter(Boolean)
           .join('\n'),
         contacts,
-        payments,
+        defaultContactId: defaultContact?.id || null,
+        defaultContact: defaultContact?.name || '',
+        deliveryAddresses: addresses,
         paymentId: c.kd_Zahltext || null,
-        paymentText: payments.find((p) => p.id === c.kd_Zahltext)?.text || '',
+        paymentText:
+          options.payments.find((p) => Number(p.id) === Number(c.kd_Zahltext))
+            ?.text || '',
       },
     });
   }),
 );
-
-function catalogWhere(req, includeGroups = true) {
-  const clauses = ['COALESCE(a.agA_Deaktiv,0)=0'];
-  const params = [];
-  const terms = text(req.query.q, 200)
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 10);
-  for (const term of terms) {
-    clauses.push(
-      "CONCAT(a.agA_Artikelindex,N' ',a.agA_Artikelname,N' ',a.agA_Handelsname,N' ',a.agA_Produktnummer) LIKE ?",
-    );
-    params.push(`%${term.replace(/[\[\]%_]/g, (c) => `[${c}]`)}%`);
-  }
-  if (includeGroups)
-    for (const [key, column] of [
-      ['groupId', 'agA_Artikelgruppe'],
-      ['plasticId', 'agA_ID_Kunststoff'],
-      ['subId', 'agA_ID_KunststoffUnter'],
-    ]) {
-      if (req.query[key] !== undefined) {
-        clauses.push(`COALESCE(CONVERT(nvarchar(50),a.[${column}]),N'')=?`);
-        params.push(text(req.query[key], 50));
-      }
-    }
-  return { sql: clauses.join(' AND '), params };
-}
-const catalogJoins = `FROM dbo.tblArt_Artikel a LEFT JOIN dbo.tblArtikelgruppe g ON g.ag_Gruppenindex=a.agA_Artikelgruppe
- LEFT JOIN dbo.tblArt4_Kunststoff k ON k.art4_ID_Kunststoff=a.agA_ID_Kunststoff
- LEFT JOIN dbo.tblArt5_KunststoffUnter u ON u.art5_ID_Kunststoff=a.agA_ID_Kunststoff AND u.art5_ID_KunststoffUnter=a.agA_ID_KunststoffUnter`;
 router.get(
   '/temp-offers/article-groups',
   ...gate,
   asyncHandler(async (req, res) => {
-    const where = catalogWhere(req, false);
+    const where = catalogWhere(req.query);
+    const { page, pageSize } = pageParams(req);
     const rows = await runSQLQueryAccess(
       req.database,
-      `SELECT a.agA_Artikelgruppe AS groupId,g.ag_Gruppenname AS groupName,
-    a.agA_ID_Kunststoff AS plasticId,k.art4_Bezeichnung AS plastic,a.agA_ID_KunststoffUnter AS subId,u.art5_Bezeichnung AS sub,COUNT(*) AS total
-    ${catalogJoins} WHERE ${where.sql} GROUP BY a.agA_Artikelgruppe,g.ag_Gruppenname,a.agA_ID_Kunststoff,k.art4_Bezeichnung,a.agA_ID_KunststoffUnter,u.art5_Bezeichnung
-    ORDER BY g.ag_Gruppenname,k.art4_Bezeichnung,u.art5_Bezeichnung`,
+      catalogSelect + ' WHERE ' + where.sql,
       where.params,
     );
-    sendEnvelope(res, { data: rows });
+    const groups = groupArticles(rows);
+    sendEnvelope(res, {
+      data: groups.slice((page - 1) * pageSize, page * pageSize),
+      meta: {
+        page,
+        pageSize,
+        total: groups.length,
+        totalArticles: rows.length,
+      },
+    });
   }),
 );
 router.get(
   '/temp-offers/articles',
   ...gate,
   asyncHandler(async (req, res) => {
-    const where = catalogWhere(req);
+    const where = catalogWhere(req.query);
     const { page, pageSize } = pageParams(req);
     const count = await runSQLQueryAccess(
       req.database,
-      `SELECT COUNT(*) AS total FROM dbo.tblArt_Artikel a WHERE ${where.sql}`,
+      'SELECT COUNT(*) AS total FROM dbo.tblArt_Artikel a WHERE ' + where.sql,
       where.params,
     );
     const rows = await runSQLQueryAccess(
       req.database,
-      `SELECT a.agA_Artikelindex AS articleIndex,COALESCE(NULLIF(a.agA_Artikelname,N''),a.agA_Artikelindex) AS article,
-    a.agA_Einheit AS unit,a.agA_Beschreibung AS description,a.agA_MFI AS mfi,a.agA_MFI_bis AS mfiTo,a.agA_Produktnummer AS productNumber,
-    g.ag_Gruppenname AS groupName,k.art4_Bezeichnung AS plastic,u.art5_Bezeichnung AS sub ${catalogJoins}
-    WHERE ${where.sql} ORDER BY a.agA_Artikelname,a.agA_Artikelindex OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
+      catalogSelect +
+        ' WHERE ' +
+        where.sql +
+        ' ORDER BY a.agA_Artikelname,a.agA_Artikelindex OFFSET ? ROWS FETCH NEXT ? ROWS ONLY',
       [...where.params, (page - 1) * pageSize, pageSize],
     );
     sendEnvelope(res, {
@@ -244,7 +245,7 @@ router.get(
     }
     if (['3m', '6m'].includes(req.query.scope)) {
       clauses.push(
-        'h.tag_offer_date >= DATEADD(MONTH,?,CONVERT(date,GETDATE()))',
+        'h.tag_created_at >= DATEADD(MONTH,?,CONVERT(date,GETDATE()))',
       );
       params.push(req.query.scope === '3m' ? -3 : -6);
     } else if (req.query.scope === 'year') {
@@ -254,11 +255,16 @@ router.get(
           code: 'INVALID_OFFER',
         });
       clauses.push(
-        'h.tag_offer_date>=DATEFROMPARTS(?,1,1) AND h.tag_offer_date<DATEFROMPARTS(?,1,1)',
+        'h.tag_created_at>=DATEFROMPARTS(?,1,1) AND h.tag_created_at<DATEFROMPARTS(?,1,1)',
       );
       params.push(year, year + 1);
     }
-    if (/^[0-3]$/.test(req.query.status)) {
+    const namedStatus = { draft: 0, rework: 3 };
+    if (req.query.status === 'sent') clauses.push('h.tag_status IN (1,2)');
+    else if (Object.hasOwn(namedStatus, req.query.status)) {
+      clauses.push('h.tag_status=?');
+      params.push(namedStatus[req.query.status]);
+    } else if (/^[0-3]$/.test(req.query.status)) {
       clauses.push('h.tag_status=?');
       params.push(Number(req.query.status));
     }
@@ -267,12 +273,14 @@ router.get(
         "h.tag_created_at >= CONVERT(datetime2,CONVERT(date,SYSDATETIMEOFFSET() AT TIME ZONE 'W. Europe Standard Time')) AT TIME ZONE 'W. Europe Standard Time' AT TIME ZONE 'UTC'",
       );
     if (req.query.period === 'week')
-      clauses.push('h.tag_created_at >= DATEADD(DAY,-7,SYSUTCDATETIME())');
+      clauses.push(
+        "h.tag_created_at >= DATEADD(DAY,-(DATEDIFF(DAY,CONVERT(date,'19000101',112),CONVERT(date,GETDATE()))%7),CONVERT(date,GETDATE()))",
+      );
     const search = text(req.query.q, 200);
     if (search) {
       const like = `%${search.replace(/[\[\]%_]/g, (c) => `[${c}]`)}%`;
       clauses.push(
-        `(CONCAT(h.tag_customer_name,N' ',h.tag_title,N' ',h.tag_customer_reference,N' ',h.tag_internal_note,N' ',h.tag_bms_offer_number,N' AN-',h.tag_id) LIKE ? OR EXISTS(SELECT 1 FROM ${P} p WHERE p.tagp_offer_id=h.tag_id AND CONCAT(p.tagp_article,N' ',p.tagp_article_index) LIKE ?))`,
+        `(CONCAT(h.tag_customer_name,N' ',h.tag_customer_reference,N' ',h.tag_internal_note,N' ',h.tag_bms_offer_number,N' AN-',h.tag_id) LIKE ? OR EXISTS(SELECT 1 FROM ${P} p WHERE p.tagp_offer_id=h.tag_id AND CONCAT(p.tagp_article,N' ',p.tagp_article_index) LIKE ?))`,
       );
       params.push(like, like);
     }
@@ -295,6 +303,8 @@ router.get(
       ).rows;
       rows.forEach((r) => {
         r.positions = lines.filter((p) => p.offerId === r.id);
+        r.totalAmount = totals(r.positions, 0, 0).netAmount;
+        r.currency = 'EUR';
       });
     }
     sendEnvelope(res, { data: rows, meta: { page, pageSize, total: count } });
@@ -318,7 +328,10 @@ router.get(
 async function save(req) {
   const { header, positions } = normalize(req.body);
   const c = await customer(req, header.customerId);
-  header.customerName = [c.kd_Name1, c.kd_Name2].filter(Boolean).join(' ');
+  header.customerName = text(
+    req.body.customerName || c.kd_Name1 || c.kd_Name2,
+    255,
+  );
   header.customerAddress = [
     c.kd_Strasse,
     [c.kd_PLZ, c.kd_Ort].filter(Boolean).join(' '),
@@ -330,7 +343,7 @@ async function save(req) {
     const contact = (
       await runSQLQueryAccess(
         req.database,
-        `SELECT kdA_lfdNR FROM dbo.tblKun_Ansprech WHERE kdA_lfdNR=? AND kdA_KdNR=?`,
+        `SELECT kdA_lfdNR,LTRIM(RTRIM(CONCAT(kdA_Anrede,N' ',kdA_Vorname,N' ',kdA_Name))) AS name FROM dbo.tblKun_Ansprech WHERE kdA_lfdNR=? AND kdA_KdNR=?`,
         [header.contactId, header.customerId],
       )
     )[0];
@@ -340,7 +353,61 @@ async function save(req) {
         'Ansprechpartner gehört nicht zum gewählten Kunden.',
         { code: 'INVALID_OFFER_CONTACT' },
       );
+    header.contact = text(contact.name, 50);
+  } else {
+    header.contact = '';
   }
+  const options = await loadOfferOptions(req.database, language(req));
+  const paymentId = header.specialPaymentCondition
+    ? header.paymentId
+    : Number(c.kd_Zahltext) || header.paymentId;
+  const payment = options.payments.find(
+    (p) => Number(p.id) === Number(paymentId),
+  );
+  if (paymentId && !payment)
+    throw createHttpError(
+      400,
+      'Bitte eine gültige Zahlungsbedingung auswählen.',
+      { code: 'INVALID_OFFER' },
+    );
+  header.paymentId = payment?.id || null;
+  header.paymentText = payment?.text || '';
+  const packaging = options.packagingTypes.find(
+    (p) => Number(p.id) === Number(header.packagingId),
+  );
+  if (!packaging)
+    throw createHttpError(400, 'Bitte eine Verpackungsart auswählen.', {
+      code: 'INVALID_OFFER',
+    });
+  header.packagingId = packaging.id;
+  header.packaging = packaging.text;
+  const incoterm = options.incoterms.find(
+    (p) => Number(p.id) === Number(header.deliveryTermsId),
+  );
+  if (!incoterm)
+    throw createHttpError(400, 'Bitte eine Lieferbedingung auswählen.', {
+      code: 'INVALID_OFFER',
+    });
+  header.deliveryTermsId = incoterm.id;
+  header.deliveryTerms = incoterm.text;
+  if (header.deliveryAddressManual || /^FCA\b/i.test(header.deliveryTerms))
+    header.deliveryAddressId = null;
+  else if (header.deliveryAddressId) {
+    const addresses = await loadCustomerDeliveryAddresses(
+      req.database,
+      header.customerId,
+    );
+    const address = addresses.find(
+      (a) => Number(a.id) === Number(header.deliveryAddressId),
+    );
+    if (!address)
+      throw createHttpError(
+        400,
+        'Lieferadresse gehört nicht zum gewählten Kunden.',
+        { code: 'INVALID_OFFER' },
+      );
+    header.deliveryAddress = address.text;
+  } else header.deliveryAddress = '';
   const indexes = [...new Set(positions.map((p) => p.articleIndex))];
   const masters = await runSQLQueryAccess(
     req.database,
@@ -442,23 +509,6 @@ router.post(
         requireVersion(current, req.body?.version);
         editable(current);
         await customer(req, current.customerId);
-        if (
-          current.validUntil &&
-          String(
-            current.validUntil instanceof Date
-              ? current.validUntil.toISOString()
-              : current.validUntil,
-          ).slice(0, 10) <
-            new Intl.DateTimeFormat('sv-SE', {
-              timeZone: 'Europe/Berlin',
-            }).format(new Date())
-        ) {
-          throw createHttpError(
-            400,
-            'Das Angebot ist bereits abgelaufen. Bitte die Gültigkeit anpassen.',
-            { code: 'INVALID_OFFER' },
-          );
-        }
         const indexes = [
           ...new Set(current.positions.map((p) => p.articleIndex)),
         ];

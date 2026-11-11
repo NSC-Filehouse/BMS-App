@@ -1,10 +1,9 @@
 import React from 'react';
 import {
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
-  Button,
-  Card,
-  CardContent,
   Checkbox,
   FormControlLabel,
   IconButton,
@@ -12,25 +11,119 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { BackAwareAccordion as Accordion } from './DisclosureBack.jsx';
+import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
+import WpzCommentField from './WpzCommentField.jsx';
+import SaleMarginHint from './SaleMarginHint.jsx';
 import { apiRequest } from '../api/client.js';
-import { money } from '../utils/offers.js';
+import { useI18n } from '../utils/i18n.jsx';
 
+export function OfferPositionFields({ position: p, onChange }) {
+  const { t, lang } = useI18n();
+  const field = (key, label, extra = {}) => (
+    <TextField
+      size="small"
+      label={label}
+      value={p[key] ?? ''}
+      onChange={(e) => onChange({ [key]: e.target.value })}
+      {...extra}
+    />
+  );
+  return (
+    <>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+          gap: 1,
+        }}
+      >
+        <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
+          <TextField
+            type="date"
+            size="small"
+            label={t('delivery_date')}
+            value={p.deliveryDate || ''}
+            onChange={(e) =>
+              onChange({
+                deliveryDate: e.target.value,
+                ...(p.valutaDateManual ? {} : { valutaDate: e.target.value }),
+              })
+            }
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            type="date"
+            size="small"
+            label={t('valuta_date')}
+            value={p.valutaDate || p.deliveryDate || ''}
+            onChange={(e) =>
+              onChange({ valutaDate: e.target.value, valutaDateManual: true })
+            }
+            InputLabelProps={{ shrink: true }}
+          />
+        </Box>
+        {field(
+          'quantity',
+          /^kg$/i.test(p.unit)
+            ? t('product_amount')
+            : `${t('product_amount')} (${p.unit})`,
+          {
+            type: 'number',
+            inputProps: { min: 0.001, step: 'any' },
+          },
+        )}
+        <Box sx={{ display: 'grid', gap: 0.25 }}>
+          {field(
+            'price',
+            /^kg$/i.test(p.unit)
+              ? t('order_sale_price')
+              : `${lang === 'en' ? 'Sales price' : 'Verkaufspreis'} / ${p.priceBasis} ${p.unit}`,
+            { type: 'number', inputProps: { min: 0, step: 'any' } },
+          )}
+          <SaleMarginHint
+            amountInKg={
+              (Number(p.quantity) * 1000) /
+              Math.max(1, Number(p.priceBasis) || 1)
+            }
+            salePrice={p.price}
+            costPrice={p.costPrice}
+          />
+        </Box>
+        {field('costPrice', t('product_price'), {
+          type: 'number',
+          inputProps: { min: 0, step: 'any' },
+        })}
+      </Box>
+      <WpzCommentField
+        wpzId={null}
+        wpzOriginal={p.wpzOriginal}
+        wpzComment={p.wpzComment}
+        onChange={onChange}
+        helperText={t('validation_wpz_individual_required')}
+      />
+    </>
+  );
+}
 export default function OfferPositionEditor({
   position: p,
-  index,
   onChange,
   onRemove,
-  onDuplicate,
-  en,
-  currency,
 }) {
+  const { t, lang } = useI18n();
+  const en = lang === 'en';
+  const [editing, setEditing] = React.useState(false);
+  const [article, setArticle] = React.useState(p.article);
   const [stocks, setStocks] = React.useState([]);
   const [error, setError] = React.useState('');
   React.useEffect(() => {
     if (!p.reserve) return;
     let active = true;
+    setError('');
     apiRequest(
       `/temp-offers/articles/${encodeURIComponent(p.articleIndex)}/stock`,
     )
@@ -44,17 +137,13 @@ export default function OfferPositionEditor({
       active = false;
     };
   }, [p.reserve, p.articleIndex]);
-  const field = (key, label, extra = {}) => (
-    <TextField
-      size="small"
-      label={label}
-      value={p[key] ?? ''}
-      onChange={(e) => onChange({ [key]: e.target.value })}
-      {...extra}
-    />
-  );
+  const saveName = (e) => {
+    e?.stopPropagation();
+    if (article.trim()) onChange({ article: article.trim() });
+    setEditing(false);
+  };
   const stockKey = `${p.beNumber || ''}|${p.warehouseId || ''}`;
-  const options =
+  const stockOptions =
     stocks.some((s) => `${s.beNumber}|${s.warehouseId}` === stockKey) ||
     !p.beNumber
       ? stocks
@@ -68,116 +157,122 @@ export default function OfferPositionEditor({
           ...stocks,
         ];
   return (
-    <Card variant="outlined">
-      <CardContent sx={{ display: 'grid', gap: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Accordion disableGutters>
+      <AccordionSummary
+        expandIcon={<ExpandCollapseIndicator accordion />}
+        sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
+      >
+        <Box sx={{ display: 'grid', width: '100%', minWidth: 0, gap: 0.35 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.25,
+              minWidth: 0,
+            }}
+          >
+            {editing ? (
+              <Box
+                sx={{ display: 'flex', gap: 0.5, flex: 1 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <TextField
+                  autoFocus
+                  size="small"
+                  value={article}
+                  onChange={(e) => setArticle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      saveName(e);
+                    }
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setEditing(false);
+                    }
+                  }}
+                  onBlur={saveName}
+                  inputProps={{
+                    'aria-label': t('article_name_edit'),
+                    maxLength: 75,
+                  }}
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    '& .MuiInputBase-input': {
+                      fontSize: '.875rem',
+                      fontWeight: 700,
+                    },
+                  }}
+                />
+                <IconButton
+                  size="small"
+                  color="primary"
+                  aria-label={t('article_name_save')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={saveName}
+                >
+                  <CheckIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('article_name_cancel')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditing(false);
+                  }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ) : (
+              <>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    minWidth: 0,
+                    flex: 1,
+                    fontWeight: 700,
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {p.article || '-'}
+                </Typography>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  aria-label={t('article_name_edit')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setArticle(p.article);
+                    setEditing(true);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </>
+            )}
+          </Box>
           <Typography
-            fontWeight={700}
-            sx={{ flex: 1, overflowWrap: 'anywhere' }}
+            variant="caption"
+            sx={{ opacity: 0.75, overflowWrap: 'anywhere' }}
           >
-            {index + 1}. {p.articleIndex}
+            {t('product_article_index')}: {p.articleIndex}
           </Typography>
-          <IconButton
-            aria-label={en ? 'Duplicate position' : 'Position duplizieren'}
-            onClick={onDuplicate}
-          >
-            <ContentCopyIcon />
-          </IconButton>
-          <IconButton
-            aria-label={en ? 'Remove position' : 'Position entfernen'}
-            onClick={onRemove}
-          >
-            <DeleteOutlineIcon />
-          </IconButton>
-        </Box>
-        {field('article', en ? 'Article name' : 'Artikelbezeichnung', {
-          required: true,
-          inputProps: { maxLength: 75 },
-        })}
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr 1fr',
-              md: 'repeat(4,minmax(0,1fr))',
-            },
-            gap: 1,
-          }}
-        >
-          {field('quantity', en ? 'Quantity' : 'Menge', {
-            type: 'number',
-            required: true,
-            inputProps: { min: 0.001, step: 0.001 },
-          })}
-          {field('unit', en ? 'Unit' : 'Einheit', {
-            required: true,
-            inputProps: { maxLength: 50 },
-          })}
-          {field('price', en ? 'Price' : 'Preis', {
-            type: 'number',
-            required: true,
-            inputProps: { min: 0, step: 0.0001 },
-          })}
-          {field('priceBasis', en ? 'Price per units' : 'Preis je Einheiten', {
-            type: 'number',
-            required: true,
-            inputProps: { min: 1, step: 1 },
-          })}
-        </Box>
-        <Typography align="right">
-          {money(
-            ((Number(p.quantity) || 0) * (Number(p.price) || 0)) /
-              (Number(p.priceBasis) || 1),
-            currency,
-          )}
-        </Typography>
-        {field(
-          'description',
-          en ? 'Description / additional text' : 'Beschreibung / Zusatztext',
-          { multiline: true, minRows: 2 },
-        )}
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' },
-            gap: 1,
-          }}
-        >
-          {field('deliveryDate', en ? 'Delivery date' : 'Lieferdatum', {
-            type: 'date',
-            InputLabelProps: { shrink: true },
-          })}
-          {field(
-            'deliveryText',
-            en ? 'Delivery time' : 'Lieferzeit / Lieferhinweis',
+          {p.reserve && p.beNumber && (
+            <Typography variant="caption" sx={{ opacity: 0.75 }}>
+              {t('product_be_number')}: {p.beNumber} | {t('product_storage_id')}
+              : {p.warehouseId || '-'}
+            </Typography>
           )}
         </Box>
-        {field(
-          'alternativeText',
-          en ? 'Alternative text' : 'Alternative Texteingabe',
-          { inputProps: { maxLength: 50 } },
-        )}
-        <Box>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(p.sample)}
-                onChange={(e) => onChange({ sample: e.target.checked })}
-              />
-            }
-            label={en ? 'Sample' : 'Muster'}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={Boolean(p.rejected)}
-                onChange={(e) => onChange({ rejected: e.target.checked })}
-              />
-            }
-            label={en ? 'Rejected' : 'Abgelehnt'}
-          />
-        </Box>
+      </AccordionSummary>
+      <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
+        <OfferPositionFields position={p} onChange={onChange} />
         <FormControlLabel
+          sx={{ m: 0 }}
           control={
             <Checkbox
               checked={Boolean(p.reserve)}
@@ -192,65 +287,84 @@ export default function OfferPositionEditor({
           }
           label={
             en
-              ? 'Reserve stock for this offer'
+              ? 'Reserve quantity for this offer'
               : 'Menge für dieses Angebot reservieren'
           }
         />
         {p.reserve && (
-          <Box sx={{ display: 'grid', gap: 1 }}>
+          <>
             {error && <Alert severity="error">{error}</Alert>}
             <TextField
               select
+              size="small"
               label={
                 en ? 'Stock position / warehouse' : 'Bestandsposition / Lager'
               }
-              size="small"
               value={p.beNumber ? stockKey : ''}
               onChange={(e) => {
-                const s = options.find(
+                const s = stockOptions.find(
                   (s) => `${s.beNumber}|${s.warehouseId}` === e.target.value,
                 );
                 onChange({ beNumber: s.beNumber, warehouseId: s.warehouseId });
               }}
-              required
             >
-              {options.map((s) => (
+              <MenuItem value="" disabled>
+                {en ? 'Please select' : 'Bitte wählen'}
+              </MenuItem>
+              {stockOptions.map((s) => (
                 <MenuItem
                   key={`${s.beNumber}|${s.warehouseId}`}
                   value={`${s.beNumber}|${s.warehouseId}`}
                 >
                   {s.beNumber} · {s.warehouse || s.warehouseId} ·{' '}
-                  {s.available ?? '-'} kg{' '}
-                  {s.reservedBy
-                    ? `(${en ? 'reserved by' : 'reserviert von'} ${s.reservedBy})`
-                    : ''}
+                  {s.available ?? '-'} kg
                 </MenuItem>
               ))}
             </TextField>
             {!stocks.length && (
-              <Alert severity="info">
+              <Typography variant="caption" color="text.secondary">
                 {en
-                  ? 'No available stock source. You can save the offer without a reservation.'
-                  : 'Keine verfügbare Bestandsquelle. Das Angebot kann ohne Reservierung gespeichert werden.'}
-              </Alert>
+                  ? 'No available stock source.'
+                  : 'Keine verfügbare Bestandsquelle.'}
+              </Typography>
             )}
             <Box
-              sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                gap: 1,
+              }}
             >
-              {field('reserveQuantity', en ? 'Reserve kg' : 'Reservieren kg', {
-                type: 'number',
-                required: true,
-                inputProps: { min: 0.001, step: 0.001, max: p.quantity },
-              })}
-              {field('reserveUntil', en ? 'Reserved until' : 'Reserviert bis', {
-                type: 'date',
-                required: true,
-                InputLabelProps: { shrink: true },
-              })}
+              <TextField
+                size="small"
+                type="number"
+                label={t('order_reserve_amount')}
+                value={p.reserveQuantity ?? ''}
+                onChange={(e) => onChange({ reserveQuantity: e.target.value })}
+                inputProps={{ min: 0.001, max: p.quantity, step: 'any' }}
+              />
+              <TextField
+                size="small"
+                type="date"
+                label={t('order_reserved_until')}
+                value={p.reserveUntil || ''}
+                onChange={(e) => onChange({ reserveUntil: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
             </Box>
-          </Box>
+          </>
         )}
-      </CardContent>
-    </Card>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <IconButton
+            size="small"
+            color="error"
+            aria-label={t('delete_label')}
+            onClick={onRemove}
+          >
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      </AccordionDetails>
+    </Accordion>
   );
 }

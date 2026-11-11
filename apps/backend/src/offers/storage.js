@@ -5,30 +5,18 @@ const headerFields = {
   customerAddress: 'tag_customer_address',
   contactId: 'tag_contact_id',
   contact: 'tag_contact',
-  department: 'tag_department',
-  offerDate: 'tag_offer_date',
-  language: 'tag_language',
-  inquiryDate: 'tag_inquiry_date',
-  inquiryVia: 'tag_inquiry_via',
   customerReference: 'tag_customer_reference',
-  title: 'tag_title',
-  validUntil: 'tag_valid_until',
-  currency: 'tag_currency',
   paymentId: 'tag_payment_id',
   paymentText: 'tag_payment_text',
+  specialPaymentCondition: 'tag_special_payment_condition',
+  deliveryTermsId: 'tag_delivery_terms_id',
   deliveryTerms: 'tag_delivery_terms',
+  packagingId: 'tag_packaging_id',
   packaging: 'tag_packaging',
-  intro: 'tag_intro',
-  closingText: 'tag_closing_text',
+  deliveryAddressId: 'tag_delivery_address_id',
+  deliveryAddress: 'tag_delivery_address',
+  deliveryAddressManual: 'tag_delivery_address_manual',
   internalNote: 'tag_internal_note',
-  discountPercent: 'tag_discount_percent',
-  discountAmount: 'tag_discount_amount',
-  vatPercent: 'tag_vat_percent',
-  netAmount: 'tag_net_amount',
-  subtotal: 'tag_subtotal',
-  vatAmount: 'tag_vat_amount',
-  totalAmount: 'tag_total_amount',
-  printTotals: 'tag_print_totals',
 };
 const positionFields = {
   lineNo: 'tagp_line_no',
@@ -40,13 +28,11 @@ const positionFields = {
   unit: 'tagp_unit',
   price: 'tagp_price',
   priceBasis: 'tagp_price_basis',
-  total: 'tagp_total',
-  description: 'tagp_description',
-  alternativeText: 'tagp_alternative_text',
   deliveryDate: 'tagp_delivery_date',
-  deliveryText: 'tagp_delivery_text',
-  sample: 'tagp_sample',
-  rejected: 'tagp_rejected',
+  valutaDate: 'tagp_valuta_date',
+  costPrice: 'tagp_cost_price',
+  wpzOriginal: 'tagp_wpz_original',
+  wpzComment: 'tagp_wpz_comment',
   reserve: 'tagp_reserve',
   beNumber: 'tagp_be_number',
   warehouseId: 'tagp_warehouse_id',
@@ -101,6 +87,9 @@ async function read(query, id, companyId, owner, locked = false) {
       [id],
     )
   ).rows;
+  const { totals } = require('./values');
+  row.totalAmount = totals(row.positions, 0, 0).netAmount;
+  row.currency = 'EUR';
   return row;
 }
 module.exports = {
