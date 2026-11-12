@@ -23,9 +23,6 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
     </Typography>
     {optionPackaging(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p)}</Typography>}
     {optionNormalizationNotes(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionNormalizationNotes(p)}</Typography>}
-    {p.expired && <Typography variant="caption" sx={{ display: 'block', color: 'error.dark', fontWeight: 600 }}>
-      {en ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}
-    </Typography>}
     {['pending', 'updating'].includes(p.matchProcessingStatus) && <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
       {en ? 'Article suggestions are being prepared' : 'Artikelvorschläge werden vorbereitet'}
     </Typography>}

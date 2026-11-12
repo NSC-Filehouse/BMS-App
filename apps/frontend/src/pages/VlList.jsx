@@ -1010,9 +1010,6 @@ export default function VlList() {
         )}
       </Box>
 
-      {optionsPreview && <Typography variant="caption" sx={{ color: '#23752A', mb: 0.5 }}>
-        {lang === 'en' ? 'Option preview includes expired offers for information.' : 'Optionen-Testansicht: inklusive abgelaufener Angebote zur Information.'}
-      </Typography>}
       <Box ref={listRef} aria-busy={loading || searchPending} sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', pr: 0.25 }}>
         {error && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{error}</Alert>}
         {batchCartError && <Alert severity="error" sx={{ mt: 1, mb: 1.25 }}>{batchCartError}</Alert>}
