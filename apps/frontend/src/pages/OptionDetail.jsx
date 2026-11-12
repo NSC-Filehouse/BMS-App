@@ -9,7 +9,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionMfi } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -108,14 +108,9 @@ export default function OptionDetail() {
         {position.remainingKg!=null && <InfoRow label="Noch verfügbare Optionsmenge" value={`${optionNumber(position.remainingKg)} kg`} />}
         {position.confirmedQuantityKg!=null && <InfoRow label="Manuell bestätigte Gesamtmenge" value={`${optionNumber(position.confirmedQuantityKg)} kg`} />}
         {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
-        {position.priceNeedsReview && <InfoRow label={t('option_raw_price_basis')}
-          value={`${optionNumber(position.price, 2)} ${position.priceUnit || position.currency || ''}`} />}
         <Divider sx={{ my: 1 }} />
         <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
         <InfoRow label={t('option_packaging')} value={optionPackaging(position)} />
-        <InfoRow label={lang==='en'?'Maximum weight per truck':'Maximales Ladegewicht je LKW'} value={position.normalization?.maxTruckLoadKg!=null ? `${optionNumber(position.normalization.maxTruckLoadKg)} kg` : null} />
-        <InfoRow label={lang==='en'?'Normalization':'Normalisierung'} value={optionNormalizationNotes(position)} />
-        {position.normalization && <InfoRow label={t('option_raw_price_basis')} value={`${optionNumber(position.price,2)} ${position.priceUnit || position.currency || ''}`} />}
         {position.quantityMinKg !== null && <InfoRow label={t('option_raw_quantity')} value={position.quantityText || `${position.quantityMin} ${position.quantityUnit || ''}`} />}
         <InfoRow label={t('option_category')} value={position.materialCategory} />
         <InfoRow label={t('option_quality')} value={position.quality} />
