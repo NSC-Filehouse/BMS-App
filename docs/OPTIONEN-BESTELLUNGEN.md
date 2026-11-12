@@ -71,6 +71,10 @@ Bei Sackware und anderen Verpackungsarten gelten
 zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche
 Mengenbestätigung. Bereits belegte kleinere kg-/Chargenmengen begrenzen weiterhin
 das Angebot. Frühere manuelle Truck-Bestätigungen ändern diese feste Regel nicht.
+Liste und Detailansicht berechnen ihre verfügbare Menge anhand der erkannten
+Verpackung und ziehen gespeicherte Bestellungen ab. Bei mehrdeutiger Verpackung
+ohne belegte kg-Menge wird kein pauschaler Silo-Bestand angezeigt. Im Bestellweg
+bleibt die ausdrücklich gewählte Verpackungsart für die Mengenprüfung maßgeblich.
 
 Steht in der Quelle nur "full truck loads" ohne Anzahl, bleibt die Anzahl offen.
 Der Benutzer gibt die angebotene Truck-Anzahl ein und bestätigt sie; die App

@@ -2,7 +2,7 @@ const number = value => value == null || value === '' || !Number.isFinite(Number
 
 function offeredQuantityKg(position,kgPerTruck=25000) {
   const trucks=offeredTruckCount(position);
-  const truckKg=trucks==null?null:Math.round(trucks*kgPerTruck*1000)/1000;
+  const truckKg=trucks==null || kgPerTruck==null?null:Math.round(trucks*kgPerTruck*1000)/1000;
   const cap=value=>truckKg==null?value:Math.min(value,truckKg);
   const stock = number(position.stockKg ?? position.opp_ChargenbestandKg);
   if (stock != null && stock >= 0) return cap(stock);

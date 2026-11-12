@@ -49,9 +49,13 @@ export function optionPackaging(position) {
 
 export function optionNormalizationNotes(position) {
   const p=position?.normalization?.provenance;
+  const calculatedTruck=position?.truckLoadKg>0 && position?.offeredKg!=null;
+  const notes=(position?.normalization?.notes || []).filter(note=>!calculatedTruck ||
+    !(/\b(?:LKW|Truck)/i.test(note) && /keine.*Umrechnung|ohne.*Ladegewicht/i.test(note)));
   return [p?.quantityUnit?.source==='rule' ? 'Mengeneinheit gemäß Geschäftsregel' : null,
     p?.priceUnit?.source==='rule' ? 'Preisbezug gemäß Lieferantenregel' : null,
-    ...(position?.normalization?.notes || [])].filter(Boolean).join(' · ');
+    calculatedTruck?`LKW-Menge ${position.positionPackaging || position.normalization?.packaging?'gemäß Verpackungsart':'mit Silo-Vorbelegung'} mit ${optionNumber(position.truckLoadKg)} kg je LKW berechnet.`:null,
+    ...notes].filter(Boolean).join(' · ');
 }
 
 export function optionPrice(position, t) {

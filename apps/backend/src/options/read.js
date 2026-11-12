@@ -4,7 +4,8 @@ const { appTableSql } = require('../db/app-tables');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
-const { quantityAvailability,confirmedQuantitySql } = require('./purchase-quantity');
+const { quantityAvailability,confirmedQuantitySql,offeredTruckCount } = require('./purchase-quantity');
+const {purchaseTruckLoadKg}=require('../db/purchase-order-values');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -33,7 +34,14 @@ function mapPosition(row,today) {
   position.snapshotId = row.snapshotId == null ? null : String(row.snapshotId);
   position.candidateCount = Number(row.candidateCount || 0);
   position.matchStatus = row.matchStatus || 'unmatched';
-  Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0)));
+  const normalizedTruckLoad=Number(position.normalization?.maxTruckLoadKg);
+  const packaging=String(position.positionPackaging || position.normalization?.packaging || '').trim();
+  const truckLoadKg=[24750,25000].includes(normalizedTruckLoad)?normalizedTruckLoad:
+    Number(position.packagingTypeId)>0 && packaging?purchaseTruckLoadKg(packaging):packaging?null:25000;
+  position.truckLoadKg=offeredTruckCount(position)!=null?truckLoadKg:null;
+  // The list/detail quantity describes the recognized packaging. Purchase
+  // allocation still checks the packaging explicitly selected for that order.
+  Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0),truckLoadKg));
   return position;
 }
 async function loadOffers(companyIds = [], { optionId = null } = {}) {
