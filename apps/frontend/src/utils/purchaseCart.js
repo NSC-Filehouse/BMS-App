@@ -87,7 +87,9 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
       const name=String(current[0].supplierName || '').trim();
       const id=String(current[0].supplierId).trim();
       const existing=name?`„${name}“ (${id})`:id;
-      throw new Error(`Im Bestellwarenkorb liegen bereits Artikel des Lieferanten ${existing}. Bitte zuerst diese Bestellung abschließen oder den Warenkorb leeren.`);
+      const error=new Error(`Im Bestellwarenkorb liegen bereits Artikel des Lieferanten ${existing}. Bitte zuerst diese Bestellung abschließen oder den Warenkorb leeren.`);
+      error.code='PURCHASE_CART_SUPPLIER_CONFLICT';
+      throw error;
     }
     throw new Error('Die ausgewählten Artikel gehören zu verschiedenen Lieferanten. Bitte die Bestellung für jeden Lieferanten einzeln anlegen.');
   }

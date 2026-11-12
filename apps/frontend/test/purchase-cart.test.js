@@ -70,7 +70,11 @@ test('re-adding preserves edits and independent copies instead of collapsing the
 test('rejects different suppliers and article types atomically while retaining same-article copies', () => {
   addPurchaseCartItems([{...item('A'),supplierName:'Borealis'}]);
   const before = getPurchaseCartItems();
-  assert.throws(() => addPurchaseCartItems([item('B'), { ...item('C'), supplierId: 'other' }]),/bereits Artikel des Lieferanten „Borealis“ \(42\).*abschließen oder den Warenkorb leeren/);
+  assert.throws(() => addPurchaseCartItems([item('B'), { ...item('C'), supplierId: 'other' }]),error=>{
+    assert.equal(error.code,'PURCHASE_CART_SUPPLIER_CONFLICT');
+    assert.match(error.message,/bereits Artikel des Lieferanten „Borealis“ \(42\).*abschließen oder den Warenkorb leeren/);
+    return true;
+  });
   assert.deepEqual(getPurchaseCartItems(), before);
   assert.throws(() => addPurchaseCartItems([item('B')]), /nur eine Artikelart/);
   assert.deepEqual(getPurchaseCartItems(), before);

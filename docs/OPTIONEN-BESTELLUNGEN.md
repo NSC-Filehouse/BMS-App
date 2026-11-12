@@ -17,6 +17,11 @@ Der Bestelldialog lädt alle Artikelvorschläge in einem Schritt. Er zeigt deren
 Anzahl und bittet um die Auswahl eines Artikels; auch ein einzelner Vorschlag
 wird nicht automatisch gewählt. Bei fehlenden Vorschlägen erscheint direkt der
 Hinweis auf die Suche nach Namen oder Artikelnummer. Ein Nachlade-Button entfällt.
+Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
+über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg öffnet wieder dieselbe
+Optionsposition samt Lieferanten-/Artikelauswahl. Die Optionsdaten werden frisch
+geladen; manuelle Mengenbestätigungen werden nur bei unveränderter Mengenquelle
+wiederhergestellt. Der Link verändert keine vorhandenen Warenkorbpositionen.
 
 ## Fristen
 

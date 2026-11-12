@@ -21,7 +21,7 @@ export default function PurchaseCart() {
   const [saving, setSaving] = React.useState(false);
   const [locked, setLocked] = React.useState(() => Boolean(getPurchaseCartContext().pendingPayload));
   const [error, setError] = React.useState('');
-  const returnTo = getPurchaseCartContext().returnTo || location.state?.returnTo || supplierReturnTo(initialOrder.supplierId);
+  const returnTo = location.state?.returnTo || getPurchaseCartContext().returnTo || supplierReturnTo(initialOrder.supplierId);
   const back = () => navigateToReturn(navigate, returnTo, '/suppliers');
   const removeDraft = () => { if (!saving && !locked) { clearPurchaseCart(); back(); } };
   const change = React.useCallback((order) => {

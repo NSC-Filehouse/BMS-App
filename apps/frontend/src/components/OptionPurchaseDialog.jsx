@@ -1,13 +1,16 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem,TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem,TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
-import { addPurchaseCartItems,defaultPurchaseAmount } from '../utils/purchaseCart.js';
+import { addPurchaseCartItems,defaultPurchaseAmount,savePurchaseCartContext } from '../utils/purchaseCart.js';
 import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from '../utils/optionQuantityConfirmation.js';
+import {createReturnTo} from '../utils/navigation.js';
+import {optionPurchaseReturnTo} from '../utils/optionPurchaseNavigation.js';
 
-export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
+export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, initialDraft, onClose }) {
   const navigate = useNavigate();
+  const location=useLocation();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers,setSuppliers] = React.useState([]);
   const [supplier,setSupplier] = React.useState(null);
@@ -32,6 +35,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const [packagingTypeId,setPackagingTypeId]=React.useState('');
   const [busy,setBusy] = React.useState(false);
   const [error,setError] = React.useState('');
+  const [errorCode,setErrorCode] = React.useState('');
   const loadSuppliers = async (q = '') => {
     setBusy(true);setError('');
     try {
@@ -46,7 +50,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         setTotalUnit(meta.truckOffer?'truck':meta.confirmedQuantityKg!=null?'kg':'');
       }
       if (!q) setSupplier(rows.find(row=>row.preferred) || (rows.length===1?rows[0]:null));
-    } catch(e){setError(e.message);} finally{setBusy(false);}
+      return response;
+    } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
   };
   const loadArticles = async (q = '') => {
     setBusy(true);setError('');setArticlesLoading(true);
@@ -55,9 +60,27 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       const response = await apiRequest(`${base}/articles?${new URLSearchParams({q})}`);
       const rows=response.data || [];
       setArticles(rows);setArticleTotal(rows.length);setArticlesLoaded(true);
-    } catch(e){setError(e.message);} finally{setBusy(false);setArticlesLoading(false);}
+      return response;
+    } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
   };
-  React.useEffect(()=>{void(async()=>{await loadSuppliers();await loadArticles();})();},[]);
+  React.useEffect(()=>{void(async()=>{
+    const suppliersResponse=await loadSuppliers();
+    const articlesResponse=await loadArticles(initialDraft?.activeArticleQuery || '');
+    if(!initialDraft || !suppliersResponse || !articlesResponse)return;
+    const selectedSupplier=suppliersResponse.data?.find(row=>row.id===initialDraft.supplier?.id) || initialDraft.supplier || null;
+    const selectedArticle=articlesResponse.data?.find(row=>row.articleIndex===initialDraft.article?.articleIndex) || initialDraft.article || null;
+    if(selectedSupplier)setSuppliers(rows=>rows.some(row=>row.id===selectedSupplier.id)?rows:[...rows,selectedSupplier]);
+    if(selectedArticle)setArticles(rows=>rows.some(row=>row.articleIndex===selectedArticle.articleIndex)?rows:[...rows,selectedArticle]);
+    setSupplier(selectedSupplier);setArticle(selectedArticle);
+    setAcknowledgeUnverifiedMfi(initialDraft.acknowledgeUnverifiedMfi===true);
+    setSupplierQuery(initialDraft.supplierQuery || '');setArticleQuery(initialDraft.articleQuery || '');
+    setShowSupplierSearch(initialDraft.showSupplierSearch===true);setShowArticleSearch(initialDraft.showArticleSearch===true);
+    if(initialDraft.quantitySourceHash===suppliersResponse.meta?.quantitySourceHash){
+      setPackagingTypeId(initialDraft.packagingTypeId??defaultOptionPackagingId(suppliersResponse.meta));
+      setTotalAmount(initialDraft.totalAmount??'');setTotalUnit(initialDraft.totalUnit || '');
+      setQuantityEditing(initialDraft.quantityEditing===true);setQuantityConfirmed(initialDraft.quantityConfirmed===true);
+    }
+  })();},[]);
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
     try {
@@ -66,7 +89,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         expectedConfirmedPackagingTypeId:availability.confirmedPackagingTypeId??null})});
       setAvailability(previous=>({...previous,...response.data}));
       setTotalAmount(availability.truckOffer?response.data.confirmedTruckCount??'':response.data.confirmedQuantityKg);setTotalUnit(availability.truckOffer?'truck':'kg');setQuantityConfirmed(false);setQuantityEditing(false);
-    }catch(e){setError(e.message);}finally{setBusy(false);}
+    }catch(e){setError(e.message);setErrorCode(e.code || '');}finally{setBusy(false);}
   };
   const submit = async () => {
     setBusy(true);setError('');
@@ -74,10 +97,14 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
         supplierId:supplier.id,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,acknowledgeUnverifiedMfi,packagingTypeId,
       })});
-      addPurchaseCartItems([response.data.position],returnTo,response.data.header);
-      navigate('/purchase-cart',{state:{returnTo}});
-    } catch(e){setError(e.message);} finally{setBusy(false);}
+      addPurchaseCartItems([response.data.position],cartReturnTo,response.data.header);
+      navigate('/purchase-cart',{state:{returnTo:cartReturnTo}});
+    } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
   };
+  const cartReturnTo=optionPurchaseReturnTo(returnTo || createReturnTo(location),position.id,{
+    supplier,article,acknowledgeUnverifiedMfi,packagingTypeId,totalAmount,totalUnit,quantityEditing,quantityConfirmed,
+    quantitySourceHash:availability.quantitySourceHash,supplierQuery,articleQuery,activeArticleQuery,showSupplierSearch,showArticleSearch,
+  });
   const selectedPackaging=availability.packagingTypes?.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
@@ -154,7 +181,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       {!automaticTruck && !enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
       {effectiveAvailability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
       {busy && <CircularProgress size={22} />}
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && <Alert severity="error">{error}
+        {errorCode==='PURCHASE_CART_SUPPLIER_CONFLICT' && <Link component={RouterLink} to="/purchase-cart" state={{returnTo:cartReturnTo}} onClick={()=>savePurchaseCartContext({returnTo:cartReturnTo})} sx={{display:'block',mt:1}}>Zum Bestellwarenkorb</Link>}
+      </Alert>}
     </DialogContent>
     <DialogActions><Button disabled={busy} onClick={onClose}>Abbrechen</Button><Button variant="contained" disabled={busy||unavailable||!supplier||!article||article.mfiCheck?.blocked||(!article.mfiCheck?.complete&&!acknowledgeUnverifiedMfi)} onClick={submit}>In den Bestellwarenkorb</Button></DialogActions>
   </Dialog>;
