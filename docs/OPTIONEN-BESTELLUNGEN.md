@@ -63,7 +63,9 @@ Konkrete Truck-Anzahlen werden automatisch berechnet. Eine eindeutig erkannte
 Verpackungsart wird vorausgewählt: über die normierte Verpackungs-ID oder eine
 eindeutige Bezeichnung aus der Bestellauswahlliste. Reine Vermutungen und Angaben
 wie "Sackware / Big Bags / Octabins" gelten nicht als eindeutige Verpackungsart.
-Nur bei unklarer Verpackung ist Siloware mit 25.000 kg je Truck der Rückfallwert.
+Nur bei vollständig fehlender Verpackungsangabe ist Siloware mit 25.000 kg je Truck
+der Rückfallwert. Vorhandene mehrdeutige oder nicht zuordenbare Angaben lassen die
+Auswahl offen; der Benutzer wählt dann die Verpackungsart ausdrücklich.
 Bei Sackware und anderen Verpackungsarten gelten
 24.750 kg je Truck. Eine Spanne 1–2 Trucks verwendet die Obergrenze 2. Der Dialog
 zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche

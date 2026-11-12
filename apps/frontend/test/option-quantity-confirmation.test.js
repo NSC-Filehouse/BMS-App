@@ -25,10 +25,11 @@ test('recognized packaging precedes the silo fallback; uncertain families never 
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:' Bags '}),78);
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Big Bags'}),80);
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Octabins'}),81);
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Sackware / Big Bags / Octabins'}),79);
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Siloware wahrscheinlich',sourcePackagingSource:'rule'}),79);
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'unknown'}),79);
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:999,sourcePackaging:''}),79);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Sackware / Big Bags / Octabins'}),'');
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Siloware wahrscheinlich',sourcePackagingSource:'rule'}),'');
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'unknown'}),'');
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:999,sourcePackaging:''}),'');
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'  '}),79);
   assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:80}),80);
 });
 
@@ -50,4 +51,6 @@ test('truck quantities only become kg after choosing packaging, including transl
   assert.equal(confirmedTotalKg('1','truck',{id:79,text:'Silo/bulk'}),25000);
   assert.equal(confirmedTotalKg('2','truck',{id:78,text:'Sackware'}),49500);
   assert.equal(confirmedTotalKg('1','truck',{id:80,text:'Big Bags'}),24750);
+  for(const text of ['Octa','Octabins','NEUTRALE Oktabins','NEUTRALE Sackware','Andere'])
+    assert.equal(confirmedTotalKg('1','truck',{id:81,text}),24750);
 });

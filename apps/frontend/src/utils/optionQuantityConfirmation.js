@@ -11,6 +11,8 @@ export function defaultOptionPackagingId(meta) {
     const matches=choices.filter(row=>[row.text,...(row.aliases || [])].some(value=>key(value) && key(value)===key(meta.sourcePackaging)));
     if(matches.length===1)return matches[0].id;
   }
+  // An existing but ambiguous/unmapped hint still requires an explicit choice.
+  if(String(meta.sourcePackaging || '').trim() || meta.sourcePackagingTypeId!=null)return '';
   return choices.find(row=>row.key==='silo' || defaultPurchaseAmount(row.text)===25000)?.id??'';
 }
 
