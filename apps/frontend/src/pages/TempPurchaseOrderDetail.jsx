@@ -86,7 +86,7 @@ export default function TempPurchaseOrderDetail() {
           <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex || '–'}</Typography>
           <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
           <Typography variant="caption" color="text.secondary">Menge: {formatPurchaseNumber(p.amount)} kg · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>
-          <Typography variant="caption" color="text.secondary">Ursprüngliche Verpackung: {p.originalPackagingType || item.packagingType || '–'} · Verpackung geändert: {p.packagingTypeChanged ? 'Ja' : 'Nein'}</Typography>
+          <Typography variant="caption" color="text.secondary">Ursprüngliche Verpackung: {p.originalPackagingType || item.packagingType || '–'}<br />Verpackung geändert: {p.packagingTypeChanged ? 'Ja' : 'Nein'}</Typography>
           {p.reservedFor && <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>Reserviert für: {p.reservedFor}</Typography>}
           {p.comment && <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>Positionshinweis: {p.comment}</Typography>}
         </Box>)}
