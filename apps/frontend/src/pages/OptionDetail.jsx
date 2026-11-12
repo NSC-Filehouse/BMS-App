@@ -44,12 +44,7 @@ export default function OptionDetail() {
     setOffer(null);
     setPurchasePosition(null);
     apiRequest(`/options/${encodeURIComponent(id)}?${sourceQuery}`)
-      .then((response) => { if (active) {
-        const data=response?.data || null;
-        setOffer(data);
-        const resume=location.state?.optionPurchaseDraft;
-        if(resume)setPurchasePosition(data?.positions?.find(position=>position.id===Number(resume.positionId)) || null);
-      } })
+      .then((response) => { if (active) setOffer(response?.data || null); })
       .catch((cause) => { if (active) setError(cause?.message || t('loading_error')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -132,14 +127,6 @@ export default function OptionDetail() {
       </CardContent></Card>)}
     </>}
     {offer && purchasePosition && !error && <OptionPurchaseDialog key={purchasePosition.id} offer={offer} position={purchasePosition}
-      preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)}
-      initialDraft={Number(location.state?.optionPurchaseDraft?.positionId)===purchasePosition.id?location.state.optionPurchaseDraft:null}
-      onClose={()=>{
-        setPurchasePosition(null);
-        if(location.state?.optionPurchaseDraft){
-          const {optionPurchaseDraft,...state}=location.state;
-          navigate(`${location.pathname}${location.search}${location.hash}`,{replace:true,state});
-        }
-      }} />}
+      preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)} onClose={()=>setPurchasePosition(null)} />}
   </Box>;
 }

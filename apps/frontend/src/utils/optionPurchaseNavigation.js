@@ -1,3 +1,4 @@
-export function optionPurchaseReturnTo(returnTo,positionId,draft) {
-  return {...returnTo,state:{...returnTo.state,optionPurchaseDraft:{...draft,positionId:Number(positionId)}}};
+export function optionPurchaseReturnTo(returnTo,positionId) {
+  const {optionPurchaseDraft,...state}=returnTo.state || {};
+  return {...returnTo,hash:returnTo.hash || `#position-${Number(positionId)}`,state};
 }

@@ -4,6 +4,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from './PurchaseOrderActions.jsx';
+import CompactAddressOption from './CompactAddressOption.jsx';
+import {loadingLocationParts} from '../utils/loadingLocationDisplay.js';
 import { apiRequest } from '../api/client.js';
 import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -26,6 +28,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
   const [manualLocation,setManualLocation]=React.useState(initialOrder.loadingLocationSource==='manual');
+  const [showLocationDetails,setShowLocationDetails]=React.useState(false);
   const update = React.useCallback((fn) => setOrder((previous) => typeof fn === 'function' ? fn(previous) : { ...previous, ...fn }), []);
   React.useEffect(() => { onChange?.(order); }, [order, onChange]);
 
@@ -129,13 +132,20 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        {manualLocation ? <Box sx={{display:'grid',gap:0.5}}><TextField label="Neuer Ladeort" required multiline minRows={3} size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled} inputProps={{maxLength:1000}} onChange={e=>update({loadingLocationText:e.target.value,loadingLocationId:'',loadingLocationSource:'manual'})} /><Button size="small" disabled={disabled} onClick={()=>{setManualLocation(false);update({loadingLocationText:'',loadingLocationId:'',loadingLocationSource:'supplier_order_history'});}}>Bisherigen Ladeort auswählen</Button></Box> : <TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => {
+        {manualLocation ? <Box sx={{display:'grid',gap:0.5}}><TextField label="Neuer Ladeort" required multiline minRows={3} size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled} inputProps={{maxLength:1000}} onChange={e=>update({loadingLocationText:e.target.value,loadingLocationId:'',loadingLocationSource:'manual'})} /><Button size="small" disabled={disabled} onClick={()=>{setManualLocation(false);update({loadingLocationText:'',loadingLocationId:'',loadingLocationSource:'supplier_order_history'});}}>Bisherigen Ladeort auswählen</Button></Box> : <Box sx={{display:'grid',gap:0.5,minWidth:0}}><TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
+          sx={{minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
+          SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,MenuProps:{PaperProps:{sx:{maxHeight:320}}}}}
+          onChange={(e) => {
+          setShowLocationDetails(false);
           if(e.target.value==='__manual__'){setManualLocation(true);update({loadingLocationId:'',loadingLocationText:'',loadingLocationSource:'manual'});}
           else update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:'supplier_order_history' });
         }}>
-          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text} sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{p.text}</MenuItem>)}
+          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
           <MenuItem value="__manual__">Neuen Ladeort eingeben …</MenuItem>
-        </TextField>}
+        </TextField>
+        {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?'Adresse ausblenden':'Adresse anzeigen'}</Button>}
+        {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
+        </Box>}
         <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',

@@ -8,7 +8,7 @@ import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from 
 import {createReturnTo} from '../utils/navigation.js';
 import {optionPurchaseReturnTo} from '../utils/optionPurchaseNavigation.js';
 
-export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, initialDraft, onClose }) {
+export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
   const navigate = useNavigate();
   const location=useLocation();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
@@ -63,24 +63,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       return response;
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
   };
-  React.useEffect(()=>{void(async()=>{
-    const suppliersResponse=await loadSuppliers();
-    const articlesResponse=await loadArticles(initialDraft?.activeArticleQuery || '');
-    if(!initialDraft || !suppliersResponse || !articlesResponse)return;
-    const selectedSupplier=suppliersResponse.data?.find(row=>row.id===initialDraft.supplier?.id) || initialDraft.supplier || null;
-    const selectedArticle=articlesResponse.data?.find(row=>row.articleIndex===initialDraft.article?.articleIndex) || initialDraft.article || null;
-    if(selectedSupplier)setSuppliers(rows=>rows.some(row=>row.id===selectedSupplier.id)?rows:[...rows,selectedSupplier]);
-    if(selectedArticle)setArticles(rows=>rows.some(row=>row.articleIndex===selectedArticle.articleIndex)?rows:[...rows,selectedArticle]);
-    setSupplier(selectedSupplier);setArticle(selectedArticle);
-    setAcknowledgeUnverifiedMfi(initialDraft.acknowledgeUnverifiedMfi===true);
-    setSupplierQuery(initialDraft.supplierQuery || '');setArticleQuery(initialDraft.articleQuery || '');
-    setShowSupplierSearch(initialDraft.showSupplierSearch===true);setShowArticleSearch(initialDraft.showArticleSearch===true);
-    if(initialDraft.quantitySourceHash===suppliersResponse.meta?.quantitySourceHash){
-      setPackagingTypeId(initialDraft.packagingTypeId??defaultOptionPackagingId(suppliersResponse.meta));
-      setTotalAmount(initialDraft.totalAmount??'');setTotalUnit(initialDraft.totalUnit || '');
-      setQuantityEditing(initialDraft.quantityEditing===true);setQuantityConfirmed(initialDraft.quantityConfirmed===true);
-    }
-  })();},[]);
+  React.useEffect(()=>{void(async()=>{await loadSuppliers();await loadArticles();})();},[]);
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
     try {
@@ -101,10 +84,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       navigate('/purchase-cart',{state:{returnTo:cartReturnTo}});
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
   };
-  const cartReturnTo=optionPurchaseReturnTo(returnTo || createReturnTo(location),position.id,{
-    supplier,article,acknowledgeUnverifiedMfi,packagingTypeId,totalAmount,totalUnit,quantityEditing,quantityConfirmed,
-    quantitySourceHash:availability.quantitySourceHash,supplierQuery,articleQuery,activeArticleQuery,showSupplierSearch,showArticleSearch,
-  });
+  const cartReturnTo=optionPurchaseReturnTo(returnTo || createReturnTo(location),position.id);
   const selectedPackaging=availability.packagingTypes?.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;

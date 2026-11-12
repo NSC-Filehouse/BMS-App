@@ -1,4 +1,5 @@
 import React from 'react';
+import CompactAddressOption from '../components/CompactAddressOption.jsx';
 import { BackAwareAccordion as Accordion, DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import {
   AccordionDetails,
@@ -185,36 +186,7 @@ function formatDeliveryAddressParts(addr) {
 
 function renderDeliveryAddressOption(addr) {
   const { primary, secondary } = formatDeliveryAddressParts(addr);
-  return (
-    <Box sx={{ display: 'grid', minWidth: 0, width: '100%' }}>
-      <Typography
-        variant="body2"
-        sx={{
-          fontWeight: 600,
-          lineHeight: 1.2,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {primary}
-      </Typography>
-      {secondary && (
-        <Typography
-          variant="caption"
-          sx={{
-            color: 'text.secondary',
-            lineHeight: 1.2,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {secondary}
-        </Typography>
-      )}
-    </Box>
-  );
+  return <CompactAddressOption primary={primary} secondary={secondary} />;
 }
 
 const PACKAGING_TYPE_LABELS = {

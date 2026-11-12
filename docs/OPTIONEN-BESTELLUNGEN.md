@@ -18,10 +18,9 @@ Anzahl und bittet um die Auswahl eines Artikels; auch ein einzelner Vorschlag
 wird nicht automatisch gewählt. Bei fehlenden Vorschlägen erscheint direkt der
 Hinweis auf die Suche nach Namen oder Artikelnummer. Ein Nachlade-Button entfällt.
 Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
-über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg öffnet wieder dieselbe
-Optionsposition samt Lieferanten-/Artikelauswahl. Die Optionsdaten werden frisch
-geladen; manuelle Mengenbestätigungen werden nur bei unveränderter Mengenquelle
-wiederhergestellt. Der Link verändert keine vorhandenen Warenkorbpositionen.
+über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg führt zur Optionsseite und
+zur betroffenen Position; der Bestelldialog wird nicht automatisch wieder geöffnet.
+Der Link verändert keine vorhandenen Warenkorbpositionen.
 Andere Warenkorbeinstiege behalten ihr eigenes Rücksprungziel inklusive Suchfilter,
 Seite und aufgeklappten Bereichen. Das beim aktuellen Einstieg mitgegebene Ziel
 hat Vorrang vor einem älteren gespeicherten Optionsziel; bei direktem Aufruf gilt
@@ -62,6 +61,11 @@ eine vorhandene Einkaufshistorie oder eine aktive Optionskontenzuordnung im Ziel
 Damit wird z.B. Borealis LF0124 trotz fehlender Kunden-Lieferanten-Verknüpfung erkannt.
 
 Ladeorte werden über die gesamte Einkaufshistorie des Lieferanten angeboten.
+Die Auswahl verwendet dieselbe kompakte Darstellung wie Lieferadressen bei
+Aufträgen: Firma fett, Ort/Adresse klein darunter. Wiederholte Adressüberschriften
+und Transporthinweise erscheinen nicht als riesige Dropdown-Einträge. Über
+"Adresse anzeigen" ist der vollständige gewählte Text einschließlich aller
+Hinweise einsehbar; gespeichert wird weiterhin die unveränderte volle Adresse.
 Ein neuer Ladeort wird als Text mit `tb_loading_location_source='manual'`,
 `tb_loading_location_changed=1` und technischer Adress-ID `NULL` gespeichert.
 
