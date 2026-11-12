@@ -59,8 +59,12 @@ keinen externen Bestellendpunkt, solange dieser nicht existiert.
 Die Obergrenze gilt pro Optionsposition gemeinsam für alle Mandanten/Lieferanten.
 Ein belegter Chargenbestand ist die Gesamtgrenze; sonst gilt die angebotene maximale
 kg-Menge, bei einer Einzelmenge diese. Eine Mindestabnahme ist keine Gesamtmenge.
-Konkrete Truck-Anzahlen werden automatisch berechnet: Standard ist Siloware mit
-25.000 kg je Truck. Bei einem Wechsel zu einer anderen Verpackungsart gelten
+Konkrete Truck-Anzahlen werden automatisch berechnet. Eine eindeutig erkannte
+Verpackungsart wird vorausgewählt: über die normierte Verpackungs-ID oder eine
+eindeutige Bezeichnung aus der Bestellauswahlliste. Reine Vermutungen und Angaben
+wie "Sackware / Big Bags / Octabins" gelten nicht als eindeutige Verpackungsart.
+Nur bei unklarer Verpackung ist Siloware mit 25.000 kg je Truck der Rückfallwert.
+Bei Sackware und anderen Verpackungsarten gelten
 24.750 kg je Truck. Eine Spanne 1–2 Trucks verwendet die Obergrenze 2. Der Dialog
 zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche
 Mengenbestätigung. Bereits belegte kleinere kg-/Chargenmengen begrenzen weiterhin

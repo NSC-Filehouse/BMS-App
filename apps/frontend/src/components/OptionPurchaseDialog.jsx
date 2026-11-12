@@ -112,7 +112,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
         }}><MenuItem value="" disabled>Bitte zuerst wählen</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
-        {availability.sourcePackaging && <Typography variant="caption" color="text.secondary">Verpackungsangabe der Option: {availability.sourcePackaging}</Typography>}
+        {availability.sourcePackaging && <Typography variant="caption" color="text.secondary">Erkannte Verpackung der Option: {availability.sourcePackaging}</Typography>}
+        {availability.sourcePackagingSource==='original' && availability.sourcePackagingEvidence && <Typography variant="caption" color="text.secondary">Originalangabe: {availability.sourcePackagingEvidence}</Typography>}
+        {availability.sourcePackagingSource==='history' && <Typography variant="caption" color="text.secondary">Aus bisherigen Einkäufen dieses Lieferanten und Produkts abgeleitet.</Typography>}
         <Typography variant="body2">{selectedPackaging?`1 Truck = ${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg`:'Bitte die Verpackungsart auswählen. Siloware: 25.000 kg je Truck; andere Arten: 24.750 kg.'}</Typography>
       </Box>}
       {automaticTruck && <Box sx={{display:'grid',gap:1}}>

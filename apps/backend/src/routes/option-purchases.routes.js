@@ -20,6 +20,7 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
     confirmedPackagingTypeId:source.confirmedPackagingTypeId,confirmedTruckCount:source.confirmedTruckCount,
     truckOffer:isTruckOffer(source),offeredTrucks:offeredTruckCount(source),packagingTypes,
     sourcePackaging:source.opp_Verpackung || source.packagingText || '',
+    sourcePackagingTypeId:source.opp_Verpackungsart_id,sourcePackagingSource:source.packagingSource,sourcePackagingEvidence:source.packagingEvidence,
     quantityConfirmationEditable:offeredQuantityKg({...source,confirmedQuantityKg:null})==null,
     quantityText:source.quantityText,truckMin:source.truckMin,truckMax:source.truckMax,maxTruckLoadKg:source.maxTruckLoadKg}});
 }));

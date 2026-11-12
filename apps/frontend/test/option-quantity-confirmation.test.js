@@ -16,6 +16,22 @@ test('truck offers default to silo and recalculate the complete kg total when pa
   assert.equal(defaultOptionPackagingId({truckOffer:false}), '');
 });
 
+test('recognized packaging precedes the silo fallback; uncertain families never select a concrete type',()=>{
+  const packagingTypes=[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',key:'silo',aliases:['Silo/bulk']},{id:80,text:'Big Bags',aliases:['Big Bags']},{id:81,text:'Octa',aliases:['Octabins']}];
+  const meta={truckOffer:true,offeredTrucks:1,packagingTypes,offeredKg:25000,orderedKg:0,sourcePackaging:'Sackware',sourcePackagingTypeId:78,sourcePackagingSource:'original'};
+  assert.equal(defaultOptionPackagingId(meta),78);
+  assert.equal(truckOptionAvailability(meta,packagingTypes[0]).offeredKg,24750);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'history'}),78);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:' Bags '}),78);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Big Bags'}),80);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Octabins'}),81);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Sackware / Big Bags / Octabins'}),79);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Siloware wahrscheinlich',sourcePackagingSource:'rule'}),79);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'unknown'}),79);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:999,sourcePackaging:''}),79);
+  assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:80}),80);
+});
+
 test('choosing kg versus tonnes changes the confirmed total by the correct factor',()=>{
   assert.equal(confirmedTotalKg('24','kg'),24);
   assert.equal(confirmedTotalKg('24','t'),24000);

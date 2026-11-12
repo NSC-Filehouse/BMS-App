@@ -28,6 +28,8 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     CASE WHEN p.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql()} THEN p.opp_MengeBestaetigtVerpackungsartID END AS confirmedPackagingTypeId,
     CASE WHEN p.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql()} THEN p.opp_MengeBestaetigtTrucks END AS confirmedTruckCount,
     TRY_CONVERT(DECIMAL(18,3),JSON_VALUE(p.opp_NormalisierungJson,'$.maxTruckLoadKg')) AS maxTruckLoadKg,
+    JSON_VALUE(p.opp_NormalisierungJson,'$.provenance.packaging.source') AS packagingSource,
+    JSON_VALUE(p.opp_NormalisierungJson,'$.provenance.packaging.evidence') AS packagingEvidence,
     ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
     o.op_MandantID AS sourceMandantId,o.op_Lieferantenname AS supplierName,

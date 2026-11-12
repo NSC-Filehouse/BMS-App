@@ -6,7 +6,7 @@ const express=require('express');
 const {createHttpError}=require('../src/utils');
 let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
 let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false;
-const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
+const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',opp_Verpackungsart_id:78,packagingSource:'original',packagingEvidence:'25kg bags',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const mod={exports:{}};
 const deps={
   express,'../utils':require('../src/utils'),
@@ -68,6 +68,7 @@ test('truck selection calculates kg from source count and packaging without a ma
   truckOffer=true;remainingKg=50000;
   const response=await(await fetch(`${base}/suppliers`)).json();
   assert.equal(response.meta.truckOffer,true);assert.equal(response.meta.offeredTrucks,2);assert.equal(response.meta.packagingTypes.length,2);
+  assert.equal(response.meta.sourcePackagingTypeId,78);assert.equal(response.meta.sourcePackagingSource,'original');assert.equal(response.meta.sourcePackagingEvidence,'25kg bags');
   assert.equal((await select(choice())).status,422);
   const bags=await(await select({...choice(),packagingTypeId:78})).json();
   assert.equal(bags.data.position.offeredKg,49500);assert.equal(bags.data.position.remainingKg,49500);assert.equal(bags.data.position.amount,24750);
