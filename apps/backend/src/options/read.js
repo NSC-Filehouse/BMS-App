@@ -4,7 +4,7 @@ const { appTableSql } = require('../db/app-tables');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
-const { quantityAvailability } = require('./purchase-quantity');
+const { quantityAvailability,confirmedQuantitySql } = require('./purchase-quantity');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -15,7 +15,7 @@ const numeric = value => value == null ? null : Number(value);
 function mapPosition(row,today) {
   const position = {...row};
   for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2',
-    'minimumOrderKg','stockKg','truckMin','truckMax','bagWeightKg','palletWeightKg','mfiTo']) position[key] = numeric(position[key]);
+    'minimumOrderKg','stockKg','truckMin','truckMax','bagWeightKg','palletWeightKg','mfiTo','confirmedQuantityKg']) position[key] = numeric(position[key]);
   position.normalization = row.normalizationJson ? JSON.parse(row.normalizationJson) : null;
   delete position.normalizationJson;
   position.assignmentMfiCheck = row.assignedMfiCheckJson ? JSON.parse(row.assignedMfiCheckJson) : null;
@@ -84,7 +84,7 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
       WHEN r.oab_id IS NULL THEN N'pending'
       WHEN r.oab_QuelldatenGeaendertAm<>p.opp_GeaendertAm OR j.oaa_Revision>r.oab_AnforderungRevision THEN N'updating' ELSE N'ready' END AS matchProcessingStatus,
     p.opp_LernenAngefordert AS learningPending,p.opp_LernregelHinweis AS learningNotice,
-    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,
+    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,${confirmedQuantitySql()} AS confirmedQuantityKg,
     (SELECT COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0)
       FROM ${appTableSql('tempPurchaseOrderPosition')} bp WHERE bp.OptionPositionID=p.opp_id) AS orderedKg
     FROM ${appTableSql('optionPositions')} p JOIN ${appTableSql('options')} o ON o.op_id=p.opp_op_id

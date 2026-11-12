@@ -57,8 +57,21 @@ keinen externen Bestellendpunkt, solange dieser nicht existiert.
 Die Obergrenze gilt pro Optionsposition gemeinsam für alle Mandanten/Lieferanten.
 Ein belegter Chargenbestand ist die Gesamtgrenze; sonst gilt die angebotene maximale
 kg-Menge, bei einer Einzelmenge diese. Eine Mindestabnahme ist keine Gesamtmenge.
-LKW-Zahlen ohne belegtes Gewicht werden nicht in kg umgedeutet. Unklare Gesamtmengen
-können noch nicht bestellt werden.
+LKW-Zahlen ohne belegtes Gewicht werden nicht automatisch in kg umgedeutet. Im
+Dialog kann die angebotene Gesamtmenge in kg eingegeben und ausdrücklich bestätigt
+werden. Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung.
+Eine vorhandene LKW-Obergrenze mit bekanntem maximalem Ladegewicht darf dabei nicht
+überschritten werden. Eine belegte Gesamtmenge aus der Quelle ist nicht überschreibbar.
+
+Die manuelle Bestätigung liegt an der Optionsposition in
+`opp_GesamtmengeBestaetigtKg`, `opp_MengeBestaetigtQuellHash`,
+`opp_MengeBestaetigtVon` und `opp_MengeBestaetigtAm`. Der Hash bindet sie an die
+ursprünglichen Mengenangaben. Der Hintergrundabgleich überschreibt diese Felder
+nicht; bloße Änderungen am Matching-Zeitpunkt entwerten die Bestätigung nicht.
+Veränderte ursprüngliche Mengen verlangen dagegen eine neue Bestätigung.
+Eine manuell bestätigte Gesamtmenge kann im selben Dialog korrigiert werden,
+aber nicht unter bereits verplante Mengen. Konkurrierende Korrekturen werden
+über Quellsperre und Vergleich der vorher bestätigten Menge abgefangen.
 
 Alle gespeicherten Temp-Positionen zählen: Entwurf, Übergabe, ERP-Übernahme und
 Nacharbeit. Auch Positionskopien werden addiert. Eine eigene Änderung schließt

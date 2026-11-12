@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { offeredQuantityKg,quantityAvailability,fitsQuantity } = require('../src/options/purchase-quantity');
+const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql } = require('../src/options/purchase-quantity');
 
 function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
   const calls=[];
@@ -14,7 +14,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
     return {rows:available?[source]:[]};
   };
   const dependencies={
-    '../config':{sql:{database:'central'}},'../db/access':{runSQLQuerySqlServer:async(_db,sql,params)=>{
+    '../config':{sql:{database:'central'}},'../db/access':{withSqlTransaction:async(_db,work)=>work({query}),runSQLQuerySqlServer:async(_db,sql,params)=>{
       calls.push({sql,params});return [{supplierId:'LF0124',supplierKey:'borealis'}];
     },runSQLQueryAccess:async(_db,sql,params)=>{
       calls.push({sql,params});return [
@@ -40,10 +40,40 @@ test('offered total uses batch stock before minimum call-off quantity and never 
   assert.equal(offeredQuantityKg({quantityKind:'minimum-and-stock',quantityMinKg:23375,quantityMaxKg:23375,stockKg:100000}),100000);
   assert.equal(offeredQuantityKg({quantityKind:'minimum-and-stock',quantityMinKg:23375}),null);
   assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2}),null);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2,confirmedQuantityKg:47000}),47000);
+  assert.equal(offeredQuantityKg({quantityMaxKg:25000,confirmedQuantityKg:90000}),25000);
+  assert.equal(offeredQuantityKg({stockKg:0,quantityMaxKg:25000,confirmedQuantityKg:90000}),0);
   assert.equal(offeredQuantityKg({quantityMinKg:10000,quantityMaxKg:25000}),25000);
   assert.deepEqual(quantityAvailability({quantityMaxKg:25000},10000),{offeredKg:25000,orderedKg:10000,remainingKg:15000});
   assert.equal(fitsQuantity(1,0.999,0.001),true);
   assert.equal(fitsQuantity(1,0.999,0.002),false);
+});
+
+test('manual total is saved under the source lock and becomes the shared cap without changing original import fields',async()=>{
+  const f=fixture({orderedKg:1000,sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,quantitySourceHash:'original',confirmedQuantityKg:null}});
+  const result=await f.confirmOptionQuantity(1,10,{totalKg:24750,quantityConfirmed:true,quantitySourceHash:'original'},'NSC');
+  assert.equal(result.offeredKg,24750);assert.equal(result.remainingKg,23750);assert.equal(result.confirmedQuantityKg,24750);
+  assert.match(f.calls[0].sql,/UPDLOCK,HOLDLOCK/);
+  const update=f.calls.find(call=>call.sql.startsWith('UPDATE'));
+  assert.deepEqual(update.params,[24750,'original','NSC',10,1]);
+  assert.doesNotMatch(update.sql,/SET opp_MengeVon|opp_GeaendertAm/);
+  assert.match(confirmedQuantitySql(),/opp_MengeBestaetigtQuellHash=/);
+  assert.doesNotMatch(quantitySourceHashSql(),/opp_MengeVonKg|opp_GeaendertAm|NormalisierungJson/);
+});
+
+test('confirmation requires explicit input and never overwrites a source-backed total or a concurrent decision',async()=>{
+  const f=fixture({sourceOverride:{quantitySourceHash:'original'}});
+  for(const totalKg of [null,0,-1,'abc',Infinity,0.0001])await assert.rejects(f.confirmOptionQuantity(1,10,{totalKg,quantityConfirmed:true},'NSC'),e=>e.details.code==='OPTION_QUANTITY_CONFIRMATION_REQUIRED');
+  await assert.rejects(f.confirmOptionQuantity(1,10,{totalKg:25000,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_CONFIRMATION_REQUIRED');
+  await assert.rejects(f.confirmOptionQuantity(1,10,{totalKg:90000,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_ALREADY_KNOWN');
+  const manual=fixture({orderedKg:24000,sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,confirmedQuantityKg:25000,quantitySourceHash:'original'}});
+  const body={totalKg:23000,quantityConfirmed:true,quantitySourceHash:'original',expectedConfirmedKg:25000};
+  await assert.rejects(manual.confirmOptionQuantity(1,10,{...body,expectedConfirmedKg:null},'NSC'),e=>e.details.code==='OPTION_QUANTITY_CHANGED');
+  await assert.rejects(manual.confirmOptionQuantity(1,10,body,'NSC'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED');
+  await assert.rejects(manual.confirmOptionQuantity(1,10,{...body,quantitySourceHash:'old'},'NSC'),e=>e.details.code==='OPTION_CHANGED');
+  assert.equal(manual.calls.some(call=>call.sql.startsWith('UPDATE')),false);
+  const truck=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:1,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
+  await assert.rejects(truck.confirmOptionQuantity(1,10,{totalKg:25000,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
 });
 
 test('locks source and sums all saved orders across tenants; own edit is excluded once',async()=>{

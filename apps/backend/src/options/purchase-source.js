@@ -1,5 +1,5 @@
 const config = require('../config');
-const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { runSQLQueryAccess, runSQLQuerySqlServer,withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { createHttpError } = require('../utils');
 const { berlinDate } = require('./read');
@@ -7,7 +7,7 @@ const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity'
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
-const { quantityAvailability, fitsQuantity } = require('./purchase-quantity');
+const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql } = require('./purchase-quantity');
 
 const text = value => String(value ?? '').trim();
 function positiveId(value) {
@@ -22,6 +22,9 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
   const result = await execute(`SELECT p.opp_id,p.opp_op_id,p.opp_Artikelname_Lieferant,p.opp_Artikelname,
     p.opp_Verpackung,p.opp_Verpackungsart_id,p.opp_MengeVonKg,p.opp_MengeBisKg,p.opp_Mengenart,
     p.opp_ChargenbestandKg,p.opp_PreisProTonne,p.opp_GeaendertAm,p.opp_AktuellerAbgleichID,
+    p.opp_MengeRohtext AS quantityText,p.opp_LKWAnzahlVon AS truckMin,p.opp_LKWAnzahlBis AS truckMax,
+    TRY_CONVERT(DECIMAL(18,3),JSON_VALUE(p.opp_NormalisierungJson,'$.maxTruckLoadKg')) AS maxTruckLoadKg,
+    ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
     o.op_MandantID AS sourceMandantId,o.op_Lieferantenname AS supplierName,
     o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_Ladeort AS loadingLocation,
@@ -50,6 +53,33 @@ async function loadOptionAvailability(position, excludeOrderId = null, query = n
     FROM ${appTableSql('tempPurchaseOrderPosition')} WHERE OptionPositionID=? AND (? IS NULL OR tbp_tb_id<>?)`,
   [Number(position.opp_id), excludeOrderId, excludeOrderId]);
   return quantityAvailability(position, Number((result.rows || result)[0]?.orderedKg || 0));
+}
+
+async function confirmOptionQuantity(optionId,positionId,body,actor) {
+  const totalKg=Number(body?.totalKg);
+  if(body?.quantityConfirmed!==true || !Number.isFinite(totalKg) || totalKg<=0
+    || !Number.isSafeInteger(Math.round(totalKg*1000)) || Math.abs(totalKg*1000-Math.round(totalKg*1000))>0.00001)
+    throw createHttpError(422,'Bitte die angebotene Gesamtmenge in kg auf Gramm genau eingeben und ausdrücklich bestätigen.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
+  return withSqlTransaction(config.sql.database,async({query})=>{
+    const source=await loadOptionPosition(optionId,positionId,query,{lock:true});
+    if(!body.quantitySourceHash || source.quantitySourceHash!==body.quantitySourceHash)
+      throw createHttpError(422,'Die ursprüngliche Mengenangabe wurde geändert. Bitte die Option erneut laden.',{code:'OPTION_CHANGED'});
+    if(offeredQuantityKg({...source,confirmedQuantityKg:null})!=null)
+      throw createHttpError(422,'Die Option hat bereits eine belegte Gesamtmenge. Diese kann hier nicht überschrieben werden.',{code:'OPTION_QUANTITY_ALREADY_KNOWN'});
+    if(/truck/i.test(source.opp_Mengenart || '') && Number(source.truckMax)>0 && Number(source.maxTruckLoadKg)>0
+      && totalKg>Math.round(Number(source.truckMax)*Number(source.maxTruckLoadKg)*1000)/1000)
+      throw createHttpError(422,'Die bestätigte Gesamtmenge überschreitet die angebotene LKW-Anzahl mit dem maximalen Ladegewicht.',{code:'OPTION_QUANTITY_TRUCK_LIMIT'});
+    const current=source.confirmedQuantityKg==null?null:Number(source.confirmedQuantityKg);
+    if(current!==totalKg && current!==(body.expectedConfirmedKg==null?null:Number(body.expectedConfirmedKg)))
+      throw createHttpError(422,'Die Gesamtmenge wurde zwischenzeitlich von jemand anderem bestätigt. Bitte die Option erneut laden.',{code:'OPTION_QUANTITY_CHANGED'});
+    const before=await loadOptionAvailability(source,null,query);
+    if(totalKg<before.orderedKg)
+      throw createHttpError(422,`Es sind bereits ${before.orderedKg.toLocaleString('de-DE')} kg verplant. Die bestätigte Gesamtmenge darf nicht kleiner sein.`,{code:'OPTION_QUANTITY_EXCEEDED'});
+    await query(`UPDATE ${appTableSql('optionPositions')} SET opp_GesamtmengeBestaetigtKg=?,opp_MengeBestaetigtQuellHash=?,
+      opp_MengeBestaetigtVon=?,opp_MengeBestaetigtAm=SYSUTCDATETIME() WHERE opp_id=? AND opp_op_id=?`,
+    [totalKg,source.quantitySourceHash,text(actor).slice(0,100),positiveId(positionId),positiveId(optionId)]);
+    return {...quantityAvailability({...source,confirmedQuantityKg:totalKg},before.orderedKg),confirmedQuantityKg:totalKg,quantitySourceHash:source.quantitySourceHash};
+  });
 }
 
 async function supplierCandidates(database, position, { q = '', preferredSupplierId = '' } = {}) {
@@ -129,4 +159,4 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null) {
   }
 }
 
-module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,supplierCandidates,purchaseCandidates,validateOptionArticle,assertOptionQuantities };
+module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,validateOptionArticle,assertOptionQuantities };

@@ -106,6 +106,7 @@ export default function OptionDetail() {
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0} sx={{mb:1}}>Bestellen</Button>
         {position.remainingKg!=null && <InfoRow label="Noch verfügbare Optionsmenge" value={`${optionNumber(position.remainingKg)} kg`} />}
+        {position.confirmedQuantityKg!=null && <InfoRow label="Manuell bestätigte Gesamtmenge" value={`${optionNumber(position.confirmedQuantityKg)} kg`} />}
         {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
         {position.priceNeedsReview && <InfoRow label={t('option_raw_price_basis')}
           value={`${optionNumber(position.price, 2)} ${position.priceUnit || position.currency || ''}`} />}

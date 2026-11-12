@@ -2,9 +2,10 @@ const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
-const { loadOptionPosition, loadOptionAvailability, supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
+const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
 const { loadPurchaseOptions, loadSupplierTerms } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
+const {offeredQuantityKg}=require('../options/purchase-quantity');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
@@ -13,7 +14,14 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId);
   const data = await supplierCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),preferredSupplierId:req.query.supplierId});
   const availability = await loadOptionAvailability(source);
-  sendEnvelope(res,{data,meta:{...availability,supplierName:source.supplierName}});
+  sendEnvelope(res,{data,meta:{...availability,supplierName:source.supplierName,
+    confirmedQuantityKg:source.confirmedQuantityKg,quantitySourceHash:source.quantitySourceHash,
+    quantityConfirmationEditable:offeredQuantityKg({...source,confirmedQuantityKg:null})==null,
+    quantityText:source.quantityText,truckMin:source.truckMin,truckMax:source.truckMax,maxTruckLoadKg:source.maxTruckLoadKg}});
+}));
+router.post(`${base}/quantity`, ...guard, asyncHandler(async(req,res)=>{
+  const data=await confirmOptionQuantity(req.params.id,req.params.positionId,req.body,req.userIdentity?.shortCode || req.userEmail || 'APP');
+  sendEnvelope(res,{data});
 }));
 router.get(`${base}/articles`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId);

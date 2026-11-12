@@ -4,9 +4,11 @@ $connection=[System.Data.SqlClient.SqlConnection]::new("Server=$Server;Database=
 try {
   $connection.Open()
   $command=$connection.CreateCommand();$command.CommandTimeout=120
-  $migration=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../sql/add_option_purchase_order.sql') -Raw
-  foreach($batch in [regex]::Split($migration,'(?im)^\s*GO\s*$')){
-    if($batch.Trim()){$command.CommandText=$batch;[void]$command.ExecuteNonQuery()}
+  foreach($file in @('add_option_purchase_order.sql','add_option_quantity_confirmation.sql')){
+    $migration=Get-Content -LiteralPath (Join-Path $PSScriptRoot "../sql/$file") -Raw
+    foreach($batch in [regex]::Split($migration,'(?im)^\s*GO\s*$')){
+      if($batch.Trim()){$command.CommandText=$batch;[void]$command.ExecuteNonQuery()}
+    }
   }
   $command.CommandText="SELECT ORIGINAL_LOGIN() AS windowsLogin,COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'OptionID') AS optionIdBytes,COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'OptionPositionID') AS optionPositionIdBytes"
   $reader=$command.ExecuteReader();$table=[System.Data.DataTable]::new();$table.Load($reader)

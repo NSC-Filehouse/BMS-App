@@ -60,10 +60,33 @@ async function main() {
     await assert.rejects(assertOptionQuantities(query,[{...line,amount:before.remainingKg-amount+0.001}],orders[0]),e=>e.details?.code==='OPTION_QUANTITY_EXCEEDED');
     const pair=(await db.query('SELECT OptionID,OptionPositionID FROM BMSApp.tbl_Temp_Best_Position WHERE tbp_tb_id=?',[orders[0]]))[0];
     assert.equal(Number(pair.OptionID),Number(ref.op_id));assert.equal(Number(pair.OptionPositionID),Number(ref.opp_id));
+    const unclear=await db.query(`SELECT TOP 1 o.op_id,p.opp_id FROM BMSApp.tblOptionenPositionen p
+      JOIN BMSApp.tblOptionen o ON o.op_id=p.opp_op_id WHERE o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
+      AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
+      AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+      AND p.opp_MengeVonKg IS NULL AND p.opp_MengeBisKg IS NULL AND p.opp_ChargenbestandKg IS NULL
+      AND p.opp_GesamtmengeBestaetigtKg IS NULL ORDER BY p.opp_id`,[today,today]);
+    if(unclear.length){
+      const candidate=unclear[0];
+      const unknown=await loadOptionPosition(candidate.op_id,candidate.opp_id,query,{lock:true});
+      assert.equal((await loadOptionAvailability(unknown,null,query)).offeredKg,null);
+      await db.query(`UPDATE BMSApp.tblOptionenPositionen SET opp_GesamtmengeBestaetigtKg=24000,opp_MengeBestaetigtQuellHash=?,
+        opp_MengeBestaetigtVon=N'CODEX_CHECK',opp_MengeBestaetigtAm=SYSUTCDATETIME() WHERE opp_id=?`,[unknown.quantitySourceHash,candidate.opp_id]);
+      let confirmed=await loadOptionPosition(candidate.op_id,candidate.opp_id,query);
+      assert.equal((await loadOptionAvailability(confirmed,null,query)).offeredKg,24000);
+      await assertOptionQuantities(query,[{optionId:Number(candidate.op_id),optionPositionId:Number(candidate.opp_id),amount:24000}]);
+      await assert.rejects(assertOptionQuantities(query,[{optionId:Number(candidate.op_id),optionPositionId:Number(candidate.opp_id),amount:24000.001}]),e=>e.details?.code==='OPTION_QUANTITY_EXCEEDED');
+      await db.query('UPDATE BMSApp.tblOptionenPositionen SET opp_GeaendertAm=DATEADD(MILLISECOND,1,opp_GeaendertAm) WHERE opp_id=?',[candidate.opp_id]);
+      confirmed=await loadOptionPosition(candidate.op_id,candidate.opp_id,query);
+      assert.equal((await loadOptionAvailability(confirmed,null,query)).offeredKg,24000,'Background timestamps do not discard the confirmation');
+      await db.query("UPDATE BMSApp.tblOptionenPositionen SET opp_MengeRohtext=CONCAT(LEFT(opp_MengeRohtext,450),N' changed smoke source') WHERE opp_id=?",[candidate.opp_id]);
+      confirmed=await loadOptionPosition(candidate.op_id,candidate.opp_id,query);
+      assert.equal((await loadOptionAvailability(confirmed,null,query)).offeredKg,null,'A changed original quantity requires confirmation again');
+    }
     await db.rollback();open=false;
     const remaining=(await db.query('SELECT COUNT(*) AS countRows FROM BMSApp.tbl_Temp_Bestellung WHERE tb_id IN(?,?)',orders))[0];
     assert.equal(Number(remaining.countRows),0);
-    console.log(JSON.stringify({windowsLogin:login,passed:'Concurrent source lock, cross-mandant totals, own-edit exclusion, excess rejection, references and rollback',testRowsRemaining:0}));
+    console.log(JSON.stringify({windowsLogin:login,passed:'Concurrent source lock, cross-mandant totals, own-edit exclusion, excess rejection, manual total and source hash invalidation, references and rollback',testRowsRemaining:0}));
   } finally {
     if(open)await db.rollback();
     await db.close();

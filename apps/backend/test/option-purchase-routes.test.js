@@ -5,7 +5,7 @@ const path=require('node:path');
 const express=require('express');
 const {createHttpError}=require('../src/utils');
 let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
-let price=987,expired=false,remainingKg=10000;
+let price=987,expired=false,remainingKg=10000,quantityRequests=[];
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const mod={exports:{}};
 const deps={
@@ -13,6 +13,7 @@ const deps={
   '../middlewares/mandant.middleware':{requireMandant:(req,res,next)=>{req.database={firmaId:10};req.userIdentity=identity;next();}},
   '../middlewares/pilot-feature.middleware':require('../src/middlewares/pilot-feature.middleware'),
   '../options/purchase-source':{
+    confirmOptionQuantity:async(id,positionId,body,actor)=>{quantityRequests.push({id,positionId,body,actor});return {offeredKg:25000,orderedKg:0,remainingKg:25000,confirmedQuantityKg:25000};},
     loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price};},
     loadOptionAvailability:async()=>({offeredKg:25000,orderedKg:25000-remainingKg,remainingKg}),
     supplierCandidates:async(database)=>{assert.equal(database.firmaId,10);return [{id:'LF0124',name:'Borealis Polymers N.V.'}];},
@@ -21,13 +22,14 @@ const deps={
   },
   '../db/purchase-order-values':{loadPurchaseOptions:async()=>({incoterms:[{id:1,text:'FCA'}]}),loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
   '../options/price-plausibility':require('../src/options/price-plausibility'),
+  '../options/purchase-quantity':require('../src/options/purchase-quantity'),
 };
 new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/routes/option-purchases.routes.js'),'utf8'))(name=>{assert.ok(name in deps,name);return deps[name];},mod);
 const app=express();app.use(express.json());app.use(mod.exports);app.use((e,req,res,next)=>res.status(e.status||500).json({error:{message:e.message,code:e.details?.code}}));
 let server,base;
 test.before(async()=>{server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});base=`http://127.0.0.1:${server.address().port}/options/1/positions/10/purchase`;});
 test.after(()=>new Promise(resolve=>server.close(resolve)));
-test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;});
+test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;quantityRequests=[];});
 const select=body=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true});
 
@@ -54,4 +56,11 @@ test('all purchase selection endpoints enforce existing feature access',async()=
   assert.equal((await fetch(`${base}/suppliers`)).status,403);
   assert.equal((await fetch(`${base}/articles`)).status,403);
   assert.equal((await select(choice())).status,403);
+  assert.equal((await fetch(`${base}/quantity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({totalKg:25000,quantityConfirmed:true})})).status,403);
+  assert.equal(quantityRequests.length,0);
+});
+test('quantity confirmation uses the same guarded option context and authenticated actor',async()=>{
+  const response=await fetch(`${base}/quantity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({totalKg:25000,quantityConfirmed:true,actor:'forged'})});
+  assert.equal(response.status,200);assert.equal((await response.json()).data.confirmedQuantityKg,25000);
+  assert.equal(quantityRequests[0].id,'1');assert.equal(quantityRequests[0].positionId,'10');assert.equal(quantityRequests[0].actor,'NSC');
 });

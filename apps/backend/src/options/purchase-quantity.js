@@ -2,12 +2,28 @@ const number = value => value == null || value === '' || !Number.isFinite(Number
 
 function offeredQuantityKg(position) {
   const stock = number(position.stockKg ?? position.opp_ChargenbestandKg);
-  if (stock != null && stock > 0) return stock;
+  if (stock != null && stock >= 0) return stock;
   const kind = position.quantityKind ?? position.opp_Mengenart;
-  if (kind === 'minimum-and-stock') return null;
   const maximum = number(position.quantityMaxKg ?? position.opp_MengeBisKg);
   const minimum = number(position.quantityMinKg ?? position.opp_MengeVonKg);
-  return maximum > 0 ? maximum : minimum > 0 ? minimum : null;
+  if (kind !== 'minimum-and-stock' && (maximum > 0 || minimum > 0)) return maximum > 0 ? maximum : minimum;
+  const confirmed = number(position.confirmedQuantityKg);
+  return confirmed > 0 ? confirmed : null;
+}
+
+// Only original quantity fields are hashed. Background matching/normalization
+// must not silently discard a manual confirmation of an unchanged source.
+function quantitySourceHashSql(alias = 'p') {
+  return `CONVERT(VARCHAR(64),HASHBYTES('SHA2_256',CONCAT(N'quantity-v1|',
+    COALESCE(CONVERT(NVARCHAR(50),${alias}.opp_MengeVon),N''),N'|',
+    COALESCE(CONVERT(NVARCHAR(50),${alias}.opp_MengeBis),N''),N'|',
+    COALESCE(${alias}.opp_Mengeneinheit,N''),N'|',COALESCE(${alias}.opp_MengeRohtext,N''),N'|',
+    COALESCE(CONVERT(NVARCHAR(50),${alias}.opp_ChargenbestandRoh),N''),N'|',
+    COALESCE(CONVERT(NVARCHAR(50),${alias}.opp_MindestabnahmeRoh),N''))),2)`;
+}
+
+function confirmedQuantitySql(alias = 'p') {
+  return `CASE WHEN ${alias}.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql(alias)} THEN ${alias}.opp_GesamtmengeBestaetigtKg END`;
 }
 
 function quantityAvailability(position, orderedKg = 0) {
@@ -20,4 +36,4 @@ function fitsQuantity(offeredKg, orderedKg, requestedKg) {
   return offeredKg != null && Math.round(orderedKg * 1000) + Math.round(requestedKg * 1000) <= Math.round(offeredKg * 1000);
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity };
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql };
