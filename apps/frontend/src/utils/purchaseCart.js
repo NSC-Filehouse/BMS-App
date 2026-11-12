@@ -79,8 +79,17 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   if (context.pendingPayload) throw new Error('Bitte zuerst den Speicherstatus im Bestellwarenkorb prüfen.');
   const incoming = Array.isArray(items) ? items : [];
   const supplier = supplierKey(current[0] || incoming[0]);
-  if (!supplier || incoming.some((item) => supplierKey(item) !== supplier)) {
-    throw new Error('Der Bestellwarenkorb kann nur Artikel eines Lieferanten enthalten.');
+  if (!supplier) {
+    throw new Error(current.length?'Bei den Artikeln im Bestellwarenkorb fehlt die Lieferantenzuordnung. Bitte den Warenkorb prüfen.':'Bitte zuerst einen Lieferanten auswählen.');
+  }
+  if (incoming.some((item) => supplierKey(item) !== supplier)) {
+    if(current.length){
+      const name=String(current[0].supplierName || '').trim();
+      const id=String(current[0].supplierId).trim();
+      const existing=name?`„${name}“ (${id})`:id;
+      throw new Error(`Im Bestellwarenkorb liegen bereits Artikel des Lieferanten ${existing}. Bitte zuerst diese Bestellung abschließen oder den Warenkorb leeren.`);
+    }
+    throw new Error('Die ausgewählten Artikel gehören zu verschiedenen Lieferanten. Bitte die Bestellung für jeden Lieferanten einzeln anlegen.');
   }
   if (new Set([...current, ...incoming].map(purchaseArticleKey)).size > 1) {
     throw new Error('Pro Bestellung ist nur eine Artikelart möglich. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');

@@ -68,13 +68,15 @@ test('re-adding preserves edits and independent copies instead of collapsing the
 });
 
 test('rejects different suppliers and article types atomically while retaining same-article copies', () => {
-  addPurchaseCartItems([item('A')]);
+  addPurchaseCartItems([{...item('A'),supplierName:'Borealis'}]);
   const before = getPurchaseCartItems();
-  assert.throws(() => addPurchaseCartItems([item('B'), { ...item('C'), supplierId: 'other' }]));
+  assert.throws(() => addPurchaseCartItems([item('B'), { ...item('C'), supplierId: 'other' }]),/bereits Artikel des Lieferanten „Borealis“ \(42\).*abschließen oder den Warenkorb leeren/);
   assert.deepEqual(getPurchaseCartItems(), before);
   assert.throws(() => addPurchaseCartItems([item('B')]), /nur eine Artikelart/);
   assert.deepEqual(getPurchaseCartItems(), before);
   clearPurchaseCart();
+  assert.throws(()=>addPurchaseCartItems([item('A'),{...item('A'),supplierId:'other'}]),/verschiedenen Lieferanten/);
+  assert.deepEqual(getPurchaseCartItems(),[]);
   savePurchaseCartContext({ header: { packagingType: 'Siloware' } });
   addPurchaseCartItems([item('B')]);
   assert.equal(getPurchaseCartItems()[0].amount, 24750);

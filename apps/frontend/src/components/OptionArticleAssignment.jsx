@@ -81,7 +81,7 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
     </Alert>}
     <Box sx={{display:'grid',gridTemplateColumns:readOnly?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))',gap:1}}>
       <Button size="small" variant="outlined" disabled={busy} onClick={() => loadCandidates()} sx={{minWidth:0,whiteSpace:'nowrap'}}>{t('option_show_candidates')}</Button>
-      {!readOnly && <Button size="small" disabled={busy} onClick={recalculate} sx={{minWidth:0,whiteSpace:'nowrap'}}>{en ? 'Reload' : 'Neu laden'}</Button>}
+      {!readOnly && <Button size="small" variant="outlined" disabled={busy} onClick={recalculate} sx={{minWidth:0,whiteSpace:'nowrap'}}>{en ? 'Reload' : 'Neu laden'}</Button>}
     </Box>
     <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
       <TextField size="small" fullWidth value={query} onChange={event => setQuery(event.target.value)}
