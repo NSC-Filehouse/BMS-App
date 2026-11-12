@@ -143,7 +143,10 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
-        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
+        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>
+          {order.deliveryTermId && !options.incoterms.some(p=>String(p.id)===String(order.deliveryTermId)) &&
+            <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || 'Gespeicherter Incoterm'}</MenuItem>}
+          {options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
         <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
           sx={{flex:1,minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
           SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,MenuProps:{PaperProps:{sx:{maxHeight:320}}}}}
@@ -152,7 +155,10 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           const selected=locationOptions.find(item=>same(item.text,e.target.value));
           update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:selected?.source==='manual'?'manual':'supplier_order_history' });
         }}>
-          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
+          <MenuItem value="" disabled>Bitte wählen</MenuItem>
+          {order.loadingLocationText && !locationOptions.some(p=>p.text===order.loadingLocationText) &&
+            <MenuItem value={order.loadingLocationText} disabled><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
+          {locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
         </TextField><IconButton size="small" color="primary" aria-label="Neuen Ladeort hinzufügen" title="Neuen Ladeort hinzufügen" disabled={disabled} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
         {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?'Adresse ausblenden':'Adresse anzeigen'}</Button>}
         {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
@@ -161,7 +167,10 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
             positions: previous.positions.map((p) => isNew && !p.amountTouched && p.optionId==null ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
-        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.packagingTypes.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
+        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>
+          {order.packagingTypeId && !options.packagingTypes.some(p=>String(p.id)===String(order.packagingTypeId)) &&
+            <MenuItem value={order.packagingTypeId} disabled>{order.packagingType || 'Gespeicherte Verpackungsart'}</MenuItem>}
+          {options.packagingTypes.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
       </Box>
       <TextField label="Sonstiges" multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
