@@ -96,6 +96,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     <DialogTitle>Bestellung (Option)</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
       <Typography>{position.articleName}</Typography>
+      {suppliers.length>1 && <Typography variant="body2">Lieferant nicht eindeutig, bitte wählen.</Typography>}
       <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
       <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
