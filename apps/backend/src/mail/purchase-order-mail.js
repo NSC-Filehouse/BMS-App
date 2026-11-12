@@ -47,6 +47,7 @@ function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantSho
       `Position ${position?.lineNo || index + 1}`,
       line('Material', position?.article),
       line('Artikelindex', position?.articleIndex),
+      ...(audience==='cs' && position?.optionId!=null ? [line('Option-ID',position.optionId),line('Optionsposition',position.optionPositionId)] : []),
       line('Menge', `${number(position?.amount)} ${text(position?.unit) || 'kg'}`),
       line('EK', `${number(position?.purchasePrice)} ${text(position?.currency) || 'EUR'}`),
       line('Gewünschter Liefertermin', date(position?.requestedDeliveryDate)),

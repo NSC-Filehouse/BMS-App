@@ -4,6 +4,7 @@ const { appTableSql } = require('../db/app-tables');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
+const { quantityAvailability } = require('./purchase-quantity');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -32,9 +33,10 @@ function mapPosition(row,today) {
   position.snapshotId = row.snapshotId == null ? null : String(row.snapshotId);
   position.candidateCount = Number(row.candidateCount || 0);
   position.matchStatus = row.matchStatus || 'unmatched';
+  Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0)));
   return position;
 }
-async function loadOffers(companyIds = [], { includeExpired = false, optionId = null } = {}) {
+async function loadOffers(companyIds = [], { optionId = null } = {}) {
   if (companyIds && !companyIds.length) return [];
   // null selects the shared pool; arrays retain explicit source filtering.
   const today = berlinDate();
@@ -48,7 +50,7 @@ async function loadOffers(companyIds = [], { includeExpired = false, optionId = 
     o.op_NachverhandelbarQuelle AS negotiableEvidence
     FROM ${appTableSql('options')} o WHERE ${scope}
       AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
-      AND o.op_GeloeschtAm IS NULL AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
     ORDER BY o.op_GueltigBis,o.op_id DESC`, [...scopeParams, today, ...(optionId == null ? [] : [optionId])]);
   if (!heads.length) return [];
   // Scope positions through their header, without a potentially >2100-ID IN list.
@@ -82,14 +84,16 @@ async function loadOffers(companyIds = [], { includeExpired = false, optionId = 
       WHEN r.oab_id IS NULL THEN N'pending'
       WHEN r.oab_QuelldatenGeaendertAm<>p.opp_GeaendertAm OR j.oaa_Revision>r.oab_AnforderungRevision THEN N'updating' ELSE N'ready' END AS matchProcessingStatus,
     p.opp_LernenAngefordert AS learningPending,p.opp_LernregelHinweis AS learningNotice,
-    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil
+    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,
+    (SELECT COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0)
+      FROM ${appTableSql('tempPurchaseOrderPosition')} bp WHERE bp.OptionPositionID=p.opp_id) AS orderedKg
     FROM ${appTableSql('optionPositions')} p JOIN ${appTableSql('options')} o ON o.op_id=p.opp_op_id
     LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
     WHERE ${scope} AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
-      AND o.op_GeloeschtAm IS NULL AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
-      ${includeExpired ? '' : 'AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?'}
-    ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), ...(includeExpired ? [] : [today])]);
+      AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+    ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);
   const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
     supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));

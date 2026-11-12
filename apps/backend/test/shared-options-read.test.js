@@ -31,7 +31,8 @@ test('an explicit source scope still binds IDs; empty scopes never become global
   await loadOffers([3, 19], { includeExpired: true });
   assert.deepEqual(calls[0].params.slice(0, 2), [3, 19]);
   assert.match(calls[0].sql, /WHERE o\.op_MandantID IN \(\?,\?\)/);
-  assert.doesNotMatch(calls[1].sql, /COALESCE\(p\.opp_GueltigBis,o\.op_GueltigBis\)>=\?/);
+  assert.match(calls[1].sql, /COALESCE\(p\.opp_GueltigBis,o\.op_GueltigBis\)>=\?/);
+  assert.match(calls[1].sql, /o\.op_IstDemo=0/);
   calls = [];
   assert.deepEqual(await loadOffers([]), []);
   assert.deepEqual(await loadOffers(), []);

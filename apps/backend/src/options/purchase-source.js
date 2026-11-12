@@ -1,0 +1,132 @@
+const config = require('../config');
+const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { appTableSql } = require('../db/app-tables');
+const { createHttpError } = require('../utils');
+const { berlinDate } = require('./read');
+const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity');
+const { articleByIndex, candidatesFor } = require('./matching-service');
+const { articleSelect } = require('./article-catalog');
+const { checkMfi } = require('./mfi-compatibility');
+const { quantityAvailability, fitsQuantity } = require('./purchase-quantity');
+
+const text = value => String(value ?? '').trim();
+function positiveId(value) {
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id < 1) throw createHttpError(400, 'Ungültige Optionsreferenz.', { code: 'OPTION_REFERENCE_INVALID' });
+  return id;
+}
+
+async function loadOptionPosition(optionId, positionId, query = null, { lock = false } = {}) {
+  const execute = query || (async (sql, params) => ({ rows: await runSQLQuerySqlServer(config.sql.database, sql, params) }));
+  const today = berlinDate();
+  const result = await execute(`SELECT p.opp_id,p.opp_op_id,p.opp_Artikelname_Lieferant,p.opp_Artikelname,
+    p.opp_Verpackung,p.opp_Verpackungsart_id,p.opp_MengeVonKg,p.opp_MengeBisKg,p.opp_Mengenart,
+    p.opp_ChargenbestandKg,p.opp_PreisProTonne,p.opp_GeaendertAm,p.opp_AktuellerAbgleichID,
+    CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
+    o.op_MandantID AS sourceMandantId,o.op_Lieferantenname AS supplierName,
+    o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_Ladeort AS loadingLocation,
+    o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,
+    p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
+    COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,
+    r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt,
+    p.opp_QuellaufbereitungJson AS sourceMeasurementsJson
+    FROM ${appTableSql('optionPositions')} p ${lock ? 'WITH(UPDLOCK,HOLDLOCK)' : ''}
+    JOIN ${appTableSql('options')} o ${lock ? 'WITH(HOLDLOCK)' : ''} ON o.op_id=p.opp_op_id
+    LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
+    WHERE o.op_id=? AND p.opp_id=? AND o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
+      AND o.op_Pruefstatus IN(N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
+      AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
+  [positiveId(optionId), positiveId(positionId), today, today]);
+  const row = (result.rows || result)[0];
+  if (!row) throw createHttpError(422, 'Diese Option ist nicht mehr gültig oder verfügbar.', { code: 'OPTION_NOT_AVAILABLE' });
+  return row;
+}
+
+async function loadOptionAvailability(position, excludeOrderId = null, query = null) {
+  const execute = query || (async (sql, params) => ({ rows: await runSQLQuerySqlServer(config.sql.database, sql, params) }));
+  // All saved temp rows count, including drafts, rework and ERP-accepted rows.
+  // Do not add ERP positions again: accepted temp rows already represent them.
+  const result = await execute(`SELECT COALESCE(SUM(tbp_amount * CASE WHEN LOWER(tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0) AS orderedKg
+    FROM ${appTableSql('tempPurchaseOrderPosition')} WHERE OptionPositionID=? AND (? IS NULL OR tbp_tb_id<>?)`,
+  [Number(position.opp_id), excludeOrderId, excludeOrderId]);
+  return quantityAvailability(position, Number((result.rows || result)[0]?.orderedKg || 0));
+}
+
+async function supplierCandidates(database, position, { q = '', preferredSupplierId = '' } = {}) {
+  const accounts = await runSQLQuerySqlServer(config.sql.database, `SELECT olk_LieferantenNummer AS supplierId,
+    olk_Lieferantenkennung AS supplierKey FROM BMSApp.tblOptionenLieferantenKonto WHERE olk_MandantID=? AND olk_Aktiv=1`, [Number(database.firmaId)]);
+  const rows = await runSQLQueryAccess(database, `SELECT k.kd_KdNR AS id,k.kd_Name1 AS name,k.kd_Name2 AS name2,
+    k.kd_Ort AS city,k.kd_HomePage AS website,k.kd_eMail AS email,
+    CASE WHEN EXISTS(SELECT 1 FROM dbo.tblBestellung b WHERE b.be_KdNr=k.kd_KdNR) THEN 1 ELSE 0 END AS hasPurchases
+    FROM dbo.tblKunden k WHERE (EXISTS(SELECT 1 FROM dbo.tblKun_Lieferanten l WHERE l.kdLi_Lieferanten_Nr=k.kd_KdNR)
+      OR EXISTS(SELECT 1 FROM dbo.tblBestellung b WHERE b.be_KdNr=k.kd_KdNR)
+      OR k.kd_KdNR IN(SELECT [value] FROM OPENJSON(?)))
+    AND CONCAT(COALESCE(k.kd_Name1,N''),N' ',COALESCE(k.kd_Name2,N'')) NOT LIKE N'%gelöscht%'
+    ORDER BY k.kd_Name1,k.kd_KdNR`, [JSON.stringify(accounts.map(a => a.supplierId))]);
+  const key = supplierKey(position.supplierName, position.supplierReplyTo || position.supplierKey);
+  const search = text(q).toLocaleLowerCase('de-DE');
+  return rows.flatMap(row => {
+    const mapped = accounts.some(a => text(a.supplierId).toLowerCase() === text(row.id).toLowerCase()
+      && (knownSupplier(a.supplierKey)?.key || a.supplierKey) === key);
+    const identified = [row.name, row.name2, row.website, row.email].filter(Boolean)
+      .some(name => supplierKey(name) === key || companyKey(name) === companyKey(position.supplierName));
+    const plausible = key !== 'unknown' && (mapped || identified);
+    if (search ? !`${row.id} ${row.name} ${row.name2 || ''} ${row.city || ''}`.toLocaleLowerCase('de-DE').includes(search) : !plausible) return [];
+    return [{ id: text(row.id), name: text(row.name), name2: text(row.name2), city: text(row.city), plausible,
+      preferred: plausible && text(row.id).toLowerCase() === text(preferredSupplierId).toLowerCase(),
+      reason: mapped ? 'Gespeicherte Lieferantenzuordnung' : identified ? 'Lieferantenidentität passt zur Option' : 'Manuelle Lieferantenauswahl' }];
+  }).sort((a,b) => Number(b.preferred)-Number(a.preferred) || Number(b.plausible)-Number(a.plausible) || a.name.localeCompare(b.name,'de'));
+}
+
+async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30 } = {}) {
+  const input = { id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
+    candidateCount:position.candidateCount,matchVersion:position.matchVersion,matchCalculatedAt:position.matchCalculatedAt,
+    mfi: position.mfi,mfiTo: position.mfiTo,mfiTestCondition: position.mfiTestCondition,sourceMeasurementsJson: position.sourceMeasurementsJson };
+  if (q || Number(database.firmaId) === Number(position.sourceMandantId)) {
+    return candidatesFor(database, input, { q, page, pageSize });
+  }
+  // Source-mandant article indexes are never accepted as target-mandant proposals.
+  // Exact product identities in the active catalog are safe suggestions; further
+  // target articles are available through the existing manual search.
+  const names = [position.opp_Artikelname_Lieferant, position.opp_Artikelname].map(text).filter(Boolean);
+  const rows = await runSQLQueryAccess(database, `${articleSelect()}
+    AND (a.agA_Artikelname IN(SELECT [value] FROM OPENJSON(?)) OR a.agA_Artikelname_Lieferant IN(SELECT [value] FROM OPENJSON(?)))
+    ORDER BY a.agA_Artikelname,a.agA_Artikelindex OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
+  [JSON.stringify(names),JSON.stringify(names),(page-1)*pageSize,pageSize]);
+  return { data: rows.map(article => ({ ...article, mfiCheck: checkMfi(input, article), reason: 'Passender Produktname im aktiven Mandanten' })), total: rows.length };
+}
+
+async function validateOptionArticle(database, position, line) {
+  const article = await articleByIndex(database, text(line.articleIndex));
+  if (!article) throw createHttpError(422, 'Der ausgewählte Artikel ist nicht aktiv oder nicht vorhanden.', { code: 'OPTION_ARTICLE_NOT_FOUND' });
+  const mfi = checkMfi(position, article);
+  if (mfi.blocked) throw createHttpError(422, `Artikel passt technisch nicht zur Option: ${mfi.reasons.join('; ')}`, { code: 'ARTICLE_MFI_EXCLUDED' });
+  if (!mfi.complete && line.acknowledgeUnverifiedMfi !== true) throw createHttpError(422, 'Bitte die ungeprüfte MFI-Eignung ausdrücklich bestätigen.', { code: 'ARTICLE_MFI_UNVERIFIED' });
+  return article;
+}
+
+async function assertOptionQuantities(query, positions, excludeOrderId = null) {
+  const grouped = new Map();
+  for (const line of positions.filter(p => p.optionId != null)) {
+    const id = positiveId(line.optionPositionId);
+    const prior = grouped.get(id);
+    if (prior && prior.optionId !== line.optionId) throw createHttpError(422, 'Widersprüchliche Optionsreferenzen.');
+    if (!Number.isSafeInteger(Math.round(line.amount * 1000)) || Math.abs(line.amount*1000-Math.round(line.amount*1000))>0.00001)
+      throw createHttpError(422, 'Optionsmengen müssen auf Gramm genau angegeben werden.');
+    grouped.set(id, { optionId: line.optionId, amount: (prior?.amount || 0) + line.amount });
+  }
+  // Deterministic source locks serialize competing orders across ALL mandants.
+  for (const [id, request] of [...grouped].sort(([a],[b]) => a-b)) {
+    const source = await loadOptionPosition(request.optionId,id,query,{lock:true});
+    if (positions.some(line => line.optionPositionId===id && line.optionSourceChanged
+      && line.optionSourceChanged!==source.sourceVersion))
+      throw createHttpError(422,'Die Option wurde zwischenzeitlich geändert. Bitte erneut laden.',{code:'OPTION_CHANGED'});
+    const available = await loadOptionAvailability(source,excludeOrderId,query);
+    if (available.offeredKg == null) throw createHttpError(422, 'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt. Die Option kann noch nicht bestellt werden.', { code: 'OPTION_QUANTITY_UNCONFIRMED' });
+    if (!fitsQuantity(available.offeredKg,available.orderedKg,request.amount)) throw createHttpError(422,
+      `Optionsmenge überschritten. Noch verfügbar: ${available.remainingKg.toLocaleString('de-DE')} kg.`,
+      { code: 'OPTION_QUANTITY_EXCEEDED', optionPositionId:id,...available });
+  }
+}
+
+module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,supplierCandidates,purchaseCandidates,validateOptionArticle,assertOptionQuantities };

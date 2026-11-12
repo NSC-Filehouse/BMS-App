@@ -17,6 +17,19 @@ test('supplier name remains primary and the separate internal name survives shop
   }
 });
 
+test('options retain confirmed source, quantity and EK and distinct offers for the same article never collapse',()=>{
+  const option={...item('A'),optionId:1,optionPositionId:10,amount:10000,purchasePrice:900,supplierConfirmed:true,articleConfirmed:true};
+  addPurchaseCartItems([option],null,{loadingLocationText:'Neues Werk',loadingLocationSource:'manual'});
+  const first=getPurchaseCartItems()[0];
+  assert.equal(first.amount,10000);assert.equal(first.purchasePrice,900);assert.equal(first.amountTouched,true);
+  assert.equal(getPurchaseCartContext().header.loadingLocationSource,'manual');
+  addPurchaseCartItems([{...option,optionId:2,optionPositionId:20},item('A')]);
+  assert.equal(getPurchaseCartItems().length,3);
+  duplicatePurchaseCartItem(first.lineId);
+  const copied=getPurchaseCartItems()[1];
+  assert.equal(copied.optionId,1);assert.equal(copied.optionPositionId,10);assert.equal(copied.supplierConfirmed,true);
+});
+
 test('new purchase lines start empty and use the packaging load, with one article per ID', () => {
   addPurchaseCartItems([item('A', 'Siloware'), { ...item('A'), article: 'Alter Name', purchasePrice: 900, requestedDeliveryDate: '2025-01-01', amount: 123 }]);
   const rows = getPurchaseCartItems();

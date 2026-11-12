@@ -181,11 +181,12 @@ function buildWhereClause(q, searchField, options = {}) {
   }
 
   if (options.supplierOnly) {
-    clauses.push(`EXISTS (
+    clauses.push(`(EXISTS (
       SELECT 1
       FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
       WHERE LTRIM(RTRIM(COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], ''))) = LTRIM(RTRIM(COALESCE(${col('[kd_KdNR]')}, '')))
-    )`);
+    ) OR EXISTS (SELECT 1 FROM [dbo].[tblBestellung] [supplier_history]
+      WHERE [supplier_history].[be_KdNr] = ${col('[kd_KdNR]')}))`);
   }
 
   if (options.reminderOnly) {
@@ -461,7 +462,8 @@ async function loadSupplierContext(database, customerId) {
     SELECT [kdLi_Lieferanten_Nr] AS supplierNumber
     FROM [dbo].[tblKun_Lieferanten]
     WHERE LTRIM(RTRIM(COALESCE([kdLi_Lieferanten_Nr], ''))) = ?
-  `, [customerId]);
+    UNION SELECT TOP 1 [be_KdNr] AS supplierNumber FROM [dbo].[tblBestellung] WHERE [be_KdNr]=?
+  `, [customerId,customerId]);
   const supplierNumbers = [];
   const seen = new Set();
   const addSupplierNumber = (value) => {

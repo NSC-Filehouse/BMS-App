@@ -58,6 +58,7 @@ export default function TempPurchaseOrderDetail() {
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {!loading && item && <Card sx={{ width: '100%', minWidth: 0 }}><CardContent sx={{ pt: 2, minWidth: 0 }}>
+      <Typography variant="h6">{item.positions.some(p=>p.optionId!=null)?'Bestellung (Option)':'Bestellung'}</Typography>
       <InfoRow label="Lieferant" value={item.supplierName} />
       <InfoRow label="Lieferantennummer" value={item.supplierId} />
       <InfoRow label="Anschrift" value={item.supplierAddress} />
@@ -81,6 +82,7 @@ export default function TempPurchaseOrderDetail() {
         {(item.positions || []).map((p, index) => <Box key={p.id} sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1.5, p: 1.25, display: 'grid', gap: 0.35, minWidth: 0, overflowWrap: 'anywhere' }}>
           <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {p.article || '–'}</Typography>
           {p.masterArticleName && p.masterArticleName !== p.article && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName}</Typography>}
+          {p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option)</Typography>}
           <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex || '–'}</Typography>
           <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
           <Typography variant="caption" color="text.secondary">Menge: {formatPurchaseNumber(p.amount)} kg · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>

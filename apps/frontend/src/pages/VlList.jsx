@@ -24,6 +24,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
+import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { createVlReturnTo } from '../utils/vlNavigation.js';
 import { getMandant } from '../utils/mandant.js';
@@ -434,6 +435,7 @@ export default function VlList() {
   const navigate = useNavigate();
   const location = useLocation();
   const { lang, t } = useI18n();
+  const validityRefresh=useOptionValidityRefresh();
   const isFinePointer = useMediaQuery('(pointer: fine)');
   const activeMandantName = getMandant().trim().toLowerCase();
   const initialReturnState = isVlReturnStateForMandant(location.state?.vlReturnState, activeMandantName)
@@ -659,7 +661,7 @@ export default function VlList() {
     if (listRef.current) listRef.current.scrollTop = 0;
     void loadPage(1, effectiveQuery, true);
     return invalidateRequest;
-  }, [effectiveQuery, loadPage, location.pathname, navigate, vlMandantId, vlMandantsLoaded]);
+  }, [effectiveQuery, loadPage, location.pathname, navigate, vlMandantId, vlMandantsLoaded,validityRefresh]);
 
   React.useEffect(() => {
     const node = sentinelRef.current;
@@ -827,7 +829,7 @@ export default function VlList() {
 
   const openProductDetail = React.useCallback((item) => {
     if (item.kind === 'option') {
-      const params = new URLSearchParams({ preview: '1', vlMandantId: String(item.sourceMandantId) });
+      const params = new URLSearchParams({ vlMandantId: String(item.sourceMandantId) });
       if (isGroupVl) params.set('vlScope', FRUPACK_GROUP_SCOPE);
       navigate(`/options/${encodeURIComponent(item.optionId)}?${params.toString()}#position-${item.optionPositionId}`, {
         state: { returnTo: createVlReturnTo(location, getVlReturnState()) },

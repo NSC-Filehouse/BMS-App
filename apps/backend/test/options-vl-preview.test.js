@@ -47,6 +47,7 @@ require.cache[require.resolve('../src/db/databases')] = { exports: {
 const planning = require('../src/db/temp-order-planning');
 require.cache[require.resolve('../src/db/temp-order-planning')] = { exports: { ...planning, loadTempOrderPlanning: async () => new Map() } };
 require.cache[require.resolve('../src/options/read')] = { exports: {
+  berlinDate:()=> '2026-11-12',
   loadOffers: async (companyIds, options = {}) => {
     capturedOptions = { companyIds, ...options };
     return offers.filter(o => (!companyIds || companyIds.includes(o.sourceMandantId)) && (!options.optionId || o.id === options.optionId))
@@ -106,16 +107,16 @@ test('group preview scopes stocks while shared option details ignore the selecte
   assert.equal((await fetch(`${base}/options/197?preview=1&vlScope=frupack-group&vlMandantId=99`)).status, 200);
   assert.equal((await fetch(`${base}/options/197?preview=1&vlMandantId=10`)).status, 200);
 });
-test('preview can read expired positions from the shared pool', async () => {
+test('legacy preview parameter can no longer reveal expired positions', async () => {
   const response = await (await fetch(`${base}/options/197?preview=1&vlMandantId=3`)).json();
-  assert.equal(response.data.positions[0].id, 602);
+  assert.equal(response.data.positions[0].id, 604);
   assert.equal(response.data.readOnly, false);
-  assert.equal(capturedOptions.includeExpired, true);
+  assert.notEqual(capturedOptions.includeExpired, true);
   assert.equal(capturedOptions.optionId, 197);
 });
 
 test('foreign group details are read only and cannot be assigned through an active-tenant write', async () => {
-  offers.push({ id: 198, sourceMandantId: 10, supplierName: 'Longfield', positions: [{ ...position, id: 603 }] });
+  offers.push({ id: 198, sourceMandantId: 10, supplierName: 'Longfield', positions: [{ ...currentPosition, id: 603 }] });
   try {
     const response = await (await fetch(`${base}/options/198?preview=1&vlMandantId=10&vlScope=frupack-group`)).json();
     assert.equal(response.data.readOnly, true);

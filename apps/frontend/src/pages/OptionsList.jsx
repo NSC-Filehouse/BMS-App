@@ -7,6 +7,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
 import { optionDate, optionPrice, optionQuantity, optionMfi, optionPackaging } from '../utils/optionDisplay.js';
+import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 
 export default function OptionsList() {
   const [offers, setOffers] = React.useState([]);
@@ -16,16 +17,18 @@ export default function OptionsList() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const validityRefresh=useOptionValidityRefresh();
 
   React.useEffect(() => {
     let active = true;
     setLoading(true);
+    setOffers([]);setError('');
     apiRequest('/options')
       .then((response) => { if (active) setOffers(Array.isArray(response?.data) ? response.data : []); })
       .catch((cause) => { if (active) setError(cause?.message || t('loading_error')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [t]);
+  }, [t,validityRefresh]);
 
   const groups = React.useMemo(() => {
     const search = query.trim().toLocaleLowerCase();

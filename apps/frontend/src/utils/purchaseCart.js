@@ -69,7 +69,11 @@ export function purchaseArticleKey(item) {
   return String(item?.articleIndex || item?.article || '').trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
 }
 
-export function addPurchaseCartItems(items, returnTo = null) {
+export function purchaseSourceKey(item) {
+  return item?.optionId != null ? `option:${item.optionId}:${item.optionPositionId}` : `article:${purchaseArticleKey(item)}`;
+}
+
+export function addPurchaseCartItems(items, returnTo = null, headerDefaults = null) {
   const current = read();
   const context = getPurchaseCartContext();
   if (context.pendingPayload) throw new Error('Bitte zuerst den Speicherstatus im Bestellwarenkorb prüfen.');
@@ -84,19 +88,20 @@ export function addPurchaseCartItems(items, returnTo = null) {
   if (!current.length && (context.header || context.clientRequestId)) {
     savePurchaseCartContext({ header: null, clientRequestId: null });
   }
-  const known = new Set(current.map(purchaseArticleKey));
+  const known = new Set(current.map(purchaseSourceKey));
   const chosenPackaging = getPurchaseCartContext().header?.packagingType;
   const additions = incoming.filter((item) => {
-    const id = purchaseArticleKey(item);
+    const id = purchaseSourceKey(item);
     if (known.has(id)) return false;
     known.add(id);
     return true;
   }).map((item) => ({ ...item, lineId: newId(), defaultsVersion: 2, supplierId: String(item.supplierId),
-    amount: defaultPurchaseAmount(chosenPackaging || item.originalPackagingType),
-    amountTouched: false, unit: 'kg', currency: 'EUR', purchasePrice: '', requestedDeliveryDate: '', reservedFor: '', comment: '',
+    amount: item.optionId != null ? item.amount : defaultPurchaseAmount(chosenPackaging || item.originalPackagingType),
+    amountTouched: item.optionId != null, unit: 'kg', currency: 'EUR', purchasePrice: item.optionId != null ? item.purchasePrice : '', requestedDeliveryDate: '', reservedFor: '', comment: '',
   }));
   const next = [...current, ...additions];
   write(next);
+  if (!current.length && headerDefaults) savePurchaseCartContext({ header:headerDefaults });
   if (returnTo) savePurchaseCartContext({ returnTo });
   return next;
 }

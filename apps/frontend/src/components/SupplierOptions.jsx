@@ -8,6 +8,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
 import { optionDate, optionPrice, optionQuantity, optionMfi } from '../utils/optionDisplay.js';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
+import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 
 export default function SupplierOptions({ supplierId, mandant }) {
   const { t } = useI18n();
@@ -23,6 +24,8 @@ export default function SupplierOptions({ supplierId, mandant }) {
   const [identified, setIdentified] = React.useState(true);
   const [attempt, setAttempt] = React.useState(0);
   const restored = React.useRef(false);
+  const validityRefresh=useOptionValidityRefresh();
+  React.useEffect(()=>{setLoaded(false);setOffers([]);},[validityRefresh,supplierId,mandant]);
   React.useEffect(() => {
     if (!expanded || loaded) return undefined;
     let active = true;
@@ -46,7 +49,7 @@ export default function SupplierOptions({ supplierId, mandant }) {
   function openOption(offer, position) {
     const returnTo = createReturnTo(location, { ...location.state, detailView: 'supplier',
       supplierOptionsState: { supplierId, mandant, expanded: true, scrollTop: window.scrollY } });
-    navigate(`/options/${encodeURIComponent(offer.id)}#position-${position.id}`, { state: { returnTo } });
+    navigate(`/options/${encodeURIComponent(offer.id)}#position-${position.id}`, { state: { returnTo,optionSupplierId:supplierId } });
   }
   return <Accordion expanded={expanded} onChange={(_event, value) => setExpanded(value)}>
     <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>

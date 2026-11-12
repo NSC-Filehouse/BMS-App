@@ -53,7 +53,7 @@ export default function PurchaseCart() {
     } finally { setSaving(false); }
   };
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving || locked} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>Bestellwarenkorb</Typography></Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving || locked} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{initialOrder.positions.some(p=>p.optionId!=null)?'Bestellung (Option)':'Bestellwarenkorb'}</Typography></Box>
     {error && <Alert severity="error">{error}</Alert>}
     {locked && <Alert severity="info">Der Speicherstatus wird mit derselben Anfrage geprüft. Bitte „Speichern erneut prüfen“ verwenden.</Alert>}
     {initialOrder.positions.length ? <PurchaseOrderEditor initialOrder={initialOrder} isNew onChange={change} onSave={submit} onContinue={back} onDelete={removeDraft} saving={saving} locked={locked} />

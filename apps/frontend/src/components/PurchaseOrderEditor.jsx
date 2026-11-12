@@ -25,6 +25,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const [attempted, setAttempted] = React.useState(false);
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
+  const [manualLocation,setManualLocation]=React.useState(initialOrder.loadingLocationSource==='manual');
   const update = React.useCallback((fn) => setOrder((previous) => typeof fn === 'function' ? fn(previous) : { ...previous, ...fn }), []);
   React.useEffect(() => { onChange?.(order); }, [order, onChange]);
 
@@ -66,20 +67,22 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
       setLocations(next);
       if (locked) return;
       update((previous) => {
+        if(previous.loadingLocationSource==='manual')return previous;
         const selected = next.find((p) => same(p.text, previous.loadingLocationText)) || (isNew ? next[0] : null);
-        return { ...previous, loadingLocationId: '', loadingLocationText: selected?.text || '' };
+        return { ...previous, loadingLocationId: '', loadingLocationText: selected?.text || '',loadingLocationSource:'supplier_order_history' };
       });
     }).catch((e) => alive && setLocationError(e.message)).finally(() => alive && setLocationsLoading(false));
     const initialHistory = {};
     // The same latest-purchase record supplies both historical hints.
     Promise.all(ids.map(async (id) => {
+      if(order.positions.some(p=>p.articleIndex===id && p.optionId!=null))return;
       const response = await apiRequest(`/customers/${encodeURIComponent(order.supplierId)}/procured-articles/${encodeURIComponent(id)}/purchase-defaults`);
       initialHistory[id] = response.data.defaults;
     })).then(() => {
       if (!alive) return;
       setHistory(initialHistory);
       if (isNew && !locked) update((previous) => ({ ...previous, positions: previous.positions.map((p) => ({
-        ...p, article: initialHistory[p.articleIndex]?.article || p.article,
+        ...p, article: p.optionId!=null?p.article:initialHistory[p.articleIndex]?.article || p.article,
         masterArticleName: initialHistory[p.articleIndex]?.masterArticleName || p.masterArticleName,
       })) }));
     }).catch((e) => alive && setLocationError(e.message));
@@ -116,7 +119,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, minWidth: 0, width: '100%', '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
     {error && <Alert severity="error">{error}</Alert>}
     {locationError && <Alert severity="error">{locationError}</Alert>}
-    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && <Alert severity="warning">Für diesen Artikel ist bei diesem Lieferanten kein bisheriger Ladeort gespeichert.</Alert>}
+    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">Für diesen Lieferanten ist kein bisheriger Ladeort gespeichert. Bitte einen neuen Ladeort eingeben.</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       <TextField label="Ansprechpartner" size="small" value={order.supplierContact || ''} onChange={(e) => update({ supplierContact: e.target.value })} disabled={disabled || loading} />
@@ -126,13 +129,17 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        <TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => update({ loadingLocationId: '', loadingLocationText: e.target.value })}>
+        {manualLocation ? <Box sx={{display:'grid',gap:0.5}}><TextField label="Neuer Ladeort" required multiline minRows={3} size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled} inputProps={{maxLength:1000}} onChange={e=>update({loadingLocationText:e.target.value,loadingLocationId:'',loadingLocationSource:'manual'})} /><Button size="small" disabled={disabled} onClick={()=>{setManualLocation(false);update({loadingLocationText:'',loadingLocationId:'',loadingLocationSource:'supplier_order_history'});}}>Bisherigen Ladeort auswählen</Button></Box> : <TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading} onChange={(e) => {
+          if(e.target.value==='__manual__'){setManualLocation(true);update({loadingLocationId:'',loadingLocationText:'',loadingLocationSource:'manual'});}
+          else update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:'supplier_order_history' });
+        }}>
           <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text} sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{p.text}</MenuItem>)}
-        </TextField>
+          <MenuItem value="__manual__">Neuen Ladeort eingeben …</MenuItem>
+        </TextField>}
         <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
-            positions: previous.positions.map((p) => isNew && !p.amountTouched ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
+            positions: previous.positions.map((p) => isNew && !p.amountTouched && p.optionId==null ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.packagingTypes.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
       </Box>
       <TextField label="Sonstiges" multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
@@ -150,6 +157,7 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
         {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
           <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName || last.masterArticleName}</Typography>}
         <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Artikelindex: {p.articleIndex} · Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
+        {p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option){p.remainingKg!=null?` · Bei Auswahl verfügbar: ${Number(p.remainingKg).toLocaleString('de-DE')} kg`:''}</Typography>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
           <TextField label="Menge (kg)" required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter EK: {priceText(last.lastPurchasePrice)}</Typography>

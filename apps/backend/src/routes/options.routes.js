@@ -4,7 +4,7 @@ const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
-const { loadOffers } = require('../options/read');
+const { loadOffers, berlinDate } = require('../options/read');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
@@ -21,10 +21,10 @@ router.get('/options',requireMandant,requirePilotFeature('options'),asyncHandler
  sendEnvelope(res,{data:await loadOffers(null),meta:{mandant:req.mandant}});
 }));
 router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const offers=await loadOffers(null,{optionId:positiveId(req.params.id),includeExpired:req.query?.preview==='1'});
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id)});
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  sendEnvelope(res,{data:{...offers[0],readOnly:Number(offers[0].sourceMandantId)!==Number(req.database.firmaId)},
-  meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true,preview:req.query?.preview==='1'}});
+  meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
@@ -37,8 +37,9 @@ async function scopedPosition(req,database=req.database){
   LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
   LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
   WHERE o.op_id=? AND p.opp_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
-  AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')`,
-  [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId)]);
+  AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
+  AND o.op_IstDemo=0 AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
+  [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId),berlinDate(),berlinDate()]);
  if(!rows.length)throw createHttpError(404,'Position nicht gefunden.',{code:'OPTION_POSITION_NOT_FOUND'});
  return rows[0];
 }
@@ -105,8 +106,9 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
    opp_LernenAngefordert=1,opp_LernregelHinweis=NULL
    FROM ${POSITIONS} p JOIN ${OPTIONS} o WITH(UPDLOCK,HOLDLOCK) ON o.op_id=p.opp_op_id
    WHERE p.opp_id=? AND o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
-   AND p.opp_GeaendertAm=CONVERT(DATETIME2(7),?)`,
-   [index,article.articleName,actor,article.polymerCategory||'Optionen',sub??'',Number(position.id),positiveId(req.params.id),Number(req.database.firmaId),position.originalChanged]);
+   AND p.opp_GeaendertAm=CONVERT(DATETIME2(7),?) AND o.op_IstDemo=0
+   AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
+   [index,article.articleName,actor,article.polymerCategory||'Optionen',sub??'',Number(position.id),positiveId(req.params.id),Number(req.database.firmaId),position.originalChanged,berlinDate(),berlinDate()]);
   if(!updated.rowsAffected[0])throw createHttpError(409,'Position wurde zwischenzeitlich geändert.',{code:'OPTION_CHANGED'});
  });
  sendEnvelope(res,{data:{articleIndex:index,articleName:article.articleName,learningPending:true},meta:{mandant:req.mandant}});

@@ -240,11 +240,11 @@ async function loadVisibleSupplierCustomer(database, customerId) {
     SELECT TOP 1 [k].*
     FROM [dbo].[tblKunden] [k]
     WHERE LTRIM(RTRIM(COALESCE([k].[kd_KdNR], ''))) = ?
-      AND EXISTS (
+      AND (EXISTS (
         SELECT 1
         FROM [dbo].[tblKun_Lieferanten] [supplier_mapping]
         WHERE LTRIM(RTRIM(COALESCE([supplier_mapping].[kdLi_Lieferanten_Nr], ''))) = LTRIM(RTRIM(COALESCE([k].[kd_KdNR], '')))
-      )
+      ) OR EXISTS (SELECT 1 FROM dbo.tblBestellung b WHERE b.be_KdNr=k.kd_KdNR))
   `, [id]);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }

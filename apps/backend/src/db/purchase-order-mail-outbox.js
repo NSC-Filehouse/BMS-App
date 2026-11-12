@@ -83,7 +83,8 @@ async function loadOrder(orderId, acceptedOnly = true) {
       [tbp_purchase_price] AS purchasePrice, [tbp_currency] AS currency,
       [tbp_requested_delivery_date] AS requestedDeliveryDate, [tbp_reserved_for] AS reservedFor,
       [tbp_comment] AS comment, [tbp_original_packaging_type] AS originalPackagingType,
-      [tbp_packaging_type_changed] AS packagingTypeChanged
+      [tbp_packaging_type_changed] AS packagingTypeChanged,
+      [OptionID] AS optionId,[OptionPositionID] AS optionPositionId
     FROM ${POSITION_TABLE} WHERE [tbp_tb_id] = ? ORDER BY [tbp_line_no]
   `, [orderId]);
   return { order, positions: Array.isArray(positions) ? positions : [] };

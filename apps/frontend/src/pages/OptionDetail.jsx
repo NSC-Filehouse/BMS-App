@@ -3,10 +3,12 @@ import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArticleAssignment from '../components/OptionArticleAssignment.jsx';
+import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { navigateToReturn } from '../utils/navigation.js';
+import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
+import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
@@ -24,7 +26,7 @@ export default function OptionDetail() {
   const { t, lang } = useI18n();
   const sourceQuery = React.useMemo(() => {
     const input = new URLSearchParams(location.search), result = new URLSearchParams();
-    for (const key of ['preview', 'vlMandantId', 'vlScope']) if (input.has(key)) result.set(key, input.get(key));
+    for (const key of ['vlMandantId', 'vlScope']) if (input.has(key)) result.set(key, input.get(key));
     return result.toString();
   }, [location.search]);
   const [offer, setOffer] = React.useState(null);
@@ -32,18 +34,21 @@ export default function OptionDetail() {
   const [error, setError] = React.useState('');
   const [revision, setRevision] = React.useState(0);
   const [deleting, setDeleting] = React.useState(false);
+  const [purchasePosition,setPurchasePosition] = React.useState(null);
+  const validityRefresh = useOptionValidityRefresh();
 
   React.useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
     setOffer(null);
+    setPurchasePosition(null);
     apiRequest(`/options/${encodeURIComponent(id)}?${sourceQuery}`)
       .then((response) => { if (active) setOffer(response?.data || null); })
       .catch((cause) => { if (active) setError(cause?.message || t('loading_error')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [id, t, revision, sourceQuery]);
+  }, [id, t, revision, sourceQuery,validityRefresh]);
 
   React.useEffect(() => {
     if (!offer || !location.hash) return;
@@ -99,6 +104,8 @@ export default function OptionDetail() {
         {position.internalArticleName && position.internalArticleName !== position.articleName &&
           <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{position.articleName}</Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
+        <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0} sx={{mb:1}}>Bestellen</Button>
+        {position.remainingKg!=null && <InfoRow label="Noch verfügbare Optionsmenge" value={`${optionNumber(position.remainingKg)} kg`} />}
         {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
         {position.priceNeedsReview && <InfoRow label={t('option_raw_price_basis')}
           value={`${optionNumber(position.price, 2)} ${position.priceUnit || position.currency || ''}`} />}
@@ -123,5 +130,7 @@ export default function OptionDetail() {
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
       </CardContent></Card>)}
     </>}
+    {offer && purchasePosition && !error && <OptionPurchaseDialog key={purchasePosition.id} offer={offer} position={purchasePosition}
+      preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)} onClose={()=>setPurchasePosition(null)} />}
   </Box>;
 }

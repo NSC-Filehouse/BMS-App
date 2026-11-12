@@ -18,6 +18,7 @@ const {
 const { queuePurchaseOrderCsMail, processPurchaseOrderCsMailOutboxById } = require('../db/purchase-order-mail-outbox');
 const { resolveOrderMailRecipient, validateOrderMailConfig } = require('../mail/order-mail');
 const { appendTimelineEntries } = require('../db/timeline');
+const { loadOptionPosition, validateOptionArticle, assertOptionQuantities } = require('../options/purchase-source');
 const TIMELINE_TABLE = appTableSql('timeline');
 
 const router = express.Router();
@@ -111,6 +112,11 @@ function mapOrder(row, positions = []) {
       originalPackagingType: asText(position.originalPackagingType),
       originalPackagingTypeId: asNumber(position.originalPackagingTypeId),
       packagingTypeChanged: Boolean(position.packagingTypeChanged),
+      optionId: asNumber(position.optionId),
+      optionPositionId: asNumber(position.optionPositionId),
+      supplierConfirmed: position.optionId != null,
+      articleConfirmed: position.optionId != null,
+      acknowledgeUnverifiedMfi: Boolean(position.acknowledgeUnverifiedMfi),
     })),
   };
 }
@@ -169,7 +175,9 @@ async function loadPositions(orderId, query = null) {
       [tbp_comment] AS comment,
       [tbp_original_packaging_type] AS originalPackagingType,
       [tbp_original_packaging_type_id] AS originalPackagingTypeId,
-      [tbp_packaging_type_changed] AS packagingTypeChanged
+      [tbp_packaging_type_changed] AS packagingTypeChanged,
+      [OptionID] AS optionId,[OptionPositionID] AS optionPositionId,
+      [tbp_option_mfi_acknowledged] AS acknowledgeUnverifiedMfi
     FROM ${TEMP_PURCHASE_POSITION_TABLE}
     WHERE [tbp_tb_id] = ?
     ORDER BY [tbp_line_no] ASC
@@ -178,7 +186,7 @@ async function loadPositions(orderId, query = null) {
 }
 
 async function loadPurchaseLoadingContext(database, supplierId, articleIndexes) {
-  return { customerId: '', addresses: await loadPurchaseLocations(database, supplierId, articleIndexes), source: 'supplier_order_history' };
+  return { customerId: '', addresses: await loadPurchaseLocations(database, supplierId, articleIndexes, { supplierWide: true }), source: 'supplier_order_history' };
 }
 
 function normalizePurchaseOwnerScope(value) {
@@ -255,14 +263,23 @@ async function assertSupplier(database, supplierId, accessScope) {
   if (!customer) throw createHttpError(404, `Lieferant nicht gefunden: ${supplierId}`, { code: 'SUPPLIER_NOT_FOUND' });
   const rows = await runSQLQueryAccess(database, `
     SELECT TOP 1 1 AS ok
-    FROM [dbo].[tblKun_Lieferanten]
-    WHERE LTRIM(RTRIM(COALESCE([kdLi_Lieferanten_Nr], ''))) = ?
+    FROM [dbo].[tblKunden] k
+    WHERE k.kd_KdNR=? AND (EXISTS(SELECT 1 FROM dbo.tblKun_Lieferanten l WHERE l.kdLi_Lieferanten_Nr=k.kd_KdNR)
+      OR EXISTS(SELECT 1 FROM dbo.tblBestellung b WHERE b.be_KdNr=k.kd_KdNR))
   `, [supplierId]);
-  if (!rows?.length) throw createHttpError(400, 'Der ausgewählte Kunde ist kein Lieferant.', { code: 'CUSTOMER_NOT_SUPPLIER' });
+  const accounts = rows?.length ? [] : await runSQLQuerySqlServer(config.sql.database, `SELECT TOP 1 1 AS ok
+    FROM BMSApp.tblOptionenLieferantenKonto WHERE olk_MandantID=? AND olk_LieferantenNummer=? AND olk_Aktiv=1`, [Number(database.firmaId),supplierId]);
+  if ((!rows?.length && !accounts.length) || /gelöscht/i.test(`${customer.kd_Name1 || ''} ${customer.kd_Name2 || ''}`))
+    throw createHttpError(400, 'Der ausgewählte Kunde ist kein verfügbarer Lieferant.', { code: 'CUSTOMER_NOT_SUPPLIER' });
   return customer;
 }
 
 async function resolveLoadingAddress(database, body) {
+  if (body?.loadingLocationSource === 'manual') {
+    const text = asText(body?.loadingLocationText);
+    if (!text || text.length>1000) throw createHttpError(400,'Bitte einen Ladeort mit höchstens 1000 Zeichen eingeben.',{code:'LOADING_LOCATION_REQUIRED'});
+    return { address:null,text,id:null,source:'manual',changed:true };
+  }
   const context = await loadPurchaseLoadingContext(database, body?.supplierId, (body?.positions || []).map((p) => asText(p.articleIndex)));
   const rawId = asText(body?.loadingLocationId);
   const requestedText = asText(body?.loadingLocationText);
@@ -271,11 +288,11 @@ async function resolveLoadingAddress(database, body) {
     const normalized = requestedText.toLocaleLowerCase('de-DE');
     address = context.addresses.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === normalized) || null;
   }
-  if (!address) throw createHttpError(400, 'Bitte einen bisherigen Ladeort dieses Artikels beim ausgewählten Lieferanten wählen.', { code: 'LOADING_LOCATION_REQUIRED' });
+  if (!address) throw createHttpError(400, 'Bitte einen Ladeort dieses Lieferanten wählen oder einen neuen Ladeort eingeben.', { code: 'LOADING_LOCATION_REQUIRED' });
   const text = asText(address.text) || asText(body?.loadingLocationText);
   if (!text) throw createHttpError(400, 'Die ausgewählte Lieferadresse hat keinen lesbaren Ladeort.', { code: 'LOADING_LOCATION_REQUIRED' });
   const id = null;
-  return { context, address, text, id, source: address.source || context.source };
+  return { context, address, text, id, source: address.source || context.source, changed:false };
 }
 
 function normalizePositions(rawPositions) {
@@ -306,6 +323,11 @@ function normalizePositions(rawPositions) {
       reservedFor: asText(item?.reservedFor) || null,
       comment: asText(item?.comment) || null,
       copyOfPositionId: asNumber(item?.copyOfPositionId),
+      optionId: item?.optionId == null ? null : Number(item.optionId),
+      optionPositionId: item?.optionPositionId == null ? null : Number(item.optionPositionId),
+      supplierConfirmed: item?.supplierConfirmed === true,
+      articleConfirmed: item?.articleConfirmed === true,
+      acknowledgeUnverifiedMfi: item?.acknowledgeUnverifiedMfi === true,
     };
   });
 }
@@ -382,10 +404,25 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
   const latestByArticle = new Map();
   for (const position of positions) {
     if (!position.articleIndex) throw createHttpError(400, 'Artikelindex fehlt.', { code: 'PURCHASE_POSITION_INVALID' });
+    const stored = storedPositions.find((p) => p.id === (position.id || position.copyOfPositionId) && p.articleIndex === position.articleIndex);
+    if (stored?.optionId != null && (position.optionId!==stored.optionId || position.optionPositionId!==stored.optionPositionId))
+      throw createHttpError(422,'Die Optionsherkunft einer gespeicherten Position kann nicht geändert werden.',{code:'OPTION_REFERENCE_CHANGED'});
+    if (position.optionId != null || position.optionPositionId != null) {
+      if (position.supplierConfirmed!==true || position.articleConfirmed!==true)
+        throw createHttpError(422,'Bitte Lieferant und Artikel ausdrücklich bestätigen.',{code:'OPTION_SELECTION_REQUIRED'});
+      const source = await loadOptionPosition(position.optionId,position.optionPositionId);
+      const article = await validateOptionArticle(req.database,source,position);
+      position.article = source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName;
+      position.optionSourceChanged = source.sourceVersion;
+      position.originalPackagingType = stored?.originalPackagingType || source.opp_Verpackung || source.op_Verpackung || source.packagingText || null;
+      const originalOption = findPackaging(options.packagingTypes,position.originalPackagingType);
+      position.originalPackagingTypeId = originalOption?.id || null;
+      position.packagingTypeChanged = originalOption ? packaging.id!==originalOption.id : packagingKey(packaging.text)!==packagingKey(position.originalPackagingType);
+      continue;
+    }
     if (!latestByArticle.has(position.articleIndex)) latestByArticle.set(position.articleIndex, await loadLatestPurchase(req.database, supplierId, position.articleIndex));
     const latest = latestByArticle.get(position.articleIndex);
     if (!latest) throw createHttpError(400, 'Der Artikel gehört nicht zum gewählten Lieferanten.', { code: 'PURCHASE_POSITION_INVALID' });
-    const stored = storedPositions.find((p) => p.id === (position.id || position.copyOfPositionId) && p.articleIndex === position.articleIndex);
     const original = stored?.originalPackagingType || (stored ? existing?.packagingType : latest.originalPackagingType);
     const originalOption = findPackaging(options.packagingTypes, original);
     position.article = asText(latest.article);
@@ -406,9 +443,11 @@ async function insertPurchasePositions(query, id, positions, user, now, createdB
     await query(`INSERT INTO ${TEMP_PURCHASE_POSITION_TABLE} (
       [tbp_tb_id],[tbp_line_no],[tbp_article_index],[tbp_article],[tbp_amount],[tbp_unit],[tbp_purchase_price],[tbp_currency],
       [tbp_requested_delivery_date],[tbp_reserved_for],[tbp_comment],[tbp_original_packaging_type],[tbp_original_packaging_type_id],[tbp_packaging_type_changed],
-      [tbp_created_by],[tbp_create_date],[tbp_last_modified_by],[tbp_last_modified_date]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [tbp_created_by],[tbp_create_date],[tbp_last_modified_by],[tbp_last_modified_date],
+      [OptionID],[OptionPositionID],[tbp_option_mfi_acknowledged]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, p.currency, p.requestedDeliveryDate, p.reservedFor, p.comment,
-      p.originalPackagingType, p.originalPackagingTypeId, p.packagingTypeChanged ? 1 : 0, createdBy, createdAt, user, now]);
+      p.originalPackagingType, p.originalPackagingTypeId, p.packagingTypeChanged ? 1 : 0, createdBy, createdAt, user, now,
+      p.optionId,p.optionPositionId,p.acknowledgeUnverifiedMfi ? 1 : 0]);
   }
 }
 
@@ -492,15 +531,16 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, asyn
       if (asText(retry.rows[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
       return mapOrder(retry.rows[0], await loadPositions(retry.rows[0].id, query));
     }
+    await assertOptionQuantities(query,positions);
     const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
       [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
       [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
       [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
       [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
-      OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,0,?,0,?,?,?,?)`,
+      OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
     [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
       [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
-      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,
+      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
       asText(req.body?.comment) || null, user, now, user, now]);
     const id = result.rows[0].id;
     await insertPurchasePositions(query, id, positions, user, now);
@@ -531,9 +571,10 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   const updated = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
+    await assertOptionQuantities(query,positions,id);
     await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
-      [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
-      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text, asText(req.body?.comment) || null, user, now, id, companyId]);
+      [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
+      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
     await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
     await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
     const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
@@ -569,6 +610,12 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
     if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
     const positions = await loadPositions(id, query);
     if ([STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
+    for (const position of positions.filter(line => line.optionId!=null)) {
+      const source = await loadOptionPosition(position.optionId,position.optionPositionId);
+      await validateOptionArticle(req.database,source,{...position,acknowledgeUnverifiedMfi:Boolean(position.acknowledgeUnverifiedMfi)});
+      position.optionSourceChanged=source.sourceVersion;
+    }
+    await assertOptionQuantities(query,positions,id);
     const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
     for (const position of namedPositions) {
       const stored = positions.find(item => item.id === position.id);
@@ -632,6 +679,8 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
           tempPurchaseOrderId: id,
           supplierId: mapped.supplierId,
           supplierName: mapped.supplierName,
+          optionId:position.optionId,
+          optionPositionId:position.optionPositionId,
         },
       }));
       if (timelineEntries.length) await appendTimelineEntries(timelineEntries);

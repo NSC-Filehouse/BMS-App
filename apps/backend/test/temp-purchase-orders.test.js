@@ -14,7 +14,7 @@ function fixture(options = {}) {
   let failDelete = false;
   let failRead = false;
   const router = options.routing ? require('express').Router() : { use() {}, get(path, ...handlers) { routes.push({ method: 'get', path, handlers }); }, post(path, ...handlers) { routes.push({ method: 'post', path, handlers }); }, put(path, ...handlers) { routes.push({ method: 'put', path, handlers }); }, delete(path, ...handlers) { routes.push({ method: 'delete', path, handlers }); } };
-  const project = (sql, row) => Object.fromEntries([...sql.matchAll(/\[(tbp?_\w+)\] AS (?:\[([^\]]+)\]|(\w+))/g)].map((match) => [match[2] || match[3], row[match[1]]]));
+  const project = (sql, row) => Object.fromEntries([...sql.matchAll(/\[(tbp?_\w+|OptionID|OptionPositionID)\] AS (?:\[([^\]]+)\]|(\w+))/g)].map((match) => [match[2] || match[3], row[match[1]]]));
   const query = async (sql, params = []) => {
     assert.equal((sql.match(/\?/g) || []).length, params.length, `SQL parameter count: ${sql}`);
     calls.push({ sql, params });
@@ -90,6 +90,11 @@ function fixture(options = {}) {
     '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: async () => ({ queued: true }) },
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
     '../db/timeline': { appendTimelineEntries: async (entries) => timeline.push(...entries) },
+    '../options/purchase-source': {
+      loadOptionPosition: async (optionId,positionId)=>({opp_id:positionId,opp_op_id:optionId,opp_Artikelname_Lieferant:'Optionsmaterial',opp_Verpackung:'Sackware'}),
+      validateOptionArticle: async ()=>({articleName:'Optionsartikel'}),
+      assertOptionQuantities: async (_query,positions)=>{if(options.optionQuantityLimit!=null && positions.filter(p=>p.optionId!=null).reduce((sum,p)=>sum+p.amount,0)>options.optionQuantityLimit)throw new Error('Optionsmenge überschritten');},
+    },
   };
   const mod = { exports: {} };
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/routes/temp-purchase-orders.routes.js'), 'utf8'))((name) => {
@@ -322,6 +327,32 @@ test('purchase creation period filters mirror today and Monday-based week filter
   assert.match(f.buildCreatedPeriodFilter('today').whereSql, /tb_create_date.*CONVERT\(date, GETDATE\(\)\)/);
   assert.match(f.buildCreatedPeriodFilter('week').whereSql, /19000101/);
   assert.equal(f.buildCreatedPeriodFilter('other').whereSql, '');
+});
+
+test('option reference survives create, copy, edit, detail and hand-off without a historical purchase',async()=>{
+  const f=fixture();const input=body();
+  input.loadingLocationSource='manual';input.loadingLocationText='Neues Werk\n12345 Musterstadt';
+  input.positions=[{...input.positions[0],articleIndex:'NEW',optionId:7,optionPositionId:11,supplierConfirmed:true,articleConfirmed:true,amount:1000}];
+  const created=(await f.request(input)).data;
+  assert.equal(created.positions[0].optionId,7);assert.equal(created.positions[0].optionPositionId,11);
+  assert.equal(created.positions[0].article,'Optionsmaterial');assert.equal(created.loadingLocationSource,'manual');
+  assert.equal(created.loadingLocationId,null);assert.equal(created.loadingLocationChanged,true);
+  const original=created.positions[0];
+  const edited=(await f.request({...created,positions:[original,{...original,id:undefined,copyOfPositionId:original.id,amount:500}]},'put','/temp-purchase-orders/:id')).data;
+  assert.equal(edited.positions.length,2);assert.ok(edited.positions.every(p=>p.optionId===7&&p.optionPositionId===11));
+  await assert.rejects(f.request({...edited,positions:[{...edited.positions[0],optionId:null,optionPositionId:null}]},'put','/temp-purchase-orders/:id'),e=>e.details.code==='OPTION_REFERENCE_CHANGED');
+  const sent=(await f.request({},'post','/temp-purchase-orders/:id/finalize')).data;
+  assert.equal(sent.status,1);assert.equal(sent.positions[1].optionPositionId,11);
+  assert.equal(f.timeline[0].payloadJson.optionId,7);
+});
+
+test('unconfirmed option selections and excess quantities cannot create a draft',async()=>{
+  const f=fixture({optionQuantityLimit:100});const input=body();
+  Object.assign(input.positions[0],{optionId:7,optionPositionId:11});
+  await assert.rejects(f.request(input),e=>e.details.code==='OPTION_SELECTION_REQUIRED');
+  Object.assign(input.positions[0],{supplierConfirmed:true,articleConfirmed:true});
+  await assert.rejects(f.request(input),/Optionsmenge überschritten/);
+  assert.equal(f.headers.length,0);assert.equal(f.lines.length,0);
 });
 
 

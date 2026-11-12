@@ -83,7 +83,7 @@ async function enrichPurchaseArticleNames(database, supplierId, positions) {
     const masterArticleName = text(source?.masterArticleName);
     const storedName = text(position.article);
     // Preserve an already stored supplier spelling; recognize legacy drafts saved with our master name.
-    const article = !storedName || masterArticleName && normalized(storedName) === normalized(masterArticleName)
+    const article = !position.optionId && (!storedName || masterArticleName && normalized(storedName) === normalized(masterArticleName))
       ? text(source?.article) || storedName : storedName;
     return { ...position, article, masterArticleName };
   });
@@ -107,17 +107,17 @@ function commonLoadingLocations(rows, articleIndexes) {
   }));
 }
 
-async function loadPurchaseLocations(database, supplierId, articleIndexes) {
+async function loadPurchaseLocations(database, supplierId, articleIndexes, { supplierWide = false } = {}) {
   const ids = [...new Set(articleIndexes.map(text).filter(Boolean))];
-  if (!supplierId || !ids.length) return [];
+  if (!supplierId || (!supplierWide && !ids.length)) return [];
   const rows = await runSQLQueryAccess(database, `
     SELECT [p].[beP_Artikelindex] AS articleIndex, [pickup].[address] AS loadingLocationText
     FROM [dbo].[tblBestellung] [b] JOIN [dbo].[tblBest_Position] [p] ON [p].[beP_Bestellindex] = [b].[be_Bestellindex]
     CROSS APPLY (VALUES ([b].[be_AdresseAbhol]), ([b].[be_AdresseSP_Abhol])) [pickup]([address])
-    WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? AND LTRIM(RTRIM([p].[beP_Artikelindex])) IN (${ids.map(() => '?').join(',')})
+    WHERE LTRIM(RTRIM(COALESCE([b].[be_KdNr], ''))) = ? ${supplierWide ? '' : `AND LTRIM(RTRIM([p].[beP_Artikelindex])) IN (${ids.map(() => '?').join(',')})`}
       AND COALESCE([p].[beP_Storno], 0) <> 1 AND NULLIF(LTRIM(RTRIM([pickup].[address])), N'') IS NOT NULL
-    ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC`, [supplierId, ...ids]);
-  return commonLoadingLocations(rows, ids);
+    ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC`, [supplierId, ...(supplierWide ? [] : ids)]);
+  return supplierWide ? commonLoadingLocations(rows.map(row => ({ ...row, articleIndex: '*' })), ['*']) : commonLoadingLocations(rows, ids);
 }
 
 function findPackaging(options, value, id) {
