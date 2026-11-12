@@ -96,7 +96,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       <IconButton aria-label="Lieferanten suchen" title="Lieferanten suchen" aria-expanded={showSupplierSearch} aria-controls={supplierSearchId} disabled={busy} onClick={()=>setShowSupplierSearch(value=>!value)}><SearchIcon /></IconButton>
       </Box>
-      {supplier?.reason && <Typography variant="caption">{supplier.reason}</Typography>}
       {showSupplierSearch && <Box id={supplierSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label="Lieferantensuche" placeholder="Name oder Lieferantennummer" value={supplierQuery} onChange={e=>setSupplierQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&supplierQuery.trim().length>=2)void loadSuppliers(supplierQuery.trim());}} /><Button disabled={busy||supplierQuery.trim().length<2} onClick={()=>loadSuppliers(supplierQuery.trim())}>Suchen</Button></Box>}
         <Typography variant="body2" role="status">{!articlesLoaded
           ?error&&!articlesLoading?'Artikelvorschläge konnten nicht geladen werden.':'Artikelvorschläge werden geladen …'
