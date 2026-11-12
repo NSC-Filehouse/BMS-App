@@ -25,7 +25,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
     }},'../db/app-tables':{appTableSql:key=>key},'../utils':require('../src/utils'),
     './read':{berlinDate:()=> '2026-11-12'},'./supplier-identity':require('../src/options/supplier-identity'),
     './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg'}:null,
-      candidatesFor:async(database,position)=>({data:[],database,position})},
+      candidatesFor:async(database,position,options)=>({data:[],database,position,options})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),
     './purchase-quantity':require('../src/options/purchase-quantity'),
     '../db/purchase-order-values':{loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'},{id:80,text:'Octabins'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg},
@@ -152,6 +152,15 @@ test('supplier proposals include both Borealis accounts and prefer the accordion
   assert.match(f.calls[1].sql,/EXISTS\(SELECT 1 FROM dbo.tblBestellung/);
   const manual=await f.supplierCandidates({firmaId:3},f.source,{q:'Unrelated'});
   assert.equal(manual[0].plausible,false);
+});
+
+test('all purchase proposals are loaded for both the source and a different active mandant',async()=>{
+  const f=fixture();
+  const source=await f.purchaseCandidates({firmaId:3},f.source,{all:true});
+  assert.equal(source.options.all,true);
+  await f.purchaseCandidates({firmaId:10},f.source,{all:true});
+  const target=f.calls.find(call=>call.sql.includes('OPENJSON'));
+  assert.ok(target);assert.doesNotMatch(target.sql,/OFFSET|FETCH NEXT/);assert.equal(target.params.length,2);
 });
 
 test('current target article is rechecked and missing MFI requires explicit acknowledgement',async()=>{

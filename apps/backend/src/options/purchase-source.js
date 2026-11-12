@@ -128,12 +128,12 @@ async function supplierCandidates(database, position, { q = '', preferredSupplie
   }).sort((a,b) => Number(b.preferred)-Number(a.preferred) || Number(b.plausible)-Number(a.plausible) || a.name.localeCompare(b.name,'de'));
 }
 
-async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30 } = {}) {
+async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30,all=false } = {}) {
   const input = { id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
     candidateCount:position.candidateCount,matchVersion:position.matchVersion,matchCalculatedAt:position.matchCalculatedAt,
     mfi: position.mfi,mfiTo: position.mfiTo,mfiTestCondition: position.mfiTestCondition,sourceMeasurementsJson: position.sourceMeasurementsJson };
   if (q || Number(database.firmaId) === Number(position.sourceMandantId)) {
-    return candidatesFor(database, input, { q, page, pageSize });
+    return candidatesFor(database, input, { q, page, pageSize,all });
   }
   // Source-mandant article indexes are never accepted as target-mandant proposals.
   // Exact product identities in the active catalog are safe suggestions; further
@@ -141,8 +141,8 @@ async function purchaseCandidates(database, position, { q = '', page = 1, pageSi
   const names = [position.opp_Artikelname_Lieferant, position.opp_Artikelname].map(text).filter(Boolean);
   const rows = await runSQLQueryAccess(database, `${articleSelect()}
     AND (a.agA_Artikelname IN(SELECT [value] FROM OPENJSON(?)) OR a.agA_Artikelname_Lieferant IN(SELECT [value] FROM OPENJSON(?)))
-    ORDER BY a.agA_Artikelname,a.agA_Artikelindex OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`,
-  [JSON.stringify(names),JSON.stringify(names),(page-1)*pageSize,pageSize]);
+    ORDER BY a.agA_Artikelname,a.agA_Artikelindex${all?'':' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,
+  [JSON.stringify(names),JSON.stringify(names),...(all?[]:[(page-1)*pageSize,pageSize])]);
   return { data: rows.map(article => ({ ...article, mfiCheck: checkMfi(input, article), reason: 'Passender Produktname im aktiven Mandanten' })), total: rows.length };
 }
 

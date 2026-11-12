@@ -17,7 +17,7 @@ const deps={
     loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price,...(truckOffer?{opp_Mengenart:'truckloads',truckMax:2,confirmedPackagingTypeId:79}: {})};},
     loadOptionAvailability:async()=>({offeredKg:truckOffer?50000:25000,orderedKg:(truckOffer?50000:25000)-remainingKg,remainingKg}),
     supplierCandidates:async(database)=>{assert.equal(database.firmaId,10);return [{id:'LF0124',name:'Borealis Polymers N.V.'}];},
-    purchaseCandidates:async()=>({data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1}),
+    purchaseCandidates:async(_db,_source,options)=>{assert.equal(options.all,true);return {data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1};},
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },
   '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},

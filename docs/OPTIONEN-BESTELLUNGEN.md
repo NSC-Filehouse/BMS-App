@@ -10,6 +10,10 @@ den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigun
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
 Der Dialog führt zuerst durch Lieferantenbestätigung und Artikelauswahl. Erst
 danach erscheinen Verpackungsart und Mengenangaben darunter.
+Der Bestelldialog lädt alle Artikelvorschläge in einem Schritt. Er zeigt deren
+Anzahl und bittet um die Auswahl eines Artikels; auch ein einzelner Vorschlag
+wird nicht automatisch gewählt. Bei fehlenden Vorschlägen erscheint direkt der
+Hinweis auf die Suche nach Namen oder Artikelnummer. Ein Nachlade-Button entfällt.
 
 ## Fristen
 

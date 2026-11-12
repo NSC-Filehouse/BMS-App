@@ -30,7 +30,7 @@ router.post(`${base}/quantity`, ...guard, asyncHandler(async(req,res)=>{
 }));
 router.get(`${base}/articles`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId);
-  const result = await purchaseCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),page:Math.max(1,Math.min(10000,parseInt(req.query.page,10)||1))});
+  const result = await purchaseCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),all:true});
   const {data,...meta} = result;
   sendEnvelope(res,{data,meta});
 }));
