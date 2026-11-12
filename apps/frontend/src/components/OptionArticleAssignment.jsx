@@ -79,8 +79,10 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
       {t('option_saved_suggestion')}: {position.suggestedArticleName} ({position.suggestedArticleIndex})
       {position.matchReason && <Typography variant="caption" sx={{ display: 'block' }}>{position.matchReason}</Typography>}
     </Alert>}
-    <Button size="small" variant="outlined" disabled={busy} onClick={() => loadCandidates()}>{t('option_show_candidates')}</Button>
-    {!readOnly && <Button size="small" disabled={busy} onClick={recalculate}>{en ? 'Refresh suggestions' : 'Vorschläge aktualisieren'}</Button>}
+    <Box sx={{display:'flex',gap:1,alignItems:'center'}}>
+      <Button size="small" variant="outlined" disabled={busy} onClick={() => loadCandidates()} sx={{whiteSpace:'nowrap'}}>{t('option_show_candidates')}</Button>
+      {!readOnly && <Button size="small" disabled={busy} onClick={recalculate} sx={{whiteSpace:'nowrap'}}>{en ? 'Reload' : 'Neu laden'}</Button>}
+    </Box>
     <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
       <TextField size="small" fullWidth value={query} onChange={event => setQuery(event.target.value)}
         label={en ? 'Find article by name or number' : 'Artikel über Namen oder Nummer suchen'}
