@@ -130,9 +130,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       </Box>}
       {automaticTruck && <Box sx={{display:'grid',gap:1}}>
         <TextField label="Angebotene Gesamtmenge (kg)" size="small" value={selectedPackaging?effectiveAvailability.offeredKg??'':''} InputProps={{readOnly:true}} />
-        <Typography variant="caption">{availability.offeredTrucks} {Number(availability.offeredTrucks)===1?'Truck':'Trucks'} laut Option. Die kg-Menge wird automatisch aus Anzahl und Verpackungsart berechnet.</Typography>
       </Box>}
-      {effectiveAvailability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(effectiveAvailability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
+      {effectiveAvailability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(effectiveAvailability.remainingKg).toLocaleString('de-DE')} kg.</Typography>}
       {!automaticTruck && availability.remainingKg===null && <Alert severity="warning">{availability.truckOffer?'Die Option nennt keine Truck-Anzahl. Bitte die angebotene Anzahl eingeben und bestätigen; die kg-Menge wird automatisch berechnet.':'Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.'}</Alert>}
       {enteringQuantity && <Box sx={{display:'grid',gap:1}}>
         {(availability.quantityText || position.quantityText) && <Typography variant="body2">Mengenangabe der Option: {availability.quantityText || position.quantityText}</Typography>}
