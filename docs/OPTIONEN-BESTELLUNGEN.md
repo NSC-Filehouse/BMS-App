@@ -22,6 +22,10 @@ Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
 Optionsposition samt Lieferanten-/Artikelauswahl. Die Optionsdaten werden frisch
 geladen; manuelle Mengenbestätigungen werden nur bei unveränderter Mengenquelle
 wiederhergestellt. Der Link verändert keine vorhandenen Warenkorbpositionen.
+Andere Warenkorbeinstiege behalten ihr eigenes Rücksprungziel inklusive Suchfilter,
+Seite und aufgeklappten Bereichen. Das beim aktuellen Einstieg mitgegebene Ziel
+hat Vorrang vor einem älteren gespeicherten Optionsziel; bei direktem Aufruf gilt
+weiter das gespeicherte Ziel beziehungsweise die bisherige Lieferantenansicht.
 
 ## Fristen
 

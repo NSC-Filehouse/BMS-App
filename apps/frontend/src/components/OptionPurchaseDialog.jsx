@@ -135,7 +135,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           getOptionLabel={row=>`${row.articleName} (${row.articleIndex})`}
           getOptionDisabled={row=>Boolean(row.mfiCheck?.blocked)}
           noOptionsText="Kein passender Artikel gefunden. Bitte die Artikelsuche über die Lupe öffnen."
-          renderOption={(props,row)=><Box component="li" {...props} sx={{display:'block !important'}}><Typography variant="body2">{row.articleName} ({row.articleIndex})</Typography>{row.mfiCheck?.blocked && <Typography variant="caption" color="error">{row.mfiCheck.reasons?.join('; ') || 'MFI widerspricht der Option'}</Typography>}</Box>}
+          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important'}}><Typography variant="body2">{row.articleName} ({row.articleIndex})</Typography>{row.mfiCheck?.blocked && <Typography variant="caption" color="error">{row.mfiCheck.reasons?.join('; ') || 'MFI widerspricht der Option'}</Typography>}</Box>}
           onChange={(_e,value)=>{setArticle(value);setAcknowledgeUnverifiedMfi(false);}}
           renderInput={params=><TextField {...params} label="Artikel" placeholder="Bitte Artikel auswählen" required size="small" />} />
         <IconButton aria-label="Artikel suchen" title="Artikel suchen" aria-expanded={showArticleSearch} aria-controls={articleSearchId} disabled={busy} onClick={()=>setShowArticleSearch(value=>!value)}><SearchIcon /></IconButton>

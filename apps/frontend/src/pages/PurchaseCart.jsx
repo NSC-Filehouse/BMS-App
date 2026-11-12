@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { navigateToReturn } from '../utils/navigation.js';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
-import { getPurchaseCartItems, getPurchaseCartContext, savePurchaseCartContext, replacePurchaseCartItems, clearPurchaseCart, getPurchaseRequestId, supplierReturnTo } from '../utils/purchaseCart.js';
+import { getPurchaseCartItems, getPurchaseCartContext, savePurchaseCartContext, replacePurchaseCartItems, clearPurchaseCart, getPurchaseRequestId, resolvePurchaseCartReturnTo } from '../utils/purchaseCart.js';
 
 export default function PurchaseCart() {
   const navigate = useNavigate();
@@ -21,7 +21,7 @@ export default function PurchaseCart() {
   const [saving, setSaving] = React.useState(false);
   const [locked, setLocked] = React.useState(() => Boolean(getPurchaseCartContext().pendingPayload));
   const [error, setError] = React.useState('');
-  const returnTo = location.state?.returnTo || getPurchaseCartContext().returnTo || supplierReturnTo(initialOrder.supplierId);
+  const returnTo = resolvePurchaseCartReturnTo(location.state,getPurchaseCartContext(),initialOrder.supplierId);
   const back = () => navigateToReturn(navigate, returnTo, '/suppliers');
   const removeDraft = () => { if (!saving && !locked) { clearPurchaseCart(); back(); } };
   const change = React.useCallback((order) => {

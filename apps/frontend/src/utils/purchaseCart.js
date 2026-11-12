@@ -141,6 +141,11 @@ export function getPurchaseCartContext() {
     return { returnTo: JSON.parse(localStorage.getItem(`${key()}.shoppingReturnTo`) || 'null'), ...context };
   } catch { return {}; }
 }
+export function resolvePurchaseCartReturnTo(routeState,cartContext,supplierId) {
+  if(routeState?.returnTo?.pathname)return routeState.returnTo;
+  if(cartContext?.returnTo?.pathname)return cartContext.returnTo;
+  return supplierReturnTo(supplierId);
+}
 export function savePurchaseCartContext(patch) {
   const next = { ...getPurchaseCartContext(), ...patch };
   localStorage.setItem(contextKey(), JSON.stringify(next));
