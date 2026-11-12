@@ -115,7 +115,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         </Box>
         {showArticleSearch && <Box id={articleSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label="Artikelsuche" placeholder="Name oder Artikelnummer" value={articleQuery} onChange={e=>setArticleQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&articleQuery.trim().length>=2)void loadArticles(articleQuery.trim());}} /><Button disabled={busy||articleQuery.trim().length<2} onClick={()=>loadArticles(articleQuery.trim())}>Suchen</Button></Box>}
         {article?.reason && <Typography variant="caption">{article.reason}</Typography>}
-        {article && !article.mfiCheck?.complete && <FormControlLabel control={<Checkbox checked={acknowledgeUnverifiedMfi} disabled={busy} onChange={e=>setAcknowledgeUnverifiedMfi(e.target.checked)} />} label="MFI-Eignung ist wegen fehlender Messwerte oder Prüfbedingungen ungeprüft. Ich bestätige die Auswahl trotzdem." />}
+        {article && !article.mfiCheck?.complete && <Alert severity="warning" icon={false} sx={{py:0.5,'& .MuiAlert-message':{width:'100%'}}}>
+          <FormControlLabel sx={{m:0,'& .MuiFormControlLabel-label':{typography:'caption'}}} control={<Checkbox size="small" checked={acknowledgeUnverifiedMfi} disabled={busy} onChange={e=>setAcknowledgeUnverifiedMfi(e.target.checked)} />} label="MFI-Eignung ist wegen fehlender Messwerte oder Prüfbedingungen ungeprüft. Ich bestätige die Auswahl trotzdem." />
+        </Alert>}
       {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
         <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
