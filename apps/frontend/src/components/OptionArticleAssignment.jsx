@@ -79,13 +79,13 @@ export default function OptionArticleAssignment({ optionId, position, onAssigned
       {t('option_saved_suggestion')}: {position.suggestedArticleName} ({position.suggestedArticleIndex})
       {position.matchReason && <Typography variant="caption" sx={{ display: 'block' }}>{position.matchReason}</Typography>}
     </Alert>}
-    <Box sx={{display:'flex',gap:1,alignItems:'center'}}>
-      <Button size="small" variant="outlined" disabled={busy} onClick={() => loadCandidates()} sx={{whiteSpace:'nowrap'}}>{t('option_show_candidates')}</Button>
-      {!readOnly && <Button size="small" disabled={busy} onClick={recalculate} sx={{whiteSpace:'nowrap'}}>{en ? 'Reload' : 'Neu laden'}</Button>}
+    <Box sx={{display:'grid',gridTemplateColumns:readOnly?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))',gap:1}}>
+      <Button size="small" variant="outlined" disabled={busy} onClick={() => loadCandidates()} sx={{minWidth:0,whiteSpace:'nowrap'}}>{t('option_show_candidates')}</Button>
+      {!readOnly && <Button size="small" disabled={busy} onClick={recalculate} sx={{minWidth:0,whiteSpace:'nowrap'}}>{en ? 'Reload' : 'Neu laden'}</Button>}
     </Box>
     <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
       <TextField size="small" fullWidth value={query} onChange={event => setQuery(event.target.value)}
-        label={en ? 'Find article by name or number' : 'Artikel über Namen oder Nummer suchen'}
+        label={en ? 'Find article' : 'Artikel suchen'}
         onKeyDown={event => { if (event.key === 'Enter' && query.trim().length >= 2) loadCandidates(query.trim()); }} />
       <Button disabled={busy || query.trim().length < 2} onClick={() => loadCandidates(query.trim())}>{en ? 'Search' : 'Suchen'}</Button>
     </Box>
