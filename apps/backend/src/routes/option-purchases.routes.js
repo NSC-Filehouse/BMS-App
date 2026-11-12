@@ -3,9 +3,9 @@ const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
-const { loadPurchaseOptions, loadSupplierTerms } = require('../db/purchase-order-values');
+const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purchaseTruckLoadKg } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
-const {offeredQuantityKg}=require('../options/purchase-quantity');
+const {offeredQuantityKg,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
@@ -14,8 +14,12 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId);
   const data = await supplierCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),preferredSupplierId:req.query.supplierId});
   const availability = await loadOptionAvailability(source);
+  const packagingTypes=await loadPurchasePackagingOptions(req.header('x-lang')==='en'?'en':'de');
   sendEnvelope(res,{data,meta:{...availability,supplierName:source.supplierName,
     confirmedQuantityKg:source.confirmedQuantityKg,quantitySourceHash:source.quantitySourceHash,
+    confirmedPackagingTypeId:source.confirmedPackagingTypeId,confirmedTruckCount:source.confirmedTruckCount,
+    truckOffer:isTruckOffer(source),offeredTrucks:offeredTruckCount(source),packagingTypes,
+    sourcePackaging:source.opp_Verpackung || source.packagingText || '',
     quantityConfirmationEditable:offeredQuantityKg({...source,confirmedQuantityKg:null})==null,
     quantityText:source.quantityText,truckMin:source.truckMin,truckMax:source.truckMax,maxTruckLoadKg:source.maxTruckLoadKg}});
 }));
@@ -43,17 +47,23 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   if (availability.remainingKg<=0) throw createHttpError(422,'Diese Optionsposition ist bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   const lang = req.header('x-lang')==='en'?'en':'de';
   const [choices,terms] = await Promise.all([loadPurchaseOptions(req.database,lang),loadSupplierTerms(req.database,supplier.id,lang)]);
+  const chosenPackaging=(choices.packagingTypes || []).find(row=>row.id===Number(req.body.packagingTypeId));
+  if(isTruckOffer(source) && !chosenPackaging)
+    throw createHttpError(422,'Bitte zuerst die Verpackungsart auswählen.',{code:'OPTION_PACKAGING_REQUIRED'});
+  if(isTruckOffer(source) && source.confirmedPackagingTypeId!=null && Number(source.confirmedPackagingTypeId)!==chosenPackaging.id)
+    throw createHttpError(422,'Bitte die Gesamtmenge für die gewählte Verpackungsart erneut bestätigen.',{code:'OPTION_PACKAGING_CHANGED'});
   const deliveryTerm = choices.incoterms.find(row => row.text.trim().toLowerCase()===String(source.incoterm || '').trim().toLowerCase());
   const price = source.opp_PreisProTonne;
   sendEnvelope(res,{data:{
     header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '',
       loadingLocationText:source.loadingLocation || '',loadingLocationSource:source.loadingLocation?'manual':'',
-      packagingType:source.opp_Verpackung || source.packagingText || '',packagingTypeId:source.opp_Verpackungsart_id || '',
+      packagingType:chosenPackaging?.text || source.opp_Verpackung || source.packagingText || '',packagingTypeId:chosenPackaging?.id || source.opp_Verpackungsart_id || '',
       supplierContact:terms.supplierContact},
     position:{optionId:Number(source.opp_op_id),optionPositionId:Number(source.opp_id),
       supplierId:supplier.id,supplierName:supplier.name,articleIndex:article.articleIndex,
       article:source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName,masterArticleName:article.articleName,
-      amount:Math.min(availability.remainingKg,Number(source.opp_MengeVonKg)||availability.remainingKg),
+      amount:Math.min(availability.remainingKg,isTruckOffer(source)?purchaseTruckLoadKg(chosenPackaging.text):Number(source.opp_MengeVonKg)||availability.remainingKg),
+      optionPackagingTypeId:isTruckOffer(source)?chosenPackaging.id:null,
       purchasePrice:price==null || optionPriceNeedsReview(price)?'':Number(price),
       originalPackagingType:source.opp_Verpackung || source.packagingText || '',originalPackagingTypeId:source.opp_Verpackungsart_id,
       optionValidUntil:source.validUntil,remainingKg:availability.remainingKg,offeredKg:availability.offeredKg,

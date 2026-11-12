@@ -36,14 +36,27 @@ function fitsQuantity(offeredKg, orderedKg, requestedKg) {
   return offeredKg != null && Math.round(orderedKg * 1000) + Math.round(requestedKg * 1000) <= Math.round(offeredKg * 1000);
 }
 
-function quantityInputKg(body) {
+function quantityInputKg(body,kgPerTruck=null) {
   if(body?.totalUnit!=null || body?.totalAmount!=null) {
-    if(!['kg','t'].includes(body.totalUnit))return null;
+    if(!['kg','t','truck'].includes(body.totalUnit) || body.totalUnit==='truck' && !(kgPerTruck>0))return null;
     const amount=number(body.totalAmount);
-    return amount==null?null:amount*(body.totalUnit==='t'?1000:1);
+    return amount==null?null:amount*(body.totalUnit==='t'?1000:body.totalUnit==='truck'?kgPerTruck:1);
   }
   // Previously deployed dialogs send their explicitly entered kg total here.
   return number(body?.totalKg);
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg };
+function isTruckOffer(position) {
+  const kind=position.quantityKind??position.opp_Mengenart;
+  return kind!=='minimum-and-stock' && /\b(?:trucks?|truckloads?|loads?|lkw|ladungen?)\b/i.test(
+    `${kind || ''} ${position.quantityUnit || ''}`);
+}
+
+function offeredTruckCount(position) {
+  if(!isTruckOffer(position))return null;
+  const maximum=number(position.truckMax ?? position.quantityMax);
+  const minimum=number(position.truckMin ?? position.quantityMin);
+  return maximum>0?maximum:minimum>0?minimum:null;
+}
+
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount };

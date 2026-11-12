@@ -29,6 +29,19 @@ test('options retain confirmed source, quantity and EK and distinct offers for t
   const copied=getPurchaseCartItems()[1];
   assert.equal(copied.optionId,1);assert.equal(copied.optionPositionId,10);assert.equal(copied.supplierConfirmed,true);
 });
+test('truck packaging transfers to the order and does not silently overwrite an existing cart choice',()=>{
+  const row={...item('A'),optionId:1,optionPositionId:10,optionPackagingTypeId:79,amount:25000,purchasePrice:900};
+  addPurchaseCartItems([row],null,{packagingTypeId:79,packagingType:'Siloware'});
+  assert.equal(getPurchaseCartContext().header.packagingTypeId,79);assert.equal(getPurchaseCartItems()[0].amount,25000);
+  clearPurchaseCart();addPurchaseCartItems([item('A')]);
+  savePurchaseCartContext({header:{packagingTypeId:78,packagingType:'Sackware',comment:'Behalten'}});
+  const before=getPurchaseCartItems();
+  assert.throws(()=>addPurchaseCartItems([row],null,{packagingTypeId:79,packagingType:'Siloware'}),/Verpackungsart/);
+  assert.deepEqual(getPurchaseCartItems(),before);assert.equal(getPurchaseCartContext().header.comment,'Behalten');
+  savePurchaseCartContext({header:{comment:'Behalten'}});
+  addPurchaseCartItems([row],null,{packagingTypeId:79,packagingType:'Siloware'});
+  assert.equal(getPurchaseCartContext().header.packagingTypeId,79);assert.equal(getPurchaseCartContext().header.comment,'Behalten');
+});
 
 test('new purchase lines start empty and use the packaging load, with one article per ID', () => {
   addPurchaseCartItems([item('A', 'Siloware'), { ...item('A'), article: 'Alter Name', purchasePrice: 900, requestedDeliveryDate: '2025-01-01', amount: 123 }]);

@@ -62,21 +62,34 @@ Dialog kann die angebotene Gesamtmenge eingegeben und ihre Einheit ausdrücklich
 als kg oder t (Tonnen) gewählt und bestätigt werden. Die Umrechnung wird vor der
 Bestätigung angezeigt; gespeichert wird einheitlich kg (z.B. 24 t = 24.000 kg).
 Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung.
-Bei einer Angabe wie "1 truck" muss auch dessen tatsächlich angebotenes Gesamtgewicht
-geklärt werden; die Auswahl einer Gewichtseinheit allein genügt nicht. Die Auswahl
-betrifft die Menge; der Bestellpreis wird weiterhin in EUR/t eingegeben.
+Bei Truck-Angaben wird zuerst die Verpackungsart aus derselben BMS-Auswahlliste wie
+in der Bestellmaske gewählt. Die Quellenangabe bleibt als Hinweis sichtbar; sie
+ersetzt die Auswahl nicht. Pro Truck gelten dann 25.000 kg für Siloware (auch
+"Silo/bulk") und 24.750 kg für alle anderen Verpackungsarten. Die Einheit "Truck"
+berechnet Anzahl mal Ladegewicht; eine angebotene Spanne 1–2 Trucks schlägt die
+Obergrenze 2 vor. Der Benutzer bestätigt die Gesamtmenge ausdrücklich. kg und t
+bleiben für abweichende tatsächliche Gesamtgewichte auswählbar.
+Die Auswahl betrifft die Menge; der Bestellpreis wird weiterhin in EUR/t eingegeben.
 Eine vorhandene LKW-Obergrenze mit bekanntem maximalem Ladegewicht darf dabei nicht
 überschritten werden. Eine belegte Gesamtmenge aus der Quelle ist nicht überschreibbar.
 
 Die manuelle Bestätigung liegt an der Optionsposition in
 `opp_GesamtmengeBestaetigtKg`, `opp_MengeBestaetigtQuellHash`,
-`opp_MengeBestaetigtVon` und `opp_MengeBestaetigtAm`. Der Hash bindet sie an die
+`opp_MengeBestaetigtVon` und `opp_MengeBestaetigtAm`. Bei Truck-Optionen speichern
+`opp_MengeBestaetigtVerpackungsartID` und `opp_MengeBestaetigtTrucks` zusätzlich die
+gewählte Verpackung und gegebenenfalls die Truck-Anzahl. Der Hash bindet sie an die
 ursprünglichen Mengenangaben. Der Hintergrundabgleich überschreibt diese Felder
 nicht; bloße Änderungen am Matching-Zeitpunkt entwerten die Bestätigung nicht.
 Veränderte ursprüngliche Mengen verlangen dagegen eine neue Bestätigung.
 Eine manuell bestätigte Gesamtmenge kann im selben Dialog korrigiert werden,
 aber nicht unter bereits verplante Mengen. Konkurrierende Korrekturen werden
 über Quellsperre und Vergleich der vorher bestätigten Menge abgefangen.
+
+Ein Verpackungswechsel im Optionsdialog setzt die Mengenbestätigung zurück und
+berechnet Truck-Mengen neu. Die bestätigte Verpackung geht in den Bestellkopf über;
+die ursprüngliche Quellenverpackung bleibt als Positions-Snapshot erhalten.
+Ein bereits anders verpackter Warenkorb wird nicht still überschrieben. Auch beim
+Bearbeiten und Abschließen begrenzt die gewählte Verpackung die zulässige Truck-Menge.
 
 Alle gespeicherten Temp-Positionen zählen: Entwurf, Übergabe, ERP-Übernahme und
 Nacharbeit. Auch Positionskopien werden addiert. Eine eigene Änderung schließt

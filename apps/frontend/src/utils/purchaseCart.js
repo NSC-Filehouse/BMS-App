@@ -85,6 +85,10 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   if (new Set([...current, ...incoming].map(purchaseArticleKey)).size > 1) {
     throw new Error('Pro Bestellung ist nur eine Artikelart möglich. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
   }
+  const confirmedPackaging=incoming.find(item=>item.optionPackagingTypeId!=null)?.optionPackagingTypeId;
+  if(current.length && confirmedPackaging!=null && context.header?.packagingTypeId
+    && Number(context.header.packagingTypeId)!==Number(confirmedPackaging))
+    throw new Error('Die gewählte Verpackungsart passt nicht zum bestehenden Bestellwarenkorb. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
   if (!current.length && (context.header || context.clientRequestId)) {
     savePurchaseCartContext({ header: null, clientRequestId: null });
   }
@@ -102,6 +106,8 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   const next = [...current, ...additions];
   write(next);
   if (!current.length && headerDefaults) savePurchaseCartContext({ header:headerDefaults });
+  else if(confirmedPackaging!=null && headerDefaults && !context.header?.packagingTypeId)
+    savePurchaseCartContext({header:{...context.header,packagingTypeId:headerDefaults.packagingTypeId,packagingType:headerDefaults.packagingType}});
   if (returnTo) savePurchaseCartContext({ returnTo });
   return next;
 }

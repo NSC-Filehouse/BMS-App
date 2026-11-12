@@ -7,7 +7,8 @@ const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity'
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
-const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg } = require('./purchase-quantity');
+const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
+const {loadPurchasePackagingOptions,purchaseTruckLoadKg}=require('../db/purchase-order-values');
 
 const text = value => String(value ?? '').trim();
 function positiveId(value) {
@@ -23,6 +24,9 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     p.opp_Verpackung,p.opp_Verpackungsart_id,p.opp_MengeVonKg,p.opp_MengeBisKg,p.opp_Mengenart,
     p.opp_ChargenbestandKg,p.opp_PreisProTonne,p.opp_GeaendertAm,p.opp_AktuellerAbgleichID,
     p.opp_MengeRohtext AS quantityText,p.opp_LKWAnzahlVon AS truckMin,p.opp_LKWAnzahlBis AS truckMax,
+    p.opp_Mengeneinheit AS quantityUnit,p.opp_MengeVon AS quantityMin,p.opp_MengeBis AS quantityMax,
+    CASE WHEN p.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql()} THEN p.opp_MengeBestaetigtVerpackungsartID END AS confirmedPackagingTypeId,
+    CASE WHEN p.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql()} THEN p.opp_MengeBestaetigtTrucks END AS confirmedTruckCount,
     TRY_CONVERT(DECIMAL(18,3),JSON_VALUE(p.opp_NormalisierungJson,'$.maxTruckLoadKg')) AS maxTruckLoadKg,
     ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
@@ -56,29 +60,43 @@ async function loadOptionAvailability(position, excludeOrderId = null, query = n
 }
 
 async function confirmOptionQuantity(optionId,positionId,body,actor) {
-  const totalKg=quantityInputKg(body);
+  let totalKg=quantityInputKg(body,body?.totalUnit==='truck'?1:null);
   if(body?.quantityConfirmed!==true || !Number.isFinite(totalKg) || totalKg<=0
     || !Number.isSafeInteger(Math.round(totalKg*1000)) || Math.abs(totalKg*1000-Math.round(totalKg*1000))>0.00001)
     throw createHttpError(422,'Bitte die angebotene Gesamtmenge und Einheit (kg oder t) auf Gramm genau eingeben und ausdrücklich bestätigen.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
   return withSqlTransaction(config.sql.database,async({query})=>{
     const source=await loadOptionPosition(optionId,positionId,query,{lock:true});
+    let packaging=null;
+    if(isTruckOffer(source) || body.totalUnit==='truck') {
+      if(!isTruckOffer(source))throw createHttpError(422,'Diese Option enthält keine Truck-Mengenangabe.',{code:'OPTION_TRUCK_UNIT_INVALID'});
+      const choices=await loadPurchasePackagingOptions();
+      packaging=choices.find(choice=>choice.id===Number(body.packagingTypeId));
+      if(!packaging)throw createHttpError(422,'Bitte zuerst die Verpackungsart auswählen.',{code:'OPTION_PACKAGING_REQUIRED'});
+      totalKg=quantityInputKg(body,purchaseTruckLoadKg(packaging.text));
+      if(!Number.isFinite(totalKg) || totalKg<=0 || !Number.isSafeInteger(Math.round(totalKg*1000)) || Math.abs(totalKg*1000-Math.round(totalKg*1000))>0.00001)
+        throw createHttpError(422,'Die Truck-Menge ergibt keine gültige kg-Menge auf Gramm genau.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
+    }
     if(!body.quantitySourceHash || source.quantitySourceHash!==body.quantitySourceHash)
       throw createHttpError(422,'Die ursprüngliche Mengenangabe wurde geändert. Bitte die Option erneut laden.',{code:'OPTION_CHANGED'});
     if(offeredQuantityKg({...source,confirmedQuantityKg:null})!=null)
       throw createHttpError(422,'Die Option hat bereits eine belegte Gesamtmenge. Diese kann hier nicht überschrieben werden.',{code:'OPTION_QUANTITY_ALREADY_KNOWN'});
-    if(/truck/i.test(source.opp_Mengenart || '') && Number(source.truckMax)>0 && Number(source.maxTruckLoadKg)>0
-      && totalKg>Math.round(Number(source.truckMax)*Number(source.maxTruckLoadKg)*1000)/1000)
+    const truckLimit=offeredTruckCount(source);
+    if(packaging && truckLimit!=null && totalKg>Math.round(truckLimit*purchaseTruckLoadKg(packaging.text)*1000)/1000)
       throw createHttpError(422,'Die bestätigte Gesamtmenge überschreitet die angebotene LKW-Anzahl mit dem maximalen Ladegewicht.',{code:'OPTION_QUANTITY_TRUCK_LIMIT'});
     const current=source.confirmedQuantityKg==null?null:Number(source.confirmedQuantityKg);
     if(current!==totalKg && current!==(body.expectedConfirmedKg==null?null:Number(body.expectedConfirmedKg)))
       throw createHttpError(422,'Die Gesamtmenge wurde zwischenzeitlich von jemand anderem bestätigt. Bitte die Option erneut laden.',{code:'OPTION_QUANTITY_CHANGED'});
+    if(packaging && (source.confirmedPackagingTypeId??null)!==(body.expectedConfirmedPackagingTypeId??null)
+      && Number(source.confirmedPackagingTypeId)!==packaging.id)
+      throw createHttpError(422,'Die Verpackungsart wurde zwischenzeitlich bestätigt. Bitte die Option erneut laden.',{code:'OPTION_QUANTITY_CHANGED'});
     const before=await loadOptionAvailability(source,null,query);
     if(totalKg<before.orderedKg)
       throw createHttpError(422,`Es sind bereits ${before.orderedKg.toLocaleString('de-DE')} kg verplant. Die bestätigte Gesamtmenge darf nicht kleiner sein.`,{code:'OPTION_QUANTITY_EXCEEDED'});
     await query(`UPDATE ${appTableSql('optionPositions')} SET opp_GesamtmengeBestaetigtKg=?,opp_MengeBestaetigtQuellHash=?,
-      opp_MengeBestaetigtVon=?,opp_MengeBestaetigtAm=SYSUTCDATETIME() WHERE opp_id=? AND opp_op_id=?`,
-    [totalKg,source.quantitySourceHash,text(actor).slice(0,100),positiveId(positionId),positiveId(optionId)]);
-    return {...quantityAvailability({...source,confirmedQuantityKg:totalKg},before.orderedKg),confirmedQuantityKg:totalKg,quantitySourceHash:source.quantitySourceHash};
+      opp_MengeBestaetigtVon=?,opp_MengeBestaetigtAm=SYSUTCDATETIME(),opp_MengeBestaetigtVerpackungsartID=?,opp_MengeBestaetigtTrucks=? WHERE opp_id=? AND opp_op_id=?`,
+    [totalKg,source.quantitySourceHash,text(actor).slice(0,100),packaging?.id || null,body.totalUnit==='truck'?Number(body.totalAmount):null,positiveId(positionId),positiveId(optionId)]);
+    return {...quantityAvailability({...source,confirmedQuantityKg:totalKg},before.orderedKg),confirmedQuantityKg:totalKg,quantitySourceHash:source.quantitySourceHash,
+      confirmedPackagingTypeId:packaging?.id || null,confirmedTruckCount:body.totalUnit==='truck'?Number(body.totalAmount):null};
   });
 }
 
@@ -135,7 +153,7 @@ async function validateOptionArticle(database, position, line) {
   return article;
 }
 
-async function assertOptionQuantities(query, positions, excludeOrderId = null) {
+async function assertOptionQuantities(query, positions, excludeOrderId = null,packagingType=null) {
   const grouped = new Map();
   for (const line of positions.filter(p => p.optionId != null)) {
     const id = positiveId(line.optionPositionId);
@@ -153,9 +171,12 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null) {
       throw createHttpError(422,'Die Option wurde zwischenzeitlich geändert. Bitte erneut laden.',{code:'OPTION_CHANGED'});
     const available = await loadOptionAvailability(source,excludeOrderId,query);
     if (available.offeredKg == null) throw createHttpError(422, 'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt. Die Option kann noch nicht bestellt werden.', { code: 'OPTION_QUANTITY_UNCONFIRMED' });
-    if (!fitsQuantity(available.offeredKg,available.orderedKg,request.amount)) throw createHttpError(422,
-      `Optionsmenge überschritten. Noch verfügbar: ${available.remainingKg.toLocaleString('de-DE')} kg.`,
-      { code: 'OPTION_QUANTITY_EXCEEDED', optionPositionId:id,...available });
+    const trucks=offeredTruckCount(source);
+    const cap=packagingType && trucks!=null?Math.min(available.offeredKg,trucks*purchaseTruckLoadKg(packagingType)):available.offeredKg;
+    const remainingKg=Math.max(0,Math.round((cap-available.orderedKg)*1000)/1000);
+    if (!fitsQuantity(cap,available.orderedKg,request.amount)) throw createHttpError(422,
+      `Optionsmenge überschritten. Noch verfügbar: ${remainingKg.toLocaleString('de-DE')} kg.`,
+      { code: 'OPTION_QUANTITY_EXCEEDED', optionPositionId:id,...available,offeredKg:cap,remainingKg });
   }
 }
 

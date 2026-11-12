@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg } = require('../src/options/purchase-quantity');
+const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('../src/options/purchase-quantity');
 
 function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
   const calls=[];
@@ -28,6 +28,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
       candidatesFor:async(database,position)=>({data:[],database,position})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),
     './purchase-quantity':require('../src/options/purchase-quantity'),
+    '../db/purchase-order-values':{loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'},{id:80,text:'Octabins'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg},
   };
   const mod={exports:{}};
   new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/options/purchase-source.js'),'utf8'))(name=>{
@@ -55,7 +56,7 @@ test('manual total is saved under the source lock and becomes the shared cap wit
   assert.equal(result.offeredKg,24750);assert.equal(result.remainingKg,23750);assert.equal(result.confirmedQuantityKg,24750);
   assert.match(f.calls[0].sql,/UPDLOCK,HOLDLOCK/);
   const update=f.calls.find(call=>call.sql.startsWith('UPDATE'));
-  assert.deepEqual(update.params,[24750,'original','NSC',10,1]);
+  assert.deepEqual(update.params,[24750,'original','NSC',null,null,10,1]);
   assert.doesNotMatch(update.sql,/SET opp_MengeVon|opp_GeaendertAm/);
   assert.match(confirmedQuantitySql(),/opp_MengeBestaetigtQuellHash=/);
   assert.doesNotMatch(quantitySourceHashSql(),/opp_MengeVonKg|opp_GeaendertAm|NormalisierungJson/);
@@ -85,7 +86,30 @@ test('confirmation requires explicit input and never overwrites a source-backed 
   await assert.rejects(manual.confirmOptionQuantity(1,10,{...body,quantitySourceHash:'old'},'NSC'),e=>e.details.code==='OPTION_CHANGED');
   assert.equal(manual.calls.some(call=>call.sql.startsWith('UPDATE')),false);
   const truck=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:1,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
-  await assert.rejects(truck.confirmOptionQuantity(1,10,{totalKg:25000,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
+  await assert.rejects(truck.confirmOptionQuantity(1,10,{totalKg:25000,packagingTypeId:78,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
+});
+
+test('truck conversion requires packaging and uses the selected type even when the old source hint differs',async()=>{
+  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:2,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
+  const body={totalAmount:2,totalUnit:'truck',quantityConfirmed:true,quantitySourceHash:'original'};
+  await assert.rejects(f.confirmOptionQuantity(1,10,body,'NSC'),e=>e.details.code==='OPTION_PACKAGING_REQUIRED');
+  const silo=await f.confirmOptionQuantity(1,10,{...body,packagingTypeId:79,kgPerTruck:1},'NSC');
+  assert.equal(silo.confirmedQuantityKg,50000);assert.equal(silo.confirmedPackagingTypeId,79);assert.equal(silo.confirmedTruckCount,2);
+  const bags=await f.confirmOptionQuantity(1,10,{...body,packagingTypeId:78},'NSC');
+  assert.equal(bags.confirmedQuantityKg,49500);
+  const octa=await f.confirmOptionQuantity(1,10,{...body,packagingTypeId:80,totalAmount:1},'NSC');
+  assert.equal(octa.confirmedQuantityKg,24750);
+  await assert.rejects(f.confirmOptionQuantity(1,10,{...body,totalAmount:3,packagingTypeId:79},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
+  assert.equal(isTruckOffer({quantityUnit:'load'}),true);
+  assert.equal(offeredTruckCount({quantityUnit:'load',quantityMax:4}),4);
+  assert.equal(isTruckOffer({quantityKind:'minimum-and-stock',quantityUnit:'truckload'}),false);
+});
+
+test('changing packaging during order editing cannot exceed the truck limit for the chosen packaging',async()=>{
+  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,confirmedQuantityKg:25000,opp_Mengenart:'truckloads',truckMax:1}});
+  const line={optionId:1,optionPositionId:10,amount:25000};
+  await f.assertOptionQuantities(f.query,[line],null,'Silo/bulk');
+  await assert.rejects(f.assertOptionQuantities(f.query,[line],null,'Sackware'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED'&&e.details.remainingKg===24750);
 });
 
 test('locks source and sums all saved orders across tenants; own edit is excluded once',async()=>{

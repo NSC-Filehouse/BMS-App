@@ -531,7 +531,7 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, asyn
       if (asText(retry.rows[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
       return mapOrder(retry.rows[0], await loadPositions(retry.rows[0].id, query));
     }
-    await assertOptionQuantities(query,positions);
+    await assertOptionQuantities(query,positions,null,packaging.text);
     const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
       [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
       [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
@@ -571,7 +571,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   const updated = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
-    await assertOptionQuantities(query,positions,id);
+    await assertOptionQuantities(query,positions,id,packaging.text);
     await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
       [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
       WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
@@ -615,7 +615,7 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
       await validateOptionArticle(req.database,source,{...position,acknowledgeUnverifiedMfi:Boolean(position.acknowledgeUnverifiedMfi)});
       position.optionSourceChanged=source.sourceVersion;
     }
-    await assertOptionQuantities(query,positions,id);
+    await assertOptionQuantities(query,positions,id,row.packagingType);
     const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
     for (const position of namedPositions) {
       const stored = positions.find(item => item.id === position.id);

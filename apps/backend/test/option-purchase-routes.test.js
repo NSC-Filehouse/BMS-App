@@ -5,7 +5,7 @@ const path=require('node:path');
 const express=require('express');
 const {createHttpError}=require('../src/utils');
 let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
-let price=987,expired=false,remainingKg=10000,quantityRequests=[];
+let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false;
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const mod={exports:{}};
 const deps={
@@ -14,13 +14,13 @@ const deps={
   '../middlewares/pilot-feature.middleware':require('../src/middlewares/pilot-feature.middleware'),
   '../options/purchase-source':{
     confirmOptionQuantity:async(id,positionId,body,actor)=>{quantityRequests.push({id,positionId,body,actor});return {offeredKg:25000,orderedKg:0,remainingKg:25000,confirmedQuantityKg:25000};},
-    loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price};},
+    loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price,...(truckOffer?{opp_Mengenart:'truckloads',truckMax:2,confirmedPackagingTypeId:79}: {})};},
     loadOptionAvailability:async()=>({offeredKg:25000,orderedKg:25000-remainingKg,remainingKg}),
     supplierCandidates:async(database)=>{assert.equal(database.firmaId,10);return [{id:'LF0124',name:'Borealis Polymers N.V.'}];},
     purchaseCandidates:async()=>({data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1}),
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },
-  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({incoterms:[{id:1,text:'FCA'}]}),loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
+  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
   '../options/price-plausibility':require('../src/options/price-plausibility'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
 };
@@ -29,7 +29,7 @@ const app=express();app.use(express.json());app.use(mod.exports);app.use((e,req,
 let server,base;
 test.before(async()=>{server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});base=`http://127.0.0.1:${server.address().port}/options/1/positions/10/purchase`;});
 test.after(()=>new Promise(resolve=>server.close(resolve)));
-test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;quantityRequests=[];});
+test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;quantityRequests=[];truckOffer=false;});
 const select=body=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true});
 
@@ -63,4 +63,15 @@ test('quantity confirmation uses the same guarded option context and authenticat
   const response=await fetch(`${base}/quantity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({totalKg:25000,quantityConfirmed:true,actor:'forged'})});
   assert.equal(response.status,200);assert.equal((await response.json()).data.confirmedQuantityKg,25000);
   assert.equal(quantityRequests[0].id,'1');assert.equal(quantityRequests[0].positionId,'10');assert.equal(quantityRequests[0].actor,'NSC');
+});
+test('truck selection requires the confirmed packaging and transfers it to the normal order header',async()=>{
+  truckOffer=true;remainingKg=50000;
+  const response=await(await fetch(`${base}/suppliers`)).json();
+  assert.equal(response.meta.truckOffer,true);assert.equal(response.meta.offeredTrucks,2);assert.equal(response.meta.packagingTypes.length,2);
+  assert.equal((await select(choice())).status,422);
+  assert.equal((await select({...choice(),packagingTypeId:78})).status,422);
+  const chosen=await(await select({...choice(),packagingTypeId:79})).json();
+  assert.equal(chosen.data.header.packagingTypeId,79);assert.equal(chosen.data.header.packagingType,'Siloware');
+  assert.equal(chosen.data.position.originalPackagingType,'Sackware');assert.equal(chosen.data.position.amount,25000);
+  assert.equal(chosen.data.position.optionPackagingTypeId,79);
 });

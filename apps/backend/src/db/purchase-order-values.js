@@ -15,12 +15,7 @@ function packagingKey(value) {
 async function loadPurchaseOptions(database, lang = 'de') {
   const language = lang === 'en' ? 'en' : 'de';
   const [packaging, incoterms] = await Promise.all([
-    runSQLQuerySqlServer(config.sql.database, `
-      SELECT [spT_ID] AS id, [spT_de] AS de, [spT_en] AS en
-      FROM [dbo].[tblSprachenTexte]
-      WHERE [spT_GruppenID] = 1 AND LTRIM(RTRIM(COALESCE([spT_Ort], N''))) = N'BE, AB'
-        AND NULLIF(LTRIM(RTRIM([spT_de])), N'') IS NOT NULL
-      ORDER BY [spT_SortKey], [spT_ID]`, []),
+    loadPurchasePackagingOptions(language),
     runSQLQueryAccess(database, `
       SELECT [lib_ID] AS id, [lib_Lieferbedingung] AS text
       FROM [dbo].[tblLieferbedingungen]
@@ -28,9 +23,22 @@ async function loadPurchaseOptions(database, lang = 'de') {
       ORDER BY [lib_Lieferbedingung]`, [language]),
   ]);
   return {
-    packagingTypes: packaging.map((row) => ({ id: Number(row.id), text: text(language === 'en' ? row.en || row.de : row.de), key: packagingKey(row.de), aliases: [text(row.de), text(row.en)].filter(Boolean) })),
+    packagingTypes: packaging,
     incoterms: incoterms.map((row) => ({ id: Number(row.id), text: text(row.text) })),
   };
+}
+
+async function loadPurchasePackagingOptions(lang='de') {
+  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT [spT_ID] AS id,[spT_de] AS de,[spT_en] AS en
+    FROM [dbo].[tblSprachenTexte]
+    WHERE [spT_GruppenID]=1 AND LTRIM(RTRIM(COALESCE([spT_Ort],N'')))=N'BE, AB'
+      AND NULLIF(LTRIM(RTRIM([spT_de])),N'') IS NOT NULL ORDER BY [spT_SortKey],[spT_ID]`,[]);
+  return rows.map(row=>({id:Number(row.id),text:text(lang==='en'?row.en || row.de:row.de),
+    key:packagingKey(row.de),aliases:[text(row.de),text(row.en)].filter(Boolean)}));
+}
+
+function purchaseTruckLoadKg(packaging) {
+  return packagingKey(packaging)==='silo'?25000:24750;
 }
 
 async function loadSupplierTerms(database, supplierId, lang = 'de') {
@@ -125,4 +133,4 @@ function findPackaging(options, value, id) {
     || options.find((option) => option.aliases.some((alias) => packagingKey(alias) === packagingKey(value)));
 }
 
-module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };
+module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions,loadPurchasePackagingOptions,purchaseTruckLoadKg, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };

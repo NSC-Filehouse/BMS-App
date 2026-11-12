@@ -14,3 +14,10 @@ test('confirmation needs a positive amount, an explicit unit and at most gram pr
   assert.equal(confirmedTotalKg('0.001','kg'),0.001);
   assert.equal(confirmedTotalKg('0.000001','t'),0.001);
 });
+test('truck quantities only become kg after choosing packaging, including translated silo names',()=>{
+  assert.equal(confirmedTotalKg('1','truck'),null);
+  assert.equal(confirmedTotalKg('1','truck',{id:79,text:'Siloware'}),25000);
+  assert.equal(confirmedTotalKg('1','truck',{id:79,text:'Silo/bulk'}),25000);
+  assert.equal(confirmedTotalKg('2','truck',{id:78,text:'Sackware'}),49500);
+  assert.equal(confirmedTotalKg('1','truck',{id:80,text:'Big Bags'}),24750);
+});
