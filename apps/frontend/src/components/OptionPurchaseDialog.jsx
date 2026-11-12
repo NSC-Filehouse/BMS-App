@@ -55,11 +55,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   };
   const loadArticles = async (q = '') => {
     setBusy(true);setError('');setArticlesLoading(true);
-    setArticlesLoaded(false);setArticles([]);setActiveArticleQuery(q);
+    setArticlesLoaded(false);setArticles([]);setArticle(null);setAcknowledgeUnverifiedMfi(false);setActiveArticleQuery(q);
     try {
       const response = await apiRequest(`${base}/articles?${new URLSearchParams({q})}`);
       const rows=response.data || [];
       setArticles(rows);setArticleTotal(rows.length);setArticlesLoaded(true);
+      if(!q)setArticle(rows.length===1&&!rows[0].mfiCheck?.blocked?rows[0]:null);
       return response;
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
   };
@@ -99,7 +100,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
         getOptionLabel={row=>`${row.name} (${row.id})${row.city?` · ${row.city}`:''}`}
-        onChange={(_e,value)=>{setSupplier(value);setArticle(null);setAcknowledgeUnverifiedMfi(false);}}
+        onChange={(_e,value)=>{setSupplier(value);setArticle(!activeArticleQuery&&articles.length===1&&!articles[0].mfiCheck?.blocked?articles[0]:null);setAcknowledgeUnverifiedMfi(false);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       <IconButton aria-label="Lieferanten suchen" title="Lieferanten suchen" aria-expanded={showSupplierSearch} aria-controls={supplierSearchId} disabled={busy} onClick={()=>setShowSupplierSearch(value=>!value)}><SearchIcon /></IconButton>
       </Box>
@@ -108,7 +109,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           ?error&&!articlesLoading?'Artikelvorschläge konnten nicht geladen werden.':'Artikelvorschläge werden geladen …'
           :activeArticleQuery
             ?articles.length?`${articleTotal} Artikel zur Suche „${activeArticleQuery}“ gefunden. Bitte einen Artikel auswählen.`:'Kein Artikel zur Suche gefunden. Bitte den Namen oder die Artikelnummer ändern.'
-            :articles.length?`${articleTotal===1?'Ein Artikel wurde':`${articleTotal} Artikel wurden`} für diese Option vorgeschlagen. Bitte einen Artikel auswählen.`:'Kein passender Artikel gefunden. Bitte über die Lupe nach Namen oder Artikelnummer suchen.'}</Typography>
+            :articleTotal===1
+              ?articles[0].mfiCheck?.blocked?'Der einzige Artikelvorschlag passt wegen abweichender MFI-Werte nicht. Bitte über die Lupe einen anderen Artikel suchen.':'Für diese Option gibt es nur einen Artikelvorschlag. Bitte prüfen oder über die Lupe einen anderen Artikel suchen.'
+              :articles.length?`${articleTotal} Artikel wurden für diese Option vorgeschlagen. Bitte einen Artikel auswählen.`:'Kein passender Artikel gefunden. Bitte über die Lupe nach Namen oder Artikelnummer suchen.'}</Typography>
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
         <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
           loading={articlesLoading} loadingText="Artikel werden geladen …"

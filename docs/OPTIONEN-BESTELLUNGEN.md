@@ -3,8 +3,8 @@
 Optionen verwenden Bestellwarenkorb, Bestellmaske, Temp-Bestellung und den
 bestehenden Status-/Mailablauf. Lieferant wird nach Herkunft, Kontenzuordnung
 und ERP-Daten vorgeschlagen. Der Einstieg aus einer Lieferantenseite bevorzugt
-deren passendes Konto. Der Benutzer kann den Lieferanten ändern und wählt den
-Artikel auch bei nur einem Treffer. Eine zusätzliche Lieferanten-Bestätigungsbox
+deren passendes Konto. Der Benutzer kann den Lieferanten ändern; ein einzelner
+zulässiger Artikelvorschlag wird vorbelegt. Eine zusätzliche Lieferanten-Bestätigungsbox
 entfällt; die Übernahme in den Bestellwarenkorb bestätigt die aktuelle Auswahl.
 Eine abweichende Lieferantenauswahl
 und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche sperren
@@ -14,8 +14,10 @@ Der Dialog zeigt Lieferant, Artikel, Verpackungsart und Mengenangaben von Beginn
 an. Die Suchfelder für Lieferanten und Artikel sind zunächst verborgen und werden
 jeweils über die Lupe rechts neben der zugehörigen Auswahlliste geöffnet.
 Der Bestelldialog lädt alle Artikelvorschläge in einem Schritt. Er zeigt deren
-Anzahl und bittet um die Auswahl eines Artikels; auch ein einzelner Vorschlag
-wird nicht automatisch gewählt. Bei fehlenden Vorschlägen erscheint direkt der
+Anzahl und bittet bei mehreren Vorschlägen um die Auswahl eines Artikels. Ein
+einzelner Vorschlag ohne MFI-Sperre wird automatisch gewählt; der Hinweis bittet
+um Prüfung und verweist auf die Suche nach einem anderen Artikel über die Lupe.
+Suchergebnisse werden weiterhin manuell ausgewählt. Bei fehlenden Vorschlägen erscheint direkt der
 Hinweis auf die Suche nach Namen oder Artikelnummer. Ein Nachlade-Button entfällt.
 Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
 über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg führt zur Optionsseite und
