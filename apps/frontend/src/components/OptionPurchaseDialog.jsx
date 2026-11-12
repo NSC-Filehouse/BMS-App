@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem,TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem,TextField, Typography } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { addPurchaseCartItems,defaultPurchaseAmount } from '../utils/purchaseCart.js';
@@ -10,7 +11,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers,setSuppliers] = React.useState([]);
   const [supplier,setSupplier] = React.useState(null);
-  const [supplierConfirmed,setSupplierConfirmed] = React.useState(false);
+  const [showSupplierSearch,setShowSupplierSearch] = React.useState(false);
+  const [showArticleSearch,setShowArticleSearch] = React.useState(false);
+  const supplierSearchId=React.useId();
+  const articleSearchId=React.useId();
   const [supplierQuery,setSupplierQuery] = React.useState('');
   const [articles,setArticles] = React.useState([]);
   const [article,setArticle] = React.useState(null);
@@ -53,8 +57,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       setArticles(rows);setArticleTotal(rows.length);setArticlesLoaded(true);
     } catch(e){setError(e.message);} finally{setBusy(false);setArticlesLoading(false);}
   };
-  React.useEffect(()=>{void loadSuppliers();},[]);
-  React.useEffect(()=>{if(supplierConfirmed)void loadArticles();},[supplierConfirmed]);
+  React.useEffect(()=>{void(async()=>{await loadSuppliers();await loadArticles();})();},[]);
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
     try {
@@ -69,7 +72,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     setBusy(true);setError('');
     try {
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
-        supplierId:supplier.id,articleIndex:article.articleIndex,supplierConfirmed,articleConfirmed:true,acknowledgeUnverifiedMfi,packagingTypeId,
+        supplierId:supplier.id,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,acknowledgeUnverifiedMfi,packagingTypeId,
       })});
       addPurchaseCartItems([response.data.position],returnTo,response.data.header);
       navigate('/purchase-cart',{state:{returnTo}});
@@ -85,33 +88,35 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     <DialogTitle>Bestellung (Option)</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
       <Typography>{position.articleName} · {offer.supplierName}</Typography>
-      <Autocomplete options={suppliers} value={supplier} disabled={busy}
+      <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
+      <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
         getOptionLabel={row=>`${row.name} (${row.id})${row.city?` · ${row.city}`:''}`}
-        onChange={(_e,value)=>{setSupplier(value);setSupplierConfirmed(false);setArticle(null);setArticles([]);setArticlesLoaded(false);setAcknowledgeUnverifiedMfi(false);}}
+        onChange={(_e,value)=>{setSupplier(value);setArticle(null);setAcknowledgeUnverifiedMfi(false);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
+      <IconButton aria-label="Lieferanten suchen" title="Lieferanten suchen" aria-expanded={showSupplierSearch} aria-controls={supplierSearchId} disabled={busy} onClick={()=>setShowSupplierSearch(value=>!value)}><SearchIcon /></IconButton>
+      </Box>
       {supplier?.reason && <Typography variant="caption">{supplier.reason}</Typography>}
-      <Box sx={{display:'flex',gap:1}}><TextField size="small" fullWidth label="Anderen Lieferanten suchen" value={supplierQuery} onChange={e=>setSupplierQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&supplierQuery.trim().length>=2)void loadSuppliers(supplierQuery.trim());}} /><Button disabled={busy||supplierQuery.trim().length<2} onClick={()=>loadSuppliers(supplierQuery.trim())}>Suchen</Button></Box>
-      <FormControlLabel control={<Checkbox checked={supplierConfirmed} disabled={busy||!supplier} onChange={e=>{setSupplierConfirmed(e.target.checked);setArticle(null);setAcknowledgeUnverifiedMfi(false);}} />} label="Ich bestätige diesen Lieferanten für die Option." />
-      {supplierConfirmed && <>
+      {showSupplierSearch && <Box id={supplierSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label="Lieferantensuche" placeholder="Name oder Lieferantennummer" value={supplierQuery} onChange={e=>setSupplierQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&supplierQuery.trim().length>=2)void loadSuppliers(supplierQuery.trim());}} /><Button disabled={busy||supplierQuery.trim().length<2} onClick={()=>loadSuppliers(supplierQuery.trim())}>Suchen</Button></Box>}
         <Typography variant="body2" role="status">{!articlesLoaded
           ?error&&!articlesLoading?'Artikelvorschläge konnten nicht geladen werden.':'Artikelvorschläge werden geladen …'
           :activeArticleQuery
             ?articles.length?`${articleTotal} Artikel zur Suche „${activeArticleQuery}“ gefunden. Bitte einen Artikel auswählen.`:'Kein Artikel zur Suche gefunden. Bitte den Namen oder die Artikelnummer ändern.'
-            :articles.length?`${articleTotal===1?'Ein Artikel wurde':`${articleTotal} Artikel wurden`} für diese Option vorgeschlagen. Bitte einen Artikel auswählen.`:'Kein passender Artikel gefunden. Bitte unten nach Namen oder Artikelnummer suchen und einen Artikel auswählen.'}</Typography>
-        <Autocomplete options={articles} value={article} disabled={busy} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
+            :articles.length?`${articleTotal===1?'Ein Artikel wurde':`${articleTotal} Artikel wurden`} für diese Option vorgeschlagen. Bitte einen Artikel auswählen.`:'Kein passender Artikel gefunden. Bitte über die Lupe nach Namen oder Artikelnummer suchen.'}</Typography>
+        <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
+        <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
           loading={articlesLoading} loadingText="Artikel werden geladen …"
           getOptionLabel={row=>`${row.articleName} (${row.articleIndex})`}
           getOptionDisabled={row=>Boolean(row.mfiCheck?.blocked)}
-          noOptionsText="Kein passender Artikel gefunden. Bitte die Artikelsuche darunter verwenden."
+          noOptionsText="Kein passender Artikel gefunden. Bitte die Artikelsuche über die Lupe öffnen."
           renderOption={(props,row)=><Box component="li" {...props} sx={{display:'block !important'}}><Typography variant="body2">{row.articleName} ({row.articleIndex})</Typography>{row.mfiCheck?.blocked && <Typography variant="caption" color="error">{row.mfiCheck.reasons?.join('; ') || 'MFI widerspricht der Option'}</Typography>}</Box>}
           onChange={(_e,value)=>{setArticle(value);setAcknowledgeUnverifiedMfi(false);}}
           renderInput={params=><TextField {...params} label="Artikel" placeholder="Bitte Artikel auswählen" required size="small" />} />
-        <Box sx={{display:'flex',gap:1}}><TextField size="small" fullWidth label="Artikelsuche" placeholder="Name oder Artikelnummer" value={articleQuery} onChange={e=>setArticleQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&articleQuery.trim().length>=2)void loadArticles(articleQuery.trim());}} /><Button disabled={busy||articleQuery.trim().length<2} onClick={()=>loadArticles(articleQuery.trim())}>Suchen</Button></Box>
+        <IconButton aria-label="Artikel suchen" title="Artikel suchen" aria-expanded={showArticleSearch} aria-controls={articleSearchId} disabled={busy} onClick={()=>setShowArticleSearch(value=>!value)}><SearchIcon /></IconButton>
+        </Box>
+        {showArticleSearch && <Box id={articleSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label="Artikelsuche" placeholder="Name oder Artikelnummer" value={articleQuery} onChange={e=>setArticleQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&articleQuery.trim().length>=2)void loadArticles(articleQuery.trim());}} /><Button disabled={busy||articleQuery.trim().length<2} onClick={()=>loadArticles(articleQuery.trim())}>Suchen</Button></Box>}
         {article?.reason && <Typography variant="caption">{article.reason}</Typography>}
         {article && !article.mfiCheck?.complete && <FormControlLabel control={<Checkbox checked={acknowledgeUnverifiedMfi} disabled={busy} onChange={e=>setAcknowledgeUnverifiedMfi(e.target.checked)} />} label="MFI-Eignung ist wegen fehlender Messwerte oder Prüfbedingungen ungeprüft. Ich bestätige die Auswahl trotzdem." />}
-      </>}
-      {supplierConfirmed && article && <>
       {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
         <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
@@ -148,10 +153,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       </Box>}
       {!automaticTruck && !enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
       {effectiveAvailability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
-      </>}
       {busy && <CircularProgress size={22} />}
       {error && <Alert severity="error">{error}</Alert>}
     </DialogContent>
-    <DialogActions><Button disabled={busy} onClick={onClose}>Abbrechen</Button><Button variant="contained" disabled={busy||unavailable||!supplierConfirmed||!article||article.mfiCheck?.blocked||(!article.mfiCheck?.complete&&!acknowledgeUnverifiedMfi)} onClick={submit}>In den Bestellwarenkorb</Button></DialogActions>
+    <DialogActions><Button disabled={busy} onClick={onClose}>Abbrechen</Button><Button variant="contained" disabled={busy||unavailable||!supplier||!article||article.mfiCheck?.blocked||(!article.mfiCheck?.complete&&!acknowledgeUnverifiedMfi)} onClick={submit}>In den Bestellwarenkorb</Button></DialogActions>
   </Dialog>;
 }

@@ -3,13 +3,16 @@
 Optionen verwenden Bestellwarenkorb, Bestellmaske, Temp-Bestellung und den
 bestehenden Status-/Mailablauf. Lieferant wird nach Herkunft, Kontenzuordnung
 und ERP-Daten vorgeschlagen. Der Einstieg aus einer Lieferantenseite bevorzugt
-deren passendes Konto. Der Benutzer bestätigt den Lieferanten ausdrücklich und
-wählt den Artikel auch bei nur einem Treffer. Eine abweichende Lieferantenauswahl
+deren passendes Konto. Der Benutzer kann den Lieferanten ändern und wählt den
+Artikel auch bei nur einem Treffer. Eine zusätzliche Lieferanten-Bestätigungsbox
+entfällt; die Übernahme in den Bestellwarenkorb bestätigt die aktuelle Auswahl.
+Eine abweichende Lieferantenauswahl
 und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche sperren
 den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigung.
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
-Der Dialog führt zuerst durch Lieferantenbestätigung und Artikelauswahl. Erst
-danach erscheinen Verpackungsart und Mengenangaben darunter.
+Der Dialog zeigt Lieferant, Artikel, Verpackungsart und Mengenangaben von Beginn
+an. Die Suchfelder für Lieferanten und Artikel sind zunächst verborgen und werden
+jeweils über die Lupe rechts neben der zugehörigen Auswahlliste geöffnet.
 Der Bestelldialog lädt alle Artikelvorschläge in einem Schritt. Er zeigt deren
 Anzahl und bittet um die Auswahl eines Artikels; auch ein einzelner Vorschlag
 wird nicht automatisch gewählt. Bei fehlenden Vorschlägen erscheint direkt der
