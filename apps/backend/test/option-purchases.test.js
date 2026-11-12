@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql } = require('../src/options/purchase-quantity');
+const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg } = require('../src/options/purchase-quantity');
 
 function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
   const calls=[];
@@ -59,6 +59,18 @@ test('manual total is saved under the source lock and becomes the shared cap wit
   assert.doesNotMatch(update.sql,/SET opp_MengeVon|opp_GeaendertAm/);
   assert.match(confirmedQuantitySql(),/opp_MengeBestaetigtQuellHash=/);
   assert.doesNotMatch(quantitySourceHashSql(),/opp_MengeVonKg|opp_GeaendertAm|NormalisierungJson/);
+});
+
+test('explicit kg/t selection converts only tonnes, persists kg and rejects unspecified units',async()=>{
+  assert.equal(quantityInputKg({totalAmount:24,totalUnit:'kg'}),24);
+  assert.equal(quantityInputKg({totalAmount:24,totalUnit:'t'}),24000);
+  assert.equal(quantityInputKg({totalAmount:24,totalUnit:'',totalKg:24000}),null);
+  assert.equal(quantityInputKg({totalAmount:24,totalUnit:'lbs'}),null);
+  const f=fixture({orderedKg:1000,sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,quantitySourceHash:'original'}});
+  const result=await f.confirmOptionQuantity(1,10,{totalAmount:24,totalUnit:'t',quantityConfirmed:true,quantitySourceHash:'original'},'NSC');
+  assert.equal(result.confirmedQuantityKg,24000);assert.equal(result.remainingKg,23000);
+  assert.equal(f.calls.find(call=>call.sql.startsWith('UPDATE')).params[0],24000);
+  await assert.rejects(f.confirmOptionQuantity(1,10,{totalAmount:24,totalUnit:'',quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_CONFIRMATION_REQUIRED');
 });
 
 test('confirmation requires explicit input and never overwrites a source-backed total or a concurrent decision',async()=>{

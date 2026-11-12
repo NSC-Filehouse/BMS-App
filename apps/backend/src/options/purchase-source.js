@@ -7,7 +7,7 @@ const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity'
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
-const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql } = require('./purchase-quantity');
+const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg } = require('./purchase-quantity');
 
 const text = value => String(value ?? '').trim();
 function positiveId(value) {
@@ -56,10 +56,10 @@ async function loadOptionAvailability(position, excludeOrderId = null, query = n
 }
 
 async function confirmOptionQuantity(optionId,positionId,body,actor) {
-  const totalKg=Number(body?.totalKg);
+  const totalKg=quantityInputKg(body);
   if(body?.quantityConfirmed!==true || !Number.isFinite(totalKg) || totalKg<=0
     || !Number.isSafeInteger(Math.round(totalKg*1000)) || Math.abs(totalKg*1000-Math.round(totalKg*1000))>0.00001)
-    throw createHttpError(422,'Bitte die angebotene Gesamtmenge in kg auf Gramm genau eingeben und ausdrücklich bestätigen.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
+    throw createHttpError(422,'Bitte die angebotene Gesamtmenge und Einheit (kg oder t) auf Gramm genau eingeben und ausdrücklich bestätigen.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
   return withSqlTransaction(config.sql.database,async({query})=>{
     const source=await loadOptionPosition(optionId,positionId,query,{lock:true});
     if(!body.quantitySourceHash || source.quantitySourceHash!==body.quantitySourceHash)

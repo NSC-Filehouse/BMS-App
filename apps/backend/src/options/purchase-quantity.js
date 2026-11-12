@@ -36,4 +36,14 @@ function fitsQuantity(offeredKg, orderedKg, requestedKg) {
   return offeredKg != null && Math.round(orderedKg * 1000) + Math.round(requestedKg * 1000) <= Math.round(offeredKg * 1000);
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql };
+function quantityInputKg(body) {
+  if(body?.totalUnit!=null || body?.totalAmount!=null) {
+    if(!['kg','t'].includes(body.totalUnit))return null;
+    const amount=number(body.totalAmount);
+    return amount==null?null:amount*(body.totalUnit==='t'?1000:1);
+  }
+  // Previously deployed dialogs send their explicitly entered kg total here.
+  return number(body?.totalKg);
+}
+
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg };

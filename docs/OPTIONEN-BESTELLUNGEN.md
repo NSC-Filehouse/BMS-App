@@ -58,8 +58,13 @@ Die Obergrenze gilt pro Optionsposition gemeinsam für alle Mandanten/Lieferante
 Ein belegter Chargenbestand ist die Gesamtgrenze; sonst gilt die angebotene maximale
 kg-Menge, bei einer Einzelmenge diese. Eine Mindestabnahme ist keine Gesamtmenge.
 LKW-Zahlen ohne belegtes Gewicht werden nicht automatisch in kg umgedeutet. Im
-Dialog kann die angebotene Gesamtmenge in kg eingegeben und ausdrücklich bestätigt
-werden. Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung.
+Dialog kann die angebotene Gesamtmenge eingegeben und ihre Einheit ausdrücklich
+als kg oder t (Tonnen) gewählt und bestätigt werden. Die Umrechnung wird vor der
+Bestätigung angezeigt; gespeichert wird einheitlich kg (z.B. 24 t = 24.000 kg).
+Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung.
+Bei einer Angabe wie "1 truck" muss auch dessen tatsächlich angebotenes Gesamtgewicht
+geklärt werden; die Auswahl einer Gewichtseinheit allein genügt nicht. Die Auswahl
+betrifft die Menge; der Bestellpreis wird weiterhin in EUR/t eingegeben.
 Eine vorhandene LKW-Obergrenze mit bekanntem maximalem Ladegewicht darf dabei nicht
 überschritten werden. Eine belegte Gesamtmenge aus der Quelle ist nicht überschreibbar.
 

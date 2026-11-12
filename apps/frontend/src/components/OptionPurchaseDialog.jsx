@@ -1,8 +1,9 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem,TextField, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { addPurchaseCartItems } from '../utils/purchaseCart.js';
+import {confirmedTotalKg} from '../utils/optionQuantityConfirmation.js';
 
 export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
   const navigate = useNavigate();
@@ -19,7 +20,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const [articleTotal,setArticleTotal] = React.useState(0);
   const [acknowledgeUnverifiedMfi,setAcknowledgeUnverifiedMfi] = React.useState(false);
   const [availability,setAvailability] = React.useState({});
-  const [totalKg,setTotalKg]=React.useState('');
+  const [totalAmount,setTotalAmount]=React.useState('');
+  const [totalUnit,setTotalUnit]=React.useState('');
   const [quantityConfirmed,setQuantityConfirmed]=React.useState(false);
   const [quantityEditing,setQuantityEditing]=React.useState(false);
   const [busy,setBusy] = React.useState(false);
@@ -31,7 +33,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       const response = await apiRequest(`${base}/suppliers?${query}`);
       const rows = response.data || [];
       setSuppliers(rows);setAvailability(response.meta || {});
-      if(!q)setTotalKg(response.meta?.confirmedQuantityKg??'');
+      if(!q){setTotalAmount(response.meta?.confirmedQuantityKg??'');setTotalUnit(response.meta?.confirmedQuantityKg!=null?'kg':'');}
       if (!q) setSupplier(rows.find(row=>row.preferred) || (rows.length===1?rows[0]:null));
     } catch(e){setError(e.message);} finally{setBusy(false);}
   };
@@ -49,10 +51,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
     try {
-      const response=await apiRequest(`${base}/quantity`,{method:'POST',body:JSON.stringify({totalKg,
+      const response=await apiRequest(`${base}/quantity`,{method:'POST',body:JSON.stringify({totalAmount,totalUnit,
         quantityConfirmed,quantitySourceHash:availability.quantitySourceHash,expectedConfirmedKg:availability.confirmedQuantityKg??null})});
       setAvailability(previous=>({...previous,...response.data}));
-      setTotalKg(response.data.confirmedQuantityKg);setQuantityConfirmed(false);setQuantityEditing(false);
+      setTotalAmount(response.data.confirmedQuantityKg);setTotalUnit('kg');setQuantityConfirmed(false);setQuantityEditing(false);
     }catch(e){setError(e.message);}finally{setBusy(false);}
   };
   const submit = async () => {
@@ -67,22 +69,29 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   };
   const unavailable = availability.remainingKg == null || availability.remainingKg<=0 || quantityEditing;
   const enteringQuantity=availability.remainingKg===null || quantityEditing;
+  const totalKg=confirmedTotalKg(totalAmount,totalUnit);
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>Bestellung (Option)</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
       <Typography>{position.articleName} · {offer.supplierName}</Typography>
       {availability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(availability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
-      {availability.remainingKg===null && <Alert severity="warning">Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte die angebotene Gesamtmenge unten eingeben und bestätigen.</Alert>}
+      {availability.remainingKg===null && <Alert severity="warning">Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.</Alert>}
       {enteringQuantity && <Box sx={{display:'grid',gap:1}}>
         {(availability.quantityText || position.quantityText) && <Typography variant="body2">Mengenangabe der Option: {availability.quantityText || position.quantityText}</Typography>}
         {availability.maxTruckLoadKg!=null && <Typography variant="caption" color="text.secondary">Maximales Ladegewicht je LKW: {Number(availability.maxTruckLoadKg).toLocaleString('de-DE')} kg. Dies ist keine bestätigte Angebotsmenge.</Typography>}
-        <TextField label="Angebotene Gesamtmenge (kg)" required type="number" size="small" value={totalKg} disabled={busy}
-          helperText="Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung."
-          inputProps={{min:0.001,step:0.001}} onChange={e=>{setTotalKg(e.target.value);setQuantityConfirmed(false);}} />
-        <FormControlLabel control={<Checkbox checked={quantityConfirmed} disabled={busy||!(Number(totalKg)>0)} onChange={e=>setQuantityConfirmed(e.target.checked)} />}
-          label="Ich habe die angebotene Gesamtmenge geprüft und bestätige die kg-Angabe." />
-        <Box sx={{display:'flex',gap:1,flexWrap:'wrap'}}><Button variant="outlined" disabled={busy||!quantityConfirmed||!(Number(totalKg)>0)} onClick={confirmQuantity}>Gesamtmenge bestätigen</Button>
-          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalKg(availability.confirmedQuantityKg??'');}}>Änderung verwerfen</Button>}</Box>
+        <Box sx={{display:'grid',gridTemplateColumns:'minmax(0, 1fr) minmax(105px, 0.5fr)',gap:1}}>
+          <TextField label="Angebotene Gesamtmenge" required type="number" size="small" value={totalAmount} disabled={busy}
+            inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
+          <TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
+            <MenuItem value="" disabled>Bitte wählen</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">t (Tonnen)</MenuItem>
+          </TextField>
+        </Box>
+        <Typography variant="caption" color="text.secondary">Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung.</Typography>
+        {totalKg!=null && <Typography variant="body2">Entspricht {totalKg.toLocaleString('de-DE',{maximumFractionDigits:3})} kg.</Typography>}
+        <FormControlLabel control={<Checkbox checked={quantityConfirmed} disabled={busy||totalKg==null} onChange={e=>setQuantityConfirmed(e.target.checked)} />}
+          label="Ich habe die angebotene Gesamtmenge geprüft und bestätige Menge und Einheit." />
+        <Box sx={{display:'flex',gap:1,flexWrap:'wrap'}}><Button variant="outlined" disabled={busy||!quantityConfirmed||totalKg==null} onClick={confirmQuantity}>Gesamtmenge bestätigen</Button>
+          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalAmount(availability.confirmedQuantityKg??'');setTotalUnit('kg');}}>Änderung verwerfen</Button>}</Box>
       </Box>}
       {!enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
       {availability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
