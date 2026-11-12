@@ -1,10 +1,12 @@
 import React from 'react';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, IconButton, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Card, CardContent, CircularProgress, IconButton, MenuItem, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from './PurchaseOrderActions.jsx';
 import CompactAddressOption from './CompactAddressOption.jsx';
+import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import {loadingLocationParts} from '../utils/loadingLocationDisplay.js';
 import { apiRequest } from '../api/client.js';
 import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
@@ -27,7 +29,9 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const [attempted, setAttempted] = React.useState(false);
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
-  const [manualLocation,setManualLocation]=React.useState(initialOrder.loadingLocationSource==='manual');
+  const manualLocation=order.loadingLocationSource==='manual';
+  const [newLocationOpen,setNewLocationOpen]=React.useState(false);
+  const [newLocations,setNewLocations]=React.useState([]);
   const [showLocationDetails,setShowLocationDetails]=React.useState(false);
   const update = React.useCallback((fn) => setOrder((previous) => typeof fn === 'function' ? fn(previous) : { ...previous, ...fn }), []);
   React.useEffect(() => { onChange?.(order); }, [order, onChange]);
@@ -96,6 +100,10 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const missing = purchaseMissingFields(order);
   const fieldErrors = purchaseFieldErrors(order);
   const disabled = saving || locked;
+  const locationOptions=[...locations,...newLocations.filter(item=>!locations.some(existing=>same(existing.text,item.text)))];
+  if(manualLocation && order.loadingLocationText && !locationOptions.some(item=>same(item.text,order.loadingLocationText)))
+    locationOptions.push({id:`manual:${order.loadingLocationText}`,text:order.loadingLocationText,source:'manual'});
+  const contacts=[...new Set((options.defaults?.contacts || []).map(contact=>contact.name).filter(Boolean))];
   const removePosition = (lineId) => {
     if (disabled) return;
     if (order.positions.length === 1 && onDelete) { void onDelete(); return; }
@@ -125,27 +133,30 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
     {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">Für diesen Lieferanten ist kein bisheriger Ladeort gespeichert. Bitte einen neuen Ladeort eingeben.</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
-      <TextField label="Ansprechpartner" size="small" value={order.supplierContact || ''} onChange={(e) => update({ supplierContact: e.target.value })} disabled={disabled || loading} />
+      <Autocomplete freeSolo forcePopupIcon options={contacts} value={order.supplierContact || null} inputValue={order.supplierContact || ''}
+        disabled={disabled || loading} noOptionsText="Kein Ansprechpartner hinterlegt"
+        onChange={(_event,value)=>update({supplierContact:value || ''})}
+        onInputChange={(_event,value,reason)=>{if(reason==='input'||reason==='clear')update({supplierContact:value});}}
+        renderInput={params=><TextField {...params} label="Ansprechpartner" size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
         <TextField label="Zahlungsziel" size="small" value={order.paymentConditionText || ''} InputProps={{ readOnly: true }} />
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
         }}><MenuItem value="" disabled>Bitte wählen</MenuItem>{options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        {manualLocation ? <Box sx={{display:'grid',gap:0.5}}><TextField label="Neuer Ladeort" required multiline minRows={3} size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled} inputProps={{maxLength:1000}} onChange={e=>update({loadingLocationText:e.target.value,loadingLocationId:'',loadingLocationSource:'manual'})} /><Button size="small" disabled={disabled} onClick={()=>{setManualLocation(false);update({loadingLocationText:'',loadingLocationId:'',loadingLocationSource:'supplier_order_history'});}}>Bisherigen Ladeort auswählen</Button></Box> : <Box sx={{display:'grid',gap:0.5,minWidth:0}}><TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
-          sx={{minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
+        <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
+          sx={{flex:1,minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
           SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,MenuProps:{PaperProps:{sx:{maxHeight:320}}}}}
           onChange={(e) => {
           setShowLocationDetails(false);
-          if(e.target.value==='__manual__'){setManualLocation(true);update({loadingLocationId:'',loadingLocationText:'',loadingLocationSource:'manual'});}
-          else update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:'supplier_order_history' });
+          const selected=locationOptions.find(item=>same(item.text,e.target.value));
+          update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:selected?.source==='manual'?'manual':'supplier_order_history' });
         }}>
-          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locations.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
-          <MenuItem value="__manual__">Neuen Ladeort eingeben …</MenuItem>
-        </TextField>
+          <MenuItem value="" disabled>Bitte wählen</MenuItem>{locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
+        </TextField><IconButton size="small" color="primary" aria-label="Neuen Ladeort hinzufügen" title="Neuen Ladeort hinzufügen" disabled={disabled} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
         {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?'Adresse ausblenden':'Adresse anzeigen'}</Button>}
         {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
-        </Box>}
+        </Box>
         <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
@@ -166,8 +177,8 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
         </Box>
         {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
           <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName || last.masterArticleName}</Typography>}
-        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Artikelindex: {p.articleIndex} · Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
-        {p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option){p.remainingKg!=null?` · Bei Auswahl verfügbar: ${Number(p.remainingKg).toLocaleString('de-DE')} kg`:''}</Typography>}
+        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`Artikelindex: ${p.articleIndex} · `:''}Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
+        {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option){p.remainingKg!=null?` · Bei Auswahl verfügbar: ${Number(p.remainingKg).toLocaleString('de-DE')} kg`:''}</Typography>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
           <TextField label="Menge (kg)" required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter EK: {priceText(last.lastPurchasePrice)}</Typography>
@@ -181,9 +192,14 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
     })}
     {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? 'Pro Bestellung ist nur eine Artikelart möglich.' : 'Pflichtfelder fehlen.'}</Alert>}
     <PurchaseOrderActions>
-      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? 'Speichern erneut prüfen' : isNew ? 'Bestellentwurf speichern' : 'Speichern'}</Button>
       <Button variant="outlined" onClick={onContinue} disabled={disabled}>Weiter einkaufen</Button>
+      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? 'Speichern erneut prüfen' : isNew ? 'Bestellentwurf speichern' : 'Speichern'}</Button>
       {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>Löschen</Button>}
     </PurchaseOrderActions>
+    {newLocationOpen && <LoadingLocationDialog onClose={()=>setNewLocationOpen(false)} onConfirm={text=>{
+      setNewLocations(previous=>previous.some(item=>same(item.text,text))?previous:[...previous,{id:`manual:${text}`,text,source:'manual'}]);
+      update({loadingLocationId:'',loadingLocationText:text,loadingLocationSource:'manual'});
+      setShowLocationDetails(false);setNewLocationOpen(false);
+    }} />}
   </Box>;
 }
