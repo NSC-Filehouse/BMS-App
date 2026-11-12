@@ -8,6 +8,8 @@ wählt den Artikel auch bei nur einem Treffer. Eine abweichende Lieferantenauswa
 und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche sperren
 den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigung.
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
+Der Dialog führt zuerst durch Lieferantenbestätigung und Artikelauswahl. Erst
+danach erscheinen Verpackungsart und Mengenbestätigung darunter.
 
 ## Fristen
 

@@ -82,37 +82,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     <DialogTitle>Bestellung (Option)</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
       <Typography>{position.articleName} · {offer.supplierName}</Typography>
-      {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
-        <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
-          setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
-          if(availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
-            && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
-        }}><MenuItem value="" disabled>Bitte zuerst wählen</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
-        {availability.sourcePackaging && <Typography variant="caption" color="text.secondary">Verpackungsangabe der Option: {availability.sourcePackaging}</Typography>}
-        <Typography variant="body2">{selectedPackaging?`1 Truck = ${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg`:'Bitte zuerst die Verpackungsart auswählen. Siloware: 25.000 kg je Truck; andere Arten: 24.750 kg.'}</Typography>
-      </Box>}
-      {availability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(availability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
-      {availability.remainingKg===null && <Alert severity="warning">Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.</Alert>}
-      {enteringQuantity && <Box sx={{display:'grid',gap:1}}>
-        {(availability.quantityText || position.quantityText) && <Typography variant="body2">Mengenangabe der Option: {availability.quantityText || position.quantityText}</Typography>}
-        {!availability.truckOffer && availability.maxTruckLoadKg!=null && <Typography variant="caption" color="text.secondary">Maximales Ladegewicht je LKW: {Number(availability.maxTruckLoadKg).toLocaleString('de-DE')} kg. Dies ist keine bestätigte Angebotsmenge.</Typography>}
-        <Box sx={{display:'grid',gridTemplateColumns:'minmax(0, 1fr) minmax(105px, 0.5fr)',gap:1}}>
-          <TextField label="Angebotene Gesamtmenge" required type="number" size="small" value={totalAmount} disabled={busy}
-            inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
-          <TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
-            <MenuItem value="" disabled>Bitte wählen</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">t (Tonnen)</MenuItem>
-            {availability.truckOffer && <MenuItem value="truck">{selectedPackaging?`Truck (${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg)`:'Truck – zuerst Verpackungsart wählen'}</MenuItem>}
-          </TextField>
-        </Box>
-        <Typography variant="caption" color="text.secondary">Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung.</Typography>
-        {totalKg!=null && <Typography variant="body2">Entspricht {totalKg.toLocaleString('de-DE',{maximumFractionDigits:3})} kg.</Typography>}
-        <FormControlLabel control={<Checkbox checked={quantityConfirmed} disabled={busy||totalKg==null||availability.truckOffer&&!selectedPackaging} onChange={e=>setQuantityConfirmed(e.target.checked)} />}
-          label="Ich habe die angebotene Gesamtmenge geprüft und bestätige Menge und Einheit." />
-        <Box sx={{display:'flex',gap:1,flexWrap:'wrap'}}><Button variant="outlined" disabled={busy||!quantityConfirmed||totalKg==null||availability.truckOffer&&!selectedPackaging} onClick={confirmQuantity}>Gesamtmenge bestätigen</Button>
-          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalAmount(availability.confirmedTruckCount??availability.confirmedQuantityKg??'');setTotalUnit(availability.confirmedTruckCount!=null?'truck':'kg');setPackagingTypeId(availability.confirmedPackagingTypeId??'');}}>Änderung verwerfen</Button>}</Box>
-      </Box>}
-      {!enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
-      {availability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
       <Autocomplete options={suppliers} value={supplier} disabled={busy}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
         getOptionLabel={row=>`${row.name} (${row.id})${row.city?` · ${row.city}`:''}`}
@@ -133,6 +102,39 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {articles.length<articleTotal && <Button disabled={busy} onClick={()=>loadArticles(activeArticleQuery,articlePage+1)}>Weitere Artikel laden</Button>}
         {article?.reason && <Typography variant="caption">{article.reason}</Typography>}
         {article && !article.mfiCheck?.complete && <FormControlLabel control={<Checkbox checked={acknowledgeUnverifiedMfi} disabled={busy} onChange={e=>setAcknowledgeUnverifiedMfi(e.target.checked)} />} label="MFI-Eignung ist wegen fehlender Messwerte oder Prüfbedingungen ungeprüft. Ich bestätige die Auswahl trotzdem." />}
+      </>}
+      {supplierConfirmed && article && <>
+      {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
+        <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
+          setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
+          if(availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
+            && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
+        }}><MenuItem value="" disabled>Bitte zuerst wählen</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
+        {availability.sourcePackaging && <Typography variant="caption" color="text.secondary">Verpackungsangabe der Option: {availability.sourcePackaging}</Typography>}
+        <Typography variant="body2">{selectedPackaging?`1 Truck = ${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg`:'Bitte zuerst die Verpackungsart auswählen. Siloware: 25.000 kg je Truck; andere Arten: 24.750 kg.'}</Typography>
+      </Box>}
+      {availability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(availability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
+      {availability.remainingKg===null && <Alert severity={availability.truckOffer?'info':'warning'}>{availability.truckOffer?'Bitte die Verpackungsart wählen und die vorgeschlagene Truck-Anzahl prüfen. Daraus wird die angebotene Gesamtmenge in kg berechnet.':'Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.'}</Alert>}
+      {enteringQuantity && <Box sx={{display:'grid',gap:1}}>
+        {(availability.quantityText || position.quantityText) && <Typography variant="body2">Mengenangabe der Option: {availability.quantityText || position.quantityText}</Typography>}
+        {!availability.truckOffer && availability.maxTruckLoadKg!=null && <Typography variant="caption" color="text.secondary">Maximales Ladegewicht je LKW: {Number(availability.maxTruckLoadKg).toLocaleString('de-DE')} kg. Dies ist keine bestätigte Angebotsmenge.</Typography>}
+        <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0, 1fr)',sm:'minmax(0, 1fr) minmax(150px, 0.65fr)'},gap:1}}>
+          <TextField label="Angebotene Gesamtmenge" required type="number" size="small" value={totalAmount} disabled={busy}
+            inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
+          <TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
+            <MenuItem value="" disabled>Bitte wählen</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">t (Tonnen)</MenuItem>
+            {availability.truckOffer && <MenuItem value="truck">{selectedPackaging?`Truck (${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg)`:'Truck – zuerst Verpackungsart wählen'}</MenuItem>}
+          </TextField>
+        </Box>
+        <Typography variant="caption" color="text.secondary">Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung.</Typography>
+        {totalKg!=null && <Typography variant="body2">Entspricht {totalKg.toLocaleString('de-DE',{maximumFractionDigits:3})} kg.</Typography>}
+        <FormControlLabel control={<Checkbox checked={quantityConfirmed} disabled={busy||totalKg==null||availability.truckOffer&&!selectedPackaging} onChange={e=>setQuantityConfirmed(e.target.checked)} />}
+          label="Ich habe die angebotene Gesamtmenge geprüft und bestätige Menge und Einheit." />
+        <Box sx={{display:'flex',gap:1,flexWrap:'wrap'}}><Button variant="outlined" disabled={busy||!quantityConfirmed||totalKg==null||availability.truckOffer&&!selectedPackaging} onClick={confirmQuantity}>Gesamtmenge bestätigen</Button>
+          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalAmount(availability.confirmedTruckCount??availability.confirmedQuantityKg??'');setTotalUnit(availability.confirmedTruckCount!=null?'truck':'kg');setPackagingTypeId(availability.confirmedPackagingTypeId??'');}}>Änderung verwerfen</Button>}</Box>
+      </Box>}
+      {!enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
+      {availability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
       </>}
       {busy && <CircularProgress size={22} />}
       {error && <Alert severity="error">{error}</Alert>}
