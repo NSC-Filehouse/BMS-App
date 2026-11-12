@@ -37,11 +37,14 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
   return {...mod.exports,query,calls,source};
 }
 
-test('offered total uses batch stock before minimum call-off quantity and never invents a truck weight',()=>{
+test('offered total uses stock and normalized mass, then the fixed default of 25000 kg per quoted truck',()=>{
   assert.equal(offeredQuantityKg({quantityKind:'minimum-and-stock',quantityMinKg:23375,quantityMaxKg:23375,stockKg:100000}),100000);
   assert.equal(offeredQuantityKg({quantityKind:'minimum-and-stock',quantityMinKg:23375}),null);
-  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2}),null);
-  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2,confirmedQuantityKg:47000}),47000);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2}),50000);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2,confirmedQuantityKg:47000}),50000);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2},24750),49500);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload'}),null);
+  assert.equal(offeredQuantityKg({quantityKind:'truckload',truckMax:2,stockKg:30000}),30000);
   assert.equal(offeredQuantityKg({quantityMaxKg:25000,confirmedQuantityKg:90000}),25000);
   assert.equal(offeredQuantityKg({stockKg:0,quantityMaxKg:25000,confirmedQuantityKg:90000}),0);
   assert.equal(offeredQuantityKg({quantityMinKg:10000,quantityMaxKg:25000}),25000);
@@ -86,11 +89,11 @@ test('confirmation requires explicit input and never overwrites a source-backed 
   await assert.rejects(manual.confirmOptionQuantity(1,10,{...body,quantitySourceHash:'old'},'NSC'),e=>e.details.code==='OPTION_CHANGED');
   assert.equal(manual.calls.some(call=>call.sql.startsWith('UPDATE')),false);
   const truck=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:1,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
-  await assert.rejects(truck.confirmOptionQuantity(1,10,{totalKg:25000,packagingTypeId:78,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
+  await assert.rejects(truck.confirmOptionQuantity(1,10,{totalKg:25000,packagingTypeId:78,quantityConfirmed:true,quantitySourceHash:'original'},'NSC'),e=>e.details.code==='OPTION_QUANTITY_ALREADY_KNOWN');
 });
 
-test('truck conversion requires packaging and uses the selected type even when the old source hint differs',async()=>{
-  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:2,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
+test('a truck offer without a quoted count still needs explicit count confirmation and the selected packaging',async()=>{
+  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:null,maxTruckLoadKg:24750,quantitySourceHash:'original'}});
   const body={totalAmount:2,totalUnit:'truck',quantityConfirmed:true,quantitySourceHash:'original'};
   await assert.rejects(f.confirmOptionQuantity(1,10,body,'NSC'),e=>e.details.code==='OPTION_PACKAGING_REQUIRED');
   const silo=await f.confirmOptionQuantity(1,10,{...body,packagingTypeId:79,kgPerTruck:1},'NSC');
@@ -99,17 +102,22 @@ test('truck conversion requires packaging and uses the selected type even when t
   assert.equal(bags.confirmedQuantityKg,49500);
   const octa=await f.confirmOptionQuantity(1,10,{...body,packagingTypeId:80,totalAmount:1},'NSC');
   assert.equal(octa.confirmedQuantityKg,24750);
-  await assert.rejects(f.confirmOptionQuantity(1,10,{...body,totalAmount:3,packagingTypeId:79},'NSC'),e=>e.details.code==='OPTION_QUANTITY_TRUCK_LIMIT');
   assert.equal(isTruckOffer({quantityUnit:'load'}),true);
   assert.equal(offeredTruckCount({quantityUnit:'load',quantityMax:4}),4);
   assert.equal(isTruckOffer({quantityKind:'minimum-and-stock',quantityUnit:'truckload'}),false);
 });
 
 test('changing packaging during order editing cannot exceed the truck limit for the chosen packaging',async()=>{
-  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,confirmedQuantityKg:25000,opp_Mengenart:'truckloads',truckMax:1}});
+  const f=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:1}});
   const line={optionId:1,optionPositionId:10,amount:25000};
   await f.assertOptionQuantities(f.query,[line],null,'Silo/bulk');
   await assert.rejects(f.assertOptionQuantities(f.query,[line],null,'Sackware'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED'&&e.details.remainingKg===24750);
+  const split=fixture({orderedKg:24750,sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',truckMax:2}});
+  await split.assertOptionQuantities(split.query,[{...line,amount:24750}],null,'Sackware');
+  await assert.rejects(split.assertOptionQuantities(split.query,[{...line,amount:24750.001}],null,'Sackware'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED');
+  const manual=fixture({sourceOverride:{opp_MengeVonKg:null,opp_MengeBisKg:null,opp_Mengenart:'truckloads',confirmedQuantityKg:50000,confirmedTruckCount:2}});
+  await manual.assertOptionQuantities(manual.query,[{...line,amount:49500}],null,'Sackware');
+  await assert.rejects(manual.assertOptionQuantities(manual.query,[{...line,amount:50000}],null,'Sackware'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED');
 });
 
 test('locks source and sums all saved orders across tenants; own edit is excluded once',async()=>{

@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {confirmedTotalKg} from '../src/utils/optionQuantityConfirmation.js';
+import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from '../src/utils/optionQuantityConfirmation.js';
+
+test('truck offers default to silo and recalculate the complete kg total when packaging changes',()=>{
+  const packagingTypes=[{id:78,text:'Sackware'},{id:79,text:'Siloware',key:'silo'}];
+  const meta={truckOffer:true,offeredTrucks:2,packagingTypes,offeredKg:50000,orderedKg:1000,confirmedPackagingTypeId:78};
+  assert.equal(defaultOptionPackagingId(meta),79);
+  assert.deepEqual(truckOptionAvailability(meta,packagingTypes[1]),{offeredKg:50000,orderedKg:1000,remainingKg:49000});
+  assert.deepEqual(truckOptionAvailability(meta,packagingTypes[0]),{offeredKg:49500,orderedKg:1000,remainingKg:48500});
+  assert.equal(truckOptionAvailability({...meta,offeredTrucks:null},packagingTypes[1]),null);
+  assert.equal(truckOptionAvailability({...meta,offeredTrucks:1},packagingTypes[1]).offeredKg,25000);
+  assert.equal(truckOptionAvailability({...meta,offeredKg:24000},packagingTypes[1]).offeredKg,24000);
+  assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null}),78);
+  assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:null}),79);
+  assert.equal(defaultOptionPackagingId({truckOffer:false}), '');
+});
 
 test('choosing kg versus tonnes changes the confirmed total by the correct factor',()=>{
   assert.equal(confirmedTotalKg('24','kg'),24);

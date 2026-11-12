@@ -5,7 +5,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
 const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purchaseTruckLoadKg } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
-const {offeredQuantityKg,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
+const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
@@ -42,7 +42,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const supplier = suppliers.find(row => row.id.toLowerCase()===String(req.body.supplierId || '').trim().toLowerCase());
   if (!supplier) throw createHttpError(422,'Der ausgewählte Lieferant ist nicht verfügbar.',{code:'SUPPLIER_NOT_FOUND'});
   const article = await validateOptionArticle(req.database,source,req.body);
-  const availability = await loadOptionAvailability(source);
+  let availability = await loadOptionAvailability(source);
   if (availability.remainingKg == null) throw createHttpError(422,'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt.',{code:'OPTION_QUANTITY_UNCONFIRMED'});
   if (availability.remainingKg<=0) throw createHttpError(422,'Diese Optionsposition ist bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   const lang = req.header('x-lang')==='en'?'en':'de';
@@ -50,8 +50,12 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const chosenPackaging=(choices.packagingTypes || []).find(row=>row.id===Number(req.body.packagingTypeId));
   if(isTruckOffer(source) && !chosenPackaging)
     throw createHttpError(422,'Bitte zuerst die Verpackungsart auswählen.',{code:'OPTION_PACKAGING_REQUIRED'});
-  if(isTruckOffer(source) && source.confirmedPackagingTypeId!=null && Number(source.confirmedPackagingTypeId)!==chosenPackaging.id)
+  if(isTruckOffer(source) && offeredTruckCount(source)==null && source.confirmedPackagingTypeId!=null && Number(source.confirmedPackagingTypeId)!==chosenPackaging.id)
     throw createHttpError(422,'Bitte die Gesamtmenge für die gewählte Verpackungsart erneut bestätigen.',{code:'OPTION_PACKAGING_CHANGED'});
+  if(isTruckOffer(source) && offeredTruckCount(source)!=null) {
+    availability=quantityAvailability(source,availability.orderedKg,purchaseTruckLoadKg(chosenPackaging.text));
+    if(availability.remainingKg<=0)throw createHttpError(422,'Diese Optionsposition ist für die gewählte Verpackung bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
+  }
   const deliveryTerm = choices.incoterms.find(row => row.text.trim().toLowerCase()===String(source.incoterm || '').trim().toLowerCase());
   const price = source.opp_PreisProTonne;
   sendEnvelope(res,{data:{

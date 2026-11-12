@@ -171,7 +171,7 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null,pa
       throw createHttpError(422,'Die Option wurde zwischenzeitlich geändert. Bitte erneut laden.',{code:'OPTION_CHANGED'});
     const available = await loadOptionAvailability(source,excludeOrderId,query);
     if (available.offeredKg == null) throw createHttpError(422, 'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt. Die Option kann noch nicht bestellt werden.', { code: 'OPTION_QUANTITY_UNCONFIRMED' });
-    const trucks=offeredTruckCount(source);
+    const trucks=offeredTruckCount(source) || (Number(source.confirmedTruckCount)>0?Number(source.confirmedTruckCount):null);
     const cap=packagingType && trucks!=null?Math.min(available.offeredKg,trucks*purchaseTruckLoadKg(packagingType)):available.offeredKg;
     const remainingKg=Math.max(0,Math.round((cap-available.orderedKg)*1000)/1000);
     if (!fitsQuantity(cap,available.orderedKg,request.amount)) throw createHttpError(422,

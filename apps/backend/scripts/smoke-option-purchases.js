@@ -6,6 +6,7 @@ const odbc = require('odbc');
 require('dotenv').config({ path:path.join(__dirname,'../.env'),quiet:true });
 const { loadOptionPosition,loadOptionAvailability,assertOptionQuantities } = require('../src/options/purchase-source');
 const { berlinDate } = require('../src/options/read');
+const {offeredTruckCount}=require('../src/options/purchase-quantity');
 const config = require('../src/config');
 
 async function main() {
@@ -60,6 +61,20 @@ async function main() {
     await assert.rejects(assertOptionQuantities(query,[{...line,amount:before.remainingKg-amount+0.001}],orders[0]),e=>e.details?.code==='OPTION_QUANTITY_EXCEEDED');
     const pair=(await db.query('SELECT OptionID,OptionPositionID FROM BMSApp.tbl_Temp_Best_Position WHERE tbp_tb_id=?',[orders[0]]))[0];
     assert.equal(Number(pair.OptionID),Number(ref.op_id));assert.equal(Number(pair.OptionPositionID),Number(ref.opp_id));
+    const trucks=await db.query(`SELECT TOP 1 o.op_id,p.opp_id FROM BMSApp.tblOptionenPositionen p
+      JOIN BMSApp.tblOptionen o ON o.op_id=p.opp_op_id WHERE o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
+      AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
+      AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+      AND p.opp_Mengenart=N'truckloads' AND COALESCE(p.opp_LKWAnzahlBis,p.opp_LKWAnzahlVon)>0 ORDER BY p.opp_id`,[today,today]);
+    if(trucks.length){
+      const truck=trucks[0],position=await loadOptionPosition(truck.op_id,truck.opp_id,query,{lock:true});
+      const capacity=await loadOptionAvailability(position,null,query);
+      assert.ok(capacity.offeredKg>0 && capacity.offeredKg<=offeredTruckCount(position)*25000);
+      const bagsRemaining=Math.max(0,Math.min(capacity.offeredKg,offeredTruckCount(position)*24750)-capacity.orderedKg);
+      const truckLine={optionId:Number(truck.op_id),optionPositionId:Number(truck.opp_id),amount:bagsRemaining};
+      if(bagsRemaining>0)await assertOptionQuantities(query,[truckLine],null,'Sackware');
+      await assert.rejects(assertOptionQuantities(query,[{...truckLine,amount:bagsRemaining+0.001}],null,'Sackware'),e=>e.details?.code==='OPTION_QUANTITY_EXCEEDED');
+    }
     const unclear=await db.query(`SELECT TOP 1 o.op_id,p.opp_id FROM BMSApp.tblOptionenPositionen p
       JOIN BMSApp.tblOptionen o ON o.op_id=p.opp_op_id WHERE o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
       AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
@@ -86,7 +101,7 @@ async function main() {
     await db.rollback();open=false;
     const remaining=(await db.query('SELECT COUNT(*) AS countRows FROM BMSApp.tbl_Temp_Bestellung WHERE tb_id IN(?,?)',orders))[0];
     assert.equal(Number(remaining.countRows),0);
-    console.log(JSON.stringify({windowsLogin:login,passed:'Concurrent source lock, cross-mandant totals, own-edit exclusion, excess rejection, manual total and source hash invalidation, references and rollback',testRowsRemaining:0}));
+    console.log(JSON.stringify({windowsLogin:login,passed:'Concurrent source lock, cross-mandant totals, own-edit exclusion, excess rejection, automatic truck capacity by packaging, manual total and source hash invalidation, references and rollback',testRowsRemaining:0}));
   } finally {
     if(open)await db.rollback();
     await db.close();

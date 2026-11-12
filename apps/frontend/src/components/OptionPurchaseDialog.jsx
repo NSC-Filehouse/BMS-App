@@ -3,7 +3,7 @@ import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, D
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { addPurchaseCartItems,defaultPurchaseAmount } from '../utils/purchaseCart.js';
-import {confirmedTotalKg} from '../utils/optionQuantityConfirmation.js';
+import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from '../utils/optionQuantityConfirmation.js';
 
 export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
   const navigate = useNavigate();
@@ -36,9 +36,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       setSuppliers(rows);setAvailability(response.meta || {});
       if(!q){
         const meta=response.meta || {};
-        setPackagingTypeId(meta.confirmedPackagingTypeId??'');
-        setTotalAmount(meta.confirmedTruckCount??meta.confirmedQuantityKg??(meta.truckOffer?meta.offeredTrucks??'':''));
-        setTotalUnit(meta.confirmedTruckCount!=null?'truck':meta.confirmedQuantityKg!=null?'kg':meta.truckOffer?'truck':'');
+        setPackagingTypeId(defaultOptionPackagingId(meta));
+        setTotalAmount(meta.truckOffer?meta.confirmedTruckCount??'':meta.confirmedQuantityKg??'');
+        setTotalUnit(meta.truckOffer?'truck':meta.confirmedQuantityKg!=null?'kg':'');
       }
       if (!q) setSupplier(rows.find(row=>row.preferred) || (rows.length===1?rows[0]:null));
     } catch(e){setError(e.message);} finally{setBusy(false);}
@@ -61,7 +61,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         quantityConfirmed,quantitySourceHash:availability.quantitySourceHash,expectedConfirmedKg:availability.confirmedQuantityKg??null,
         expectedConfirmedPackagingTypeId:availability.confirmedPackagingTypeId??null})});
       setAvailability(previous=>({...previous,...response.data}));
-      setTotalAmount(response.data.confirmedTruckCount??response.data.confirmedQuantityKg);setTotalUnit(response.data.confirmedTruckCount!=null?'truck':'kg');setQuantityConfirmed(false);setQuantityEditing(false);
+      setTotalAmount(availability.truckOffer?response.data.confirmedTruckCount??'':response.data.confirmedQuantityKg);setTotalUnit(availability.truckOffer?'truck':'kg');setQuantityConfirmed(false);setQuantityEditing(false);
     }catch(e){setError(e.message);}finally{setBusy(false);}
   };
   const submit = async () => {
@@ -75,8 +75,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     } catch(e){setError(e.message);} finally{setBusy(false);}
   };
   const selectedPackaging=availability.packagingTypes?.find(row=>row.id===Number(packagingTypeId));
-  const unavailable = availability.remainingKg == null || availability.remainingKg<=0 || quantityEditing || availability.truckOffer && !selectedPackaging;
-  const enteringQuantity=availability.remainingKg===null || quantityEditing;
+  const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
+  const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
+  const unavailable = effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || availability.truckOffer && !selectedPackaging;
+  const enteringQuantity=!automaticTruck && (availability.remainingKg===null || quantityEditing);
   const totalKg=confirmedTotalKg(totalAmount,totalUnit,selectedPackaging);
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>Bestellung (Option)</DialogTitle>
@@ -107,34 +109,37 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
         <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
-          if(availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
+          if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
         }}><MenuItem value="" disabled>Bitte zuerst wählen</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
         {availability.sourcePackaging && <Typography variant="caption" color="text.secondary">Verpackungsangabe der Option: {availability.sourcePackaging}</Typography>}
-        <Typography variant="body2">{selectedPackaging?`1 Truck = ${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg`:'Bitte zuerst die Verpackungsart auswählen. Siloware: 25.000 kg je Truck; andere Arten: 24.750 kg.'}</Typography>
+        <Typography variant="body2">{selectedPackaging?`1 Truck = ${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg`:'Bitte die Verpackungsart auswählen. Siloware: 25.000 kg je Truck; andere Arten: 24.750 kg.'}</Typography>
       </Box>}
-      {availability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(availability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
-      {availability.remainingKg===null && <Alert severity={availability.truckOffer?'info':'warning'}>{availability.truckOffer?'Bitte die Verpackungsart wählen und die vorgeschlagene Truck-Anzahl prüfen. Daraus wird die angebotene Gesamtmenge in kg berechnet.':'Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.'}</Alert>}
+      {automaticTruck && <Box sx={{display:'grid',gap:1}}>
+        <TextField label="Angebotene Gesamtmenge (kg)" size="small" value={selectedPackaging?effectiveAvailability.offeredKg??'':''} InputProps={{readOnly:true}} />
+        <Typography variant="caption">{availability.offeredTrucks} {Number(availability.offeredTrucks)===1?'Truck':'Trucks'} laut Option. Die kg-Menge wird automatisch aus Anzahl und Verpackungsart berechnet.</Typography>
+      </Box>}
+      {effectiveAvailability.remainingKg!=null && <Typography variant="body2">Noch verfügbar: {Number(effectiveAvailability.remainingKg).toLocaleString('de-DE')} kg. Gespeicherte Bestellungen und Entwürfe sind berücksichtigt.</Typography>}
+      {!automaticTruck && availability.remainingKg===null && <Alert severity="warning">{availability.truckOffer?'Die Option nennt keine Truck-Anzahl. Bitte die angebotene Anzahl eingeben und bestätigen; die kg-Menge wird automatisch berechnet.':'Die Option nennt keine eindeutige Gesamtmenge in kg. Bitte Gesamtmenge und Einheit unten eingeben und bestätigen.'}</Alert>}
       {enteringQuantity && <Box sx={{display:'grid',gap:1}}>
         {(availability.quantityText || position.quantityText) && <Typography variant="body2">Mengenangabe der Option: {availability.quantityText || position.quantityText}</Typography>}
         {!availability.truckOffer && availability.maxTruckLoadKg!=null && <Typography variant="caption" color="text.secondary">Maximales Ladegewicht je LKW: {Number(availability.maxTruckLoadKg).toLocaleString('de-DE')} kg. Dies ist keine bestätigte Angebotsmenge.</Typography>}
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0, 1fr)',sm:'minmax(0, 1fr) minmax(150px, 0.65fr)'},gap:1}}>
-          <TextField label="Angebotene Gesamtmenge" required type="number" size="small" value={totalAmount} disabled={busy}
+          <TextField label={availability.truckOffer?'Angebotene Anzahl Trucks':'Angebotene Gesamtmenge'} required type="number" size="small" value={totalAmount} disabled={busy}
             inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
-          <TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
+          {availability.truckOffer?<TextField label="Angebotene Gesamtmenge (kg)" size="small" value={totalKg??''} InputProps={{readOnly:true}} />:<TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
             <MenuItem value="" disabled>Bitte wählen</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">t (Tonnen)</MenuItem>
-            {availability.truckOffer && <MenuItem value="truck">{selectedPackaging?`Truck (${defaultPurchaseAmount(selectedPackaging.text).toLocaleString('de-DE')} kg)`:'Truck – zuerst Verpackungsart wählen'}</MenuItem>}
-          </TextField>
+          </TextField>}
         </Box>
         <Typography variant="caption" color="text.secondary">Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung.</Typography>
         {totalKg!=null && <Typography variant="body2">Entspricht {totalKg.toLocaleString('de-DE',{maximumFractionDigits:3})} kg.</Typography>}
         <FormControlLabel control={<Checkbox checked={quantityConfirmed} disabled={busy||totalKg==null||availability.truckOffer&&!selectedPackaging} onChange={e=>setQuantityConfirmed(e.target.checked)} />}
-          label="Ich habe die angebotene Gesamtmenge geprüft und bestätige Menge und Einheit." />
+          label={availability.truckOffer?'Ich habe die angebotene Truck-Anzahl geprüft und bestätige die Gesamtmenge.':'Ich habe die angebotene Gesamtmenge geprüft und bestätige Menge und Einheit.'} />
         <Box sx={{display:'flex',gap:1,flexWrap:'wrap'}}><Button variant="outlined" disabled={busy||!quantityConfirmed||totalKg==null||availability.truckOffer&&!selectedPackaging} onClick={confirmQuantity}>Gesamtmenge bestätigen</Button>
-          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalAmount(availability.confirmedTruckCount??availability.confirmedQuantityKg??'');setTotalUnit(availability.confirmedTruckCount!=null?'truck':'kg');setPackagingTypeId(availability.confirmedPackagingTypeId??'');}}>Änderung verwerfen</Button>}</Box>
+          {quantityEditing && <Button disabled={busy} onClick={()=>{setQuantityEditing(false);setQuantityConfirmed(false);setTotalAmount(availability.truckOffer?availability.confirmedTruckCount??'':availability.confirmedQuantityKg??'');setTotalUnit(availability.truckOffer?'truck':'kg');setPackagingTypeId(defaultOptionPackagingId(availability));}}>Änderung verwerfen</Button>}</Box>
       </Box>}
-      {!enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
-      {availability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
+      {!automaticTruck && !enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">Bestätigte angebotene Gesamtmenge: {Number(availability.confirmedQuantityKg).toLocaleString('de-DE')} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>Gesamtmenge korrigieren</Button></Box>}
+      {effectiveAvailability.remainingKg===0 && <Alert severity="warning">Diese Optionsposition ist bereits vollständig verplant.</Alert>}
       </>}
       {busy && <CircularProgress size={22} />}
       {error && <Alert severity="error">{error}</Alert>}

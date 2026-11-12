@@ -15,7 +15,7 @@ const deps={
   '../options/purchase-source':{
     confirmOptionQuantity:async(id,positionId,body,actor)=>{quantityRequests.push({id,positionId,body,actor});return {offeredKg:25000,orderedKg:0,remainingKg:25000,confirmedQuantityKg:25000};},
     loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price,...(truckOffer?{opp_Mengenart:'truckloads',truckMax:2,confirmedPackagingTypeId:79}: {})};},
-    loadOptionAvailability:async()=>({offeredKg:25000,orderedKg:25000-remainingKg,remainingKg}),
+    loadOptionAvailability:async()=>({offeredKg:truckOffer?50000:25000,orderedKg:(truckOffer?50000:25000)-remainingKg,remainingKg}),
     supplierCandidates:async(database)=>{assert.equal(database.firmaId,10);return [{id:'LF0124',name:'Borealis Polymers N.V.'}];},
     purchaseCandidates:async()=>({data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1}),
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
@@ -64,14 +64,18 @@ test('quantity confirmation uses the same guarded option context and authenticat
   assert.equal(response.status,200);assert.equal((await response.json()).data.confirmedQuantityKg,25000);
   assert.equal(quantityRequests[0].id,'1');assert.equal(quantityRequests[0].positionId,'10');assert.equal(quantityRequests[0].actor,'NSC');
 });
-test('truck selection requires the confirmed packaging and transfers it to the normal order header',async()=>{
+test('truck selection calculates kg from source count and packaging without a manual quantity confirmation',async()=>{
   truckOffer=true;remainingKg=50000;
   const response=await(await fetch(`${base}/suppliers`)).json();
   assert.equal(response.meta.truckOffer,true);assert.equal(response.meta.offeredTrucks,2);assert.equal(response.meta.packagingTypes.length,2);
   assert.equal((await select(choice())).status,422);
-  assert.equal((await select({...choice(),packagingTypeId:78})).status,422);
+  const bags=await(await select({...choice(),packagingTypeId:78})).json();
+  assert.equal(bags.data.position.offeredKg,49500);assert.equal(bags.data.position.remainingKg,49500);assert.equal(bags.data.position.amount,24750);
   const chosen=await(await select({...choice(),packagingTypeId:79})).json();
   assert.equal(chosen.data.header.packagingTypeId,79);assert.equal(chosen.data.header.packagingType,'Siloware');
   assert.equal(chosen.data.position.originalPackagingType,'Sackware');assert.equal(chosen.data.position.amount,25000);
   assert.equal(chosen.data.position.optionPackagingTypeId,79);
+  assert.equal(chosen.data.position.offeredKg,50000);assert.equal(quantityRequests.length,0);
+  remainingKg=250;
+  assert.equal((await select({...choice(),packagingTypeId:78})).status,422);
 });

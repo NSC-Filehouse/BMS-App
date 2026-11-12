@@ -9,7 +9,7 @@ und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche spe
 den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigung.
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
 Der Dialog führt zuerst durch Lieferantenbestätigung und Artikelauswahl. Erst
-danach erscheinen Verpackungsart und Mengenbestätigung darunter.
+danach erscheinen Verpackungsart und Mengenangaben darunter.
 
 ## Fristen
 
@@ -59,21 +59,23 @@ keinen externen Bestellendpunkt, solange dieser nicht existiert.
 Die Obergrenze gilt pro Optionsposition gemeinsam für alle Mandanten/Lieferanten.
 Ein belegter Chargenbestand ist die Gesamtgrenze; sonst gilt die angebotene maximale
 kg-Menge, bei einer Einzelmenge diese. Eine Mindestabnahme ist keine Gesamtmenge.
-LKW-Zahlen ohne belegtes Gewicht werden nicht automatisch in kg umgedeutet. Im
-Dialog kann die angebotene Gesamtmenge eingegeben und ihre Einheit ausdrücklich
-als kg oder t (Tonnen) gewählt und bestätigt werden. Die Umrechnung wird vor der
-Bestätigung angezeigt; gespeichert wird einheitlich kg (z.B. 24 t = 24.000 kg).
-Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung.
-Bei Truck-Angaben wird zuerst die Verpackungsart aus derselben BMS-Auswahlliste wie
-in der Bestellmaske gewählt. Die Quellenangabe bleibt als Hinweis sichtbar; sie
-ersetzt die Auswahl nicht. Pro Truck gelten dann 25.000 kg für Siloware (auch
-"Silo/bulk") und 24.750 kg für alle anderen Verpackungsarten. Die Einheit "Truck"
-berechnet Anzahl mal Ladegewicht; eine angebotene Spanne 1–2 Trucks schlägt die
-Obergrenze 2 vor. Der Benutzer bestätigt die Gesamtmenge ausdrücklich. kg und t
-bleiben für abweichende tatsächliche Gesamtgewichte auswählbar.
-Die Auswahl betrifft die Menge; der Bestellpreis wird weiterhin in EUR/t eingegeben.
-Eine vorhandene LKW-Obergrenze mit bekanntem maximalem Ladegewicht darf dabei nicht
-überschritten werden. Eine belegte Gesamtmenge aus der Quelle ist nicht überschreibbar.
+Konkrete Truck-Anzahlen werden automatisch berechnet: Standard ist Siloware mit
+25.000 kg je Truck. Bei einem Wechsel zu einer anderen Verpackungsart gelten
+24.750 kg je Truck. Eine Spanne 1–2 Trucks verwendet die Obergrenze 2. Der Dialog
+zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche
+Mengenbestätigung. Bereits belegte kleinere kg-/Chargenmengen begrenzen weiterhin
+das Angebot. Frühere manuelle Truck-Bestätigungen ändern diese feste Regel nicht.
+
+Steht in der Quelle nur "full truck loads" ohne Anzahl, bleibt die Anzahl offen.
+Der Benutzer gibt die angebotene Truck-Anzahl ein und bestätigt sie; die App
+berechnet die kg-Menge anhand der Verpackung. Auch hier gibt es keine kg-/t-Auswahl.
+Nur sonstige Optionen ohne belegte kg-Gesamtmenge benötigen weiterhin eine
+manuelle Menge mit ausdrücklicher kg-/t-Auswahl. Eindeutig normalisierte Mengen
+benötigen diese Bestätigung nicht. Der OptionReader erkennt Originaleinheiten,
+bestimmte Tabellenüberschriften und freigegebene Lieferanten-/Ladegewichtsregeln.
+Ungeklärte Angaben werden nicht pauschal als kg oder Tonnen interpretiert.
+Die Eingabe betrifft die gesamte Optionsposition, nicht nur eine Teilbestellung;
+der Bestellpreis wird weiterhin in EUR/t eingegeben.
 
 Die manuelle Bestätigung liegt an der Optionsposition in
 `opp_GesamtmengeBestaetigtKg`, `opp_MengeBestaetigtQuellHash`,
@@ -87,8 +89,9 @@ Eine manuell bestätigte Gesamtmenge kann im selben Dialog korrigiert werden,
 aber nicht unter bereits verplante Mengen. Konkurrierende Korrekturen werden
 über Quellsperre und Vergleich der vorher bestätigten Menge abgefangen.
 
-Ein Verpackungswechsel im Optionsdialog setzt die Mengenbestätigung zurück und
-berechnet Truck-Mengen neu. Die bestätigte Verpackung geht in den Bestellkopf über;
+Ein Verpackungswechsel berechnet konkrete Truck-Mengen sofort neu. Nur bei
+manuell ergänzter Truck-Anzahl wird die Mengenbestätigung zurückgesetzt.
+Die gewählte Verpackung geht in den Bestellkopf über;
 die ursprüngliche Quellenverpackung bleibt als Positions-Snapshot erhalten.
 Ein bereits anders verpackter Warenkorb wird nicht still überschrieben. Auch beim
 Bearbeiten und Abschließen begrenzt die gewählte Verpackung die zulässige Truck-Menge.

@@ -1,12 +1,16 @@
 const number = value => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
 
-function offeredQuantityKg(position) {
+function offeredQuantityKg(position,kgPerTruck=25000) {
+  const trucks=offeredTruckCount(position);
+  const truckKg=trucks==null?null:Math.round(trucks*kgPerTruck*1000)/1000;
+  const cap=value=>truckKg==null?value:Math.min(value,truckKg);
   const stock = number(position.stockKg ?? position.opp_ChargenbestandKg);
-  if (stock != null && stock >= 0) return stock;
+  if (stock != null && stock >= 0) return cap(stock);
   const kind = position.quantityKind ?? position.opp_Mengenart;
   const maximum = number(position.quantityMaxKg ?? position.opp_MengeBisKg);
   const minimum = number(position.quantityMinKg ?? position.opp_MengeVonKg);
-  if (kind !== 'minimum-and-stock' && (maximum > 0 || minimum > 0)) return maximum > 0 ? maximum : minimum;
+  if (kind !== 'minimum-and-stock' && (maximum > 0 || minimum > 0)) return cap(maximum > 0 ? maximum : minimum);
+  if(truckKg!=null)return truckKg;
   const confirmed = number(position.confirmedQuantityKg);
   return confirmed > 0 ? confirmed : null;
 }
@@ -26,8 +30,8 @@ function confirmedQuantitySql(alias = 'p') {
   return `CASE WHEN ${alias}.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql(alias)} THEN ${alias}.opp_GesamtmengeBestaetigtKg END`;
 }
 
-function quantityAvailability(position, orderedKg = 0) {
-  const offeredKg = offeredQuantityKg(position);
+function quantityAvailability(position, orderedKg = 0,kgPerTruck=25000) {
+  const offeredKg = offeredQuantityKg(position,kgPerTruck);
   return { offeredKg, orderedKg: Number(orderedKg) || 0,
     remainingKg: offeredKg == null ? null : Math.max(0, Math.round((offeredKg - orderedKg) * 1000) / 1000) };
 }
