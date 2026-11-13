@@ -20,8 +20,9 @@ const deps={
     purchaseCandidates:async(_db,_source,options)=>{assert.equal(options.all,true);return {data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1};},
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },
-  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
+  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',aliases:['Siloware','Silo/bulk']}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
   '../options/price-plausibility':require('../src/options/price-plausibility'),
+  '../options/packaging-display':require('../src/options/packaging-display'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
 };
 new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/routes/option-purchases.routes.js'),'utf8'))(name=>{assert.ok(name in deps,name);return deps[name];},mod);
@@ -38,6 +39,16 @@ test('one supplier or article never replaces explicit selection',async()=>{
   assert.equal((await fetch(`${base}/articles`)).status,200);
   assert.equal((await select({...choice(),supplierConfirmed:false})).status,422);
   assert.equal((await select({...choice(),articleConfirmed:false})).status,422);
+});
+
+test('purchase preview translates offered packaging alternatives while retaining the source',async()=>{
+  const original=source.opp_Verpackung;
+  try {
+    source.opp_Verpackung='Bags and / or Bulk';
+    const {meta}=await(await fetch(`${base}/suppliers`)).json();
+    assert.equal(meta.sourcePackaging,'Bags and / or Bulk');
+    assert.deepEqual(meta.sourcePackagingDisplay,{de:'Sackware und/oder Siloware',en:'Bags and/or Silo/bulk'});
+  } finally {source.opp_Verpackung=original;}
 });
 test('selection returns confirmed target data and preserves offer price and manual source location',async()=>{
   const response=await select(choice());assert.equal(response.status,200);const {data}=await response.json();

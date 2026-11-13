@@ -9,6 +9,13 @@ angezeigt. Auch die Optionszeilen der VL zeigen keine Import- oder
 Normalisierungshinweise. Die Originalbelege bleiben zugänglich; gespeicherte
 Quelldaten und die Prüfungen im Bestellablauf bleiben erhalten.
 
+Verpackungsbezeichnungen werden für die Anzeige aus der vorhandenen zweisprachigen
+BMS-Liste `dbo.tblSprachenTexte` (Gruppe 1, Ort `BE, AB`) übersetzt. Beispielsweise
+wird „BAGS“ zu „Sackware“ und „Bags and / or Bulk“ zu „Sackware und/oder Siloware“;
+„Big Bags“ bleibt eine eigene Art. Gewichte, Zusätze, unbekannte Bezeichnungen und
+angebotene Alternativen bleiben erhalten. Die Übersetzung wählt keine Verpackung
+aus und verändert weder Originalangaben noch Berechnungen oder gespeicherte Daten.
+
 „Originalmail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
 ohne Skripte oder externe Ressourcen. Vorhandene PDFs/Bilder lassen sich über einen
 weiteren Button öffnen. Die API lädt Inhalte erst bei Bedarf über

@@ -5,7 +5,8 @@ const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
 const { quantityAvailability,confirmedQuantitySql,offeredTruckCount } = require('./purchase-quantity');
-const {purchaseTruckLoadKg}=require('../db/purchase-order-values');
+const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase-order-values');
+const {createPackagingDisplay}=require('./packaging-display');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -105,10 +106,12 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
       AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);
+  const packagingDisplay = createPackagingDisplay(await loadPurchasePackagingOptions());
   const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
+    packagingDisplay: packagingDisplay(row.packagingText),
     supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
-  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push(mapPosition(row,today)));
+  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push({ ...mapPosition(row,today), packagingDisplay: packagingDisplay(row.positionPackaging) }));
   return [...byId.values()].filter(offer => offer.positions.length);
 }
 module.exports = { loadOffers, berlinDate, dateOnly };

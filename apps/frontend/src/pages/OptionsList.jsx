@@ -16,7 +16,7 @@ export default function OptionsList() {
   const [error, setError] = React.useState('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const validityRefresh=useOptionValidityRefresh();
 
   React.useEffect(() => {
@@ -87,7 +87,7 @@ export default function OptionsList() {
                   </Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{t('option_from')}: {offer.supplierName}</Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
-                    {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position),
+                    {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position, lang),
                       optionDeliveryTerm(offer.incoterm, offer.loadingLocation),
                       `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`]
                       .filter(Boolean).join(' · ')}

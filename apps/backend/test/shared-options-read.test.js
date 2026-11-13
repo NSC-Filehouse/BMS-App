@@ -7,8 +7,9 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQuerySqlServer: async (database, sql, params) => {
     calls.push({ sql, params });
     assert.equal((sql.match(/\?/g) || []).length, params.length);
+    if (sql.includes('tblSprachenTexte')) return [{id:78,de:'Sackware',en:'Bags'},{id:79,de:'Siloware',en:'Silo/bulk'}];
     if (sql.includes('AS sourceMandantId')) return [
-      { id: 1, sourceMandantId: 3, supplierName: 'Total Petrochemicals & Refining SA/NV' },
+      { id: 1, sourceMandantId: 3, supplierName: 'Total Petrochemicals & Refining SA/NV', packagingText:'Bags and / or Bulk' },
       { id: 2, sourceMandantId: 19, supplierName: 'TotalEnergies' },
     ];
     return positions;
@@ -20,7 +21,7 @@ test('shared pool returns different sources with canonical suppliers and applies
   const offers = await loadOffers(null, { optionId: 1 });
   assert.deepEqual(offers.map(offer => offer.sourceMandantId), [3, 19]);
   assert.ok(offers.every(offer => offer.supplierKey === 'totalenergies'));
-  for (const { sql } of calls) {
+  for (const { sql } of calls.filter(call=>!call.sql.includes('tblSprachenTexte'))) {
     assert.doesNotMatch(sql, /WHERE o\.op_MandantID IN/);
     assert.match(sql, /o\.op_GeloeschtAm IS NULL/);
     assert.match(sql, /o\.op_GueltigAb<=\?/);
@@ -28,6 +29,16 @@ test('shared pool returns different sources with canonical suppliers and applies
     assert.match(sql, /o\.op_Geschaeftsstatus=N'open'/);
   }
   assert.match(calls[1].sql, /COALESCE\(p\.opp_GueltigBis,o\.op_GueltigBis\)>=\?/);
+});
+
+test('shared option reads add dictionary labels without replacing original packaging values',async()=>{
+  positions=[{id:10,optionId:1,positionPackaging:'BAGS'}];
+  const offer=(await loadOffers(null))[0], position=offer.positions[0];
+  assert.equal(offer.packagingText,'Bags and / or Bulk');
+  assert.deepEqual(offer.packagingDisplay,{de:'Sackware und/oder Siloware',en:'Bags and/or Silo/bulk'});
+  assert.equal(position.positionPackaging,'BAGS');
+  assert.deepEqual(position.packagingDisplay,{de:'Sackware',en:'Bags'});
+  assert.equal(calls.filter(call=>call.sql.includes('tblSprachenTexte')).length,1);
 });
 test('an explicit source scope still binds IDs; empty scopes never become global', async () => {
   await loadOffers([3, 19], { includeExpired: true });

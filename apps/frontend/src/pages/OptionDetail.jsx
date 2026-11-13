@@ -10,7 +10,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionPackagingText, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -94,7 +94,7 @@ export default function OptionDetail() {
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
         <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
-        <InfoRow label={t('option_packaging')} value={offer.packagingText} />
+        <InfoRow label={t('option_packaging')} value={optionPackagingText(offer, lang)} />
         <InfoRow label={t('option_negotiable')} value={offer.negotiable === 'yes' ? t('option_yes') : offer.negotiable === 'no' ? t('option_no') : t('option_unconfirmed')} />
         <InfoRow label={t('option_negotiable_evidence')} value={offer.negotiableEvidence} />
       </CardContent></Card>
@@ -111,7 +111,7 @@ export default function OptionDetail() {
         {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
         <Divider sx={{ my: 1 }} />
         <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
-        <InfoRow label={t('option_packaging')} value={optionPackaging(position)} />
+        <InfoRow label={t('option_packaging')} value={optionPackaging(position, lang)} />
         {position.quantityMinKg !== null && <InfoRow label={t('option_raw_quantity')} value={position.quantityText || `${position.quantityMin} ${position.quantityUnit || ''}`} />}
         <InfoRow label={t('option_category')} value={position.materialCategory} />
         <InfoRow label={t('option_quality')} value={position.quality} />

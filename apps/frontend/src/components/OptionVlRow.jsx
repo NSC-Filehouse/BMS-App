@@ -22,7 +22,7 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
         optionDeliveryTerm(p.incoterm, p.loadingLocation),
         p.validUntil ? `${en ? 'Valid until' : 'Gültig bis'} ${optionDate(p.validUntil)}` : null].filter(Boolean).join(' · ')}
     </Typography>
-    {optionPackaging(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p)}</Typography>}
+    {optionPackaging(p, lang) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p, lang)}</Typography>}
     {['pending', 'updating'].includes(p.matchProcessingStatus) && <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
       {en ? 'Article suggestions are being prepared' : 'Artikelvorschläge werden vorbereitet'}
     </Typography>}

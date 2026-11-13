@@ -5,6 +5,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
 const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purchaseTruckLoadKg } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
+const { createPackagingDisplay } = require('../options/packaging-display');
 const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
@@ -20,6 +21,7 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
     confirmedPackagingTypeId:source.confirmedPackagingTypeId,confirmedTruckCount:source.confirmedTruckCount,
     truckOffer:isTruckOffer(source),offeredTrucks:offeredTruckCount(source),packagingTypes,
     sourcePackaging:source.opp_Verpackung || source.packagingText || '',
+    sourcePackagingDisplay:createPackagingDisplay(packagingTypes)(source.opp_Verpackung || source.packagingText || ''),
     sourcePackagingTypeId:source.opp_Verpackungsart_id,sourcePackagingSource:source.packagingSource,sourcePackagingEvidence:source.packagingEvidence,
     quantityConfirmationEditable:offeredQuantityKg({...source,confirmedQuantityKg:null})==null,
     quantityText:source.quantityText,truckMin:source.truckMin,truckMax:source.truckMax,maxTruckLoadKg:source.maxTruckLoadKg}});

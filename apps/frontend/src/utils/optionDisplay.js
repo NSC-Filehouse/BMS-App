@@ -45,8 +45,12 @@ export function optionQuantity(position, t) {
   return position?.quantityText || '';
 }
 
-export function optionPackaging(position) {
-  return [position?.positionPackaging,
+export function optionPackagingText(source, lang = 'de') {
+  return source?.packagingDisplay?.[lang === 'en' ? 'en' : 'de'] || source?.positionPackaging || source?.packagingText || '';
+}
+
+export function optionPackaging(position, lang = 'de') {
+  return [optionPackagingText(position, lang),
     position?.bagWeightKg!=null ? `${optionNumber(position.bagWeightKg)}-kg-Gebinde` : null,
     position?.palletWeightKg!=null ? `${optionNumber(position.palletWeightKg)}-kg-Paletten` : null,
     position?.normalization?.provenance?.packaging?.source==='history' ? '(aus Einkaufshistorie abgeleitet)' : null].filter(Boolean).join(' · ');
