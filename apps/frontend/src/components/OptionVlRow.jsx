@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { optionDate, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPackaging, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
   const p = item.option;
@@ -23,7 +23,6 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
         p.validUntil ? `${en ? 'Valid until' : 'Gültig bis'} ${optionDate(p.validUntil)}` : null].filter(Boolean).join(' · ')}
     </Typography>
     {optionPackaging(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p)}</Typography>}
-    {optionNormalizationNotes(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionNormalizationNotes(p)}</Typography>}
     {['pending', 'updating'].includes(p.matchProcessingStatus) && <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
       {en ? 'Article suggestions are being prepared' : 'Artikelvorschläge werden vorbereitet'}
     </Typography>}

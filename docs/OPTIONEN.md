@@ -3,9 +3,11 @@
 Die Optionsansichten kennzeichnen den Anbieter ausdrücklich mit „Option kommt von“.
 In den Details stehen Beschriftung und Wert auch auf schmalen Ansichten nebeneinander.
 „Incoterms 2020“ wird in der kompakten Lieferbedingung ausgeblendet; die gespeicherte
-Angabe und angebotene Alternativen bleiben erhalten. Importtexte sind eingeklappt,
-während ungeklärte Preisbezüge, Gesamtmengen und ein Bestand unter Mindestabnahme
-als Warnungen sichtbar bleiben. Verladung/Hinweise bleiben vorerst erhalten.
+Angabe und angebotene Alternativen bleiben erhalten. Die Blöcke „Verladung/Hinweise“
+und „Prüf- und Importhinweise“ werden weder im Angebotskopf noch an den Positionen
+angezeigt. Auch die Optionszeilen der VL zeigen keine Import- oder
+Normalisierungshinweise. Die Originalbelege bleiben zugänglich; gespeicherte
+Quelldaten und die Prüfungen im Bestellablauf bleiben erhalten.
 
 „Originalmail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
 ohne Skripte oder externe Ressourcen. Vorhandene PDFs/Bilder lassen sich über einen

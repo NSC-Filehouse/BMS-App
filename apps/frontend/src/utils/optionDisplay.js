@@ -16,18 +16,6 @@ export function optionDeliveryTerm(incoterm, location = '') {
   return [term, location].filter(Boolean).join(' ');
 }
 
-export function optionReviewWarnings(position, t) {
-  const warnings = [];
-  if (!position.priceNeedsReview && position.price != null && position.pricePerTonne == null) {
-    warnings.push(t('option_price_basis_unconfirmed'));
-  }
-  if (position.offeredKg == null) warnings.push(t('option_total_unconfirmed'));
-  if (position.minimumOrderKg != null && position.stockKg != null && position.minimumOrderKg > position.stockKg) {
-    warnings.push(t('option_stock_below_minimum'));
-  }
-  return warnings;
-}
-
 export function optionMfi(position) {
   if(position?.mfi==null)return '';
   return `${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi ? `–${optionNumber(position.mfiTo)}`:''}${position.mfiTestCondition ? ` (${position.mfiTestCondition})`:''}`;
@@ -62,17 +50,6 @@ export function optionPackaging(position) {
     position?.bagWeightKg!=null ? `${optionNumber(position.bagWeightKg)}-kg-Gebinde` : null,
     position?.palletWeightKg!=null ? `${optionNumber(position.palletWeightKg)}-kg-Paletten` : null,
     position?.normalization?.provenance?.packaging?.source==='history' ? '(aus Einkaufshistorie abgeleitet)' : null].filter(Boolean).join(' · ');
-}
-
-export function optionNormalizationNotes(position) {
-  const p=position?.normalization?.provenance;
-  const calculatedTruck=position?.truckLoadKg>0 && position?.offeredKg!=null;
-  const notes=(position?.normalization?.notes || []).filter(note=>!calculatedTruck ||
-    !(/\b(?:LKW|Truck)/i.test(note) && /keine.*Umrechnung|ohne.*Ladegewicht/i.test(note)));
-  return [p?.quantityUnit?.source==='rule' ? 'Mengeneinheit gemäß Geschäftsregel' : null,
-    p?.priceUnit?.source==='rule' ? 'Preisbezug gemäß Lieferantenregel' : null,
-    calculatedTruck?`LKW-Menge ${position.positionPackaging || position.normalization?.packaging?'gemäß Verpackungsart':'mit Silo-Vorbelegung'} mit ${optionNumber(position.truckLoadKg)} kg je LKW berechnet.`:null,
-    ...notes].filter(Boolean).join(' · ');
 }
 
 export function optionPrice(position, t) {
