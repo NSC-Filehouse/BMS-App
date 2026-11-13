@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { optionDate, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPackaging, optionNormalizationNotes, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
   const p = item.option;
@@ -16,9 +16,10 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
     <Typography variant="body2">
       {item.article}{p.mfi != null ? ` · MFI ${optionMfi(p)}` : ` · ${en ? 'MFI unknown' : 'MFI unbekannt'}`}
     </Typography>
+    <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('option_from')}: {p.supplierName}</Typography>
     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-      {[optionQuantity(p, t), optionPrice(p, t), p.supplierName,
-        [p.incoterm, p.loadingLocation].filter(Boolean).join(' '),
+      {[optionQuantity(p, t), optionPrice(p, t),
+        optionDeliveryTerm(p.incoterm, p.loadingLocation),
         p.validUntil ? `${en ? 'Valid until' : 'Gültig bis'} ${optionDate(p.validUntil)}` : null].filter(Boolean).join(' · ')}
     </Typography>
     {optionPackaging(p) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p)}</Typography>}

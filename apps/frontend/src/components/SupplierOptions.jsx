@@ -71,6 +71,7 @@ export default function SupplierOptions({ supplierId, mandant }) {
             {position.mfi != null && ` · MFI ${optionMfi(position)}`}
             {offer.isDemo && ` · ${t('option_demo')}`}
           </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{t('option_from')}: {offer.supplierName}</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
             {[optionQuantity(position, t), optionPrice(position, t), `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`].filter(Boolean).join(' · ')}
           </Typography>

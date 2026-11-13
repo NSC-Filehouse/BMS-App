@@ -55,7 +55,10 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
     o.op_GueltigBis AS validUntil, o.op_QuellGueltigBis AS sourceValidUntil, o.op_IstDemo AS isDemo,
     o.op_Incoterm AS incoterm, o.op_Ladeort AS loadingLocation, o.op_Verpackung AS packagingText,
     o.op_Konditionen AS termsText, o.op_Kommentar AS comment, o.op_Nachverhandelbar AS negotiable,
-    o.op_NachverhandelbarQuelle AS negotiableEvidence
+    o.op_NachverhandelbarQuelle AS negotiableEvidence,
+    CASE WHEN DATALENGTH(o.op_QuelleMailtext)>0 THEN 1 ELSE 0 END AS hasSourceMail,
+    CASE WHEN DATALENGTH(o.op_QuelleDatei)>0 THEN 1 ELSE 0 END AS hasSourceFile,
+    o.op_QuelleDateiname AS sourceFileName,o.op_QuelleDateiMime AS sourceFileMime
     FROM ${appTableSql('options')} o WHERE ${scope}
       AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}

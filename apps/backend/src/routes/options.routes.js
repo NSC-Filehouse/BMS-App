@@ -5,6 +5,7 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { loadOffers, berlinDate } = require('../options/read');
+const { loadOptionSource, sourceFileType } = require('../options/source');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
@@ -25,6 +26,19 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  sendEnvelope(res,{data:{...offers[0],readOnly:Number(offers[0].sourceMandantId)!==Number(req.database.firmaId)},
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
+}));
+router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const source=await loadOptionSource(positiveId(req.params.id),'mail');
+ res.set('Cache-Control','private, no-store');
+ sendEnvelope(res,{data:{body:source.body,format:source.format},meta:{mandant:req.mandant}});
+}));
+router.get('/options/:id/source/file',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const source=await loadOptionSource(positiveId(req.params.id),'file');
+ const mime=sourceFileType(source);
+ const extension={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg'}[mime];
+ res.set({'Content-Type':mime,'Content-Disposition':`inline; filename="option-${positiveId(req.params.id)}.${extension}"`,
+  'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store',"Content-Security-Policy":"default-src 'none'; sandbox"});
+ res.send(source.content);
 }));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,

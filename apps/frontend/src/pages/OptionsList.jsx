@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
-import { optionDate, optionPrice, optionQuantity, optionMfi, optionPackaging } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionMfi, optionPackaging, optionDeliveryTerm } from '../utils/optionDisplay.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 
 export default function OptionsList() {
@@ -85,9 +85,10 @@ export default function OptionsList() {
                     {position.internalArticleName && position.internalArticleName !== position.articleName && ` · ${position.articleName}`}
                     {position.mfi !== null && ` · MFI ${optionMfi(position)}`}
                   </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{t('option_from')}: {offer.supplierName}</Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
-                    {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position), offer.supplierName,
-                      offer.loadingLocation ? `${offer.incoterm || ''} ${offer.loadingLocation}`.trim() : offer.incoterm,
+                    {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position),
+                      optionDeliveryTerm(offer.incoterm, offer.loadingLocation),
                       `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`]
                       .filter(Boolean).join(' · ')}
                   </Typography>

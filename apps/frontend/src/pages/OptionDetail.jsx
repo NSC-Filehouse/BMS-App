@@ -4,18 +4,27 @@ import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typog
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArticleAssignment from '../components/OptionArticleAssignment.jsx';
 import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
+import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionMfi } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionMfi, optionDeliveryTerm, optionReviewWarnings } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
-  return <Box sx={{ display: { xs: 'grid', md: 'flex' }, justifyContent: 'space-between', gap: 0.5, py: 0.7, minWidth: 0 }}>
+  return <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)', alignItems: 'start', columnGap: 1.5, py: 0.7, minWidth: 0 }}>
     <Typography variant="body2" color="text.secondary">{label}</Typography>
-    <Typography variant="body2" sx={{ textAlign: { md: 'right' }, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{value}</Typography>
+    <Typography variant="body2" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{value}</Typography>
+  </Box>;
+}
+
+function ImportNotes({ value, t }) {
+  if (!value) return null;
+  return <Box component="details" sx={{ my: 1 }}>
+    <Typography component="summary" variant="body2" sx={{ cursor: 'pointer', color: 'text.secondary' }}>{t('option_import_notes')}</Typography>
+    <Typography variant="body2" sx={{ pt: 1, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value}</Typography>
   </Box>;
 }
 
@@ -87,14 +96,15 @@ export default function OptionDetail() {
     {error && <Alert severity="error">{error}</Alert>}
     {!loading && !error && offer && <>
       <Card sx={{ mb: 1.5 }}><CardContent>
-        <Typography variant="h6" sx={{ mb: 1 }}>{offer.supplierName}</Typography>
+        <InfoRow label={t('option_from')} value={offer.supplierName} />
+        <OptionSourceDocuments key={offer.id} offer={offer} />
         {offer.isDemo && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_demo_notice')}</Alert>}
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
-        <InfoRow label={t('option_delivery_term')} value={[offer.incoterm, offer.loadingLocation].filter(Boolean).join(' ')} />
+        <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
         <InfoRow label={t('option_packaging')} value={offer.packagingText} />
         <InfoRow label={t('option_loading')} value={offer.termsText} />
-        <InfoRow label={lang==='en'?'Original import notes':'Ursprüngliche Importhinweise'} value={offer.comment} />
+        <ImportNotes value={offer.comment} t={t} />
         <InfoRow label={t('option_negotiable')} value={offer.negotiable === 'yes' ? t('option_yes') : offer.negotiable === 'no' ? t('option_no') : t('option_unconfirmed')} />
         <InfoRow label={t('option_negotiable_evidence')} value={offer.negotiableEvidence} />
       </CardContent></Card>
@@ -103,11 +113,13 @@ export default function OptionDetail() {
         <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>{position.internalArticleName || position.articleName}</Typography>
         {position.internalArticleName && position.internalArticleName !== position.articleName &&
           <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{position.articleName}</Typography>}
+        <Typography variant="body2" sx={{ mt: 0.5, overflowWrap: 'anywhere', fontWeight: 600 }}>{t('option_from')}: {offer.supplierName}</Typography>
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0} sx={{mb:1}}>Bestellen</Button>
         {position.remainingKg!=null && <InfoRow label="Noch verfügbare Optionsmenge" value={`${optionNumber(position.remainingKg)} kg`} />}
         {position.confirmedQuantityKg!=null && <InfoRow label="Manuell bestätigte Gesamtmenge" value={`${optionNumber(position.confirmedQuantityKg)} kg`} />}
         {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
+        {optionReviewWarnings(position, t).map(warning => <Alert key={warning} severity="warning" sx={{ mb: 1 }}>{warning}</Alert>)}
         <Divider sx={{ my: 1 }} />
         <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
         <InfoRow label={t('option_packaging')} value={optionPackaging(position)} />
@@ -121,7 +133,7 @@ export default function OptionDetail() {
         <InfoRow label={t('option_c2')} value={optionNumber(position.c2)} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
         <InfoRow label={t('option_loading')} value={position.loadingText} />
-        <InfoRow label={position.normalization ? (lang==='en'?'Original import notes':'Ursprüngliche Importhinweise') : t('option_comment')} value={position.comment} />
+        <ImportNotes value={position.comment} t={t} />
         {!offer.readOnly && <ArticleAssignment optionId={offer.id} position={position} onAssigned={() => setRevision((value) => value + 1)} sourceQuery={sourceQuery} readOnly={offer.readOnly} />}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
       </CardContent></Card>)}

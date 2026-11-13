@@ -11,6 +11,23 @@ export function optionDate(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('de-DE');
 }
 
+export function optionDeliveryTerm(incoterm, location = '') {
+  const term = String(incoterm || '').replace(/\s*\(?\bIncoterms\s*®?(?:\s*20\d{2})?\)?/gi, '').trim();
+  return [term, location].filter(Boolean).join(' ');
+}
+
+export function optionReviewWarnings(position, t) {
+  const warnings = [];
+  if (!position.priceNeedsReview && position.price != null && position.pricePerTonne == null) {
+    warnings.push(t('option_price_basis_unconfirmed'));
+  }
+  if (position.offeredKg == null) warnings.push(t('option_total_unconfirmed'));
+  if (position.minimumOrderKg != null && position.stockKg != null && position.minimumOrderKg > position.stockKg) {
+    warnings.push(t('option_stock_below_minimum'));
+  }
+  return warnings;
+}
+
 export function optionMfi(position) {
   if(position?.mfi==null)return '';
   return `${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi ? `–${optionNumber(position.mfiTo)}`:''}${position.mfiTestCondition ? ` (${position.mfiTestCondition})`:''}`;

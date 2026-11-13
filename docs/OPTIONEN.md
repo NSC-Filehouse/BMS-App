@@ -1,5 +1,19 @@
 # Optionen und Forecast
 
+Die Optionsansichten kennzeichnen den Anbieter ausdrücklich mit „Option kommt von“.
+In den Details stehen Beschriftung und Wert auch auf schmalen Ansichten nebeneinander.
+„Incoterms 2020“ wird in der kompakten Lieferbedingung ausgeblendet; die gespeicherte
+Angabe und angebotene Alternativen bleiben erhalten. Importtexte sind eingeklappt,
+während ungeklärte Preisbezüge, Gesamtmengen und ein Bestand unter Mindestabnahme
+als Warnungen sichtbar bleiben. Verladung/Hinweise bleiben vorerst erhalten.
+
+„Originalmail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
+ohne Skripte oder externe Ressourcen. Vorhandene PDFs/Bilder lassen sich über einen
+weiteren Button öffnen. Die API lädt Inhalte erst bei Bedarf über
+`GET /options/:id/source/mail` bzw. `/source/file`; es gelten dieselben Pilot- und
+Mandantenprüfungen sowie dieselbe gemeinsame Sichtbarkeit aktueller Optionen wie
+für die Optionsdetails. Es werden keine Quellen nachimportiert oder Stammdaten geändert.
+
 Optionen sind eingehende Lieferantenangebote. Die App liest sie aus der zentralen
 DB04-Datenbank `BMS`, Schema `BMSApp`. `tblOptionen` enthält den Angebotskopf,
 `tblOptionenPositionen` die angebotenen Materialien oder Chargen. Eine Option
