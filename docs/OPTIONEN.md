@@ -40,7 +40,9 @@ Weiterleiter und CC-Empfänger werden nicht übernommen. Automatische Postfäche
 ersetzen keinen ausdrücklich genannten persönlichen Ansprechpartner.
 
 Beim Bestellen wird im gewählten Lieferantenkonto nach der exakten Mailadresse
-gesucht, bei fehlender Quelladresse nach dem eindeutigen vollständigen Namen.
+gesucht, anschließend nach dem eindeutigen vollständigen Namen. Bei abweichender
+Mailadresse wird die Namensübereinstimmung ausdrücklich zur Prüfung angezeigt;
+gespeicherte Kontaktdaten werden dadurch nicht verändert.
 Mehrdeutige Treffer bleiben zur Auswahl offen; ein Standardkontakt nach Ranking
 ersetzt keine fehlende Quellenzuordnung. Der Benutzer kann auswählen oder leeren.
 Unbekannte Personen öffnen einen vorausgefüllten `ContactCreateDialog` ohne Scanner,

@@ -93,6 +93,11 @@ function resolveSupplierContact(source,contacts=[]) {
   && canonical([matches[0].firstName,matches[0].lastName].join(' '))!==canonical(candidate.name))return {status:'ambiguous',selectedId:null,suggestion:null};
  if(matches.length===1)return {status:'matched',selectedId:matches[0].id,suggestion:null,evidence:candidate.source};
  if(matches.length>1)return {status:'ambiguous',selectedId:null,suggestion:null};
+ // A supplier may have changed its address or use an alias. Match the AI's
+ // full source name within this supplier account before proposing a duplicate.
+ const named=contacts.filter(c=>personName(candidate.name) && canonical([c.firstName,c.lastName].filter(Boolean).join(' '))===canonical(candidate.name));
+ if(named.length===1)return {status:'matched-name',selectedId:named[0].id,suggestion:null,emailMismatch:Boolean(email),evidence:'full-name'};
+ if(named.length>1)return {status:'ambiguous',selectedId:null,suggestion:null};
  const words=personName(candidate.name).split(' ').filter(Boolean);
  return {status:'suggested',selectedId:null,suggestion:{email,vorname:words.length>1?words.slice(0,-1).join(' '):'',
   name:words.length>1?words.at(-1):'',telefon:candidate.telefon || '',mobil:candidate.mobil || ''},evidence:candidate.source};

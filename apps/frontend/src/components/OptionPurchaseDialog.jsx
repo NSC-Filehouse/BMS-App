@@ -143,6 +143,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         </Box>
         {contactMeta.suggestion && !contact && <Box><Button size="small" disabled={busy || contactsLoading} onClick={()=>setContactCreateOpen(true)}>Kontaktvorschlag prüfen</Button><Typography variant="caption" display="block">{[contactMeta.suggestion.vorname,contactMeta.suggestion.name,contactMeta.suggestion.email].filter(Boolean).join(' · ')}</Typography></Box>}
         {contactMeta.status==='ambiguous' && !contact && <Typography variant="caption">Ansprechpartner nicht eindeutig. Bitte auswählen.</Typography>}
+        {contactMeta.emailMismatch && contact?.id===contactMeta.selectedId && <Typography variant="caption">Kontakt anhand des vollständigen Namens erkannt. Die Mailadresse im Angebot weicht vom gespeicherten Kontakt ab. Bitte prüfen.</Typography>}
         {contactError && <Alert severity="error">{contactError}</Alert>}
         {contactNotice && <Alert severity="warning">{contactNotice}</Alert>}
       </>}
