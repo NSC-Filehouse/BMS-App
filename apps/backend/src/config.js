@@ -170,6 +170,7 @@ const config = {
       tempOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_ORDER_POSITION || 'tbl_Temp_Auf_Position').trim(),
       orderMailOutbox: (process.env.BMS_SQL_APP_TABLE_ORDER_MAIL_OUTBOX || 'OrderMailOutbox').trim(),
       tempPurchaseOrder: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER || 'tbl_Temp_Bestellung').trim(),
+      tempPurchaseOrderAttachment: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_ATTACHMENT || 'tbl_Temp_Bestellung_Anhang').trim(),
       tempPurchaseOrderPosition: (process.env.BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_POSITION || 'tbl_Temp_Best_Position').trim(),
       options: (process.env.BMS_SQL_APP_TABLE_OPTIONS || 'tblOptionen').trim(),
       optionPositions: (process.env.BMS_SQL_APP_TABLE_OPTION_POSITIONS || 'tblOptionenPositionen').trim(),

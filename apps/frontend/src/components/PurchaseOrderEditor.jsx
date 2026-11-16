@@ -3,6 +3,7 @@ import { Alert, Autocomplete, Box, Button, Card, CardContent, CircularProgress, 
 import AddIcon from '@mui/icons-material/Add';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import UndoIcon from '@mui/icons-material/Undo';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from './PurchaseOrderActions.jsx';
 import CompactAddressOption from './CompactAddressOption.jsx';
@@ -16,8 +17,8 @@ const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reve
 const priceText = (value) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
-export default function PurchaseOrderEditor({ initialOrder, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false }) {
-  const { lang } = useI18n();
+export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false }) {
+  const { lang, t } = useI18n();
   const [order, setOrder] = React.useState(initialOrder);
   const [options, setOptions] = React.useState({ packagingTypes: [], incoterms: [] });
   const [locations, setLocations] = React.useState([]);
@@ -100,6 +101,15 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   const missing = purchaseMissingFields(order);
   const fieldErrors = purchaseFieldErrors(order);
   const disabled = saving || locked;
+  const savedAttachments = order.attachments || [];
+  const pendingAttachmentFiles = order.pendingAttachmentFiles || [];
+  const removeAttachmentIds = order.removeAttachmentIds || [];
+  const restoredFilesMissing = order.hadPendingAttachments && !pendingAttachmentFiles.length;
+  const handleAttachmentPick = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length) update((previous) => ({ ...previous, hadPendingAttachments: false, pendingAttachmentFiles: [...(previous.pendingAttachmentFiles || []), ...files] }));
+    event.target.value = '';
+  };
   const locationOptions=[...locations,...newLocations.filter(item=>!locations.some(existing=>same(existing.text,item.text)))];
   if(manualLocation && order.loadingLocationText && !locationOptions.some(item=>same(item.text,order.loadingLocationText)))
     locationOptions.push({id:`manual:${order.loadingLocationText}`,text:order.loadingLocationText,source:'manual'});
@@ -128,10 +138,35 @@ export default function PurchaseOrderEditor({ initialOrder, isNew = false, onCha
   });
 
   return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, minWidth: 0, width: '100%', '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
+    <input ref={attachmentInputRef} type="file" accept=".pdf,image/*,.heic,.heif" multiple hidden onChange={handleAttachmentPick} disabled={disabled} />
+    {restoredFilesMissing && <Alert severity="info">{t('temp_order_draft_attachment_hint')}</Alert>}
     {error && <Alert severity="error">{error}</Alert>}
     {locationError && <Alert severity="error">{locationError}</Alert>}
     {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">Für diesen Lieferanten ist kein bisheriger Ladeort gespeichert. Bitte einen neuen Ladeort eingeben.</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{t('temp_order_attachment_label')}</Typography>
+        {savedAttachments.length || pendingAttachmentFiles.length ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, flex: 1 }}>
+            {savedAttachments.map((attachment) => {
+              const attachmentId = Number(attachment.id);
+              const removed = removeAttachmentIds.includes(attachmentId);
+              return <Box key={`saved-${attachment.id}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                <Typography variant="body2" title={attachment.fileName} sx={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: removed ? 'text.disabled' : 'text.primary', textDecoration: removed ? 'line-through' : 'none' }}>
+                  {attachment.fileName}{removed ? ` (${t('temp_order_attachment_removed')})` : ''}
+                </Typography>
+                <IconButton size="small" disabled={disabled} color={removed ? 'primary' : 'error'} aria-label={removed ? t('undo_label') : t('delete_label')} onClick={() => update((previous) => ({ ...previous,
+                  removeAttachmentIds: removed ? (previous.removeAttachmentIds || []).filter((value) => value !== attachmentId) : [...(previous.removeAttachmentIds || []), attachmentId],
+                }))}>{removed ? <UndoIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}</IconButton>
+              </Box>;
+            })}
+            {pendingAttachmentFiles.map((file, index) => <Box key={`pending-${index}-${file.name}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+              <Typography variant="body2" title={file.name} sx={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</Typography>
+              <IconButton size="small" color="error" disabled={disabled} aria-label={t('delete_label')} onClick={() => update((previous) => ({ ...previous, pendingAttachmentFiles: previous.pendingAttachmentFiles.filter((_, fileIndex) => fileIndex !== index) }))}><DeleteOutlineIcon fontSize="small" /></IconButton>
+            </Box>)}
+          </Box>
+        ) : <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 0 }}>{t('temp_order_attachment_none')}</Typography>}
+      </Box>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       <Autocomplete freeSolo forcePopupIcon options={contacts} value={order.supplierContact || null} inputValue={order.supplierContact || ''}
         disabled={disabled || loading} noOptionsText="Kein Ansprechpartner hinterlegt"

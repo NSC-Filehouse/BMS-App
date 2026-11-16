@@ -2,8 +2,10 @@ import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DownloadIcon from '@mui/icons-material/Download';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import PurchaseOrderSummary from '../components/PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from '../components/PurchaseOrderActions.jsx';
 import InfoRow from '../components/PurchaseOrderInfoRow.jsx';
@@ -22,6 +24,20 @@ export default function TempPurchaseOrderDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [working, setWorking] = React.useState(false);
+  const [attachmentDownloading, setAttachmentDownloading] = React.useState('');
+  const downloadAttachment = async (attachment) => {
+    setAttachmentDownloading(String(attachment.id)); setError('');
+    try {
+      const blob = await apiRequestBlob(`/temp-purchase-orders/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachment.id)}`);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = String(attachment.fileName || `purchase-order-${id}-attachment`).replace(/[\\/\r\n]/g, '_');
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) { setError(e?.message || t('loading_error')); }
+    finally { setAttachmentDownloading(''); }
+  };
   React.useEffect(() => {
     let alive = true;
     setLoading(true); setItem(null); setError('');
@@ -77,6 +93,13 @@ export default function TempPurchaseOrderDetail() {
       {item.supplierMailStatus && item.supplierMailStatus !== 'not_queued' && <InfoRow label="Lieferantenmail" value={t(`temp_order_mail_${item.supplierMailStatus}`)} />}
       {item.supplierMailLastError && <Alert severity="error" sx={{ my: 1 }}>{item.supplierMailLastError}</Alert>}
       <Divider sx={{ my: 2 }} />
+      <Typography variant="subtitle2" sx={{ mb: 0.25 }}>{t('temp_order_attachment_label')} ({item.attachments?.length || 0})</Typography>
+      {item.attachments?.length ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 1 }}>
+        {item.attachments.map((attachment) => <Box key={attachment.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
+          <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, overflowWrap: 'anywhere' }}><AttachFileIcon fontSize="small" />{attachment.fileName}</Typography>
+          <Button size="small" startIcon={<DownloadIcon />} disabled={attachmentDownloading === String(attachment.id)} onClick={() => downloadAttachment(attachment)}>{t('temp_order_attachment_download')}</Button>
+        </Box>)}
+      </Box> : <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('temp_order_attachment_none')}</Typography>}
       <PurchaseOrderSummary positions={item.positions} />
       <Box sx={{ display: 'grid', gap: 1, mt: 1.25, minWidth: 0 }}>
         {(item.positions || []).map((p, index) => <Box key={p.id} sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1.5, p: 1.25, display: 'grid', gap: 0.35, minWidth: 0, overflowWrap: 'anywhere' }}>

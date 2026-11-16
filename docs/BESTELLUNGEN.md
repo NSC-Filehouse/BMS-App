@@ -61,6 +61,33 @@ Adressfreitexte sind keine technischen Adress-IDs; tb_loading_location_id bleibt
 für diese Orte NULL. Andere Lieferanten- oder Mandantenadressen werden nicht
 als Ersatz zugelassen.
 
+## Dateianhänge
+
+Bestellwarenkorb und Bestellbearbeitung verwenden wie Aufträge die Büroklammer
+oben rechts, die Mehrfachauswahl und die Dateiliste am Kopf. Erlaubt sind PDFs
+und Bilder einschließlich HEIC/HEIF, mit höchstens 10 MB je Datei und 100 MB je
+Upload. Neue Dateien können vor dem Speichern entfernt werden; das Entfernen
+gespeicherter Dateien kann bis zum Speichern rückgängig gemacht werden.
+
+Die Dateien werden zusammen mit der Bestellung gespeichert. Positionskopien
+vervielfachen die Anhänge nicht. Die Detailansicht bietet dieselbe Dateiliste
+mit Download wie Aufträge; Downloads berücksichtigen Mandant, Eigentümer und
+gelöschte Anhänge. Bei vollständigem Löschen einer Bestellung werden auch ihre
+Anhänge gelöscht. Einzelne Entfernungen werden mit Zeitpunkt und Benutzer
+festgehalten und aus Anzeige, Downloads und Mailversand ausgeschlossen.
+
+Beim Weiter-Einkaufen bleiben ausgewählte Dateien im Speicher des Browsertabs.
+Nach einem Neuladen müssen noch nicht hochgeladene Dateien erneut ausgewählt
+werden; darauf weist die Oberfläche wie beim Auftragsentwurf hin. Eine unklare
+Speicherantwort wird mit derselben Anfragekennung geprüft. Wurde die Bestellung
+bereits gespeichert, werden keine Dateien doppelt angelegt. Fehlen bei einer
+noch nicht gespeicherten Wiederholung Dateien, wird die Anlage abgewiesen und
+die erneute Auswahl angefordert.
+
+Die CS-Mail bei Übergabe enthält die aktiven Anhänge. Die Lieferantenmail bei
+Status 2 enthält sie ebenfalls sowie weiterhin das vorhandene BMS-Bestell-PDF,
+sofern dieses gefunden und gelesen werden kann.
+
 ## Übersicht, Detailansicht und Löschen
 
 Bestellübersicht und Detailansicht folgen der Auftragsdarstellung: Ersteller,
@@ -110,6 +137,16 @@ BMS-Bestellnummer. Beim Verkaufsweg bleiben aktuelle VL-BE-Referenzen erhalten.
 Vor dem Einsatz des neuen Backends im zentralen BMS ausführen:
 `apps/backend/sql/upgrade_temp_purchase_order_shopping.sql`.
 Bei Neuinstallation zuerst `add_temp_purchase_order.sql`, danach das Upgrade.
+Für Dateianhänge anschließend vor dem Einsatz des Backends zusätzlich
+`apps/backend/sql/add_temp_purchase_order_attachments.sql` ausführen.
+Das wiederholbare Skript legt `BMSApp.tbl_Temp_Bestellung_Anhang` mit Binärinhalt,
+Dateimetadaten und Löschvermerk an. Die Verknüpfung verwendet den technischen
+INT-Schlüssel `tbl_Temp_Bestellung.tb_id`; ein abweichender Schlüsseltyp führt
+zum Abbruch. Die API-Konfiguration heißt `tempPurchaseOrderAttachment`, optional
+überschreibbar über `BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_ATTACHMENT`.
+Das Skript wurde als Teil der Codeänderung vorbereitet und muss separat in der
+Zieldatenbank ausgeführt werden.
+
 Das Upgrade ist wiederholbar und ergänzt nur:
 
 - Kopf: tb_packaging_type_id (INT NULL).

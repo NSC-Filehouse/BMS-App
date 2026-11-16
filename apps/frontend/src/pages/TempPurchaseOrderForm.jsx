@@ -1,6 +1,7 @@
 import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
-import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, IconButton, Typography } from '@mui/material';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -9,11 +10,15 @@ import { supplierReturnTo } from '../utils/purchaseCart.js';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
 import { purchaseOrderListReturnTo } from '../utils/purchaseOrderDisplay.js';
 import { isTempOrderEditableStatus } from '../utils/tempOrderStatus.js';
+import { useI18n } from '../utils/i18n.jsx';
+import { purchaseOrderRequestBody } from '../utils/purchaseOrderAttachments.js';
 
 export default function TempPurchaseOrderForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
+  const attachmentInputRef = React.useRef(null);
   const [order, setOrder] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -28,7 +33,7 @@ export default function TempPurchaseOrderForm() {
   const save = async (values) => {
     setSaving(true); setError('');
     try {
-      const response = await apiRequest(`/temp-purchase-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(values) });
+      const response = await apiRequest(`/temp-purchase-orders/${encodeURIComponent(id)}`, { method: 'PUT', body: purchaseOrderRequestBody(values) });
       if (response?.data?.deleted) { navigateToReturn(navigate, purchaseOrderListReturnTo(location.state), '/temp-purchase-orders'); return; }
       navigate(`/temp-purchase-orders/${encodeURIComponent(id)}`, { replace: true, state: {
         returnTo: location.state?.afterSaveReturnTo || location.state?.returnTo,
@@ -48,10 +53,12 @@ export default function TempPurchaseOrderForm() {
   const back = () => navigateToReturn(navigate, location.state?.returnTo, `/temp-purchase-orders/${encodeURIComponent(id)}`);
   if (!order) return error ? <Alert severity="error">{error}</Alert> : <CircularProgress />;
   return <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto', display: 'grid', gap: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.positions.some(p=>p.optionId!=null)?'Bestellung (Option) bearbeiten':'Bestellung bearbeiten'}</Typography></Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{order.positions.some(p=>p.optionId!=null)?'Bestellung (Option) bearbeiten':'Bestellung bearbeiten'}</Typography>
+      <IconButton aria-label={t('temp_order_attachment_add')} title={t('temp_order_attachment_add')} disabled={saving || !isTempOrderEditableStatus(order.status)} onClick={() => attachmentInputRef.current?.click()}><AttachFileIcon /></IconButton>
+    </Box>
     {error && <Alert severity="error">{error}</Alert>}
     {isTempOrderEditableStatus(order.status)
-      ? <PurchaseOrderEditor key={order.id} initialOrder={order} onSave={save} onDelete={remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />
+      ? <PurchaseOrderEditor key={order.id} initialOrder={order} attachmentInputRef={attachmentInputRef} onSave={save} onDelete={remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />
       : <Alert severity="info">Diese Bestellung ist nicht mehr bearbeitbar.</Alert>}
   </Box>;
 }

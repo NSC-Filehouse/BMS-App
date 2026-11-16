@@ -38,6 +38,7 @@ function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantSho
     line('Ladeort', order?.loadingLocationText),
     line('Verpackung', order?.packagingType),
     line('Sonstiges', order?.comment),
+    line('Anhang', order?.attachments?.length ? order.attachments.map((attachment) => attachment.fileName).join(', ') : 'Kein Anhang'),
     '',
     `POSITIONEN (${Array.isArray(positions) ? positions.length : 0})`,
   ];

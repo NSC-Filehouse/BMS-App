@@ -11,14 +11,30 @@ function fixture(options = {}) {
   const timeline = [];
   const mails = [];
   const csMails = [];
+  const attachments = [];
   let failDelete = false;
   let failRead = false;
+  let failAttachmentRead = false;
   const router = options.routing ? require('express').Router() : { use() {}, get(path, ...handlers) { routes.push({ method: 'get', path, handlers }); }, post(path, ...handlers) { routes.push({ method: 'post', path, handlers }); }, put(path, ...handlers) { routes.push({ method: 'put', path, handlers }); }, delete(path, ...handlers) { routes.push({ method: 'delete', path, handlers }); } };
-  const project = (sql, row) => Object.fromEntries([...sql.matchAll(/\[(tbp?_\w+|OptionID|OptionPositionID)\] AS (?:\[([^\]]+)\]|(\w+))/g)].map((match) => [match[2] || match[3], row[match[1]]]));
+  const project = (sql, row) => Object.fromEntries([...sql.matchAll(/\[(tbp?_\w+|tba_\w+|OptionID|OptionPositionID)\] AS (?:\[([^\]]+)\]|(\w+))/g)].map((match) => [match[2] || match[3], row[match[1]]]));
   const query = async (sql, params = []) => {
     assert.equal((sql.match(/\?/g) || []).length, params.length, `SQL parameter count: ${sql}`);
     calls.push({ sql, params });
     assert.doesNotMatch(sql, /\bAND\s+AND\b/i, 'composed list predicates must be valid SQL');
+    if (sql.includes('INSERT INTO tempPurchaseOrderAttachment')) {
+      const [orderId, fileName, mimeType, buffer, sizeBytes, user, now] = params;
+      attachments.push({ tba_ID: attachments.length + 1, tba_tb_id: orderId, tba_FileName: fileName, tba_MimeType: mimeType, tba_Content: buffer, tba_SizeBytes: sizeBytes, tba_CreatedBy: user, tba_CreatedAt: now });
+      return { rows: [] };
+    }
+    if (sql.includes('UPDATE tempPurchaseOrderAttachment')) {
+      const row = attachments.find((a) => a.tba_tb_id === params[2] && a.tba_ID === params[3] && !a.tba_DeletedAt);
+      if (row) { row.tba_DeletedAt = params[0]; row.tba_DeletedBy = params[1]; }
+      return { rows: row ? [{ id: row.tba_ID }] : [] };
+    }
+    if (sql.includes('FROM tempPurchaseOrderAttachment')) {
+      if (failAttachmentRead) throw new Error('Simulated attachment read error');
+      return { rows: attachments.filter((a) => a.tba_tb_id === params[0] && !a.tba_DeletedAt && (params.length === 1 || a.tba_ID === params[1])).map((a) => project(sql, a)) };
+    }
     if (sql.includes('COUNT(*) AS total FROM orders')) return { rows: [{ total: 0 }] };
     if (sql.includes('OFFSET ? ROWS')) return { rows: [] };
     if (sql.includes('FROM timeline')) return { rows: [] };
@@ -32,6 +48,7 @@ function fixture(options = {}) {
       assert.equal(mails.includes(params[0]) || csMails.includes(params[0]), false, 'outboxes before parent');
       if (failDelete) throw new Error('Simulated delete constraint error');
       headers.splice(0, headers.length, ...headers.filter((p) => !(p.tb_id === params[0] && p.tb_company_id === params[1])));
+      attachments.splice(0, attachments.length, ...attachments.filter((a) => a.tba_tb_id !== params[0]));
       return { rows: [] };
     }
     if (sql.startsWith('UPDATE orders')) {
@@ -79,7 +96,7 @@ function fixture(options = {}) {
     '../db/access': {
       runSQLQueryAccess: async () => [{ ok: 1 }], runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows,
       withSqlTransaction: async (_db, work) => {
-        const arrays = [headers, lines, mails, csMails];
+        const arrays = [headers, lines, mails, csMails, attachments];
         const before = structuredClone(arrays);
         try { return await work({ query }); } catch (error) { arrays.forEach((items, index) => items.splice(0, items.length, ...before[index])); throw error; }
       },
@@ -97,16 +114,25 @@ function fixture(options = {}) {
       assertOptionQuantities: async (_query,positions)=>{if(options.optionQuantityLimit!=null && positions.filter(p=>p.optionId!=null).reduce((sum,p)=>sum+p.amount,0)>options.optionQuantityLimit)throw new Error('Optionsmenge überschritten');},
     },
   };
+  const attachmentModule = { exports: {} };
+  const attachmentDependencies = {
+    multer: require('multer'), '../config': dependencies['../config'], '../utils': dependencies['../utils'],
+    './app-tables': dependencies['../db/app-tables'], './access': dependencies['../db/access'],
+  };
+  new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-attachments.js'), 'utf8'))((name) => {
+    assert.ok(name in attachmentDependencies, name); return attachmentDependencies[name];
+  }, attachmentModule);
+  dependencies['../db/purchase-order-attachments'] = attachmentModule.exports;
   const mod = { exports: {} };
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/routes/temp-purchase-orders.routes.js'), 'utf8'))((name) => {
     assert.ok(name in dependencies, name); return dependencies[name];
   }, mod);
   const request = (body, method = 'post', route = '/temp-purchase-orders', context = {}) => new Promise((resolve, reject) => {
-    const req = { body, query: context.query || {}, params: { id: '1' }, header: () => 'de', database: { firmaId: context.companyId ?? 1 }, userIdentity: { shortCode: context.user || 'AD' }, mandant: 'Test' };
-    const res = { status(status) { this.statusCode = status; return this; }, json(payload) { resolve({ status: this.statusCode, ...payload }); }, end() { resolve({ status: this.statusCode }); } };
+    const req = { body, files: context.files || [], query: context.query || {}, params: { id: '1', ...context.params }, header: () => 'de', database: { firmaId: context.companyId ?? 1 }, userIdentity: { shortCode: context.user || 'AD' }, mandant: 'Test' };
+    const res = { headers: {}, setHeader(key, value) { this.headers[key] = value; }, send(buffer) { resolve({ buffer, headers: this.headers }); }, status(status) { this.statusCode = status; return this; }, json(payload) { resolve({ status: this.statusCode, ...payload }); }, end() { resolve({ status: this.statusCode }); } };
     routes.find((r) => r.path === route && r.method === method).handlers.at(-1)(req, res, reject);
   });
-  return { router, request, headers, lines, calls, timeline, mails, csMails, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
+  return { router, request, headers, lines, calls, timeline, mails, csMails, attachments, attachmentModule: attachmentModule.exports, failAttachmentRead: () => { failAttachmentRead = true; }, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
 }
 
 function routedRequest(router, method, url, userIdentity) {
@@ -148,7 +174,7 @@ test('ordinary users reach the delivery calendar and other routes mounted after 
 test('every purchase route still rejects ordinary users before accessing data', async () => {
   const f = fixture({ routing: true });
   const routes = f.router.stack.filter((layer) => layer.route).map((layer) => layer.route);
-  assert.equal(routes.length, 9);
+  assert.equal(routes.length, 10);
   for (const route of routes) {
     const url = route.path.replace(/:[^/]+/g, '1');
     for (const method of Object.keys(route.methods)) {
@@ -169,6 +195,108 @@ test('verified pilot users can still load purchase options', async () => {
 
 const body = () => ({ supplierId: '42', clientRequestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', packagingTypeId: 79, deliveryTermId: 1, paymentConditionText: 'Manipuliert', paymentConditionId: 999,
   loadingLocationText: 'Hamburg', positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
+
+const file = (name = 'Prüfung.pdf', content = '%PDF-example') => ({ originalname: name, mimetype: 'application/pdf', buffer: Buffer.from(content), size: Buffer.byteLength(content) });
+
+test('attachments survive create, committed retry, detail, position copy, edit and finalize', async () => {
+  const f = fixture();
+  const created = (await f.request({ ...body(), attachmentCount: '2', positions: JSON.stringify(body().positions) }, 'post', '/temp-purchase-orders', { files: [file('PrÃ¼fung.pdf'), file('Bild.png', 'image')] })).data;
+  assert.deepEqual(created.attachments.map((a) => a.fileName), ['Prüfung.pdf', 'Bild.png']);
+  assert.equal(created.attachments[0].buffer, undefined, 'metadata responses never contain file contents');
+  const retry = await f.request({ ...body(), attachmentCount: 2 });
+  assert.equal(retry.meta.alreadyCreated, true);
+  assert.equal(f.attachments.length, 2, 'an uncertain response can be checked without uploading duplicates');
+  assert.equal(retry.data.attachments.length, 2);
+  const detail = (await f.request({}, 'get', '/temp-purchase-orders/:id')).data;
+  const copied = { ...detail.positions[0], id: undefined, copyOfPositionId: detail.positions[0].id };
+  const edited = (await f.request({ ...detail, positions: JSON.stringify([...detail.positions, copied]), removeAttachmentIds: '[1]', attachmentCount: '1' }, 'put', '/temp-purchase-orders/:id', { files: [file('Neu.pdf')] })).data;
+  assert.equal(edited.positions.length, 2);
+  assert.deepEqual(edited.attachments.map((a) => a.fileName), ['Bild.png', 'Neu.pdf']);
+  assert.equal(f.attachments[0].tba_DeletedBy, 'AD');
+  const finalized = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+  assert.deepEqual(finalized.attachments, edited.attachments);
+  await assert.rejects(f.request({ ...detail, removeAttachmentIds: [2] }, 'put', '/temp-purchase-orders/:id'), /nicht mehr bearbeitbar/);
+});
+
+test('download enforces tenant, owner, order and active attachment boundaries', async () => {
+  const f = fixture({ fullAccess: false });
+  await f.request(body(), 'post', '/temp-purchase-orders', { files: [file()] });
+  const download = (context = {}) => f.request({}, 'get', '/temp-purchase-orders/:id/attachments/:attachmentId', { params: { attachmentId: '1' }, ...context });
+  const response = await download();
+  assert.deepEqual(response.buffer, file().buffer);
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+  assert.match(response.headers['Content-Disposition'], /filename\*=UTF-8''Pr%C3%BCfung.pdf/);
+  for (const context of [{ companyId: 2 }, { user: 'OTHER' }, { params: { attachmentId: '2' } }, { params: { id: '2', attachmentId: '1' } }]) {
+    await assert.rejects(download(context), (error) => error.status === 404);
+  }
+  await f.request({ ...body(), removeAttachmentIds: [1] }, 'put', '/temp-purchase-orders/:id');
+  await assert.rejects(download(), (error) => error.status === 404);
+});
+
+test('missing uploads and invalid removals cannot partially create or edit an order', async () => {
+  const f = fixture();
+  await assert.rejects(f.request({ ...body(), attachmentCount: 1 }), (error) => error.details.code === 'PURCHASE_ATTACHMENTS_MISSING');
+  assert.equal(f.headers.length, 0);
+  const created = (await f.request(body(), 'post', '/temp-purchase-orders', { files: [file()] })).data;
+  await assert.rejects(f.request({ ...created, comment: 'must roll back', removeAttachmentIds: [1, 999] }, 'put', '/temp-purchase-orders/:id'), /nicht gefunden/);
+  const detail = (await f.request({}, 'get', '/temp-purchase-orders/:id')).data;
+  assert.notEqual(detail.comment, 'must roll back');
+  assert.equal(detail.attachments.length, 1);
+  await f.request({}, 'delete', '/temp-purchase-orders/:id');
+  assert.equal(f.attachments.length, 0);
+});
+
+test('an attachment read error rolls back creation and finalization instead of leaving partial success', async () => {
+  const failedCreate = fixture(); failedCreate.failAttachmentRead();
+  await assert.rejects(failedCreate.request(body(), 'post', '/temp-purchase-orders', { files: [file()] }), /attachment read error/);
+  assert.equal(failedCreate.headers.length, 0);
+  assert.equal(failedCreate.attachments.length, 0);
+  const failedFinalize = fixture();
+  await failedFinalize.request(body()); failedFinalize.failAttachmentRead();
+  await assert.rejects(failedFinalize.request({}, 'post', '/temp-purchase-orders/:id/finalize'), /attachment read error/);
+  assert.equal(failedFinalize.headers[0].tb_status, 0);
+  assert.equal(failedFinalize.timeline.length, 0);
+});
+
+test('real multipart requests use the order picker formats and enforce file type and size limits', async (t) => {
+  const express = require('express');
+  const f = fixture({ routing: true });
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.database = { firmaId: 1 }; req.mandant = 'Test';
+    req.userIdentity = { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true };
+    next();
+  });
+  app.use(f.router);
+  app.use((error, _req, res, _next) => res.status(error.status || 500).json({ error: { message: error.message, code: error.details?.code } }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.once('listening', resolve));
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  const url = `http://127.0.0.1:${server.address().port}/temp-purchase-orders`;
+  const payload = (name, content, type = 'application/pdf') => {
+    const form = new FormData();
+    Object.entries(body()).forEach(([key, value]) => form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value)));
+    form.append('attachmentCount', '1');
+    form.append('attachment', new Blob([content], { type }), name);
+    return form;
+  };
+  let response = await fetch(url, { method: 'POST', body: payload('not-allowed.txt', 'text', 'text/plain') });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, 'ATTACHMENT_INVALID_TYPE');
+  response = await fetch(url, { method: 'POST', body: payload('too-large.pdf', Buffer.alloc(10 * 1024 * 1024 + 1)) });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, 'ATTACHMENT_TOO_LARGE');
+  response = await fetch(url, { method: 'POST', body: payload('Prüfung.pdf', '%PDF-test') });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).data.attachments[0].fileName, 'Prüfung.pdf');
+  response = await fetch(`${url}/1/attachments/1`);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), '%PDF-test');
+  assert.equal(f.headers.length, 1);
+  const batchError = await new Promise((resolve) => f.attachmentModule.attachmentUploadMiddleware({ headers: { 'content-length': String(103 * 1024 * 1024) } }, {}, resolve));
+  assert.equal(batchError.status, 413);
+});
 
 test('create returns a valid mapped order after all reads; copies survive without historical BE references', async () => {
   const f = fixture();

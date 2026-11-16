@@ -5,6 +5,13 @@ export const createPurchaseLineId = createCustomerOperationId;
 
 export const PURCHASE_CART_CHANGED = 'bms-purchase-cart-changed';
 
+// File objects cannot be serialized into localStorage. Keep them while moving
+// between the cart and supplier pages; after a reload the editor shows the same
+// re-selection hint as the sales-order draft.
+const attachmentFiles = new Map();
+export function getPurchaseCartAttachmentFiles() { return attachmentFiles.get(key()) || []; }
+export function savePurchaseCartAttachmentFiles(files) { attachmentFiles.set(key(), files); }
+
 function key() {
   return `bms.purchaseCart.${getMandant() || 'default'}`;
 }
@@ -49,11 +56,12 @@ function supplierKey(item) {
 
 export function getPurchaseCartItems() { return read(); }
 export function getPurchaseCartCount() { return read().length; }
-export function clearPurchaseCart() { write([]); localStorage.removeItem(contextKey()); return []; }
+export function clearPurchaseCart() { write([]); localStorage.removeItem(contextKey()); attachmentFiles.delete(key()); return []; }
 
 export function removePurchaseCartItem(lineId) {
   const next = read().filter((item) => String(item?.lineId || '') !== String(lineId || ''));
   write(next);
+  if (!next.length) attachmentFiles.delete(key());
   return next;
 }
 
@@ -101,6 +109,7 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
     && Number(context.header.packagingTypeId)!==Number(confirmedPackaging))
     throw new Error('Die gewählte Verpackungsart passt nicht zum bestehenden Bestellwarenkorb. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
   if (!current.length && (context.header || context.clientRequestId)) {
+    attachmentFiles.delete(key());
     savePurchaseCartContext({ header: null, clientRequestId: null });
   }
   const known = new Set(current.map(purchaseSourceKey));

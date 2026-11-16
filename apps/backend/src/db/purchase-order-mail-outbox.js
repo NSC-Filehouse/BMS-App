@@ -3,6 +3,7 @@ const fs = require('fs');
 const logger = require('../logger');
 const { runSQLQuerySqlServer } = require('./access');
 const { appTableSql } = require('./app-tables');
+const { loadPurchaseOrderAttachments } = require('./purchase-order-attachments');
 const { sendOrderMail, validateOrderMailConfig, resolveOrderMailRecipient } = require('../mail/order-mail');
 const {
   formatPurchaseOrderMailBody,
@@ -87,6 +88,7 @@ async function loadOrder(orderId, acceptedOnly = true) {
       [OptionID] AS optionId,[OptionPositionID] AS optionPositionId
     FROM ${POSITION_TABLE} WHERE [tbp_tb_id] = ? ORDER BY [tbp_line_no]
   `, [orderId]);
+  order.attachments = await loadPurchaseOrderAttachments(orderId);
   return { order, positions: Array.isArray(positions) ? positions : [] };
 }
 
@@ -134,7 +136,7 @@ async function processPurchaseOrderMailOutboxById(outboxId) {
   const item = await claimOutbox(outboxId);
   if (!item) return { processed: false, status: 'not_claimed' };
   try {
-    let attachment = null;
+    const attachments = await loadPurchaseOrderAttachments(item.orderId, { includeContent: true });
     const orderData = await loadOrder(item.orderId);
     const tenant = orderData ? await loadMandantDatabase(Number(orderData.order.companyId)) : null;
     const pdf = tenant?.name && orderData?.order?.bmsPurchaseOrderNumber
@@ -142,7 +144,7 @@ async function processPurchaseOrderMailOutboxById(outboxId) {
       : null;
     if (pdf?.filePath) {
       try {
-        attachment = { buffer: await fs.promises.readFile(pdf.filePath), fileName: pdf.fileName, mimeType: 'application/pdf' };
+        attachments.push({ buffer: await fs.promises.readFile(pdf.filePath), fileName: pdf.fileName, mimeType: 'application/pdf' });
       } catch (attachmentError) {
         logger.warn(`Bestelldokument ${pdf.filePath} konnte nicht gelesen werden: ${attachmentError?.message || attachmentError}`);
       }
@@ -153,7 +155,7 @@ async function processPurchaseOrderMailOutboxById(outboxId) {
       recipient: item.recipient,
       subject: item.subject,
       body: item.body,
-      attachment,
+      attachments,
       clientMessageId: `bms-app:purchase:${item.orderId}`,
     });
     await runSQLQuerySqlServer(config.sql.database, `UPDATE ${OUTBOX_TABLE} SET [pom_Status]=N'sent',[pom_SentAt]=SYSUTCDATETIME(),[pom_LockedAt]=NULL,[pom_LastError]=NULL,[pom_LastModifiedDate]=SYSUTCDATETIME() WHERE [pom_ID]=?`, [item.id]);
@@ -189,6 +191,7 @@ async function processPurchaseOrderCsMailOutboxById(outboxId) {
       recipient: item.recipient,
       subject: item.subject,
       body: item.body,
+      attachments: await loadPurchaseOrderAttachments(item.orderId, { includeContent: true }),
       clientMessageId: `bms-app:purchase-cs:${item.orderId}`,
     });
     await runSQLQuerySqlServer(config.sql.database, `UPDATE ${CS_OUTBOX_TABLE} SET [pcom_Status]=N'sent',[pcom_SentAt]=SYSUTCDATETIME(),[pcom_LockedAt]=NULL,[pcom_LastError]=NULL,[pcom_LastModifiedDate]=SYSUTCDATETIME() WHERE [pcom_ID]=?`, [item.id]);

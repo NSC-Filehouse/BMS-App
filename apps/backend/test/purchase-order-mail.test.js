@@ -13,3 +13,9 @@ test('both mail paths use header packaging and current positions without old BE 
     assert.doesNotMatch(body, /ALTE-BE|Vorherige BE/);
   }
 });
+
+test('both purchase mail bodies list the selected attachments', () => {
+  for (const format of [formatPurchaseOrderMailBody, formatPurchaseOrderCsMailBody]) {
+    assert.match(format({ order: { attachments: [{ fileName: 'Prüfung.pdf' }, { fileName: 'Foto.jpg' }] } }), /Anhang: Prüfung.pdf, Foto.jpg/);
+  }
+});
