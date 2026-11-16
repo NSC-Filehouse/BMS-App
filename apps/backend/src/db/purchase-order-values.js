@@ -50,7 +50,7 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
         AND EXISTS (SELECT 1 FROM [dbo].[tblBest_Position] [p] WHERE [p].[beP_Bestellindex] = [b].[be_Bestellindex] AND COALESCE([p].[beP_Storno], 0) <> 1)
       ORDER BY [b].[be_Bestelldatum] DESC, [b].[be_Bestellindex] DESC`, [supplierId]),
     runSQLQueryAccess(database, `
-      SELECT [kdA_lfdNR] AS id, [kdA_Anrede] AS salutation, [kdA_Vorname] AS firstName, [kdA_Name] AS lastName, [kdA_Ranking] AS ranking
+      SELECT [kdA_lfdNR] AS id, [kdA_Anrede] AS salutation, [kdA_Vorname] AS firstName, [kdA_Name] AS lastName, [kdA_Ranking] AS ranking, [kdA_eMail] AS email
       FROM [dbo].[tblKun_Ansprech] WHERE [kdA_KdNR] = ?
       ORDER BY ISNULL([kdA_Ranking], 9), [kdA_Name], [kdA_Vorname], [kdA_lfdNR]`, [supplierId]),
   ]);

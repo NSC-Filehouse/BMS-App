@@ -6,6 +6,7 @@ const express=require('express');
 const {createHttpError}=require('../src/utils');
 let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
 let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false;
+const contactRows=[{id:41,name:'Herr Source Contact',firstName:'Source',lastName:'Contact',email:'source@borealisgroup.com',ranking:2},{id:42,name:'Other Contact',email:'other@borealisgroup.com',ranking:1}];
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',opp_Verpackungsart_id:78,packagingSource:'original',packagingEvidence:'25kg bags',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const mod={exports:{}};
 const deps={
@@ -20,10 +21,11 @@ const deps={
     purchaseCandidates:async(_db,_source,options)=>{assert.equal(options.all,true);return {data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1};},
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },
-  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',aliases:['Siloware','Silo/bulk']}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Einkauf'})},
+  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',aliases:['Siloware','Silo/bulk']}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Other Contact',contacts:contactRows})},
   '../options/price-plausibility':require('../src/options/price-plausibility'),
   '../options/packaging-display':require('../src/options/packaging-display'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
+  '../options/supplier-contacts':require('../src/options/supplier-contacts'),
 };
 new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/routes/option-purchases.routes.js'),'utf8'))(name=>{assert.ok(name in deps,name);return deps[name];},mod);
 const app=express();app.use(express.json());app.use(mod.exports);app.use((e,req,res,next)=>res.status(e.status||500).json({error:{message:e.message,code:e.details?.code}}));
@@ -57,6 +59,22 @@ test('selection returns confirmed target data and preserves offer price and manu
   assert.equal(data.header.loadingLocationSource,'manual');assert.equal(data.header.deliveryTermId,1);
   assert.equal('windowsUser' in data.position,false);
 });
+test('source contact exact email wins over ranking and is carried to the order header',async()=>{
+ source.sourceContactsJson=JSON.stringify({candidates:[{email:'source@borealisgroup.com',name:'Source Contact'}]});
+ try{
+  const {meta,data}=await(await fetch(`${base}/contacts?supplierId=LF0124`)).json();
+  assert.equal(meta.selectedId,41);assert.equal(data.length,2);
+  assert.equal((await(await select(choice())).json()).data.header.supplierContact,'Herr Source Contact');
+  assert.equal((await(await select({...choice(),contactId:42})).json()).data.header.supplierContact,'Other Contact');
+  assert.equal((await(await select({...choice(),contactId:null})).json()).data.header.supplierContact,'');
+  assert.equal((await select({...choice(),contactId:9000})).status,422);
+  assert.equal((await fetch(`${base}/contacts?supplierId=UNRELATED`)).status,422);
+ }finally{delete source.sourceContactsJson;}
+});
+test('missing source match does not silently substitute a ranking-1 contact',async()=>{
+ assert.equal((await(await fetch(`${base}/contacts?supplierId=LF0124`)).json()).meta.selectedId,null);
+ assert.equal((await(await select(choice())).json()).data.header.supplierContact,'');
+});
 test('unknown price never becomes zero and an exhausted or expired option cannot be selected',async()=>{
   price=null;const response=await(await select(choice())).json();assert.equal(response.data.position.purchasePrice,'');
   remainingKg=0;assert.equal((await select(choice())).status,422);
@@ -66,6 +84,7 @@ test('all purchase selection endpoints enforce existing feature access',async()=
   identity={shortCode:'OTHER',active:true};
   assert.equal((await fetch(`${base}/suppliers`)).status,403);
   assert.equal((await fetch(`${base}/articles`)).status,403);
+  assert.equal((await fetch(`${base}/contacts?supplierId=LF0124`)).status,403);
   assert.equal((await select(choice())).status,403);
   assert.equal((await fetch(`${base}/quantity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({totalKg:25000,quantityConfirmed:true})})).status,403);
   assert.equal(quantityRequests.length,0);

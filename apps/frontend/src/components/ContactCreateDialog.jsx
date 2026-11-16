@@ -9,12 +9,12 @@ import { contactStorageKey, readContactPending, contactDraft, validateContactDra
 
 const message = (entry) => typeof entry === 'string' ? entry : entry?.nachricht || entry?.detail || entry?.code || '';
 
-export default function ContactCreateDialog({ customerId, customerName, mandant, rankings, onClose, onCreated, onExisting }) {
+export default function ContactCreateDialog({ customerId, customerName, mandant, rankings, initialContact, onClose, onCreated, onExisting }) {
   const { lang, t } = useI18n();
   const languageIndex = lang === 'en' ? 1 : 0;
   const tr = (de, en) => lang === 'en' ? en : de;
   const [context, setContext] = React.useState(null);
-  const [draft, setDraft] = React.useState(createEmptyContact);
+  const [draft, setDraft] = React.useState(()=>initialContact?contactDraft(initialContact):createEmptyContact());
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');

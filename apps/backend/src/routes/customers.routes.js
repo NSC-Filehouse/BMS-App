@@ -45,7 +45,7 @@ const { supplierArticleDisplay, isNtSupplierArticle } = require('../supplier-art
 const { loadSupplierInvoiceLinks } = require('../db/supplier-invoice-links');
 
 const router = express.Router();
-require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer, mapRepresentatives });
+require('./contact-creation.routes').registerContactCreationRoutes(router, { requireVisibleCustomer:requireContactCompany, mapRepresentatives });
 const PRODUCTS_VIEW_SQL = productAvailabilitySource('availability');
 const PRODUCT_ID_SEPARATOR = '||';
 const ACTIVE_CUSTOMERS_TTL_MS = 5 * 60 * 1000;
@@ -280,6 +280,12 @@ async function requireVisibleCustomerOrSupplier(req, customerId, accessScope = n
   if (supplierCustomer) return { customer: supplierCustomer, canManageSupplier: false };
 
   throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
+}
+
+// Existing customer contact permissions remain; supplier contacts additionally
+// use the same pilot entitlement as the options/purchase-order workflow.
+async function requireContactCompany(req,customerId){
+  return require('../db/contact-company-access').requireContactCompany(req,customerId,requireVisibleCustomerOrSupplier);
 }
 
 function getReminderCountsCte() {

@@ -7,9 +7,23 @@ const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purc
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
 const { createPackagingDisplay } = require('../options/packaging-display');
 const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
+const {resolveSupplierContact}=require('../options/supplier-contacts');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
+async function offeredSupplier(req,source,id){
+ const suppliers=await supplierCandidates(req.database,source,{q:String(id || '').trim()});
+ const supplier=suppliers.find(row=>row.id.toLowerCase()===String(id || '').trim().toLowerCase());
+ if(!supplier || supplier.plausible!==true)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
+ return supplier;
+}
+router.get(`${base}/contacts`,...guard,asyncHandler(async(req,res)=>{
+ const source=await loadOptionPosition(req.params.id,req.params.positionId);
+ const supplier=await offeredSupplier(req,source,req.query.supplierId);
+ const terms=await loadSupplierTerms(req.database,supplier.id,req.header('x-lang')==='en'?'en':'de');
+ const contacts=terms.contacts || [];
+ sendEnvelope(res,{data:contacts,meta:resolveSupplierContact(source.sourceContactsJson,contacts)});
+}));
 
 router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId);
@@ -41,16 +55,17 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     throw createHttpError(422,'Bitte Lieferant und Artikel ausdrücklich bestätigen.',{code:'OPTION_SELECTION_REQUIRED'});
   const source = await loadOptionPosition(req.params.id,req.params.positionId);
   // A manually changed supplier must still be a real, selectable ERP supplier.
-  const suppliers = await supplierCandidates(req.database,source,{q:String(req.body.supplierId || '')});
-  const supplier = suppliers.find(row => row.id.toLowerCase()===String(req.body.supplierId || '').trim().toLowerCase());
-  if (!supplier) throw createHttpError(422,'Der ausgewählte Lieferant ist nicht verfügbar.',{code:'SUPPLIER_NOT_FOUND'});
-  if(supplier.plausible!==true)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
+  const supplier=await offeredSupplier(req,source,req.body.supplierId);
   const article = await validateOptionArticle(req.database,source,req.body);
   let availability = await loadOptionAvailability(source);
   if (availability.remainingKg == null) throw createHttpError(422,'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt.',{code:'OPTION_QUANTITY_UNCONFIRMED'});
   if (availability.remainingKg<=0) throw createHttpError(422,'Diese Optionsposition ist bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   const lang = req.header('x-lang')==='en'?'en':'de';
   const [choices,terms] = await Promise.all([loadPurchaseOptions(req.database,lang),loadSupplierTerms(req.database,supplier.id,lang)]);
+  const resolvedContact=resolveSupplierContact(source.sourceContactsJson,terms.contacts || []);
+  const contactId=Object.hasOwn(req.body,'contactId')?(req.body.contactId===null?null:Number(req.body.contactId)):resolvedContact.selectedId;
+  const contact=(terms.contacts || []).find(row=>row.id===contactId);
+  if(contactId!=null && !contact)throw createHttpError(422,'Der Ansprechpartner gehört nicht zum gewählten Lieferanten. Bitte erneut auswählen.',{code:'OPTION_CONTACT_INVALID'});
   const chosenPackaging=(choices.packagingTypes || []).find(row=>row.id===Number(req.body.packagingTypeId));
   if(!chosenPackaging)
     throw createHttpError(422,'Bitte zuerst die Verpackungsart auswählen.',{code:'OPTION_PACKAGING_REQUIRED'});
@@ -66,7 +81,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '',
       loadingLocationText:source.loadingLocation || '',loadingLocationSource:source.loadingLocation?'manual':'',
       packagingType:chosenPackaging?.text || source.opp_Verpackung || source.packagingText || '',packagingTypeId:chosenPackaging?.id || source.opp_Verpackungsart_id || '',
-      supplierContact:terms.supplierContact},
+      supplierContact:contact?.name || ''},
     position:{optionId:Number(source.opp_op_id),optionPositionId:Number(source.opp_id),
       supplierId:supplier.id,supplierName:supplier.name,articleIndex:article.articleIndex,
       article:source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName,masterArticleName:article.articleName,

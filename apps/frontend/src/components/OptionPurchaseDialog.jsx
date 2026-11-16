@@ -1,6 +1,10 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem,TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import AddIcon from '@mui/icons-material/Add';
+import ContactCreateDialog from './ContactCreateDialog.jsx';
+import {getMandant} from '../utils/mandant.js';
+import {getSelectableContactRankings} from '../utils/contactRanking.js';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { addPurchaseCartItems,defaultPurchaseAmount,savePurchaseCartContext } from '../utils/purchaseCart.js';
@@ -17,6 +21,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers,setSuppliers] = React.useState([]);
   const [supplier,setSupplier] = React.useState(null);
+  const [contacts,setContacts]=React.useState([]),[contact,setContact]=React.useState(null);
+  const [contactMeta,setContactMeta]=React.useState({}),[contactsLoading,setContactsLoading]=React.useState(false);
+  const [contactError,setContactError]=React.useState(''),[contactCreateOpen,setContactCreateOpen]=React.useState(false);
+  const [contactNotice,setContactNotice]=React.useState('');
+  const contactMandant=getMandant();
+  const contactScope=React.useRef(null);contactScope.current={supplierId:supplier?.id,mandant:contactMandant};
   const [showArticleSearch,setShowArticleSearch] = React.useState(false);
   const articleSearchId=React.useId();
   const [articles,setArticles] = React.useState([]);
@@ -63,6 +73,25 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
   };
   React.useEffect(()=>{void(async()=>{await loadSuppliers();await loadArticles();})();},[]);
+  React.useEffect(()=>{
+    let active=true;setContacts([]);setContact(null);setContactMeta({});setContactError('');setContactCreateOpen(false);setContactNotice('');
+    if(!supplier){setContactsLoading(false);return;}
+    setContactsLoading(true);
+    apiRequest(`${base}/contacts?${new URLSearchParams({supplierId:supplier.id})}`).then(response=>{
+      if(!active)return;setContacts(response.data || []);setContactMeta(response.meta || {});
+      setContact((response.data || []).find(row=>row.id===response.meta?.selectedId) || null);
+    }).catch(e=>{if(active)setContactError(e.message);}).finally(()=>{if(active)setContactsLoading(false);});
+    return()=>{active=false;};
+  },[supplier?.id,base,contactMandant]);
+  React.useEffect(()=>()=>{contactScope.current=null;},[]);
+  const refreshContact=async id=>{
+    const scope=contactScope.current;
+    const response=await apiRequest(`${base}/contacts?${new URLSearchParams({supplierId:scope.supplierId})}`);
+    if(contactScope.current?.supplierId!==scope.supplierId || getMandant()!==scope.mandant)return;
+    const found=(response.data || []).find(row=>row.id===Number(id));
+    if(!found)throw Error('Der Ansprechpartner wurde gespeichert, ist aber noch nicht verfügbar. Bitte erneut prüfen.');
+    setContacts(response.data || []);setContact(found);setContactMeta(response.meta || {});
+  };
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
     try {
@@ -77,7 +106,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     setBusy(true);setError('');
     try {
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
-        supplierId:supplier.id,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,acknowledgeUnverifiedMfi,packagingTypeId,
+        supplierId:supplier.id,contactId:contact?.id || null,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,acknowledgeUnverifiedMfi,packagingTypeId,
       })});
       addPurchaseCartItems([response.data.position],cartReturnTo,response.data.header);
       navigate('/purchase-cart',{state:{returnTo:cartReturnTo}});
@@ -103,6 +132,20 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         onChange={(_e,value)=>{setSupplier(value);setArticle(articles.length===1&&!optionArticleBlocked(articles[0])?articles[0]:null);setAcknowledgeUnverifiedMfi(false);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       </Box>
+      {supplier && <>
+        <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
+          <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}
+            getOptionLabel={row=>row.name} getOptionKey={row=>row.id} isOptionEqualToValue={(a,b)=>a.id===b.id}
+            onChange={(_e,value)=>setContact(value)} noOptionsText="Kein Ansprechpartner hinterlegt"
+            renderOption={({key,...props},row)=><Box component="li" key={key} {...props}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
+            renderInput={params=><TextField {...params} label="Ansprechpartner" size="small" InputLabelProps={{shrink:true}} />} />
+          <IconButton aria-label="Ansprechpartner anlegen" title="Ansprechpartner anlegen" disabled={busy || contactsLoading || Boolean(contactError)} onClick={()=>setContactCreateOpen(true)}><AddIcon /></IconButton>
+        </Box>
+        {contactMeta.suggestion && !contact && <Box><Button size="small" disabled={busy || contactsLoading} onClick={()=>setContactCreateOpen(true)}>Kontaktvorschlag prüfen</Button><Typography variant="caption" display="block">{[contactMeta.suggestion.vorname,contactMeta.suggestion.name,contactMeta.suggestion.email].filter(Boolean).join(' · ')}</Typography></Box>}
+        {contactMeta.status==='ambiguous' && !contact && <Typography variant="caption">Ansprechpartner nicht eindeutig. Bitte auswählen.</Typography>}
+        {contactError && <Alert severity="error">{contactError}</Alert>}
+        {contactNotice && <Alert severity="warning">{contactNotice}</Alert>}
+      </>}
         {articlesLoading && <Typography variant="body2" role="status">Artikel werden geladen …</Typography>}
         {articlesLoaded && !articles.length && <Typography variant="body2">Kein passender Artikel gefunden. Bitte die Artikelsuche öffnen.</Typography>}
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
@@ -155,6 +198,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {errorCode==='PURCHASE_CART_SUPPLIER_CONFLICT' && <Link component={RouterLink} to="/purchase-cart" state={{returnTo:cartReturnTo}} onClick={()=>savePurchaseCartContext({returnTo:cartReturnTo})} sx={{display:'block',mt:1}}>Zum Bestellwarenkorb</Link>}
       </Alert>}
     </DialogContent>
-    <DialogActions><Button disabled={busy} onClick={onClose}>Abbrechen</Button><Button variant="contained" disabled={busy||unavailable||!supplier||!article||optionArticleBlocked(article)||(optionArticleUnverified(article)&&!acknowledgeUnverifiedMfi)} onClick={submit}>In den Bestellwarenkorb</Button></DialogActions>
+    <DialogActions><Button disabled={busy} onClick={onClose}>Abbrechen</Button><Button variant="contained" disabled={busy||contactsLoading||Boolean(contactError)||unavailable||!supplier||!article||optionArticleBlocked(article)||(optionArticleUnverified(article)&&!acknowledgeUnverifiedMfi)} onClick={submit}>In den Bestellwarenkorb</Button></DialogActions>
+    {contactCreateOpen && supplier && <ContactCreateDialog key={`${supplier.id}:${contactMandant}`} customerId={supplier.id} customerName={supplier.name}
+      mandant={contactMandant} rankings={getSelectableContactRankings(contacts)} initialContact={contactMeta.suggestion}
+      onClose={()=>setContactCreateOpen(false)} onExisting={refreshContact}
+      onCreated={async(id,warnings)=>{await refreshContact(id);setContactNotice((warnings || []).map(w=>typeof w==='string'?w:w.nachricht || w.detail || '').filter(Boolean).join(' '));}} />}
   </Dialog>;
 }

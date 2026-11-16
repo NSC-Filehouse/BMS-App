@@ -34,7 +34,7 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
     o.op_MandantID AS sourceMandantId,o.op_LieferantID AS sourceSupplierId,o.op_Lieferantenname AS supplierName,
-    o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_Ladeort AS loadingLocation,
+    o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_AnbieterKontaktJson AS sourceContactsJson,o.op_Ladeort AS loadingLocation,
     o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,
     p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
     p.opp_Artikelname_Lieferant AS articleName,p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,

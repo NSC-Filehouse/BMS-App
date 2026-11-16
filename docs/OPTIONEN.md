@@ -30,6 +30,38 @@ für die Optionsdetails. Der gezielte Nachimport über OptionReader ist unten be
 
 ## Positionsansicht und Quellen (16.11.2026)
 
+### Ansprechpartner
+
+Der OptionReader lässt die KI den vollständigen Namen und vorhandene Kontaktdaten
+aus der Anbieter-Signatur bzw. ursprünglichen Absenderzeile lesen. Wörtliche
+Personen- und Lieferantenbelege werden gegen die Originalquelle geprüft und in
+`op_AnbieterKontaktJson` gespeichert (`add_option_supplier_contacts.sql`). Interne
+Weiterleiter und CC-Empfänger werden nicht übernommen. Automatische Postfächer
+ersetzen keinen ausdrücklich genannten persönlichen Ansprechpartner.
+
+Beim Bestellen wird im gewählten Lieferantenkonto nach der exakten Mailadresse
+gesucht, bei fehlender Quelladresse nach dem eindeutigen vollständigen Namen.
+Mehrdeutige Treffer bleiben zur Auswahl offen; ein Standardkontakt nach Ranking
+ersetzt keine fehlende Quellenzuordnung. Der Benutzer kann auswählen oder leeren.
+Unbekannte Personen öffnen einen vorausgefüllten `ContactCreateDialog` ohne Scanner,
+mit bestehender ERP-Vorprüfung, Dublettenprüfung und Idempotenz. Erst die bestätigte
+Anlage speichert einen echten Kontakt. Nach Anlage/Übernahme wird er ausgewählt
+und sein Name in den Bestellwarenkorb und den bestehenden Bestellablauf übernommen.
+Die Kontakt-IDs werden serverseitig gegen das gewählte Lieferantenkonto geprüft.
+Für reine Lieferantenkontakte gilt zusätzlich die Einkaufs-Pilotfreigabe.
+
+### Materialregeln und Bestandsabgleich
+
+`ex Sabic` ergibt aufgrund der ausdrücklich freigegebenen Geschäftsregel NT;
+`ex Feluy` oder andere ex-Angaben tun dies nicht. Reader und App verwenden denselben
+Materialprüfer. Der Reader dokumentiert diese Regel als `business-rule-ex-sabic`.
+Der gesicherte rückwirkende Abgleich erfolgt über
+`OptionReader/scripts/rebuild-material-facts.js`; vor Übernahme müssen Reader und
+Matcher die aktuelle Version nachweisen. Manuelle Zuordnungen und Originaldaten
+bleiben erhalten, technische Widersprüche werden gekennzeichnet.
+
+### Darstellung
+
 Jede Position öffnet eine eigene Ansicht unter `/options/:id/positions/:positionId`.
 Die Liste verwendet BMS-Kategorien, insbesondere PPCP als PP Copo, und ergänzt den
 vorliegenden MFI einmal mit Leerzeichen im Titel. Ein einzelner widerspruchsfreier

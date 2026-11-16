@@ -1,5 +1,5 @@
 // Keep identical to BMS-App/apps/backend/src/options/material-facts.js.
-const VERSION = '2026-11-16.1';
+const VERSION = '2026-11-16.2';
 const {resolvedMeasurements}=require('./mfi-compatibility');
 const VALUES = { quality:['NT','1A','unknown'], additives:['with','without','unknown'],
   color:['natural','black','white','transparent','mixed','other','unknown'] };
@@ -12,7 +12,10 @@ function quality(value) {
   const input=plain(value);
   const nt=/\b(?:NTP|NT|OG|off[\s-]*grade|near[\s-]*(?:to[\s-]*)?prime|non[\s-]*prime)\b/i;
   const prime=/\b(?:prime|1A)\b/i;
-  if(nt.test(input))return prime.test(input.replace(new RegExp(nt.source,'gi'),''))?'unknown':'NT';
+  // Explicit business rule: material described as "ex Sabic" is NT. A loading
+  // place (ex Feluy) or another producer after ex does not establish quality.
+  const exSabic=/\bex[\s:–-]+sabic\b/i;
+  if(nt.test(input) || exSabic.test(input))return prime.test(input.replace(new RegExp(nt.source,'gi'),''))?'unknown':'NT';
   return prime.test(input)?'1A':'unknown';
 }
 function additives(value, article=false) {
@@ -60,7 +63,7 @@ function deriveMaterialFacts(position, sourceText=null) {
       && (sourceText==null || source.includes(normalize(value)))) || '').slice(0,1000);
     const localVerified=Boolean(localEvidence) && (sourceText==null || source.includes(normalize(localEvidence)));
     result[name]={value:known,evidence:conflict?evidence:valid?evidence:localEvidence || null,
-      verified:!conflict && (valid || localVerified),source:conflict?'conflict':valid?'source-evidence':'position-text'};
+      verified:!conflict && (valid || localVerified),source:conflict?'conflict':name==='quality' && /\bex[\s:–-]+sabic\b/i.test(valid?evidence:localEvidence)?'business-rule-ex-sabic':valid?'source-evidence':'position-text'};
     if(sourceText!=null && !result[name].verified)result[name].value='unknown';
   }
   return result;

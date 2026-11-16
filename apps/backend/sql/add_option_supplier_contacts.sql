@@ -1,0 +1,5 @@
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+IF COL_LENGTH(N'BMSApp.tblOptionen',N'op_AnbieterKontaktJson') IS NULL
+ ALTER TABLE BMSApp.tblOptionen ADD op_AnbieterKontaktJson NVARCHAR(MAX) NULL;
+COMMIT;
