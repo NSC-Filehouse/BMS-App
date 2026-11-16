@@ -1,7 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {optionDeliveryTerm,optionPackagingText,optionPackaging,optionPackagingLayout,optionArticleBlocked,optionArticleUnverified} from '../src/utils/optionDisplay.js';
+import {optionDeliveryTerm,optionPackagingText,optionPackaging,optionPackagingLayout,optionArticleBlocked,optionArticleUnverified,optionPositionTitle,optionCategory,optionPositionPath} from '../src/utils/optionDisplay.js';
 import {optionMailDocument} from '../src/utils/optionSource.js';
+
+test('titles include the prepared MFI once with spaces and categories use BMS names',()=>{
+ assert.equal(optionPositionTitle({articleName:'PPH 3000 OG',mfi:1}),'PPH 3000 OG MFI 1');
+ assert.equal(optionPositionTitle({articleName:'PPCP near to prime mfi 8.0',mfi:8}),'PPCP near to prime MFI 8');
+ assert.equal(optionPositionTitle({articleName:'PPH 3000 OG',mfi:null}),'PPH 3000 OG');
+ assert.equal(optionCategory({materialCategory:'PPCP'}),'PP Copo');
+ assert.equal(optionPositionPath(621,1895),'/options/621/positions/1895');
+});
+test('mail images resolve only stored safe CID images while external requests remain blocked',()=>{
+ const html=optionMailDocument('<img src="cid:IMAGE%40mail"><img src="https://example.test/tracker">','html',[{cid:'image@mail',mime:'image/png',data:'AA=='}]);
+ assert.match(html,/src="data:image\/png;base64,AA=="/);assert.match(html,/img-src data:/);
+ assert.doesNotMatch(optionMailDocument('<img src="cid:x">','html',[{cid:'x',mime:'image/svg+xml',data:'AA=='}]),/data:image\/svg/);
+});
 
 test('packaging is shown once while different per-position packages and alternatives survive',()=>{
   const offer={packagingDisplay:{de:'Sackware und/oder Siloware'},positions:[{id:1,positionPackaging:'Mehrere Verpackungsarten'},{id:2,positionPackaging:'Mehrere Verpackungsarten'}]};

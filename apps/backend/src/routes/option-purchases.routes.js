@@ -52,7 +52,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const lang = req.header('x-lang')==='en'?'en':'de';
   const [choices,terms] = await Promise.all([loadPurchaseOptions(req.database,lang),loadSupplierTerms(req.database,supplier.id,lang)]);
   const chosenPackaging=(choices.packagingTypes || []).find(row=>row.id===Number(req.body.packagingTypeId));
-  if(isTruckOffer(source) && !chosenPackaging)
+  if(!chosenPackaging)
     throw createHttpError(422,'Bitte zuerst die Verpackungsart auswählen.',{code:'OPTION_PACKAGING_REQUIRED'});
   if(isTruckOffer(source) && offeredTruckCount(source)==null && source.confirmedPackagingTypeId!=null && Number(source.confirmedPackagingTypeId)!==chosenPackaging.id)
     throw createHttpError(422,'Bitte die Gesamtmenge für die gewählte Verpackungsart erneut bestätigen.',{code:'OPTION_PACKAGING_CHANGED'});
@@ -71,7 +71,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
       supplierId:supplier.id,supplierName:supplier.name,articleIndex:article.articleIndex,
       article:source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName,masterArticleName:article.articleName,
       amount:Math.min(availability.remainingKg,isTruckOffer(source)?purchaseTruckLoadKg(chosenPackaging.text):Number(source.opp_MengeVonKg)||availability.remainingKg),
-      optionPackagingTypeId:isTruckOffer(source)?chosenPackaging.id:null,
+      optionPackagingTypeId:chosenPackaging.id,
       purchasePrice:price==null || optionPriceNeedsReview(price)?'':Number(price),
       originalPackagingType:source.opp_Verpackung || source.packagingText || '',originalPackagingTypeId:source.opp_Verpackungsart_id,
       optionValidUntil:source.validUntil,remainingKg:availability.remainingKg,offeredKg:availability.offeredKg,

@@ -40,6 +40,16 @@ test('shared option reads add dictionary labels without replacing original packa
   assert.deepEqual(position.packagingDisplay,{de:'Sackware',en:'Bags'});
   assert.equal(calls.filter(call=>call.sql.includes('tblSprachenTexte')).length,1);
 });
+
+test('a single candidate name is exposed only while its current material and MFI still fit',async()=>{
+  const source={id:10,optionId:1,articleName:'PPH 3000 OG',quality:'Offgrade',mfi:1,candidateCount:1};
+  positions=[{...source,singleCandidateJson:JSON.stringify({articleName:'PP Homo NT MFI 1 - 1,9 natur'})}];
+  assert.equal((await loadOffers(null))[0].positions[0].singleCandidateName,'PP Homo NT MFI 1 - 1,9 natur');
+  positions=[{...source,singleCandidateJson:JSON.stringify({articleName:'HDPE prime MFI 1 natur'})}];
+  assert.equal((await loadOffers(null))[0].positions[0].singleCandidateName,null);
+  positions=[{...source,candidateCount:2}];
+  assert.equal((await loadOffers(null))[0].positions[0].singleCandidateName,null);
+});
 test('an explicit source scope still binds IDs; empty scopes never become global', async () => {
   await loadOffers([3, 19], { includeExpired: true });
   assert.deepEqual(calls[0].params.slice(0, 2), [3, 19]);
@@ -55,14 +65,14 @@ test('an explicit source scope still binds IDs; empty scopes never become global
 test('list and detail availability follow recognized truck packaging and subtract already allocated kg',async()=>{
   for(const [packaging,weight,count,expected]of [['Sackware',24750,1,23750],['Octabins',24750,2,48500],['Siloware',25000,1,24000]]){
     positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMin:count,truckMax:count,positionPackaging:packaging,
-      normalizationJson:JSON.stringify({packaging,maxTruckLoadKg:weight}),orderedKg:1000}];
+      normalizationJson:JSON.stringify({packaging,maxTruckLoadKg:weight,provenance:{packaging:{source:'original'}}}),orderedKg:1000}];
     const position=(await loadOffers(null,{optionId:1}))[0].positions[0];
     assert.equal(position.remainingKg,expected);assert.equal(position.truckLoadKg,weight);
   }
   positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1,positionPackaging:'Sackware / Big Bags / Octabins'}];
   assert.equal((await loadOffers(null))[0].positions[0].remainingKg,null);
   positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1}];
-  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,25000);
-  positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1,positionPackaging:'Octa',packagingTypeId:81}];
+  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,null);
+  positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1,positionPackaging:'Octa',packagingTypeId:81,normalizationJson:JSON.stringify({provenance:{packaging:{source:'original'}}})}];
   assert.equal((await loadOffers(null))[0].positions[0].remainingKg,24750);
 });

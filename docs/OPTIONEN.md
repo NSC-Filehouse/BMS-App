@@ -16,12 +16,47 @@ wird „BAGS“ zu „Sackware“ und „Bags and / or Bulk“ zu „Sackware un
 angebotene Alternativen bleiben erhalten. Die Übersetzung wählt keine Verpackung
 aus und verändert weder Originalangaben noch Berechnungen oder gespeicherte Daten.
 
-„Originalmail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
-ohne Skripte oder externe Ressourcen. Vorhandene PDFs/Bilder lassen sich über einen
-weiteren Button öffnen. Die API lädt Inhalte erst bei Bedarf über
+„Mail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
+ohne Skripte oder externe Ressourcen. Referenzierte Inline-Grafiken werden vom
+OptionReader in `op_QuelleMailbilderJson` gesichert und als lokale Bilddaten angezeigt.
+„PDF öffnen“ zeigt die Datei mit PDF.js innerhalb der App. Die lesbare Vorschau wird
+bevorzugt; bei fehlender Vorschau wird das Original einschließlich XFA direkt gerendert.
+Die API lädt Inhalte erst bei Bedarf über
 `GET /options/:id/source/mail` bzw. `/source/file`; es gelten dieselben Pilot- und
 Mandantenprüfungen sowie dieselbe gemeinsame Sichtbarkeit aktueller Optionen wie
-für die Optionsdetails. Es werden keine Quellen nachimportiert oder Stammdaten geändert.
+für die Optionsdetails. Der gezielte Nachimport über OptionReader ist unten beschrieben.
+
+## Positionsansicht und Quellen (16.11.2026)
+
+Jede Position öffnet eine eigene Ansicht unter `/options/:id/positions/:positionId`.
+Die Liste verwendet BMS-Kategorien, insbesondere PPCP als PP Copo, und ergänzt den
+vorliegenden MFI einmal mit Leerzeichen im Titel. Ein einzelner widerspruchsfreier
+Artikelkandidat erscheint klein darunter; bei null oder mehreren fehlt die Zeile.
+Die Messmethode erscheint nur bei vorhandenem Quellenwert.
+
+Löschen verlangt einen Bestätigungsdialog und `confirmed:true` beim positionsbezogenen
+DELETE. `opp_GeloeschtAm` und `opp_GeloeschtVon` entfernen nur die betreffende Position
+aus Anzeige, Bestellauswahl und Hintergrundabgleich. Originalbelege und Referenzen
+bestehender Bestellungen bleiben gespeichert. Fokuswechsel am selben Geschäftstag
+setzt die Ansicht oder einen geöffneten Bestelldialog nicht mehr zurück.
+
+Schema: `apps/backend/sql/add_option_position_sources.sql`. Diese additive Migration
+enthält die Bildablage und das logische Löschen einzelner Positionen. Die Pilot- und
+Mandantenprüfungen gelten unverändert. Quellen werden weiterhin nur bei Bedarf geladen.
+
+Für die PDF-Ansicht nach dem Pull `npm ci` und `npm run build` im Hauptverzeichnis
+ausführen. Der Build kopiert die PDF.js-Schriften, Zeichentabellen und WASM-Dateien
+in die statischen Assets. Die Ansicht benötigt keinen nativen PDF-Browser-Plugin.
+Die unveränderten Original-PDFs bleiben für einen späteren Bearbeitungs- und
+Bestellanhang-Ablauf erhalten. Dieser Schritt enthält ausschließlich die Anzeige;
+Formulare werden nicht als bearbeitet oder an Bestellungen angehängt gespeichert.
+
+Im OptionReader prüft `node --openssl-legacy-provider scripts/backfill-mail-images.js`
+die Originalmails der aktuell gültigen Optionen im konfigurierten Mailarchiv.
+`--apply` übernimmt die gefundenen referenzierten Grafiken nach Sicherung und
+Quellvergleich. Es werden keine neuen Angebote angelegt, keine KI-Neuauswertung
+ausgelöst und keine Mails verschoben oder versendet. Berichte und Sicherungen liegen
+im ignorierten `outputs/mail-images-...`-Ordner des Readers.
 
 Optionen sind eingehende Lieferantenangebote. Die App liest sie aus der zentralen
 DB04-Datenbank `BMS`, Schema `BMSApp`. `tblOptionen` enthält den Angebotskopf,

@@ -31,6 +31,7 @@ require.cache[require.resolve('../src/options/read')] = { exports: {
   },
 } };
 const app = express();
+app.use(express.json());
 app.use(require('../src/routes/customers.routes'));
 app.use(require('../src/routes/options.routes'));
 app.use((error, req, res, next) => res.status(error.status || 500).json({ error: error.message }));
@@ -68,7 +69,9 @@ test('supplier visibility and pilot access are still enforced before any shared 
   assert.equal(reads.length, 0);
 });
 test('removing a shared option does not depend on the currently selected mandant', async () => {
-  assert.equal((await fetch(`${base}/options/2`, { method: 'DELETE' })).status, 204);
+  assert.equal((await fetch(`${base}/options/2`, { method: 'DELETE' })).status, 422);
+  assert.equal(deletes.length,0);
+  assert.equal((await fetch(`${base}/options/2`, { method: 'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true}) })).status, 204);
   assert.deepEqual(deletes[0].params.slice(2), [2]);
   assert.doesNotMatch(deletes[0].sql, /op_MandantID=/);
 });

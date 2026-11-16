@@ -31,7 +31,7 @@ test('shared original mail is returned as uncached JSON, never executable HTML',
   assert.equal(response.status,200);
   assert.match(response.headers.get('content-type'),/application\/json/);
   assert.equal(response.headers.get('cache-control'),'private, no-store');
-  assert.deepEqual((await response.json()).data,{body:source.body,format:'HTML'});
+  assert.deepEqual((await response.json()).data,{body:source.body,format:'HTML',images:[],missingImages:[]});
   const {sql,params}=calls[0];
   assert.equal(params[0],614);
   assert.equal((sql.match(/\?/g)||[]).length,params.length);

@@ -21,6 +21,25 @@ export function optionMfi(position) {
   return `${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi ? `–${optionNumber(position.mfiTo)}`:''}${position.mfiTestCondition ? ` (${position.mfiTestCondition})`:''}`;
 }
 
+export function optionPositionTitle(position) {
+  const name=String(position?.articleName || '').trim();
+  if(position?.mfi==null)return name;
+  // The displayed measurement comes from the prepared source, never a grade number.
+  const withoutMfi=name.replace(/\b(?:MFI|MFR)\s*[:=]?\s*\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?/gi,'').replace(/\s+/g,' ').trim();
+  return `${withoutMfi} MFI ${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi?`–${optionNumber(position.mfiTo)}`:''}`.trim();
+}
+
+export function optionCategory(position) {
+  const raw=String(position?.materialCategory || '').trim();
+  const sub=String(position?.plasticSubCategory || '').toLowerCase();
+  if(/\bPPCP?\b|PP[ _-]*copo/i.test(raw) || position?.plastic==='PP' && sub==='copo')return 'PP Copo';
+  if(/\bPPH(?:P)?\b|PP[ _-]*homo/i.test(raw) || position?.plastic==='PP' && sub==='homo')return 'PP Homo';
+  if(/PP[ _-]*(?:random|raco)/i.test(raw) || position?.plastic==='PP' && sub==='random')return 'PP Random';
+  return raw;
+}
+
+export const optionPositionPath=(offerId,positionId)=>`/options/${encodeURIComponent(offerId)}/positions/${encodeURIComponent(positionId)}`;
+
 export function optionQuantity(position, t) {
   if(position?.quantityKind==='minimum-and-stock' && (position.minimumOrderKg!=null || position.stockKg!=null)) {
     return [position.minimumOrderKg!=null ? `Mindestabnahme ${optionNumber(position.minimumOrderKg)} kg` : null,
@@ -46,6 +65,8 @@ export function optionQuantity(position, t) {
 }
 
 export function optionPackagingText(source, lang = 'de') {
+  const provenance=source?.normalization?.provenance?.packaging?.source;
+  if(provenance && provenance!=='original' && source?.positionPackaging!=='Mehrere Verpackungsarten')return lang==='en'?'Clarify packaging':'Verpackungsart klären';
   return source?.packagingDisplay?.[lang === 'en' ? 'en' : 'de'] || source?.positionPackaging || source?.packagingText || '';
 }
 

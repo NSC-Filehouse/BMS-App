@@ -7,6 +7,8 @@ const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibi
 const { quantityAvailability,confirmedQuantitySql,offeredTruckCount } = require('./purchase-quantity');
 const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase-order-values');
 const {createPackagingDisplay}=require('./packaging-display');
+const {checkMfi}=require('./mfi-compatibility');
+const {checkMaterial}=require('./material-facts');
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -37,10 +39,14 @@ function mapPosition(row,today) {
   position.snapshotId = row.snapshotId == null ? null : String(row.snapshotId);
   position.candidateCount = Number(row.candidateCount || 0);
   position.matchStatus = row.matchStatus || 'unmatched';
+  const single=row.singleCandidateJson?JSON.parse(row.singleCandidateJson):null;
+  position.singleCandidateName=single && !checkMfi(position,single).blocked && !checkMaterial(position,single).blocked?single.articleName:null;
+  delete position.singleCandidateJson;
+  delete position.sourceMeasurementsJson;
   const normalizedTruckLoad=Number(position.normalization?.maxTruckLoadKg);
   const packaging=String(position.positionPackaging || position.normalization?.packaging || '').trim();
-  const truckLoadKg=[24750,25000].includes(normalizedTruckLoad)?normalizedTruckLoad:
-    Number(position.packagingTypeId)>0 && packaging?purchaseTruckLoadKg(packaging):packaging?null:25000;
+  const truckLoadKg=position.normalization?.provenance?.packaging?.source==='original' && [24750,25000].includes(normalizedTruckLoad)?normalizedTruckLoad:
+    position.normalization?.provenance?.packaging?.source==='original' && Number(position.packagingTypeId)>0 && packaging?purchaseTruckLoadKg(packaging):null;
   position.truckLoadKg=offeredTruckCount(position)!=null?truckLoadKg:null;
   // The list/detail quantity describes the recognized packaging. Purchase
   // allocation still checks the packaging explicitly selected for that order.
@@ -71,6 +77,8 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
   const positions = await runSQLQuerySqlServer(config.sql.database, `SELECT p.opp_id AS id,p.opp_op_id AS optionId,
     p.opp_Artikelname_Lieferant AS articleName,p.opp_Artikelnummer_Lieferant AS supplierArticleNo,p.opp_Artikelname AS internalArticleName,
     p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,p.opp_ZustandNorm AS qualityNorm,p.opp_Charge AS batchNo,
+    p.opp_QuellaufbereitungJson AS sourceMeasurementsJson,
+    CASE WHEN r.oab_KandidatenAnzahl=1 THEN (SELECT TOP(1) k.oak_DatenJson FROM BMSApp.tblOptionenArtikelKandidaten k WHERE k.oak_oab_id=r.oab_id) END AS singleCandidateJson,
     p.opp_MengeVon AS quantityMin,p.opp_MengeBis AS quantityMax,p.opp_Mengeneinheit AS quantityUnit,p.opp_MengeRohtext AS quantityText,
     p.opp_PreisRoh AS price,p.opp_PreiseinheitRoh AS priceUnit,p.opp_Waehrung AS currency,p.opp_PreisProTonne AS pricePerTonne,
     p.opp_MengeVonKg AS quantityMinKg,p.opp_MengeBisKg AS quantityMaxKg,
@@ -107,7 +115,7 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
     WHERE ${scope} AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
-      AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+      AND p.opp_GeloeschtAm IS NULL AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);
   const packagingDisplay = createPackagingDisplay(await loadPurchasePackagingOptions());
   const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),

@@ -7,7 +7,7 @@ export function useOptionValidityRefresh() {
   const [revision,setRevision] = React.useState(0);
   React.useEffect(()=>{
     let day=businessDate();
-    const refresh=()=>{day=businessDate();setRevision(value=>value+1);};
+    const refresh=()=>{const next=businessDate();if(next!==day){day=next;setRevision(value=>value+1);}};
     const visible=()=>{if(document.visibilityState==='visible')refresh();};
     const timer=window.setInterval(()=>{if(day!==businessDate())refresh();},10000);
     window.addEventListener('focus',refresh);

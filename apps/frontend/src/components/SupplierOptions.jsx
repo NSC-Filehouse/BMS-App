@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
-import { optionDate, optionPrice, optionQuantity, optionMfi } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPositionTitle } from '../utils/optionDisplay.js';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 
@@ -49,7 +49,7 @@ export default function SupplierOptions({ supplierId, mandant }) {
   function openOption(offer, position) {
     const returnTo = createReturnTo(location, { ...location.state, detailView: 'supplier',
       supplierOptionsState: { supplierId, mandant, expanded: true, scrollTop: window.scrollY } });
-    navigate(`/options/${encodeURIComponent(offer.id)}#position-${position.id}`, { state: { returnTo,optionSupplierId:supplierId } });
+    navigate(`/options/${encodeURIComponent(offer.id)}/positions/${position.id}`, { state: { returnTo,optionSupplierId:supplierId } });
   }
   return <Accordion expanded={expanded} onChange={(_event, value) => setExpanded(value)}>
     <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>
@@ -67,10 +67,11 @@ export default function SupplierOptions({ supplierId, mandant }) {
           '&:hover': { bgcolor: 'action.hover' }, '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main' } }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
-            {position.internalArticleName || position.articleName}
-            {position.mfi != null && ` · MFI ${optionMfi(position)}`}
+            {optionPositionTitle(position)}
             {offer.isDemo && ` · ${t('option_demo')}`}
           </Typography>
+          {position.singleCandidateName && <Typography variant="caption" color="text.secondary" sx={{display:'block'}}>{position.singleCandidateName}</Typography>}
+          {position.mfiTestCondition && <Typography variant="caption" color="text.secondary" sx={{display:'block'}}>{lang==='en'?'Test method':'Messmethode'}: {position.mfiTestCondition}</Typography>}
           <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{t('option_from')}: {offer.supplierName}</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
             {[optionQuantity(position, t), optionPrice(position, t), `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`].filter(Boolean).join(' · ')}

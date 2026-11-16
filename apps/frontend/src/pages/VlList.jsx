@@ -831,7 +831,7 @@ export default function VlList() {
     if (item.kind === 'option') {
       const params = new URLSearchParams({ vlMandantId: String(item.sourceMandantId) });
       if (isGroupVl) params.set('vlScope', FRUPACK_GROUP_SCOPE);
-      navigate(`/options/${encodeURIComponent(item.optionId)}?${params.toString()}#position-${item.optionPositionId}`, {
+      navigate(`/options/${encodeURIComponent(item.optionId)}/positions/${item.optionPositionId}?${params.toString()}`, {
         state: { returnTo: createVlReturnTo(location, getVlReturnState()) },
       });
       return;

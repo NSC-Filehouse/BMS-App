@@ -1,19 +1,17 @@
 import {defaultPurchaseAmount} from './purchaseCart.js';
 
 export function defaultOptionPackagingId(meta) {
-  if(!meta.truckOffer)return meta.confirmedPackagingTypeId??'';
-  if(!(Number(meta.offeredTrucks)>0) && meta.confirmedPackagingTypeId!=null)return meta.confirmedPackagingTypeId;
+  if(meta.confirmedPackagingTypeId!=null)return meta.confirmedPackagingTypeId;
   const choices=meta.packagingTypes || [];
-  if(!['rule','unknown'].includes(meta.sourcePackagingSource)) {
+  if(meta.sourcePackagingSource==='original') {
     const detected=choices.find(row=>row.id===Number(meta.sourcePackagingTypeId));
     if(detected)return detected.id;
     const key=value=>String(value || '').trim().toLocaleLowerCase('de-DE').replace(/\s+/g,' ');
     const matches=choices.filter(row=>[row.text,...(row.aliases || [])].some(value=>key(value) && key(value)===key(meta.sourcePackaging)));
     if(matches.length===1)return matches[0].id;
   }
-  // An existing but ambiguous/unmapped hint still requires an explicit choice.
-  if(String(meta.sourcePackaging || '').trim() || meta.sourcePackagingTypeId!=null)return '';
-  return choices.find(row=>row.key==='silo' || defaultPurchaseAmount(row.text)===25000)?.id??'';
+  // An absent, guessed or ambiguous packaging never supplies a default.
+  return '';
 }
 
 export function truckOptionAvailability(meta,packaging) {

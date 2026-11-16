@@ -32,7 +32,7 @@ test.before(async()=>{server=await new Promise(resolve=>{const s=app.listen(0,'1
 test.after(()=>new Promise(resolve=>server.close(resolve)));
 test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;quantityRequests=[];truckOffer=false;});
 const select=body=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true});
+const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true,packagingTypeId:78});
 
 test('one supplier or article never replaces explicit selection',async()=>{
   assert.equal((await fetch(`${base}/suppliers`)).status,200);
@@ -80,7 +80,7 @@ test('truck selection calculates kg from source count and packaging without a ma
   const response=await(await fetch(`${base}/suppliers`)).json();
   assert.equal(response.meta.truckOffer,true);assert.equal(response.meta.offeredTrucks,2);assert.equal(response.meta.packagingTypes.length,2);
   assert.equal(response.meta.sourcePackagingTypeId,78);assert.equal(response.meta.sourcePackagingSource,'original');assert.equal(response.meta.sourcePackagingEvidence,'25kg bags');
-  assert.equal((await select(choice())).status,422);
+  assert.equal((await select({...choice(),packagingTypeId:null})).status,422);
   const bags=await(await select({...choice(),packagingTypeId:78})).json();
   assert.equal(bags.data.position.offeredKg,49500);assert.equal(bags.data.position.remainingKg,49500);assert.equal(bags.data.position.amount,24750);
   const chosen=await(await select({...choice(),packagingTypeId:79})).json();

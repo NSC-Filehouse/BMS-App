@@ -262,6 +262,8 @@ function AppRoutes() {
         />
         <Route path="/options" element={<MandantGuard><FeatureGuard feature="options"><OptionsList /></FeatureGuard></MandantGuard>} />
         <Route path="/options/:id" element={<MandantGuard><FeatureGuard feature="options"><OptionDetail /></FeatureGuard></MandantGuard>} />
+        <Route path="/options/:id/positions/:positionId" element={<MandantGuard><FeatureGuard feature="options"><OptionDetail /></FeatureGuard></MandantGuard>} />
+
         <Route path="/forecast" element={<MandantGuard><FeatureGuard feature="forecast"><ForecastList /></FeatureGuard></MandantGuard>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

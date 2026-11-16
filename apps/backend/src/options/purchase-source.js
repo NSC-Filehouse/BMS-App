@@ -45,7 +45,7 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     FROM ${appTableSql('optionPositions')} p ${lock ? 'WITH(UPDLOCK,HOLDLOCK)' : ''}
     JOIN ${appTableSql('options')} o ${lock ? 'WITH(HOLDLOCK)' : ''} ON o.op_id=p.opp_op_id
     LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
-    WHERE o.op_id=? AND p.opp_id=? AND o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
+    WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
       AND o.op_Pruefstatus IN(N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
   [positiveId(optionId), positiveId(positionId), today, today]);

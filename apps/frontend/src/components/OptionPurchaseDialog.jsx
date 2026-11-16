@@ -8,7 +8,7 @@ import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from 
 import {createReturnTo} from '../utils/navigation.js';
 import {optionPurchaseReturnTo} from '../utils/optionPurchaseNavigation.js';
 import {useI18n} from '../utils/i18n.jsx';
-import {optionArticleBlocked,optionArticleUnverified} from '../utils/optionDisplay.js';
+import {optionArticleBlocked,optionArticleUnverified,optionPositionTitle} from '../utils/optionDisplay.js';
 
 export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
   const { lang } = useI18n();
@@ -22,8 +22,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const [articles,setArticles] = React.useState([]);
   const [article,setArticle] = React.useState(null);
   const [articleQuery,setArticleQuery] = React.useState('');
-  const [activeArticleQuery,setActiveArticleQuery] = React.useState('');
-  const [articleTotal,setArticleTotal] = React.useState(0);
   const [articlesLoaded,setArticlesLoaded] = React.useState(false);
   const [articlesLoading,setArticlesLoading] = React.useState(false);
   const [acknowledgeUnverifiedMfi,setAcknowledgeUnverifiedMfi] = React.useState(false);
@@ -55,12 +53,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   };
   const loadArticles = async (q = '') => {
     setBusy(true);setError('');setArticlesLoading(true);
-    setArticlesLoaded(false);setArticles([]);setArticle(null);setAcknowledgeUnverifiedMfi(false);setActiveArticleQuery(q);
+    setArticlesLoaded(false);setArticles([]);setArticle(null);setAcknowledgeUnverifiedMfi(false);
     try {
       const response = await apiRequest(`${base}/articles?${new URLSearchParams({q})}`);
       const rows=response.data || [];
-      setArticles(rows);setArticleTotal(rows.length);setArticlesLoaded(true);
-      if(!q)setArticle(rows.length===1&&!optionArticleBlocked(rows[0])&&!optionArticleUnverified(rows[0])?rows[0]:null);
+      setArticles(rows);setArticlesLoaded(true);
+      setArticle(rows.length===1&&!optionArticleBlocked(rows[0])?rows[0]:null);
       return response;
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
   };
@@ -89,19 +87,19 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const selectedPackaging=availability.packagingTypes?.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
-  const unavailable = effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || availability.truckOffer && !selectedPackaging;
+  const unavailable = effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || !selectedPackaging;
   const enteringQuantity=!automaticTruck && (availability.remainingKg===null || quantityEditing);
   const totalKg=confirmedTotalKg(totalAmount,totalUnit,selectedPackaging);
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>Bestellung (Option)</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
-      <Typography>{position.articleName}</Typography>
+      <Typography>{optionPositionTitle(position)}</Typography>
       {suppliers.length>1 && !supplier && <Typography variant="body2">Anbieter: {offer.supplierName}. Bitte das passende BMS-Lieferantenkonto wählen.</Typography>}
       <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
       <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
         getOptionLabel={row=>`${row.name} (${row.id})${row.city?` · ${row.city}`:''}`}
-        onChange={(_e,value)=>{setSupplier(value);setArticle(!activeArticleQuery&&articles.length===1&&!optionArticleBlocked(articles[0]) && !optionArticleUnverified(articles[0])?articles[0]:null);setAcknowledgeUnverifiedMfi(false);}}
+        onChange={(_e,value)=>{setSupplier(value);setArticle(articles.length===1&&!optionArticleBlocked(articles[0])?articles[0]:null);setAcknowledgeUnverifiedMfi(false);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       </Box>
         {articlesLoading && <Typography variant="body2" role="status">Artikel werden geladen …</Typography>}
@@ -109,10 +107,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
         <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
           loading={articlesLoading} loadingText="Artikel werden geladen …"
-          getOptionLabel={row=>`${row.articleName} (${row.articleIndex})`}
+          getOptionLabel={row=>row.articleName}
           getOptionDisabled={row=>optionArticleBlocked(row)}
           noOptionsText="Kein passender Artikel gefunden. Bitte die Artikelsuche über die Lupe öffnen."
-          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important'}}><Typography variant="body2">{row.articleName} ({row.articleIndex})</Typography>{optionArticleBlocked(row) && <Typography variant="caption" color="error">{[...(row.mfiCheck?.reasons || []),...(row.materialCheck?.reasons || [])].join('; ') || 'Artikel widerspricht der Option'}</Typography>}</Box>}
+          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important'}}><Typography variant="body2">{row.articleName}</Typography>{optionArticleBlocked(row) && <Typography variant="caption" color="error">{[...(row.mfiCheck?.reasons || []),...(row.materialCheck?.reasons || [])].join('; ') || 'Artikel widerspricht der Option'}</Typography>}</Box>}
           onChange={(_e,value)=>{setArticle(value);setAcknowledgeUnverifiedMfi(false);}}
           renderInput={params=><TextField {...params} label="Artikel" placeholder="Bitte Artikel auswählen" required size="small" />} />
         <IconButton aria-label="Artikel suchen" title="Artikel suchen" aria-expanded={showArticleSearch} aria-controls={articleSearchId} disabled={busy} onClick={()=>setShowArticleSearch(value=>!value)}><SearchIcon /></IconButton>
@@ -121,12 +119,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {optionArticleUnverified(article) && <Alert severity="warning" icon={false} sx={{py:0.5,'& .MuiAlert-message':{width:'100%'}}}>
           <FormControlLabel sx={{m:0,'& .MuiFormControlLabel-label':{typography:'caption'}}} control={<Checkbox size="small" checked={acknowledgeUnverifiedMfi} disabled={busy || optionArticleBlocked(article)} onChange={e=>setAcknowledgeUnverifiedMfi(e.target.checked)} />} label="Einige Materialangaben fehlen im Angebot. Ich habe die Artikelzuordnung geprüft und bestätige sie." />
         </Alert>}
-      {availability.truckOffer && <Box sx={{display:'grid',gap:0.5}}>
-        <TextField label="Verpackungsart" required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
+      {<Box sx={{display:'grid',gap:0.5}}>
+        <TextField label={selectedPackaging?'Verpackungsart':'Verpackungsart klären'} required select size="small" disabled={busy} value={packagingTypeId} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
-        }}><MenuItem value="" disabled>Bitte zuerst wählen</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
+        }}><MenuItem value="" disabled>Verpackungsart klären</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
       </Box>}
       {automaticTruck && <Box sx={{display:'grid',gap:1}}>
         <TextField label="Angebotene Gesamtmenge (kg)" size="small" value={selectedPackaging?effectiveAvailability.offeredKg??'':''} InputProps={{readOnly:true}} />

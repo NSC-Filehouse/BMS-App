@@ -2,26 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {confirmedTotalKg,defaultOptionPackagingId,truckOptionAvailability} from '../src/utils/optionQuantityConfirmation.js';
 
-test('truck offers default to silo and recalculate the complete kg total when packaging changes',()=>{
+test('truck offers retain explicit confirmations and require a choice when packaging is unknown',()=>{
   const packagingTypes=[{id:78,text:'Sackware'},{id:79,text:'Siloware',key:'silo'}];
   const meta={truckOffer:true,offeredTrucks:2,packagingTypes,offeredKg:50000,orderedKg:1000,confirmedPackagingTypeId:78};
-  assert.equal(defaultOptionPackagingId(meta),79);
+  assert.equal(defaultOptionPackagingId(meta),78);
   assert.deepEqual(truckOptionAvailability(meta,packagingTypes[1]),{offeredKg:50000,orderedKg:1000,remainingKg:49000});
   assert.deepEqual(truckOptionAvailability(meta,packagingTypes[0]),{offeredKg:49500,orderedKg:1000,remainingKg:48500});
   assert.equal(truckOptionAvailability({...meta,offeredTrucks:null},packagingTypes[1]),null);
   assert.equal(truckOptionAvailability({...meta,offeredTrucks:1},packagingTypes[1]).offeredKg,25000);
   assert.equal(truckOptionAvailability({...meta,offeredKg:24000},packagingTypes[1]).offeredKg,24000);
   assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null}),78);
-  assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:null}),79);
+  assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:null}),'');
   assert.equal(defaultOptionPackagingId({truckOffer:false}), '');
 });
 
-test('recognized packaging precedes the silo fallback; uncertain families never select a concrete type',()=>{
+test('only explicit source packaging is preselected; history, guesses and absent values require a choice',()=>{
   const packagingTypes=[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',key:'silo',aliases:['Silo/bulk']},{id:80,text:'Big Bags',aliases:['Big Bags']},{id:81,text:'Octa',aliases:['Octabins']}];
   const meta={truckOffer:true,offeredTrucks:1,packagingTypes,offeredKg:25000,orderedKg:0,sourcePackaging:'Sackware',sourcePackagingTypeId:78,sourcePackagingSource:'original'};
   assert.equal(defaultOptionPackagingId(meta),78);
   assert.equal(truckOptionAvailability(meta,packagingTypes[0]).offeredKg,24750);
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'history'}),78);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'history'}),'');
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:' Bags '}),78);
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Big Bags'}),80);
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Octabins'}),81);
@@ -29,7 +29,7 @@ test('recognized packaging precedes the silo fallback; uncertain families never 
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'Siloware wahrscheinlich',sourcePackagingSource:'rule'}),'');
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingSource:'unknown'}),'');
   assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:999,sourcePackaging:''}),'');
-  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'  '}),79);
+  assert.equal(defaultOptionPackagingId({...meta,sourcePackagingTypeId:null,sourcePackaging:'  '}),'');
   assert.equal(defaultOptionPackagingId({...meta,offeredTrucks:null,confirmedPackagingTypeId:80}),80);
 });
 

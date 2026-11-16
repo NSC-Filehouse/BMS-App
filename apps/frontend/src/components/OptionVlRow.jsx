@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { optionDate, optionPrice, optionQuantity, optionPackaging, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPackaging, optionPositionTitle, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
   const p = item.option;
@@ -14,7 +14,7 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
       {en ? 'Option' : 'Option'}{showSource ? ` · ${item.sourceMandantName}` : ''}{p.isDemo ? ' · Demo' : ''}
     </Typography>
     <Typography variant="body2">
-      {item.article}{p.mfi != null ? ` · MFI ${optionMfi(p)}` : ` · ${en ? 'MFI unknown' : 'MFI unbekannt'}`}
+      {optionPositionTitle({...p,articleName:p.articleName || item.article})}
     </Typography>
     <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('option_from')}: {p.supplierName}</Typography>
     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
@@ -29,10 +29,7 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
     {p.matchProcessingStatus === 'stale' && <Typography variant="caption" sx={{ display: 'block', color: 'warning.dark' }}>
       {en ? 'Saved suggestions – background update overdue' : 'Gespeicherte Vorschläge – Aktualisierung ausstehend'}
     </Typography>}
-    {!p.articleIndex && <Typography variant="caption" sx={{ display: 'block', color: '#23752A' }}>
-      {p.suggestedArticleName ? `${en ? 'Suggested article' : 'Artikelvorschlag'}: ${p.suggestedArticleName}`
-        : p.candidateCount > 1 ? (en ? 'Multiple possible articles – assignment open' : 'Mehrere Artikel möglich – Zuordnung offen')
-          : (en ? 'Article assignment open' : 'Artikelzuordnung offen')}
-    </Typography>}
+    {p.singleCandidateName && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{p.singleCandidateName}</Typography>}
+    {p.mfiTestCondition && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{en?'Test method':'Messmethode'}: {p.mfiTestCondition}</Typography>}
   </Box>;
 }

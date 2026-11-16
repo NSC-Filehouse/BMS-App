@@ -28,10 +28,18 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
  sendEnvelope(res,{data:{...offers[0],readOnly:Number(offers[0].sourceMandantId)!==Number(req.database.firmaId)},
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
+router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id)});
+ const offer=offers[0],positionId=positiveId(req.params.positionId);
+ const position=offer?.positions.find(row=>Number(row.id)===positionId);
+ if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
+ sendEnvelope(res,{data:{...offer,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
+}));
 router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const source=await loadOptionSource(positiveId(req.params.id),'mail');
  res.set('Cache-Control','private, no-store');
- sendEnvelope(res,{data:{body:source.body,format:source.format},meta:{mandant:req.mandant}});
+ let images;try{images=JSON.parse(source.imagesJson || 'null');}catch{}
+ sendEnvelope(res,{data:{body:source.body,format:source.format,images:images?.images || [],missingImages:images?.missing || []},meta:{mandant:req.mandant}});
 }));
 router.get('/options/:id/source/file',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const source=await loadOptionSource(positiveId(req.params.id),'file');
@@ -64,7 +72,7 @@ async function scopedPosition(req,database=req.database){
   FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
   LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
   LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
-  WHERE o.op_id=? AND p.opp_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
+  WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
   AND o.op_IstDemo=0 AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
   [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId),berlinDate(),berlinDate()]);
@@ -135,7 +143,7 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
    opp_BestaetigtKunststoff=?,opp_BestaetigtUntergruppe=?,opp_ZuordnungRevision=opp_ZuordnungRevision+1,
    opp_LernenAngefordert=1,opp_LernregelHinweis=NULL
    FROM ${POSITIONS} p JOIN ${OPTIONS} o WITH(UPDLOCK,HOLDLOCK) ON o.op_id=p.opp_op_id
-   WHERE p.opp_id=? AND o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
+   WHERE p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
    AND p.opp_GeaendertAm=CONVERT(DATETIME2(7),?) AND o.op_IstDemo=0
    AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
    [index,article.articleName,actor,article.polymerCategory||'Optionen',sub??'',Number(position.id),positiveId(req.params.id),Number(req.database.firmaId),position.originalChanged,berlinDate(),berlinDate()]);
@@ -144,11 +152,23 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
  sendEnvelope(res,{data:{articleIndex:index,articleName:article.articleName,learningPending:true},meta:{mandant:req.mandant}});
 }));
 router.delete('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ if(req.body?.confirmed!==true)throw createHttpError(422,'Bitte das Löschen ausdrücklich bestätigen.',{code:'OPTION_DELETE_CONFIRMATION_REQUIRED'});
  const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
  const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE ${OPTIONS} SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
   op_GeaendertVon=?,op_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.op_id AS id
   WHERE op_id=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'`,[actor,actor,positiveId(req.params.id)]);
  if(!rows.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
+ res.status(204).end();
+}));
+router.delete('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ if(req.body?.confirmed!==true)throw createHttpError(422,'Bitte das Löschen ausdrücklich bestätigen.',{code:'OPTION_DELETE_CONFIRMATION_REQUIRED'});
+ const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
+ const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE p SET opp_GeloeschtAm=SYSUTCDATETIME(),opp_GeloeschtVon=?,
+  opp_GeaendertVon=?,opp_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.opp_id AS id
+  FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
+  WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0
+   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')`,[actor,actor,positiveId(req.params.id),positiveId(req.params.positionId)]);
+ if(!rows.length)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();
 }));
 module.exports=router;

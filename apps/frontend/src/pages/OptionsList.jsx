@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { createReturnTo } from '../utils/navigation.js';
-import { optionDate, optionPrice, optionQuantity, optionMfi, optionPackaging, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionPrice, optionQuantity, optionPositionTitle, optionCategory, optionPositionPath, optionPackaging, optionDeliveryTerm } from '../utils/optionDisplay.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 
 export default function OptionsList() {
@@ -39,7 +39,7 @@ export default function OptionsList() {
           position.materialCategory, position.quality, position.batchNo, offer.loadingLocation]
           .filter(Boolean).join(' ').toLocaleLowerCase();
         if (search && !haystack.includes(search)) return;
-        const category = position.materialCategory || t('option_other_category');
+        const category = optionCategory(position) || t('option_other_category');
         if (!grouped.has(category)) grouped.set(category, []);
         grouped.get(category).push({ offer, position });
       });
@@ -66,11 +66,11 @@ export default function OptionsList() {
               <Box
                 key={`${offer.id}-${position.id}`}
                 role="button" tabIndex={0}
-                onClick={() => navigate(`/options/${encodeURIComponent(offer.id)}`, { state: { returnTo: createReturnTo(location) } })}
+                onClick={() => navigate(optionPositionPath(offer.id,position.id), { state: { returnTo: createReturnTo(location) } })}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    navigate(`/options/${encodeURIComponent(offer.id)}`, { state: { returnTo: createReturnTo(location) } });
+                    navigate(optionPositionPath(offer.id,position.id), { state: { returnTo: createReturnTo(location) } });
                   }
                 }}
                 sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.8, mb: 0.4,
@@ -80,14 +80,14 @@ export default function OptionsList() {
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-                    <Box component="span" sx={{ fontWeight: 600 }}>{position.internalArticleName || position.articleName}</Box>
+                    <Box component="span" sx={{ fontWeight: 600 }}>{optionPositionTitle(position)}</Box>
                     {offer.isDemo && <Box component="span" sx={{ color: 'warning.dark', fontWeight: 600 }}> · {t('option_demo')}</Box>}
-                    {position.internalArticleName && position.internalArticleName !== position.articleName && ` · ${position.articleName}`}
-                    {position.mfi !== null && ` · MFI ${optionMfi(position)}`}
                   </Typography>
+                  {position.singleCandidateName && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{position.singleCandidateName}</Typography>}
                   <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{t('option_from')}: {offer.supplierName}</Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
                     {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position, lang),
+                      position.mfiTestCondition?`${lang==='en'?'Test method':'Messmethode'}: ${position.mfiTestCondition}`:null,
                       optionDeliveryTerm(offer.incoterm, offer.loadingLocation),
                       `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`]
                       .filter(Boolean).join(' · ')}

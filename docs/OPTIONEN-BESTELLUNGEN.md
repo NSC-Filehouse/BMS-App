@@ -11,14 +11,11 @@ und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche spe
 den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigung.
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
 Der Dialog zeigt Lieferant, Artikel, Verpackungsart und Mengenangaben von Beginn
-an. Die Suchfelder für Lieferanten und Artikel sind zunächst verborgen und werden
-jeweils über die Lupe rechts neben der zugehörigen Auswahlliste geöffnet.
-Der Bestelldialog lädt alle Artikelvorschläge in einem Schritt. Er zeigt deren
-Anzahl und bittet bei mehreren Vorschlägen um die Auswahl eines Artikels. Ein
-einzelner Vorschlag ohne MFI-Sperre wird automatisch gewählt; der Hinweis bittet
-um Prüfung und verweist auf die Suche nach einem anderen Artikel über die Lupe.
-Suchergebnisse werden weiterhin manuell ausgewählt. Bei fehlenden Vorschlägen erscheint direkt der
-Hinweis auf die Suche nach Namen oder Artikelnummer. Ein Nachlade-Button entfällt.
+an. Die Artikelsuche wird über die Lupe geöffnet. Genau ein widerspruchsfreier
+Artikelkandidat wird vorausgewählt, auch wenn unvollständige Quellenangaben noch
+eine Bestätigung verlangen. Bei mehreren oder keinen Kandidaten bleibt die Auswahl
+leer. Die Artikelbezeichnung enthält keine angehängte interne Artikelkennung.
+Bei fehlenden Vorschlägen erscheint der Hinweis auf die Artikelsuche.
 Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
 über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg führt zur Optionsseite und
 zur betroffenen Position; der Bestelldialog wird nicht automatisch wieder geöffnet.
@@ -95,9 +92,10 @@ Konkrete Truck-Anzahlen werden automatisch berechnet. Eine eindeutig erkannte
 Verpackungsart wird vorausgewählt: über die normierte Verpackungs-ID oder eine
 eindeutige Bezeichnung aus der Bestellauswahlliste. Reine Vermutungen und Angaben
 wie "Sackware / Big Bags / Octabins" gelten nicht als eindeutige Verpackungsart.
-Nur bei vollständig fehlender Verpackungsangabe ist Siloware mit 25.000 kg je Truck
-der Rückfallwert. Vorhandene mehrdeutige oder nicht zuordenbare Angaben lassen die
-Auswahl offen; der Benutzer wählt dann die Verpackungsart ausdrücklich.
+Fehlende, vermutete oder nicht zuordenbare Verpackung lässt die Auswahl offen.
+"Verpackungsart klären" verlangt eine ausdrückliche Auswahl, auch bei einer festen
+kg-Menge. Es gibt keinen Silo-Rückfallwert und keine Vorbelegung aus Einkaufshistorie
+oder typischem Ladegewicht. Siloware ergibt nach Auswahl 25.000 kg je Truck.
 Bei Sackware und anderen Verpackungsarten gelten
 24.750 kg je Truck. Eine Spanne 1–2 Trucks verwendet die Obergrenze 2. Der Dialog
 zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche
