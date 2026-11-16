@@ -80,7 +80,10 @@ function checkMaterial(position, article) {
   const labels={quality:'Qualität',additives:'Additive',color:'Farbe'};
   for(const name of Object.keys(labels)) {
     const actual=facts[name].value,target=expected[name];
-    if(actual==='unknown' || target==='unknown' || actual==='other' || target==='other')missing.push(`${labels[name]} nicht vollständig belegt`);
+    // Missing evidence matters when the article actually imposes that
+    // requirement. An unspecified catalog field must not invent a restriction.
+    if(target==='unknown' || target==='other')continue;
+    if(actual==='unknown' || actual==='other')missing.push(`${labels[name]} nicht vollständig belegt`);
     else if(actual!==target)reasons.push(`${labels[name]} widerspricht der Option`);
   }
   // A declared NT offer must never suggest a regular/unspecified grade.
