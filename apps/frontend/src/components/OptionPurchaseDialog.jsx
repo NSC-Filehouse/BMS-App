@@ -98,7 +98,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
       <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
-        getOptionLabel={row=>`${row.name} (${row.id})${row.city?` · ${row.city}`:''}`}
+        getOptionKey={row=>row.id}
+        getOptionLabel={row=>`${row.name}${row.city?` · ${row.city}`:''}`}
         onChange={(_e,value)=>{setSupplier(value);setArticle(articles.length===1&&!optionArticleBlocked(articles[0])?articles[0]:null);setAcknowledgeUnverifiedMfi(false);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       </Box>
