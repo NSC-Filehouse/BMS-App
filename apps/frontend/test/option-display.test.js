@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {optionDeliveryTerm,optionPackagingText,optionPackaging} from '../src/utils/optionDisplay.js';
+import {optionDeliveryTerm,optionPackagingText,optionPackaging,optionPackagingLayout,optionArticleBlocked,optionArticleUnverified} from '../src/utils/optionDisplay.js';
 import {optionMailDocument} from '../src/utils/optionSource.js';
+
+test('packaging is shown once while different per-position packages and alternatives survive',()=>{
+  const offer={packagingDisplay:{de:'Sackware und/oder Siloware'},positions:[{id:1,positionPackaging:'Mehrere Verpackungsarten'},{id:2,positionPackaging:'Mehrere Verpackungsarten'}]};
+  assert.deepEqual(optionPackagingLayout(offer),{common:'Sackware und/oder Siloware',positions:{}});
+  assert.deepEqual(optionPackagingLayout({positions:[{id:1,positionPackaging:'Sackware'},{id:2,positionPackaging:'Siloware'}]}),{common:'',positions:{1:'Sackware',2:'Siloware'}});
+});
+test('both material and MFI determine whether an article can be selected automatically',()=>{
+  assert.equal(optionArticleBlocked({materialCheck:{blocked:true}}),true);
+  assert.equal(optionArticleUnverified({mfiCheck:{complete:true},materialCheck:{complete:false}}),true);
+  assert.equal(optionArticleUnverified({mfiCheck:{complete:true},materialCheck:{complete:true}}),false);
+});
 
 test('compact delivery terms omit the Incoterms label while preserving alternatives and location',()=>{
   const original='FCA / DDP (Incoterms 2020)';

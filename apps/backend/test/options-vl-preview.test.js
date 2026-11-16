@@ -6,7 +6,7 @@ const pilot = { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', acti
 let identity = pilot, reads = [], allowed = [3], capturedOptions, writes = [], migrationAvailable = true;
 const stock = (id, mfi) => ({ Artikel: 'LDPE stock', Kunststoff: 'PE', Kunststoff_Untergruppe: 'LDPE',
   Lagerort: 'A', 'Bestell-Pos': `3-01-26-${id}`, beP_MFI: mfi, Menge: 2000, bePR_Anzahl: 0 });
-const articles = [{ articleIndex: '00417', articleName: 'LDPE MFI 2-3,99 natur', mfi: 2, polymerCategory: 'PE', polymerSubCategory: 'LDPE' }];
+const articles = [{ articleIndex: '00417', articleName: 'LDPE NT MFI 2-3,99 natur', mfi: 2, polymerCategory: 'PE', polymerSubCategory: 'LDPE' }];
 const { articleHash } = require('../src/options/matching-contract');
 const position = { id: 602, articleName: 'LDPE near to prime', mfi: 3, expired: true, validUntil: '2026-09-01',
   plastic: 'PE', plasticSubCategory: 'LDPE', snapshotId: '1', candidateCount: 1,

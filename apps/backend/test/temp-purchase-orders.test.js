@@ -93,6 +93,7 @@ function fixture(options = {}) {
     '../options/purchase-source': {
       loadOptionPosition: async (optionId,positionId)=>({opp_id:positionId,opp_op_id:optionId,opp_Artikelname_Lieferant:'Optionsmaterial',opp_Verpackung:'Sackware'}),
       validateOptionArticle: async ()=>({articleName:'Optionsartikel'}),
+      validateOptionSupplier: async (_database,_source,supplierId)=>{if(options.optionSupplierId && supplierId!==options.optionSupplierId)throw new Error('Optionslieferant stimmt nicht überein');},
       assertOptionQuantities: async (_query,positions)=>{if(options.optionQuantityLimit!=null && positions.filter(p=>p.optionId!=null).reduce((sum,p)=>sum+p.amount,0)>options.optionQuantityLimit)throw new Error('Optionsmenge überschritten');},
     },
   };
@@ -353,6 +354,19 @@ test('unconfirmed option selections and excess quantities cannot create a draft'
   Object.assign(input.positions[0],{supplierConfirmed:true,articleConfirmed:true});
   await assert.rejects(f.request(input),/Optionsmenge überschritten/);
   assert.equal(f.headers.length,0);assert.equal(f.lines.length,0);
+});
+
+test('an option cannot change to an unrelated supplier during save, edit or finalize',async()=>{
+  const options={optionSupplierId:'WRONG'},f=fixture(options),input=body();
+  Object.assign(input.positions[0],{optionId:7,optionPositionId:11,supplierConfirmed:true,articleConfirmed:true});
+  await assert.rejects(f.request(input),/Optionslieferant/);
+  assert.equal(f.headers.length,0);
+  options.optionSupplierId=input.supplierId;
+  const created=(await f.request(input)).data;
+  options.optionSupplierId='WRONG';
+  await assert.rejects(f.request(created,'put','/temp-purchase-orders/:id'),/Optionslieferant/);
+  await assert.rejects(f.request({},'post','/temp-purchase-orders/:id/finalize'),/Optionslieferant/);
+  assert.equal(f.mails.length,0);
 });
 
 

@@ -16,6 +16,7 @@ function fixture(){
     '../db/access':{runSQLQueryAccess:execute,runSQLQuerySqlServer:execute},
     '../config':{sql:{database:'central'}},'./article-catalog':{articleSelect:()=> 'SELECT articleIndex FROM articles WHERE active=1'},
     './matching-contract':{queueSql:()=>''},'./mfi-compatibility':{checkMfi:()=>({complete:true,blocked:false})},
+    './material-facts':require('../src/options/material-facts'),
   };
   const mod={exports:{}};
   new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/options/matching-service.js'),'utf8'))(name=>{

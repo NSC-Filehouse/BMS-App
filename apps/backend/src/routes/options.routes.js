@@ -10,6 +10,7 @@ const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
 const { checkMfi } = require('../options/mfi-compatibility');
+const {checkMaterial}=require('../options/material-facts');
 const { appTableSql } = require('../db/app-tables');
 const router = express.Router();
 const OPTIONS = appTableSql('options'), POSITIONS = appTableSql('optionPositions');
@@ -40,8 +41,21 @@ router.get('/options/:id/source/file',requireMandant,requirePilotFeature('option
   'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store',"Content-Security-Policy":"default-src 'none'; sandbox"});
  res.send(source.content);
 }));
+router.get('/options/:id/source/preview',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
+ const source=await loadOptionSource(positiveId(req.params.id),'file');
+ if(sourceFileType(source)!=='application/pdf')throw createHttpError(415,'Die Originaldatei ist keine PDF.',{code:'OPTION_SOURCE_TYPE_UNSUPPORTED'});
+ let readableSourcePdf;
+ try {({readableSourcePdf}=require('../options/source-pdf'));}
+ catch(error){if(error.code!=='MODULE_NOT_FOUND')throw error;throw createHttpError(503,'Die PDF-Vorschau ist zurzeit nicht verfügbar. Bitte die Originaldatei öffnen.',{code:'OPTION_PDF_PREVIEW_NOT_READY'});}
+ const content=await readableSourcePdf(source.content);
+ res.set({'Content-Type':'application/pdf','Content-Disposition':`inline; filename="option-${positiveId(req.params.id)}-angebot.pdf"`,
+  'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store','Content-Security-Policy':"default-src 'none'; sandbox"});
+ res.send(content);
+}));
 async function scopedPosition(req,database=req.database){
  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT p.opp_id AS id,p.opp_AktuellerAbgleichID AS snapshotId,
+  p.opp_Artikelname_Lieferant AS articleName,p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,
+  p.opp_ZustandNorm AS qualityNorm,p.opp_Eigenschaften AS propertiesText,p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,
   p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,p.opp_QuellaufbereitungJson AS sourceMeasurementsJson,
   CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS originalChanged,
   CONVERT(NVARCHAR(33),r.oab_QuelldatenGeaendertAm,126) AS snapshotChanged,
@@ -95,9 +109,11 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
  const article=await articleByIndex(req.database,index);
  if(!article)throw createHttpError(404,'Artikel nicht gefunden.',{code:'ARTICLE_NOT_FOUND'});
  const mfiCheck=checkMfi(position,article);
+ const materialCheck=checkMaterial(position,article);
+ if(materialCheck.blocked)throw createHttpError(409,`Artikel passt nicht zur Option: ${materialCheck.reasons.join('; ')}`,{code:'ARTICLE_MATERIAL_EXCLUDED'});
  if(mfiCheck.blocked)throw createHttpError(409,`Artikel wegen MFI nicht zuordenbar: ${mfiCheck.reasons.join('; ')}`,{code:'ARTICLE_MFI_EXCLUDED'});
- if(!mfiCheck.complete && req.body?.acknowledgeUnverifiedMfi!==true)
-  throw createHttpError(409,'MFI-Eignung ungeprüft: Messwert, Artikelbereich oder Prüfbedingungen fehlen. Bitte ausdrücklich bestätigen.',{code:'ARTICLE_MFI_UNVERIFIED'});
+ if((!mfiCheck.complete || !materialCheck.complete) && req.body?.acknowledgeUnverifiedMfi!==true)
+  throw createHttpError(409,'Artikelzuordnung wegen fehlender Materialangaben ungeprüft. Bitte ausdrücklich bestätigen.',{code:'ARTICLE_MFI_UNVERIFIED'});
  const selected=await storedCandidate(req.database,position,index);
  const manual=req.body?.acknowledgeManual===true;
  if(!manual&&(!selected||position.snapshotChanged!==position.originalChanged || position.snapshotRevision<position.requestRevision

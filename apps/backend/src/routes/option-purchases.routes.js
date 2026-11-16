@@ -44,6 +44,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const suppliers = await supplierCandidates(req.database,source,{q:String(req.body.supplierId || '')});
   const supplier = suppliers.find(row => row.id.toLowerCase()===String(req.body.supplierId || '').trim().toLowerCase());
   if (!supplier) throw createHttpError(422,'Der ausgewählte Lieferant ist nicht verfügbar.',{code:'SUPPLIER_NOT_FOUND'});
+  if(supplier.plausible!==true)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
   const article = await validateOptionArticle(req.database,source,req.body);
   let availability = await loadOptionAvailability(source);
   if (availability.remainingKg == null) throw createHttpError(422,'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt.',{code:'OPTION_QUANTITY_UNCONFIRMED'});

@@ -3,6 +3,7 @@ const config=require('../config');
 const {articleSelect}=require('./article-catalog');
 const {queueSql}=require('./matching-contract');
 const {checkMfi}=require('./mfi-compatibility');
+const {checkMaterial}=require('./material-facts');
 async function articleByIndex(database,index){
  return (await runSQLQueryAccess(database,`${articleSelect()} AND a.agA_Artikelindex=?`,[index]))[0] || null;
 }
@@ -20,7 +21,7 @@ async function candidatesFor(database,position,{q='',page=1,pageSize=30,all=fals
   const rows=await runSQLQueryAccess(database,`${base} ORDER BY a.agA_Artikelname,a.agA_Artikelindex${all?'':' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,all?params:[...params,(page-1)*pageSize,pageSize]);
   return {data:rows.map(article=>{
     const mfiCheck=checkMfi(position,article);
-    return {...article,score:0,reason:'Manuelle Artikelsuche – technische Eignung ungeprüft',mfiCheck,
+    return {...article,score:0,reason:'Manuelle Artikelsuche – technische Eignung ungeprüft',mfiCheck,materialCheck:checkMaterial(position,article),
       confidence:'manual',warnings:mfiCheck.complete?[]:['MFI-Eignung ungeprüft'],conflicts:mfiCheck.reasons,snapshotId:null};
   }),total:all?rows.length:Number(totalRows[0]?.total || 0),version:null};
  }
@@ -30,7 +31,8 @@ async function candidatesFor(database,position,{q='',page=1,pageSize=30,all=fals
  WHERE r.oab_id=? AND r.oab_opp_id=? AND r.oab_MandantID=?
  ORDER BY k.oak_Rang${all?'':' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,
  [String(position.snapshotId),Number(position.id),Number(database.firmaId),...(all?[]:[(page-1)*pageSize,pageSize])]);
- return {data:rows.map(parseCandidate),total:all?rows.length:Number(position.candidateCount || 0),version:position.matchVersion,
+ const data=rows.map(parseCandidate).map(article=>({...article,materialCheck:checkMaterial(position,article)})).filter(article=>!article.materialCheck.blocked);
+ return {data,total:all?data.length:Number(position.candidateCount || 0),version:position.matchVersion,
   snapshotId:String(position.snapshotId),computedAt:position.matchCalculatedAt};
 }
 async function storedCandidate(database,position,index){

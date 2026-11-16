@@ -7,6 +7,7 @@ const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity'
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
+const {checkMaterial}=require('./material-facts');
 const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
 const {loadPurchasePackagingOptions,purchaseTruckLoadKg}=require('../db/purchase-order-values');
 
@@ -32,10 +33,12 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     JSON_VALUE(p.opp_NormalisierungJson,'$.provenance.packaging.evidence') AS packagingEvidence,
     ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
-    o.op_MandantID AS sourceMandantId,o.op_Lieferantenname AS supplierName,
+    o.op_MandantID AS sourceMandantId,o.op_LieferantID AS sourceSupplierId,o.op_Lieferantenname AS supplierName,
     o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_Ladeort AS loadingLocation,
     o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,
     p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
+    p.opp_Artikelname_Lieferant AS articleName,p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,
+    p.opp_ZustandNorm AS qualityNorm,p.opp_Eigenschaften AS propertiesText,p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,
     COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,
     r.oab_KandidatenAnzahl AS candidateCount,r.oab_AlgorithmusVersion AS matchVersion,r.oab_BerechnetAm AS matchCalculatedAt,
     p.opp_QuellaufbereitungJson AS sourceMeasurementsJson
@@ -115,21 +118,27 @@ async function supplierCandidates(database, position, { q = '', preferredSupplie
     ORDER BY k.kd_Name1,k.kd_KdNR`, [JSON.stringify(accounts.map(a => a.supplierId))]);
   const key = supplierKey(position.supplierName, position.supplierReplyTo || position.supplierKey);
   const search = text(q).toLocaleLowerCase('de-DE');
-  return rows.flatMap(row => {
+  const candidates=rows.flatMap(row => {
     const mapped = accounts.some(a => text(a.supplierId).toLowerCase() === text(row.id).toLowerCase()
       && (knownSupplier(a.supplierKey)?.key || a.supplierKey) === key);
     const identified = [row.name, row.name2, row.website, row.email].filter(Boolean)
       .some(name => supplierKey(name) === key || companyKey(name) === companyKey(position.supplierName));
     const plausible = key !== 'unknown' && (mapped || identified);
     if (search ? !`${row.id} ${row.name} ${row.name2 || ''} ${row.city || ''}`.toLocaleLowerCase('de-DE').includes(search) : !plausible) return [];
-    return [{ id: text(row.id), name: text(row.name), name2: text(row.name2), city: text(row.city), plausible,
+    return [{ id: text(row.id), name: text(row.name), name2: text(row.name2), city: text(row.city), plausible,mapped,
       preferred: plausible && text(row.id).toLowerCase() === text(preferredSupplierId).toLowerCase(),
       reason: mapped ? 'Gespeicherte Lieferantenzuordnung' : identified ? 'Lieferantenidentität passt zur Option' : 'Manuelle Lieferantenauswahl' }];
   }).sort((a,b) => Number(b.preferred)-Number(a.preferred) || Number(b.plausible)-Number(a.plausible) || a.name.localeCompare(b.name,'de'));
+  const same=(a,b)=>text(a).toLowerCase()===text(b).toLowerCase();
+  const source=candidates.find(row=>row.plausible && Number(database.firmaId)===Number(position.sourceMandantId) && same(row.id,position.sourceSupplierId));
+  const mapped=candidates.filter(row=>row.plausible && row.mapped);
+  const exact=candidates.filter(row=>row.plausible && companyKey(row.name)===companyKey(position.supplierName));
+  const selected=source || (mapped.length===1?mapped[0]:null) || (exact.length===1?exact[0]:null);
+  return candidates.map(row=>({...row,preferred:selected?same(row.id,selected.id):row.preferred}));
 }
 
 async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30,all=false } = {}) {
-  const input = { id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
+  const input = { ...position,id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
     candidateCount:position.candidateCount,matchVersion:position.matchVersion,matchCalculatedAt:position.matchCalculatedAt,
     mfi: position.mfi,mfiTo: position.mfiTo,mfiTestCondition: position.mfiTestCondition,sourceMeasurementsJson: position.sourceMeasurementsJson };
   if (q || Number(database.firmaId) === Number(position.sourceMandantId)) {
@@ -143,16 +152,27 @@ async function purchaseCandidates(database, position, { q = '', page = 1, pageSi
     AND (a.agA_Artikelname IN(SELECT [value] FROM OPENJSON(?)) OR a.agA_Artikelname_Lieferant IN(SELECT [value] FROM OPENJSON(?)))
     ORDER BY a.agA_Artikelname,a.agA_Artikelindex${all?'':' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,
   [JSON.stringify(names),JSON.stringify(names),...(all?[]:[(page-1)*pageSize,pageSize])]);
-  return { data: rows.map(article => ({ ...article, mfiCheck: checkMfi(input, article), reason: 'Passender Produktname im aktiven Mandanten' })), total: rows.length };
+  const data=rows.map(article => ({ ...article, mfiCheck: checkMfi(input, article),materialCheck:checkMaterial(input,article),reason: 'Passender Produktname im aktiven Mandanten' }))
+    .filter(article=>!article.materialCheck.blocked);
+  return { data,total:data.length };
 }
 
 async function validateOptionArticle(database, position, line) {
   const article = await articleByIndex(database, text(line.articleIndex));
   if (!article) throw createHttpError(422, 'Der ausgewählte Artikel ist nicht aktiv oder nicht vorhanden.', { code: 'OPTION_ARTICLE_NOT_FOUND' });
   const mfi = checkMfi(position, article);
+  const material=checkMaterial(position,article);
+  if(material.blocked)throw createHttpError(422,`Artikel passt nicht zur Option: ${material.reasons.join('; ')}`,{code:'ARTICLE_MATERIAL_EXCLUDED'});
   if (mfi.blocked) throw createHttpError(422, `Artikel passt technisch nicht zur Option: ${mfi.reasons.join('; ')}`, { code: 'ARTICLE_MFI_EXCLUDED' });
-  if (!mfi.complete && line.acknowledgeUnverifiedMfi !== true) throw createHttpError(422, 'Bitte die ungeprüfte MFI-Eignung ausdrücklich bestätigen.', { code: 'ARTICLE_MFI_UNVERIFIED' });
+  if ((!mfi.complete || !material.complete) && line.acknowledgeUnverifiedMfi !== true) throw createHttpError(422, 'Bitte die wegen fehlender Angaben ungeprüfte Artikelzuordnung bestätigen.', { code: 'ARTICLE_MFI_UNVERIFIED' });
   return article;
+}
+
+async function validateOptionSupplier(database,position,supplierId) {
+  const candidates=await supplierCandidates(database,position,{q:text(supplierId)});
+  const match=candidates.find(row=>text(row.id).toLowerCase()===text(supplierId).toLowerCase() && row.plausible);
+  if(!match)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
+  return match;
 }
 
 async function assertOptionQuantities(query, positions, excludeOrderId = null,packagingType=null) {
@@ -182,4 +202,4 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null,pa
   }
 }
 
-module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,validateOptionArticle,assertOptionQuantities };
+module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,validateOptionArticle,validateOptionSupplier,assertOptionQuantities };

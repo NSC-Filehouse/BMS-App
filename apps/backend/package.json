@@ -10,17 +10,19 @@
   },
   "dependencies": {
     "@filehouse/mailservice-client": "file:../../packages/filehouse-mailservice-client",
+    "@xmldom/xmldom": "0.9.12",
     "bms-app": "file:../..",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
     "ews-javascript-api": "^0.13.2",
     "ews-javascript-api-auth": "^1.2.1",
+    "express": "^4.19.2",
     "helmet": "^7.1.0",
     "mssql": "^11.0.1",
     "multer": "^2.1.1",
     "nodemon": "^3.1.14",
     "odbc": "^2.4.9",
+    "pdf-lib": "1.17.1",
     "web-push": "^3.6.7"
   }
 }

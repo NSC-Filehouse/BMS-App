@@ -27,6 +27,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
     './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg'}:null,
       candidatesFor:async(database,position,options)=>({data:[],database,position,options})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),
+    './material-facts':require('../src/options/material-facts'),
     './purchase-quantity':require('../src/options/purchase-quantity'),
     '../db/purchase-order-values':{loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware'},{id:79,text:'Siloware'},{id:80,text:'Octabins'}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg},
   };
@@ -161,6 +162,20 @@ test('all purchase proposals are loaded for both the source and a different acti
   await f.purchaseCandidates({firmaId:10},f.source,{all:true});
   const target=f.calls.find(call=>call.sql.includes('OPENJSON'));
   assert.ok(target);assert.doesNotMatch(target.sql,/OFFSET|FETCH NEXT/);assert.equal(target.params.length,2);
+});
+
+test('supplier selection prefers the proven account and rejects unrelated suppliers',async()=>{
+  const f=fixture();
+  const rows=await f.supplierCandidates({firmaId:3},f.source,{preferredSupplierId:'99938'});
+  assert.equal(rows.find(row=>row.preferred).id,'LF0124');
+  assert.equal((await f.validateOptionSupplier({firmaId:3},f.source,'LF0124')).id,'LF0124');
+  await assert.rejects(f.validateOptionSupplier({firmaId:3},f.source,'OTHER'),error=>error.details.code==='OPTION_SUPPLIER_MISMATCH');
+});
+
+test('material conflicts cannot be acknowledged away during purchase validation',async()=>{
+  const f=fixture();
+  await assert.rejects(f.validateOptionArticle({}, {...f.source,articleName:'LDPE NTP ex SABIC',quality:'NTP'},
+    {articleIndex:'A',acknowledgeUnverifiedMfi:true}),error=>error.details.code==='ARTICLE_MATERIAL_EXCLUDED');
 });
 
 test('current target article is rechecked and missing MFI requires explicit acknowledgement',async()=>{

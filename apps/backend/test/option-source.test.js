@@ -60,16 +60,16 @@ test('original file keeps its bytes and uses a fixed safe filename and passive M
 
 test('both source routes enforce feature access and ID validation before reading',async()=>{
   identity={...identity,userId:'other',shortCode:'OTHER',personNumber:1};
-  for(const kind of ['mail','file']) assert.equal((await fetch(`${base}/${kind}`)).status,403);
+  for(const kind of ['mail','file','preview']) assert.equal((await fetch(`${base}/${kind}`)).status,403);
   assert.equal(calls.length,0);
   identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
-  for(const kind of ['mail','file']) assert.equal((await fetch(`${base.replace('/614/','/invalid/')}/${kind}`)).status,400);
+  for(const kind of ['mail','file','preview']) assert.equal((await fetch(`${base.replace('/614/','/invalid/')}/${kind}`)).status,400);
   assert.equal(calls.length,0);
 });
 
 test('an unknown browser identity cannot read either original source',async()=>{
   identity=null;
-  for(const kind of ['mail','file']) {
+  for(const kind of ['mail','file','preview']) {
     const response=await fetch(`${base}/${kind}`);
     assert.equal(response.status,401);
   }
@@ -78,7 +78,7 @@ test('an unknown browser identity cannot read either original source',async()=>{
 
 test('unavailable options and missing source contents return 404',async()=>{
   available=false;
-  for(const kind of ['mail','file']) assert.equal((await fetch(`${base}/${kind}`)).status,404);
+  for(const kind of ['mail','file','preview']) assert.equal((await fetch(`${base}/${kind}`)).status,404);
   available=true; source.body=''; source.content=Buffer.alloc(0);
   for(const kind of ['mail','file']) {
     const response=await fetch(`${base}/${kind}`);

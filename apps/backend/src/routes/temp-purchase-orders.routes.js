@@ -18,7 +18,7 @@ const {
 const { queuePurchaseOrderCsMail, processPurchaseOrderCsMailOutboxById } = require('../db/purchase-order-mail-outbox');
 const { resolveOrderMailRecipient, validateOrderMailConfig } = require('../mail/order-mail');
 const { appendTimelineEntries } = require('../db/timeline');
-const { loadOptionPosition, validateOptionArticle, assertOptionQuantities } = require('../options/purchase-source');
+const { loadOptionPosition, validateOptionArticle, validateOptionSupplier,assertOptionQuantities } = require('../options/purchase-source');
 const TIMELINE_TABLE = appTableSql('timeline');
 
 const router = express.Router();
@@ -411,6 +411,7 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
       if (position.supplierConfirmed!==true || position.articleConfirmed!==true)
         throw createHttpError(422,'Bitte Lieferant und Artikel ausdrücklich bestätigen.',{code:'OPTION_SELECTION_REQUIRED'});
       const source = await loadOptionPosition(position.optionId,position.optionPositionId);
+      await validateOptionSupplier(req.database,source,supplierId);
       const article = await validateOptionArticle(req.database,source,position);
       position.article = source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName;
       position.optionSourceChanged = source.sourceVersion;
@@ -612,6 +613,7 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
     if ([STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
     for (const position of positions.filter(line => line.optionId!=null)) {
       const source = await loadOptionPosition(position.optionId,position.optionPositionId);
+      await validateOptionSupplier(req.database,source,row.supplierId);
       await validateOptionArticle(req.database,source,{...position,acknowledgeUnverifiedMfi:Boolean(position.acknowledgeUnverifiedMfi)});
       position.optionSourceChanged=source.sourceVersion;
     }

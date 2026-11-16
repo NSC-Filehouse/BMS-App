@@ -24,13 +24,13 @@ export default function OptionSourceDocuments({ offer }) {
       .finally(() => { if (active) setMailLoading(false); });
     return () => { active = false; };
   }, [mailOpen, offer.id, t]);
-  async function openFile() {
+  async function openFile(original=false) {
     const popup = window.open('', '_blank');
     if (!popup) { setFileError(t('order_pdf_popup_blocked')); return; }
     popup.opener = null;
     setFileLoading(true); setFileError('');
     try {
-      const blob = await apiRequestBlob(`/options/${offer.id}/source/file`);
+      const blob = await apiRequestBlob(`/options/${offer.id}/source/${pdf && !original?'preview':'file'}`);
       const url = URL.createObjectURL(blob);
       popup.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -42,7 +42,8 @@ export default function OptionSourceDocuments({ offer }) {
   return <Box sx={{ mt: 1 }}>
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
       {Boolean(offer.hasSourceMail) && <Button size="small" variant="outlined" onClick={() => setMailOpen(true)}>{t('option_source_mail')}</Button>}
-      {Boolean(offer.hasSourceFile) && <Button size="small" variant="outlined" disabled={fileLoading} onClick={openFile}>{t(pdf ? 'option_source_pdf' : 'option_source_file')}</Button>}
+      {Boolean(offer.hasSourceFile) && <Button size="small" variant="outlined" disabled={fileLoading} onClick={()=>openFile()}>{t(pdf ? 'option_source_pdf' : 'option_source_file')}</Button>}
+      {Boolean(offer.hasSourceFile) && pdf && <Button size="small" disabled={fileLoading} onClick={()=>openFile(true)}>{t('option_source_original_file')}</Button>}
     </Box>
     {!offer.hasSourceMail && !offer.hasSourceFile && <Typography variant="caption" color="text.secondary">{t('option_source_missing')}</Typography>}
     {fileLoading && <CircularProgress size={20} sx={{ mt: 1 }} />}

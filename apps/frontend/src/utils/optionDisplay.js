@@ -56,6 +56,17 @@ export function optionPackaging(position, lang = 'de') {
     position?.normalization?.provenance?.packaging?.source==='history' ? '(aus Einkaufshistorie abgeleitet)' : null].filter(Boolean).join(' · ');
 }
 
+export function optionPackagingLayout(offer,lang='de') {
+  const common=optionPackagingText(offer,lang);
+  const positions=(offer.positions || []).map(position=>({id:position.id,text:
+    /Mehrere Verpackungsarten/i.test(position.positionPackaging || '') && common?common:optionPackaging(position,lang) || common}));
+  const unique=[...new Set(positions.map(position=>position.text))];
+  return {common:unique.length===1?unique[0]:'',positions:unique.length===1?{}:Object.fromEntries(positions.map(position=>[position.id,position.text]))};
+}
+
+export const optionArticleBlocked=article=>Boolean(article?.mfiCheck?.blocked || article?.materialCheck?.blocked);
+export const optionArticleUnverified=article=>Boolean(article && (!article.mfiCheck?.complete || article.materialCheck && !article.materialCheck.complete));
+
 export function optionPrice(position, t) {
   if (position?.priceNeedsReview) {
     const raw = optionNumber(position.price, 2);

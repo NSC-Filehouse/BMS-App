@@ -21,6 +21,8 @@ function mapPosition(row,today) {
   position.normalization = row.normalizationJson ? JSON.parse(row.normalizationJson) : null;
   delete position.normalizationJson;
   position.assignmentMfiCheck = row.assignedMfiCheckJson ? JSON.parse(row.assignedMfiCheckJson) : null;
+  position.assignmentMaterialCheck=row.assignedMaterialCheckJson?JSON.parse(row.assignedMaterialCheckJson):null;
+  delete position.assignedMaterialCheckJson;
   delete position.assignedMfiCheckJson;
   position.priceNeedsReview = (position.normalization ? position.normalization.priceNeedsReview : normalizePosition(position).priceNeedsReview)
     || optionPriceNeedsReview(position.pricePerTonne);
@@ -81,6 +83,7 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
     p.opp_Verpackung AS positionPackaging,p.opp_Verpackungsart_id AS packagingTypeId,
     p.opp_GebindegewichtKg AS bagWeightKg,p.opp_PalettengewichtKg AS palletWeightKg,
     JSON_QUERY(r.oab_MerkmaleJson,'$.assignedMfiCheck') AS assignedMfiCheckJson,
+    JSON_QUERY(r.oab_MerkmaleJson,'$.assignedMaterialCheck') AS assignedMaterialCheckJson,
     CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_Dichte ELSE p.opp_Dichte END AS density,
     CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_DichteEinheit ELSE p.opp_DichteEinheit END AS densityUnit,
     p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,

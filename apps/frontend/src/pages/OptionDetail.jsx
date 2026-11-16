@@ -1,8 +1,7 @@
 import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArticleAssignment from '../components/OptionArticleAssignment.jsx';
 import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
 import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -10,7 +9,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackaging, optionPackagingText, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackagingLayout, optionMfi, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -33,7 +32,6 @@ export default function OptionDetail() {
   const [offer, setOffer] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [revision, setRevision] = React.useState(0);
   const [deleting, setDeleting] = React.useState(false);
   const [purchasePosition,setPurchasePosition] = React.useState(null);
   const validityRefresh = useOptionValidityRefresh();
@@ -49,7 +47,7 @@ export default function OptionDetail() {
       .catch((cause) => { if (active) setError(cause?.message || t('loading_error')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [id, t, revision, sourceQuery,validityRefresh]);
+  }, [id, t, sourceQuery,validityRefresh]);
 
   React.useEffect(() => {
     if (!offer || !location.hash) return;
@@ -78,6 +76,8 @@ export default function OptionDetail() {
     finally { setDeleting(false); }
   }
 
+  const packaging=offer?optionPackagingLayout(offer,lang):{common:'',positions:{}};
+
   return <Box sx={{ width: '100%', maxWidth: 900, minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
       <DisclosureBackButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
@@ -86,45 +86,29 @@ export default function OptionDetail() {
     </Box>
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
-    {!loading && !error && offer && <>
-      <Card sx={{ mb: 1.5 }}><CardContent>
+    {!loading && !error && offer && <Card sx={{ mb: 1.5 }}><CardContent>
         <InfoRow label={t('option_from')} value={offer.supplierName} />
         <OptionSourceDocuments key={offer.id} offer={offer} />
         {offer.isDemo && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_demo_notice')}</Alert>}
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
         <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
-        <InfoRow label={t('option_packaging')} value={optionPackagingText(offer, lang)} />
-        <InfoRow label={t('option_negotiable')} value={offer.negotiable === 'yes' ? t('option_yes') : offer.negotiable === 'no' ? t('option_no') : t('option_unconfirmed')} />
-        <InfoRow label={t('option_negotiable_evidence')} value={offer.negotiableEvidence} />
-      </CardContent></Card>
-      {offer.positions?.map((position) => <Card id={`position-${position.id}`} key={position.id} sx={{ mb: 1.5, scrollMarginTop: 80 }}><CardContent>
+        <InfoRow label={t('option_packaging')} value={packaging.common} />
+      {offer.positions?.map((position) => <Box id={`position-${position.id}`} key={position.id} sx={{ pt: 1.5, mt: 1.5, borderTop:'1px solid',borderColor:'divider',scrollMarginTop: 80 }}>
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
-        <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>{position.internalArticleName || position.articleName}</Typography>
-        {position.internalArticleName && position.internalArticleName !== position.articleName &&
-          <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{position.articleName}</Typography>}
-        <Typography variant="body2" sx={{ mt: 0.5, overflowWrap: 'anywhere', fontWeight: 600 }}>{t('option_from')}: {offer.supplierName}</Typography>
+        <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>{position.articleName}</Typography>
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0} sx={{mb:1}}>Bestellen</Button>
-        {position.remainingKg!=null && <InfoRow label="Noch verfügbare Optionsmenge" value={`${optionNumber(position.remainingKg)} kg`} />}
-        {position.confirmedQuantityKg!=null && <InfoRow label="Manuell bestätigte Gesamtmenge" value={`${optionNumber(position.confirmedQuantityKg)} kg`} />}
-        {position.priceNeedsReview && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_price_review_explanation')}</Alert>}
-        <Divider sx={{ my: 1 }} />
-        <InfoRow label={t('option_quantity')} value={optionQuantity(position, t)} />
-        <InfoRow label={t('option_packaging')} value={optionPackaging(position, lang)} />
-        {position.quantityMinKg !== null && <InfoRow label={t('option_raw_quantity')} value={position.quantityText || `${position.quantityMin} ${position.quantityUnit || ''}`} />}
-        <InfoRow label={t('option_category')} value={position.materialCategory} />
-        <InfoRow label={t('option_quality')} value={position.quality} />
+        <InfoRow label={t('option_quantity')} value={position.confirmedQuantityKg!=null?`${optionNumber(position.confirmedQuantityKg)} kg`:optionQuantity(position, t)} />
+        {position.orderedKg>0 && <InfoRow label="Noch verfügbar" value={`${optionNumber(position.remainingKg)} kg`} />}
+        <InfoRow label={t('option_packaging')} value={packaging.positions[position.id]} />
         <InfoRow label={t('option_batch')} value={position.batchNo} />
         <InfoRow label={t('option_mfi')} value={optionMfi(position)} />
-        <InfoRow label={lang==='en'?'Measurement source':'Messwertquelle'} value={position.measurementSource} />
-        <InfoRow label={t('option_density')} value={[optionNumber(position.density), position.densityUnit].filter(Boolean).join(' ')} />
-        <InfoRow label={t('option_c2')} value={optionNumber(position.c2)} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
-        {!offer.readOnly && <ArticleAssignment optionId={offer.id} position={position} onAssigned={() => setRevision((value) => value + 1)} sourceQuery={sourceQuery} readOnly={offer.readOnly} />}
+        {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && <Alert severity="warning">Die bisherige Artikelzuordnung muss geprüft werden. Bitte beim Bestellen einen passenden Artikel wählen.</Alert>}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
-      </CardContent></Card>)}
-    </>}
+      </Box>)}
+    </CardContent></Card>}
     {offer && purchasePosition && !error && <OptionPurchaseDialog key={purchasePosition.id} offer={offer} position={purchasePosition}
       preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)} onClose={()=>setPurchasePosition(null)} />}
   </Box>;

@@ -37,6 +37,7 @@ function resolvedMeasurements(position) {
     else{output.mfi=null;output.mfiTo=null;output.mfiTestCondition=null;output.measurementSource='Mehrere MFI-Prüfungen im Original; Messwertauswahl ungeklärt';}
   }
   if(source?.density?.value!=null){output.density=source.density.value;output.densityUnit=source.density.unit;}
+  if(source?.materialFacts)output.materialFacts=source.materialFacts;
   delete output.sourceMeasurementsJson;
   return output;
 }
