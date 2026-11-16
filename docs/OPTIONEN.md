@@ -19,8 +19,10 @@ aus und verändert weder Originalangaben noch Berechnungen oder gespeicherte Dat
 „Mail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
 ohne Skripte oder externe Ressourcen. Referenzierte Inline-Grafiken werden vom
 OptionReader in `op_QuelleMailbilderJson` gesichert und als lokale Bilddaten angezeigt.
-„PDF öffnen“ zeigt die Datei mit PDF.js innerhalb der App. Die lesbare Vorschau wird
-bevorzugt; bei fehlender Vorschau wird das Original einschließlich XFA direkt gerendert.
+„PDF öffnen“ zeigt das unveränderte Original mit PDF.js innerhalb der App, einschließlich
+XFA-Formularen. Nur wenn Abruf, Einlesen oder Darstellung des Originals scheitern,
+wird die erzeugte lesbare Vorschau geladen und ausdrücklich als Ersatzansicht bezeichnet.
+Bei fehlender Berechtigung wird keine Ersatzdatei angefordert.
 Die API lädt Inhalte erst bei Bedarf über
 `GET /options/:id/source/mail` bzw. `/source/file`; es gelten dieselben Pilot- und
 Mandantenprüfungen sowie dieselbe gemeinsame Sichtbarkeit aktueller Optionen wie
