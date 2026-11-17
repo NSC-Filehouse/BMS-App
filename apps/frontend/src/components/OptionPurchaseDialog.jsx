@@ -14,6 +14,8 @@ import {optionPurchaseReturnTo} from '../utils/optionPurchaseNavigation.js';
 import {useI18n} from '../utils/i18n.jsx';
 import {optionArticleBlocked,optionPositionTitle,optionQuantity} from '../utils/optionDisplay.js';
 
+const fieldFontSize='0.8125rem';
+
 export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -123,15 +125,15 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const totalKg=confirmedTotalKg(totalAmount,totalUnit,selectedPackaging);
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>Bestellung (Option)</DialogTitle>
-    <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important'}}>
+    <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important','& .MuiInputBase-root':{fontSize:fieldFontSize}}}>
       <Typography>{optionPositionTitle(position)}</Typography>
       {suppliers.length>1 && !supplier && <Typography variant="body2">Anbieter: {offer.supplierName}. Bitte das passende BMS-Lieferantenkonto wählen.</Typography>}
       <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
-      <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0,'& .MuiInputBase-input':{fontSize:'0.8125rem'}}}
+      <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
         isOptionEqualToValue={(a,b)=>a.id===b.id}
         getOptionKey={row=>row.id}
         getOptionLabel={row=>`${row.name}${row.city?` · ${row.city}`:''}`}
-        renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{fontSize:'0.8125rem',overflowWrap:'anywhere'}}>{row.name}{row.city?` · ${row.city}`:''}</Box>}
+        renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{fontSize:fieldFontSize,overflowWrap:'anywhere'}}>{row.name}{row.city?` · ${row.city}`:''}</Box>}
         onChange={(_e,value)=>{setSupplier(value);setArticle(articles.length===1&&!optionArticleBlocked(articles[0])?articles[0]:null);}}
         renderInput={params=><TextField {...params} label="Lieferant" required size="small" />} />
       </Box>
@@ -140,7 +142,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}
             getOptionLabel={row=>row.name} getOptionKey={row=>row.id} isOptionEqualToValue={(a,b)=>a.id===b.id}
             onChange={(_e,value)=>setContact(value)} noOptionsText="Kein Ansprechpartner hinterlegt"
-            renderOption={({key,...props},row)=><Box component="li" key={key} {...props}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
+            renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{fontSize:fieldFontSize,overflowWrap:'anywhere'}}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
             renderInput={params=><TextField {...params} label="Ansprechpartner" size="small" InputLabelProps={{shrink:true}} />} />
           <IconButton aria-label="Ansprechpartner anlegen" title="Ansprechpartner anlegen" disabled={busy || contactsLoading || Boolean(contactError)} onClick={()=>setContactCreateOpen(true)}><AddIcon /></IconButton>
         </Box>
@@ -153,12 +155,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {articlesLoading && <Typography variant="body2" role="status">Artikel werden geladen …</Typography>}
         {articlesLoaded && !articles.length && <Typography variant="body2">Kein passender Artikel gefunden. Bitte die Artikelsuche öffnen.</Typography>}
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
-        <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0,'& .MuiInputBase-input':{fontSize:'0.8125rem'}}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
+        <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
           loading={articlesLoading} loadingText="Artikel werden geladen …"
           getOptionLabel={row=>row.articleName}
           getOptionDisabled={row=>optionArticleBlocked(row)}
           noOptionsText="Kein passender Artikel gefunden. Bitte die Artikelsuche über die Lupe öffnen."
-          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important',overflowWrap:'anywhere'}}><Typography sx={{fontSize:'0.8125rem'}}>{row.articleName}</Typography>{optionArticleBlocked(row) && <Typography variant="caption" color="error">{[...(row.mfiCheck?.reasons || []),...(row.materialCheck?.reasons || [])].join('; ') || 'Artikel widerspricht der Option'}</Typography>}</Box>}
+          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important',overflowWrap:'anywhere'}}><Typography sx={{fontSize:fieldFontSize}}>{row.articleName}</Typography>{optionArticleBlocked(row) && <Typography variant="caption" color="error">{[...(row.mfiCheck?.reasons || []),...(row.materialCheck?.reasons || [])].join('; ') || 'Artikel widerspricht der Option'}</Typography>}</Box>}
           onChange={(_e,value)=>setArticle(value)}
           renderInput={params=><TextField {...params} label="Artikel" placeholder="Bitte Artikel auswählen" required size="small" />} />
         <IconButton aria-label="Artikel suchen" title="Artikel suchen" aria-expanded={showArticleSearch} aria-controls={articleSearchId} disabled={busy} onClick={()=>setShowArticleSearch(value=>!value)}><SearchIcon /></IconButton>
@@ -169,7 +171,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);setOrderAmount(null);
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
-        }}><MenuItem value="" disabled>ungeklärt</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
+        }}><MenuItem value="" disabled sx={{fontSize:fieldFontSize}}>ungeklärt</MenuItem>{availability.packagingTypes?.map(row=><MenuItem key={row.id} value={row.id} sx={{fontSize:fieldFontSize}}>{row.text}</MenuItem>)}</TextField>
       </Box>}
       <TextField label="Bestellmenge (kg)" type="number" required size="small" value={requestedAmount} disabled={busy || unavailable}
         error={!unavailable && invalidAmount} inputProps={{min:0.001,max:effectiveAvailability.remainingKg??undefined,step:0.001}}
@@ -183,7 +185,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           <TextField label={availability.truckOffer?'Angebotene Anzahl Trucks':'Angebotene Gesamtmenge'} required type="number" size="small" value={totalAmount} disabled={busy}
             inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
           {availability.truckOffer?<TextField label="Angebotene Gesamtmenge (kg)" size="small" value={totalKg??''} InputProps={{readOnly:true}} />:<TextField label="Einheit" required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
-            <MenuItem value="" disabled>Bitte wählen</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">t (Tonnen)</MenuItem>
+            <MenuItem value="" disabled sx={{fontSize:fieldFontSize}}>Bitte wählen</MenuItem><MenuItem value="kg" sx={{fontSize:fieldFontSize}}>kg</MenuItem><MenuItem value="t" sx={{fontSize:fieldFontSize}}>t (Tonnen)</MenuItem>
           </TextField>}
         </Box>
         <Typography variant="caption" color="text.secondary">Gesamtmenge dieser Optionsposition, nicht nur die Menge deiner Teilbestellung.</Typography>
