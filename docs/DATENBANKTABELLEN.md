@@ -48,16 +48,17 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 | `VlMailWorkerState` | Arbeits- und Initialisierungszustand des VL-Mail-Workers. |
 | `VlSalePushState` | Zustellungssicherung für Push-Meldungen zu Verkäufen. |
 
-## Noch anzulegen in der geprüften Installation
+## Stand der geprüften Installation
 
-Der schreibfreie Abgleich mit `DB04 / BMS` am **17.11.2026** ergab:
+Nach der gezielten Anlage von `BMSApp.ContactCreationOperation` auf
+`DB04 / BMS` am **17.11.2026** gilt:
 
-- **Vorhanden:** 41 der 42 App-Tabellen.
-- **Fehlt:** `BMSApp.ContactCreationOperation` – Vorgangsstatus und
-  Wiederholungssicherung der ERP-Kontaktanlage.
+- **Vorhanden:** alle 42 App-Tabellen.
+- **Fehlt:** keine der vom Installationsskript vorgesehenen App-Tabellen.
 
-Das neue Skript enthält diese Tabelle bereits. Im Rahmen der Repository-
-Bereinigung wurde das Produktionsschema nicht verändert. Die erfolgreiche
-Neuinstallation und Wiederholung wurden in eigenen, danach entfernten
-Testdatenbanken geprüft. Alte Replay-/Test-Sicherungstabellen gehören nicht
-zur Installation.
+Die neue Tabelle wurde einschließlich ihrer 16 Spalten, zwei Indizes,
+vier Prüfbedingungen und drei Standardwerte mit dem Installationsskript
+abgeglichen. Dabei wurden keine Kontakte oder anderen Geschäftsdaten angelegt.
+Die erfolgreiche Neuinstallation und Wiederholung des vollständigen Schemas
+wurden in eigenen, danach entfernten Testdatenbanken geprüft. Alte
+Replay-/Test-Sicherungstabellen gehören nicht zur Installation.
