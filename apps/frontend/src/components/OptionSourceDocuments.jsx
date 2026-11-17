@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tooltip, Typography } from '@mui/material';
 import EmailIcon from '@mui/icons-material/Email';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import FilePdfIcon from './FilePdfIcon.jsx';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -31,7 +31,7 @@ export default function OptionSourceDocuments({ offer }) {
   return <Box component="span" sx={{ display:'inline-flex',alignItems:'center',verticalAlign:'middle',ml:0.5,flexShrink:0 }}>
     <Box component="span" sx={{ display: 'inline-flex', gap: 0.25 }}>
       {Boolean(offer.hasSourceMail) && <Tooltip title={t('option_source_mail')}><IconButton size="small" color="primary" aria-label={t('option_source_mail')} onClick={() => setMailOpen(true)}><EmailIcon fontSize="small" /></IconButton></Tooltip>}
-      {Boolean(offer.hasSourceFile) && <Tooltip title={t(pdf ? 'option_source_pdf' : 'option_source_file')}><IconButton size="small" color="primary" aria-label={t(pdf ? 'option_source_pdf' : 'option_source_file')} onClick={()=>setFileOpen(true)}>{pdf?<PictureAsPdfIcon fontSize="small" />:<InsertDriveFileIcon fontSize="small" />}</IconButton></Tooltip>}
+      {Boolean(offer.hasSourceFile) && <Tooltip title={t(pdf ? 'option_source_pdf' : 'option_source_file')}><IconButton size="small" color="primary" aria-label={t(pdf ? 'option_source_pdf' : 'option_source_file')} onClick={()=>setFileOpen(true)}>{pdf?<FilePdfIcon fontSize="small" />:<InsertDriveFileIcon fontSize="small" />}</IconButton></Tooltip>}
     </Box>
     {!offer.hasSourceMail && !offer.hasSourceFile && <Typography variant="caption" color="text.secondary">{t('option_source_missing')}</Typography>}
     {fileOpen && <React.Suspense fallback={<CircularProgress size={22} />}><OptionPdfDialog offer={offer} onClose={()=>setFileOpen(false)} /></React.Suspense>}
