@@ -208,6 +208,15 @@ mit den Titeln `BMS-App - Backend - Port 3091` und `BMS-App - Frontend - Port 30
 erhalten. Die dafuer verwendete Hilfe in `scripts/start-app-console.bat` gilt nur
 fuer diese Fenster; `start-auto-pull.bat` behaelt den Titel `Auto-Pull - BMS-App`.
 
+Vor dem Start prueft `startapp.bat` die Standardports 3091 und 3090. Sind sie
+durch eine bisherige `startapp.bat`-Instanz dieses Projektordners belegt, beendet
+der Starter deren Konsolen mitsamt npm/nodemon und Kindprozessen und wartet auf
+freie Ports. Fremde Prozesse und PM2-Instanzen werden nicht beendet; der Start
+bricht dann mit Port und PID ab. Auch bei alten Startern ohne
+`scripts/start-app-console.bat` muss die bisherige Instanz einmal manuell beendet
+werden. Bei abweichend konfigurierten Ports gilt diese automatische Bereinigung
+nicht.
+
 ## Setup (Production / ohne PM2)
 1. Frontend build:
    ```bash

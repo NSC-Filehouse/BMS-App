@@ -13,6 +13,14 @@ cd /d "%~dp0"
 echo Starting BMS-App (DEV)...
 echo.
 
+REM Stop the previous startapp consoles, including npm/nodemon, before relaunching.
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-dev-instances.ps1" -RepoPath "%~dp0."
+if errorlevel 1 (
+    echo BMS-App wurde nicht gestartet. Bitte die obige Meldung pruefen.
+    pause
+    exit /b 1
+)
+
 REM --- Backend (Port 3091) ---
 start "BMS-App - Backend - Port 3091" cmd /d /k call "%~dp0scripts\start-app-console.bat" "BMS-App - Backend - Port 3091" backend
 
