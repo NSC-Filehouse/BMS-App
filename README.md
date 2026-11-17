@@ -202,6 +202,12 @@ npm ci
 npm run dev
 ```
 
+Unter Windows startet `startapp.bat` Backend und Frontend in getrennten Fenstern
+mit den Titeln `BMS-App - Backend - Port 3091` und `BMS-App - Frontend - Port 3090`
+(Standardports). Die Titel bleiben auch nach npm-Start und nodemon-Neustarts
+erhalten. Die dafuer verwendete Hilfe in `scripts/start-app-console.bat` gilt nur
+fuer diese Fenster; `start-auto-pull.bat` behaelt den Titel `Auto-Pull - BMS-App`.
+
 ## Setup (Production / ohne PM2)
 1. Frontend build:
    ```bash

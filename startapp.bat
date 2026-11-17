@@ -14,10 +14,10 @@ echo Starting BMS-App (DEV)...
 echo.
 
 REM --- Backend (Port 3091) ---
-start "BMS Backend" cmd /k "cd /d apps\backend && npm run dev"
+start "BMS-App - Backend - Port 3091" cmd /d /k call "%~dp0scripts\start-app-console.bat" "BMS-App - Backend - Port 3091" backend
 
 REM --- Frontend (Port 3090) ---
-start "BMS Frontend" cmd /k "cd /d apps\frontend && npm run dev"
+start "BMS-App - Frontend - Port 3090" cmd /d /k call "%~dp0scripts\start-app-console.bat" "BMS-App - Frontend - Port 3090" frontend
 
 echo.
 echo Started.
