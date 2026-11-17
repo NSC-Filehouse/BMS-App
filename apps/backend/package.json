@@ -11,7 +11,6 @@
   "dependencies": {
     "@filehouse/mailservice-client": "file:../../packages/filehouse-mailservice-client",
     "@xmldom/xmldom": "0.9.12",
-    "bms-app": "file:../..",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ews-javascript-api": "^0.13.2",

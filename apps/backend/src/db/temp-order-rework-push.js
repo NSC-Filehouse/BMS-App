@@ -321,7 +321,7 @@ async function runTempOrderReworkPush() {
   } catch (error) {
     if (isMissingReworkSchemaError(error)) {
       if (!schemaWarningLogged) {
-        logger.warn('Temp-Order-Rueckgabe-Push ist deaktiviert: Migration add_temp_order_return_comment_and_push_state.sql fehlt.');
+        logger.warn('Temp-Order-Rueckgabe-Push ist deaktiviert: Das Schema ist unvollständig; Installation siehe docs/INSTALLATION.md.');
         schemaWarningLogged = true;
       }
       return { enabled: true, status: 'schema_missing' };

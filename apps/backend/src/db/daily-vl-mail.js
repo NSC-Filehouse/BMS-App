@@ -352,7 +352,7 @@ async function runDailyVlMailTick() {
   } catch (error) {
     if (isMissingObjectError(error)) {
       if (!schemaWarningLogged) {
-        logger.warn('Tages-VL-Versand wartet auf die Migration add_daily_vl_mail.sql.');
+        logger.warn('Tages-VL-Versand wartet auf das gemeinsame Installationsschema (docs/INSTALLATION.md).');
         schemaWarningLogged = true;
       }
     } else {

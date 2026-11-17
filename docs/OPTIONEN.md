@@ -35,7 +35,7 @@ für die Optionsdetails. Der gezielte Nachimport über OptionReader ist unten be
 Der OptionReader lässt die KI den vollständigen Namen und vorhandene Kontaktdaten
 aus der Anbieter-Signatur bzw. ursprünglichen Absenderzeile lesen. Wörtliche
 Personen- und Lieferantenbelege werden gegen die Originalquelle geprüft und in
-`op_AnbieterKontaktJson` gespeichert (`add_option_supplier_contacts.sql`). Interne
+`op_AnbieterKontaktJson` gespeichert (gemeinsames Installationsschema). Interne
 Weiterleiter und CC-Empfänger werden nicht übernommen. Automatische Postfächer
 ersetzen keinen ausdrücklich genannten persönlichen Ansprechpartner.
 
@@ -76,9 +76,9 @@ aus Anzeige, Bestellauswahl und Hintergrundabgleich. Originalbelege und Referenz
 bestehender Bestellungen bleiben gespeichert. Fokuswechsel am selben Geschäftstag
 setzt die Ansicht oder einen geöffneten Bestelldialog nicht mehr zurück.
 
-Schema: `apps/backend/sql/add_option_position_sources.sql`. Diese additive Migration
-enthält die Bildablage und das logische Löschen einzelner Positionen. Die Pilot- und
-Mandantenprüfungen gelten unverändert. Quellen werden weiterhin nur bei Bedarf geladen.
+Das gemeinsame [Installationsschema](../apps/backend/sql/install_BMSApp.sql) enthält
+Bildablage, Kontaktvorschläge und logisches Löschen einzelner Positionen. Die Pilot-
+und Mandantenprüfungen gelten unverändert. Quellen werden nur bei Bedarf geladen.
 
 Für die PDF-Ansicht nach dem Pull `npm ci` und `npm run build` im Hauptverzeichnis
 ausführen. Der Build kopiert die PDF.js-Schriften, Zeichentabellen und WASM-Dateien
@@ -130,31 +130,19 @@ die Sichtbarkeit nicht. Inhaltsduplikate werden beim Speichern auch über
 Herkunftsmandanten hinweg erkannt. Bereits importierte Datensätze werden durch
 dieses Codeupdate nicht rückwirkend geändert oder erneut eingelesen.
 
-## Datenvertrag für den späteren Mail-/PDF-Import
+## Datenvertrag des OptionReaders
 
-- `op_company_id` ist die technische Mandanten-ID. `op_source_key` muss je
-  Mandant eindeutig und bei erneutem Import derselben Quelle identisch sein.
-- Ein Import benötigt Lieferant, Eingangszeit, Beginn und Ende der Gültigkeit,
-  Quellentyp, Quellschlüssel, Ersteller/Änderer und mindestens eine Position.
-- Bei fehlendem Ablaufdatum soll der Import ein Ende setzen, beispielsweise
-  28 Tage nach Eingang. Eine im Original genannte Frist bleibt in
-  `op_source_valid_until` nachvollziehbar; bei echten Angeboten bestimmt die
-  tatsächliche Lieferantenfrist `op_valid_until`.
-- Neue KI-Einträge bleiben standardmäßig `op_review_status = 'pending'`.
-  Die App zeigt nur `approved` und `op_business_status = 'open'` an.
-- Mengen- und Preiseinheiten dürfen nicht aus Zahlen erraten werden. Die
-  Originalangabe gehört in `opp_quantity_text`; ungeklärte Einheiten bleiben
-  `NULL` und werden in der App als ungeklärt bezeichnet.
-- Lieferantenartikel und interner Verkaufsartikel sind getrennte Felder.
-  `opp_internal_article_name` bleibt leer, solange keine geprüfte Zuordnung
-  vorliegt.
+- `op_MandantID` dokumentiert die technische Importherkunft; Optionen sind gemeinsam sichtbar.
+- `op_QuelleSchluessel` und der Inhaltsfingerabdruck dienen der Wiederholungssicherung.
+- Lieferant, Originaleingang und mindestens eine Position gehören zum Angebot.
+- Eine ausdrücklich genannte Lieferantenfrist bleibt erhalten; sonst gelten drei
+  Arbeitstage ab ursprünglichem Eingang nach den Reader-Regeln.
+- Mengen-/Messwerte benötigen Quellenbelege. Fehlende Werte bleiben unbekannt.
+  Die freigegebene Regel für EUR-Preise ab 100 ohne Preisbezug ist im Reader umgesetzt.
+- Lieferantenbezeichnung und interne Artikelzuordnung bleiben getrennt.
+- Rohdaten und Originalbelege bleiben nachvollziehbar erhalten.
 
-Die API filtert nach dem aktuellen Datum in der Zeitzone Europe/Berlin. Eine abweichende
-`opp_valid_until` ersetzt die Kopf-Frist für diese Position. Beide Optionen-
-Screens verwenden den gemeinsamen Bestand; die oben beschriebenen Aktionen
-behalten ihren jeweiligen Kontext.
-
-## Pilot und Beispiele
+## Pilot
 
 `apps/backend/src/pilot-features.js` gibt Bestellungen, Optionen und Forecast vorläufig nur
 den drei geprüften FX-Identitäten AKI, MFR und NSC frei. Menü und direkte API-
@@ -163,14 +151,8 @@ Funktion durch die normalen Nutzer-/Mandantenregeln ersetzen. Optionen sollen
 dann für alle Berechtigten des Mandanten sichtbar sein, unabhängig vom
 Lieferanten.
 
-`apps/backend/sql/add_options.sql` legt die Tabellen wiederholbar an.
-`apps/backend/sql/seed_options_examples.sql` fügt sieben Angebote mit neun
-Positionen aus `C:\Projekte\Optionen` für Mandant 3 hinzu. Beim ersten Lauf
-werden sie als heute eingegangen und 28 Tage gültig simuliert; die ursprünglichen
-Total-Fristen bleiben getrennt erhalten. `op_is_demo = 1` kennzeichnet sie in
-der App als Beispiele. Erneutes Ausführen fügt keine doppelten Angebote oder
-Positionen ein. Bestehende Bestellungen werden nicht verändert.
+Die [Schema-Installation](INSTALLATION.md) legt keine Demo-Angebote an und
+übernimmt keine standortspezifischen Kontenzuordnungen. Historische Test-Seeds
+sind in der Git-Historie verfügbar.
 
-Forecast ist derzeit ein geschützter Platzhalter ohne Datenschema. Die spätere
-VL-Einbindung von Optionen ist ein eigener Schritt; die Materialkategorie und
-der interne Artikelname sind dafür bereits vorgesehen.
+Forecast ist ein geschützter Platzhalter ohne eigenes Datenschema.

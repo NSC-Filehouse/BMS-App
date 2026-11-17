@@ -58,25 +58,11 @@ Positionstexte wurden aus dem App-Modell entfernt. Preise bleiben Dezimalwerte;
 Einheit und Preisbasis sind intern für die korrekte Betragsberechnung nötig.
 Die Währung ist wie beim Auftrag EUR. Summen werden aus Positionen berechnet.
 
-1. Neue Installation: apps/backend/sql/add_temp_offer.sql erstellt direkt die
-   gekürzten Tabellen BMSApp.tbl_Temp_Angebot und BMSApp.tbl_Temp_Ang_Position.
-2. Bestehende Installation: prepare_temp_offer_order_layout.sql vor dem
-   Backendwechsel anwenden. Es ergänzt die Auftragsfelder und macht veraltete
-   Pflichtspalten nullable, damit alter und neuer Backendstand während der
-   Umstellung funktionieren. Dieses Skript wurde bereits mit der Windows-
-   Anmeldung DOMKIMAZ\n.schroeder angewendet.
-3. Danach neuen Backend-/Frontendstand bereitstellen und den Backendprozess
-   regulär neu starten. Die App führt keinen automatischen Produktionsneustart aus.
-4. Erst danach compact_temp_offer_order_layout.sql mit Windows-Authentifizierung
-   auf BMS ausführen. Es entfernt die veralteten Spalten. Noch vorhandene
-   Legacy-Werte führen zum Abbruch, damit keine Daten still verloren gehen;
-   diese Werte müssen zuerst exportiert bzw. bewusst migriert werden.
-
-Die endgültige Kürzung wird nicht vor dem Backendwechsel ausgeführt, weil der
-noch laufende alte Code diese Spalten liest. Der neue Code verwendet die alten
-Spalten nicht mehr. Die Kürzung ist idempotent und mit minimaler Kopf-/Positions-
-Speicherung in einer Windows-SQL-Transaktion geprüft und zurückgerollt.
-Das Prüfskript ist apps/backend/scripts/check-temp-offer-layout.ps1.
+Die Neuinstallation verwendet ausschließlich
+[`install_BMSApp.sql`](../apps/backend/sql/install_BMSApp.sql). Es enthält direkt
+das aktuelle gekürzte Angebotsmodell. Einrichtung und Prüfung stehen in
+[INSTALLATION.md](INSTALLATION.md); historische Umstellungsschritte sind in der
+Git-Historie erhalten. Die App verändert das Produktionsschema nicht automatisch.
 
 ## Reservierung und externer BMS-Import
 

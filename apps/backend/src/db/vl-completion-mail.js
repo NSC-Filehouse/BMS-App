@@ -269,7 +269,7 @@ async function processVlSalePush({ order, positions, database, salesRepresentati
     claim = await claimVlSalePush({ order, salesRepresentative });
   } catch (error) {
     if (isMissingVlSalePushStateError(error)) {
-      logger.warn('ERP-Verkaufs-Push ist deaktiviert: Migration add_vl_sale_push_state.sql fehlt.');
+      logger.warn('ERP-Verkaufs-Push ist deaktiviert: Das Schema ist unvollständig; Installation siehe docs/INSTALLATION.md.');
       return { status: 'schema_missing' };
     }
     throw error;

@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import { getSelectableMandants } from '../src/utils/mandantOptions.js';
 
-const testMandant = { id: 0, name: 'Test' };
-const normalMandant = { id: 2, name: 'MLPlastics' };
+const testMandant = { id: 0, name: 'Test', shortName: 'TES', isMain: false };
+const normalMandant = { id: 2, name: 'MLPlastics', shortName: 'MLP', isMain: true };
 
 test('hides Test from mandant selection for other users', () => {
   assert.deepEqual(

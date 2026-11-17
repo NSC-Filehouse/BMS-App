@@ -134,20 +134,15 @@ BMS-Bestellnummer. Beim Verkaufsweg bleiben aktuelle VL-BE-Referenzen erhalten.
 
 ## Datenbank- und BMS-Voraussetzungen
 
-Vor dem Einsatz des neuen Backends im zentralen BMS ausführen:
-`apps/backend/sql/upgrade_temp_purchase_order_shopping.sql`.
-Bei Neuinstallation zuerst `add_temp_purchase_order.sql`, danach das Upgrade.
-Für Dateianhänge anschließend vor dem Einsatz des Backends zusätzlich
-`apps/backend/sql/add_temp_purchase_order_attachments.sql` ausführen.
-Das wiederholbare Skript legt `BMSApp.tbl_Temp_Bestellung_Anhang` mit Binärinhalt,
-Dateimetadaten und Löschvermerk an. Die Verknüpfung verwendet den technischen
-INT-Schlüssel `tbl_Temp_Bestellung.tb_id`; ein abweichender Schlüsseltyp führt
-zum Abbruch. Die API-Konfiguration heißt `tempPurchaseOrderAttachment`, optional
-überschreibbar über `BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_ATTACHMENT`.
-Das Skript wurde als Teil der Codeänderung vorbereitet und muss separat in der
-Zieldatenbank ausgeführt werden.
+Alle Bestell-, Positions-, Anhangs- und Versandtabellen werden über
+[`install_BMSApp.sql`](../apps/backend/sql/install_BMSApp.sql) eingerichtet.
+Es gibt keine separate Reihenfolge alter Upgrade-Skripte mehr; siehe
+[INSTALLATION.md](INSTALLATION.md). Anhänge verwenden den technischen INT-Schlüssel
+`tbl_Temp_Bestellung.tb_id`. Die API-Konfiguration heißt
+`tempPurchaseOrderAttachment`, optional überschreibbar über
+`BMS_SQL_APP_TABLE_TEMP_PURCHASE_ORDER_ATTACHMENT`.
 
-Das Upgrade ist wiederholbar und ergänzt nur:
+Das aktuelle Schema enthält unter anderem:
 
 - Kopf: tb_packaging_type_id (INT NULL).
 - Position: tbp_original_packaging_type (NVARCHAR(200) NULL),
@@ -162,7 +157,7 @@ Die externe BMS-Übernahme liegt außerhalb dieses Repositories. Vor Freigabe
 prüfen, dass sie den Kopf und alle einzelnen Positionen übernimmt, eigenständige
 Positionskopien erhält, die gewählte Kopfverpackung verwendet und nicht auf
 historische tbp_source_*-Felder angewiesen ist. Status 2 und tb_bestellindex
-werden weiterhin von dieser Übernahme gesetzt. Das SQL-Upgrade, produktive
+werden weiterhin von dieser Übernahme gesetzt. Schema-Installation, produktive
 Datenänderungen und ein Serverneustart werden durch einen Code-Push nicht
 automatisch ausgeführt.
 

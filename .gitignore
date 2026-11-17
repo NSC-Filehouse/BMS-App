@@ -10,6 +10,9 @@ node_modules/
 !.env.*.example
 **/config/databases.json
 !**/config/databases.example.json
+*.pfx
+*.p12
+*.key
 
 # Build and bundler output
 dist/
@@ -41,6 +44,20 @@ temp/
 *.temp
 test-results/
 playwright-report/
+
+# Generated exports, business-data comparisons and local backups
+/outputs/
+/backups/
+/docs/BMS-App_*.pdf
+
+# Local standalone UI sketches (not application entry points)
+/apps/frontend/public/credit-limit-dialog-preview.html
+/apps/frontend/src/credit-limit-dialog-preview.jsx
+
+# Patch leftovers
+*.bak
+*.orig
+*.rej
 
 # Local editor and operating-system files
 .idea/

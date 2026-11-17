@@ -1,15 +1,17 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const projectRoot = resolve(dirname(new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (value) => value.slice(1))), '..');
+const documentationOutput=join(projectRoot,'outputs','docs');
+mkdirSync(documentationOutput,{recursive:true});
 
 const documents = [
   {
     source: join(projectRoot, 'docs', 'ANWENDERHANDBUCH.md'),
-    output: join(projectRoot, 'docs', 'BMS-App_Anwenderhandbuch.pdf'),
+    output: join(documentationOutput, 'BMS-App_Anwenderhandbuch.pdf'),
     title: 'BMS-App – Anwenderhandbuch',
     subtitle: 'Vollständige Anwenderdokumentation',
     description: 'Screens, Funktionen, Eingaben und Arbeitsabläufe im Detail',
@@ -18,7 +20,7 @@ const documents = [
   },
   {
     source: join(projectRoot, 'docs', 'FUNKTIONSUEBERSICHT.md'),
-    output: join(projectRoot, 'docs', 'BMS-App_Funktionsuebersicht.pdf'),
+    output: join(documentationOutput, 'BMS-App_Funktionsuebersicht.pdf'),
     title: 'BMS-App – Funktionsübersicht',
     subtitle: 'Kompakter Funktionskatalog',
     description: 'Alle Anwenderfunktionen als schnelle Stichpunktübersicht',

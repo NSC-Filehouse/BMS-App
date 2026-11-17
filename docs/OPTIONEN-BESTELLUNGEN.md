@@ -146,14 +146,12 @@ allein reserviert noch nichts. Übernommene Temp-Zeilen müssen erhalten bleiben
 solange sie die Mengennachverfolgung bilden. ERP-Zeilen werden nicht doppelt addiert.
 Ein künftiger ERP-Endpunkt benötigt dieselbe Mengen-/Idempotenzregel.
 
-## Migration und Prüfung
+## Installation und Prüfung
 
-`pwsh -File apps/backend/scripts/apply-option-purchases.ps1` ergänzt das Schema
-wiederholbar mit dem hier angemeldeten Windows-Benutzer. Die einmalige Fristkorrektur
-liegt im OptionReader: `pwsh -File scripts/migrate-option-validity.ps1`. Sie ersetzt
-nur künstliche Fristen anhand des ursprünglichen Maileingangs und blendet Demos aus.
-Sie protokolliert keine alten/neuen Fristwerte. Serverneustart und Deployment sind
-separate Schritte.
+Das gemeinsame [Installationsskript](../apps/backend/sql/install_BMSApp.sql)
+enthält alle Options-/Bestelltabellen und Verknüpfungen. Einrichtung und isolierter
+Neuaufbau-Test stehen in [INSTALLATION.md](INSTALLATION.md). Alte Einmalmigrationen
+und Fristkorrekturen gehören nicht zur Neuinstallation.
 
 `node apps/backend/scripts/smoke-option-purchases.js` prüft mit integrierter
 Windows-Anmeldung die echten Sperren in zwei konkurrierenden Verbindungen,

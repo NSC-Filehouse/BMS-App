@@ -1,4 +1,8 @@
-# BMS-App (Monorepo Scaffold)
+# BMS-App
+
+Installation, das einzige aktuelle SQL-Installationsskript und Schema-Prüfungen:
+[INSTALLATION.md](docs/INSTALLATION.md).
+Tabellen mit Zweck und aktuellem Fehlbestand: [DATENBANKTABELLEN.md](docs/DATENBANKTABELLEN.md).
 
 ## Angebote (Pilot MFR, NSC, AKI)
 
@@ -33,14 +37,11 @@ in der App-Historie aufbewahrt, da die ERP-API den Ausnahmegrund nicht speichert
 Die Ausnahme gilt nur für den mit Mandant, Nummer, Name und Land zugeordneten,
 über die App angelegten Kunden, nicht für einen vorhandenen Kopie-Datensatz.
 
-Die idempotente Migration `apps/backend/sql/add_customer_creation.sql` ist auf
-`DB04 / BMS` begrenzt und legt ausschließlich drei Tabellen im bestehenden
-Schema `BMSApp` an: `CustomerCreation`, `CustomerCreationMandant` und
-`CustomerCreationSnapshot`. Sie speichern Vorgang, Benutzer, Mandantenresultate
-und vollständige JSON-Snapshots einschließlich Ansprechpartner und Anschriften.
-Die Migration wurde am 06.10.2026 mit dem angemeldeten Windows-Benutzer ausgeführt.
-Der App-SQL-Login wurde danach mit zurückgerollten Schreibversuchen auf diesen
-Tabellen geprüft. Es wurden keine ERP-Kunden angelegt.
+Das zentrale Installationsskript `apps/backend/sql/install_BMSApp.sql` enthält
+`CustomerCreation`, `CustomerCreationMandant` und `CustomerCreationSnapshot`.
+Sie speichern Vorgang, Benutzer, Mandantenergebnisse und vollständige
+JSON-Snapshots einschließlich Ansprechpartnern und Anschriften. Einrichtung
+und Rechte sind in [INSTALLATION.md](docs/INSTALLATION.md) beschrieben.
 
 Der kommentierte Konfigurationsblock steht in den lokal ignorierten Dateien
 `apps/backend/.env` und `apps/backend/.env.prod`. `.env.prod` ist die gepflegte
@@ -98,15 +99,11 @@ Kundensichtbarkeit und Benutzeridentität werden bei jedem Endpunkt geprüft;
 das Recht `nachtragen` für den Zielmandanten. Die App schreibt die neue Person
 nicht direkt in `dbo.tblKun_Ansprech`.
 
-Vor Bereitstellung auf **DB04 / BMS**
-`apps/backend/sql/add_contact_creation_operation.sql` ausführen. Das wiederholbar
-ausführbare Skript legt ausschließlich `BMSApp.ContactCreationOperation` samt
-Index an. Der App-SQL-Login benötigt dort SELECT, INSERT und UPDATE. Die App
-führt keine automatische Migration durch; eine fehlende Tabelle sperrt den
-Dialog mit einer Fehlermeldung. Die vorhandene Kunden-API-Konfiguration und
-`BMS_CUSTOMER_API_WRITE_ENABLED` gelten auch für diese Funktion. Die tatsächlich
-geladene Serverkonfiguration vor Freigabe prüfen; Commit und Push stellen
-keine Bereitstellung oder Schreibfreigabe dar.
+Die gemeinsame Schema-Installation enthält `BMSApp.ContactCreationOperation`
+samt Index. Der App-SQL-Login benötigt dort SELECT, INSERT und UPDATE. Die App
+führt keine automatische Schema-Installation durch; eine fehlende Tabelle
+sperrt den Dialog mit einer Fehlermeldung. Die vorhandene Kunden-API-Konfiguration
+und `BMS_CUSTOMER_API_WRITE_ENABLED` gelten auch für diese Funktion.
 
 Nachname ist Pflicht. Eine eigene Anschrift benötigt Straße, PLZ, Ort und
 ISO-Land. Weitere Felder, Geburtstag und Ranking sind optional; ohne bewusste
@@ -148,11 +145,9 @@ Adressauswahl und Prüfung der technischen `kdL_ID` lesen weiterhin aus SQL.
 Der Client benötigt das Recht `nachtragen` für den ausgewählten Mandanten;
 zusätzliche Mandanten oder eine zentrale PLA-Anlage werden nicht ausgelöst.
 
-Vor der Bereitstellung auf **DB04 / BMS** das Skript
-`apps/backend/sql/add_delivery_address_operation.sql` ausführen. Es legt nur
-`BMSApp.DeliveryAddressOperation` an. Der App-SQL-Login benötigt dort
-SELECT, INSERT und UPDATE. Die Migration wird durch die Anwendung nicht automatisch
-ausgeführt. Ohne die Tabelle bleibt die neue Lieferadressfunktion gesperrt.
+`BMSApp.DeliveryAddressOperation` ist Bestandteil der gemeinsamen
+Schema-Installation. Der App-SQL-Login benötigt dort SELECT, INSERT und UPDATE.
+Ohne die Tabelle bleibt die Lieferadressfunktion gesperrt.
 
 Die bestehenden Parameter `BMS_CUSTOMER_API_ENABLED`, Basisadresse, API-Key,
 Zertifikatseinstellungen und `BMS_CUSTOMER_API_WRITE_ENABLED` gelten auch hier.
@@ -196,33 +191,16 @@ Dieses ZIP enthält ein Grundgerüst für die **BMS-App** als Monorepo (npm work
 
 ---
 
-## Voraussetzungen
-- Windows Server
-- Node.js (LTS empfohlen)
-- **Microsoft Access ODBC Driver** (64-bit) muss vorhanden sein
-- Zugriff auf die UNC-Pfade der Access-Dateien (PM2/Service-User muss Rechte haben)
+## Voraussetzungen und Entwicklung
 
----
+Die aktuelle Laufzeit, Datenbankeinrichtung und Konfigurationsvorlagen stehen in
+[INSTALLATION.md](docs/INSTALLATION.md). Datenzugriffe verwenden SQL Server.
 
-## Setup (Development)
-1. Entpacken
-2. Im Projekt-Root:
-   ```bash
-   npm install
-   ```
-3. Env-Dateien anlegen:
-   - `apps/backend/.env` aus `apps/backend/.env.example` erstellen
-   - `apps/frontend/.env` aus `apps/frontend/.env.example` erstellen
-4. Datenbank-Konfig:
-   - `apps/backend/config/databases.json` aus `apps/backend/config/databases.example.json` erstellen
-   - Pfade/Passwörter anpassen (nicht ins Git committen)
-
-5. Start (dev):
-   ```bash
-   npm run dev
-   ```
-
----
+```powershell
+npm ci
+# Apps mit den lokalen .env-Dateien konfigurieren und das Schema installieren.
+npm run dev
+```
 
 ## Setup (Production / ohne PM2)
 1. Frontend build:
@@ -267,30 +245,26 @@ SQL-Migrationen und Dienstneustart bleiben separate Schritte.
 
 ---
 
-## Hinweise zur Access-Paging-Implementierung
-Die Listen-Endpunkte unterstützen `page`, `pageSize`, `q`, `sort`, `dir`.  
-Paging wird über das klassische **Access TOP-Nested-Query** Muster implementiert.
+## Datenbankzugriff
 
----
+Mandantenrouting erfolgt über `x-mandant`, `req.database` und die zentralen
+SQL-/FX-Verbindungen. Das gemeinsame App-Schema liegt in der zentralen BMS-Datenbank.
 
 ## Projektstruktur
 - `apps/backend` – API Server (Port 3091)
 - `apps/frontend` – React App + Prod Static Server (Port 3090)
 
-Viel Spaß beim Weiterbauen.
+
 
 ## Aufträge finalisieren und per MailService senden (EWS-Fallback)
 
-Vor dem ersten Einsatz muss die idempotente Migration
-`apps/backend/sql/add_temp_order_finalization_and_mail_outbox.sql` mit einem
-DDL-berechtigten SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden.
+Alle Auftrags- und Outbox-Tabellen werden mit dem gemeinsamen
+[Installationsskript](docs/INSTALLATION.md) eingerichtet.
 
-Für die Übergabe der ausgewählten Lieferadress-ID an die ERP-Seite muss außerdem
-die idempotente Migration
-`apps/backend/sql/add_temp_order_delivery_address_id.sql` auf der zentralen
-`BMS`-Datenbank ausgeführt werden. Bei einer manuellen Lieferadresse bleibt
-`ta_delivery_address_id` leer; bei einer Auswahl aus `tblKun_LiefAdress` wird
-der technische Primärschlüssel `kdL_ID` des Lieferadress-Datensatzes gespeichert.
+Bei einer manuellen Lieferadresse bleibt `ta_delivery_address_id` leer; bei
+einer Auswahl aus `tblKun_LiefAdress` wird der technische Primärschlüssel
+`kdL_ID` des Lieferadress-Datensatzes gespeichert. Das aktuelle Auftragsmodell
+ist vollständig im gemeinsamen Installationsskript enthalten.
 
 Das Backend benötigt folgende Werte in `apps/backend/.env`:
 
@@ -330,10 +304,8 @@ SMTP-Aliasse zeigen auf dieselbe Gruppe. Für Westpoly (Mandant-ID `9`) wird
 stattdessen an `kimaz@mlplastics.de`, `m.winkler@mlholding.org`,
 `altendorf@westpoly.de` und `goede@mlholding.org` gesendet.
 
-Vor dem Start muss die idempotente Migration
-`apps/backend/sql/add_daily_vl_mail.sql` auf der zentralen `BMS`-Datenbank
-ausgeführt werden. Der tägliche Versand kann über folgende Backend-Variablen
-gesteuert bzw. angepasst werden:
+Die Versandtabellen sind Bestandteil der gemeinsamen Schema-Installation.
+Der tägliche Versand wird über folgende Backend-Variablen gesteuert:
 
 ```dotenv
 BMS_DAILY_VL_MAIL_ENABLED=true
@@ -408,19 +380,16 @@ an `m.frank@filehouse.net`.
 
 ### Kreditlimit-Anfrage beim Auftragsversand
 
-Vor dem ersten Einsatz muss zusätzlich die idempotente Migration
-`apps/backend/sql/add_credit_limit_request.sql` mit einem DDL-berechtigten
-SQL-Login auf der zentralen `BMS`-Datenbank ausgeführt werden. Beim Klick auf
-„An BMS senden“ prüft die App das Kreditlimit und zeigt bei Überschreitung den
-Dialog zur manuellen Eingabe des gewünschten Kreditlimits. Der Betrag wird
-weder aus der erwarteten Auslastung abgeleitet noch auf feste Schritte gerundet.
-Der Außendienst entscheidet ausdrücklich, ob die zusätzliche Kreditlimit-Mail
-mit dem eingegebenen Betrag gesendet wird; die Auftragsmail wird in beiden
-Fällen versendet. Für die Überschreitungsprüfung addiert die App die Summe der
-offenen Rechnungen und den aktuellen Auftrag als mögliche neue Rechnung. Andere
-offene BMS-App- und ERP-Aufträge werden nicht mitgerechnet. Der Dialog zeigt
-beide Beträge und ihre Summe an; sie bestimmen nicht den manuell eingegebenen
-Kreditwunsch.
+Kreditlimit- und Outbox-Tabellen sind Bestandteil der gemeinsamen Schema-Installation.
+Beim Klick auf „An BMS senden“ prüft die App das Kreditlimit und zeigt bei
+Überschreitung den Dialog zur manuellen Eingabe des gewünschten Kreditlimits.
+Der Betrag wird weder aus der erwarteten Auslastung abgeleitet noch auf feste
+Schritte gerundet. Der Außendienst entscheidet ausdrücklich, ob die zusätzliche
+Kreditlimit-Mail mit dem eingegebenen Betrag gesendet wird; die Auftragsmail
+wird in beiden Fällen versendet. Die Überschreitungsprüfung addiert offene
+Rechnungen und den aktuellen Auftrag als mögliche neue Rechnung. Andere
+offene App-/ERP-Aufträge werden nicht mitgerechnet. Beide Beträge und ihre
+Summe bestimmen nicht den manuell eingegebenen Kreditwunsch.
 
 Die Mail verwendet den Betreff `Kreditanfrage <Kundenname>` und enthält den
 Kreditwunsch, Kunden- und Mandantendaten, den Kunden-Außendienst, das bisherige
@@ -433,24 +402,13 @@ Mandanten-ID hinter dem Pipe-Zeichen (`E-Mail-Adresse|Mandanten-ID`). Ein
 gesetzter `BMS_ORDER_MAIL_TEST_RECIPIENT` bleibt ein isolierter Testversand an
 nur diese Adresse; echte CC-Empfänger werden dann nicht angeschrieben.
 
-Für den sichtbaren Absender der Kreditlimit-Anfrage muss außerdem die idempotente
-Migration `apps/backend/sql/add_credit_limit_mail_sender.sql` auf der zentralen
-`BMS`-Datenbank ausgeführt werden. Die Kreditlimit-Mail verwendet anschließend
-die E-Mail-Adresse und den Namen des Auftragserstellers als expliziten Absender;
-die Empfänger- und CC-Auswahl bleibt unverändert. Der MailService bleibt der
-technische Transport und muss zum Senden mit der Absenderadresse berechtigt sein.
+Die Kreditlimit-Mail verwendet die E-Mail-Adresse und den Namen des
+Auftragserstellers als expliziten Absender. Die Empfänger- und CC-Auswahl bleibt
+unverändert. Die erforderlichen Absenderfelder enthält das gemeinsame Schema.
+Der MailService muss zum Senden mit dieser Absenderadresse berechtigt sein.
 
-Für Kunden, deren `kd_KdNR` zur `md_KdNR` eines der zehn Verkaufsmandanten
-aus `apps/backend/src/config/sales-mandants.js` passt und deren
-`kd_InterCompany` gesetzt ist, entfällt die Kreditanfrage. Die Prüfung gilt
-für Vorschau, Auftragsabschluss und noch wartende Kreditanfragen im Worker.
-Sie hängt nicht von den Mandantenrechten des Benutzers ab. Bei fehlendem
-Kennzeichen, mehrdeutiger Zuordnung oder nicht lesbarem Mandantenverzeichnis
-bleibt die normale Kreditprüfung aktiv. Die Liste der Verkaufsmandanten muss
-bei Änderungen des App-Angebots im Backend mitgepflegt werden.
-Bestehende Installationen müssen `add_credit_limit_request.sql` erneut
-ausführen, um auch den Typ `credit_limit_request_user_confirmed` in der
-CHECK-Bedingung zuzulassen. Frühere automatische Einträge bleiben gespeichert.
+Die aktuelle CHECK-Bedingung enthält `credit_limit_request_user_confirmed`
+sowie die weiterhin unterstützten früheren Typen.
 
 Offene Kreditlimit-Mails aus der früheren Automatik werden nicht mehr vom
 Worker versendet. Die separate Bankdaten-Erinnerung bleibt bei einem
@@ -462,9 +420,8 @@ dem fett roten Hinweis „Kunde insolvent!“.
 
 ## Erinnerung an eigene, noch nicht an BMS übertragene Aufträge
 
-Die Prüfung läuft serverseitig und benötigt die idempotente Migration
-`apps/backend/sql/add_unfinalized_order_reminder.sql` auf der zentralen
-`BMS`-Datenbank. Der Reminder ist standardmäßig deaktiviert. Zum Aktivieren
+Die serverseitige Prüfung verwendet die Reminder-Tabelle aus dem gemeinsamen
+Installationsschema. Der Reminder ist standardmäßig deaktiviert. Zum Aktivieren
 wird im Backend mindestens das Intervall gesetzt:
 
 ```dotenv
@@ -495,12 +452,8 @@ bei einem Servicefehler bleibt EWS der Fallback.
 
 ## Rueckgabe eines Temp-Auftrags durch den CS
 
-Fuer den Rueckgabegrund und den Push bei Status 3 muss die idempotente Migration
-`apps/backend/sql/add_temp_order_return_comment_and_push_state.sql` auf der
-zentralen `BMS`-Datenbank ausgefuehrt werden. Sie legt `ta_return_comment` in
-`BMSApp.tbl_Temp_Auftrag` und den Zustandsbereich fuer die einmalige Push-Zustellung
-an. Bereits vorhandene Status-3-Auftraege werden dabei als Initialbestand erkannt
-und loesen keine rueckwirkende Meldung aus.
+Das aktuelle Schema enthält `ta_return_comment` und den Zustandsbereich für
+die einmalige Push-Zustellung bei einer CS-Rückgabe.
 
 Das Backend prueft die Temp-Auftraege standardmaessig alle 60 Sekunden. Der Abstand
 kann ueber `BMS_TEMP_ORDER_REWORK_PUSH_INTERVAL_SECONDS` geaendert werden. Wenn der
@@ -536,13 +489,21 @@ verwendet fuer Auftragsmails dieselbe Customer-Service-Adresse wie FrupackNordic
 
 ## Optionen in der VL (Pilot)
 
-Vor dem Update vom 19.10.2026 ausserdem `apps/backend/sql/add_option_commercial_normalization.sql` anwenden. Der Reader speichert normalisierte Preise, positionsbezogene Verpackung und Gewichte samt Herkunft. Nach Aktualisierung des Readers werden die bereitgestellten Regeln mit `scripts/apply-commercial-normalization.ps1 -ActivateRules` im Reader-Projekt aktiviert. Keine neuen ENV-Parameter. Die App liest die Werte und unterscheidet Mindestabnahme von Chargenbestand. Urspruengliche Importhinweise und Rohwerte bleiben einsehbar.
+Der Reader speichert normalisierte Preise, positionsbezogene Verpackung und
+Gewichte samt Herkunft. Die App unterscheidet Mindestabnahme und Chargenbestand.
+Rohwerte bleiben erhalten; Lieferantenregeln und Kontenzuordnungen werden
+umgebungsbezogen eingerichtet. Die Tabellen sind vollständig im gemeinsamen
+Installationsskript enthalten.
 
 Bekannte MFI-Widersprueche sind ein harter Ausschluss. Der Reader entfernt sie aus den Kandidaten, die App blockiert sie auch bei manueller Artikelsuche ohne uebergehbare Warnung. Die kleine synchronisierte `options/mfi-compatibility.js` validiert nur den einzeln angeklickten Artikel; sie startet keinen Katalogabgleich. Fehlende Messwerte oder Pruefbedingungen werden als ungeprueft gekennzeichnet und erfordern bei manueller Auswahl eine ausdrueckliche Bestaetigung. Bestehende Zuordnungen werden bei Widerspruechen sichtbar markiert und nicht automatisch ersetzt.
 
 Die verifizierten Pilotidentitaeten AKI, NSC und MFR erhalten optionsVlPreview. Ihre VL nutzt GET /vl/entries: Bestands- und Optionspositionen werden gemeinsam vor der Pagination nach der bestehenden aufsteigenden MFI-Regel sortiert. Optionspositionen sind gruen, oeffnen die Optionsdetails und bieten keine Warenkorb-/Reservierungsaktionen. Die Testvorschau zeigt auch abgelaufene Angebote mit entsprechendem Hinweis. Frupack-Gruppen- und Einzelmandantenrechte werden serverseitig geprueft; fremde Optionsdetails sind lesend.
 
-Vor dem Update apps/backend/sql/upgrade_options_matching.sql und apps/backend/sql/add_option_matching_snapshots.sql in der zentralen BMS-Datenbank ausfuehren. Die App liest Vorschlaege, Kategorien und vollstaendige Kandidaten aus BMSApp.tblOptionenAbgleich und BMSApp.tblOptionenArtikelKandidaten. Der OptionReader berechnet diese im Hintergrund einschliesslich Einkaufshistorie. VL, Detailansicht und Kandidatenabfragen starten keinen Artikelabgleich.
+Optionsabgleiche, vollständige Kandidaten, Warteschlange, Lieferantenkonten
+und Reader-Verarbeitung sind Bestandteil des gemeinsamen Installationsschemas.
+Der OptionReader berechnet Vorschläge im Hintergrund einschließlich
+Einkaufshistorie. VL, Detailansicht und Kandidatenabfragen starten keinen
+Artikelabgleich.
 
 Eine manuelle Zuordnung prueft Berechtigung, aktiven Artikel, Eingabestand und Artikel-Fingerabdruck. Gespeicherte technische Widersprueche erfordern Bestaetigung. Die manuelle Artikelsuche bleibt eine einfache SQL-Suche ohne automatische Bewertung; ihre Ergebnisse sind ausdruecklich ungeprueft. Die App speichert die Entscheidung und fordert den Reader ueber BMSApp.tblOptionenAbgleichAuftrag zum Aktualisieren und Pruefen einer Lernregel auf. Sie berechnet diese Regel nicht selbst. Vorschlagsstand und laufende Aktualisierung werden angezeigt; der letzte vollstaendige Stand bleibt bei Workerfehlern verfuegbar. Historische Belege und Bestellanzahlen stehen bei den Kandidaten.
 

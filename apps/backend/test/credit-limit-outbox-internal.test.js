@@ -125,21 +125,15 @@ test('worker still sends bank reminders to internal customers and preserves inso
   assert.equal(deliveries.length, 0);
 });
 
-test('migration permits the worker credit type for new and existing tables, retaining legacy types', () => {
-  const migration = fs.readFileSync(path.join(__dirname, '../sql/add_credit_limit_request.sql'), 'utf8');
-  const checks = [...migration.matchAll(/CHECK \(\[clm_Type\] IN \(([^)]+)\)\)/g)];
-  assert.equal(checks.length, 2);
-  for (const [, types] of checks) {
-    assert.ok(types.includes(`N'${CREDIT_LIMIT_TYPE}'`));
-    assert.ok(types.includes(`N'${BANK_DETAILS_TYPE}'`));
-    assert.ok(types.includes("N'credit_limit_request'"));
-  }
+test('installation schema permits current and retained historical credit-mail types', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '../sql/install_BMSApp.sql'), 'utf8').replaceAll("''", "'");
+  const check=sql.split('\n').find(line=>line.includes('ALTER TABLE [BMSApp].[CreditLimitMailOutbox]') && line.includes('[clm_Type]'));
+  assert.ok(check,'Credit-mail type constraint is installed');
+  for(const type of [CREDIT_LIMIT_TYPE,BANK_DETAILS_TYPE,'credit_limit_request'])assert.ok(check.includes(`N'${type}'`));
 });
 
-test('sender migration adds nullable creator sender columns to existing outboxes', () => {
-  const migration = fs.readFileSync(path.join(__dirname, '../sql/add_credit_limit_mail_sender.sql'), 'utf8');
-  assert.match(migration, /COL_LENGTH\(N'BMSApp\.CreditLimitMailOutbox', N'clm_FromAddress'\) IS NULL/);
-  assert.match(migration, /ADD \[clm_FromAddress\] NVARCHAR\(320\) NULL/);
-  assert.match(migration, /COL_LENGTH\(N'BMSApp\.CreditLimitMailOutbox', N'clm_FromDisplayName'\) IS NULL/);
-  assert.match(migration, /ADD \[clm_FromDisplayName\] NVARCHAR\(255\) NULL/);
+test('installation schema includes nullable creator sender fields', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '../sql/install_BMSApp.sql'), 'utf8');
+  assert.match(sql, /\[clm_FromAddress\] \[nvarchar\]\(320\)[^\n]* NULL/);
+  assert.match(sql, /\[clm_FromDisplayName\] \[nvarchar\]\(255\)[^\n]* NULL/);
 });
