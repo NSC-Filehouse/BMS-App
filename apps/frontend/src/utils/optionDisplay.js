@@ -45,7 +45,7 @@ export function optionQuantity(position, t) {
     return [position.minimumOrderKg!=null ? `Mindestabnahme ${optionNumber(position.minimumOrderKg)} kg` : null,
       position.stockKg!=null ? `Chargenbestand ${optionNumber(position.stockKg)} kg` : null].filter(Boolean).join(' · ');
   }
-  if (/\b(?:trucks?|truckloads?|loads?|lkw|ladungen?)\b/i.test(`${position?.quantityKind || ''} ${position?.quantityUnit || ''}`)) {
+  if (position?.quantityKind!=='minimum-and-stock' && /\b(?:trucks?|truckloads?|loads?|lkw|ladungen?)\b/i.test(`${position?.quantityKind || ''} ${position?.quantityUnit || ''}`)) {
     const min=Number(position.truckMin ?? position.quantityMin) || null;
     const max=Number(position.truckMax ?? position.quantityMax) || min;
     const loadKg=Number(position.truckLoadKg) || 24750;
@@ -54,7 +54,9 @@ export function optionQuantity(position, t) {
       const mass=min && min!==max?`${optionNumber(min*loadKg)}–${optionNumber(max*loadKg)}`:optionNumber(max*loadKg);
       return `${count} LKW (${mass} kg)`;
     }
-    return position.quantityText || 'LKW';
+    if(position.stockKg!=null)return `${optionNumber(position.stockKg)} kg`;
+    if(position.quantityMinKg==null && position.quantityMaxKg==null)
+      return position.confirmedQuantityKg!=null?`${optionNumber(position.confirmedQuantityKg)} kg`:t('option_full_trucks_open_quantity');
   }
   if (position?.quantityMinKg !== null && position?.quantityMinKg !== undefined) {
     const minKg = optionNumber(position.quantityMinKg);

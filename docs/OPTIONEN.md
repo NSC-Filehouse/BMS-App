@@ -4,7 +4,12 @@ Die Optionsansichten kennzeichnen den Anbieter mit „Anbieter“.
 In den Details stehen Beschriftung und Wert auch auf schmalen Ansichten nebeneinander.
 Mail- und PDF-Symbole stehen klein direkt am Anbieternamen. Ein eindeutig belegter
 Ansprechpartner steht darunter ohne eigene Beschriftung; eine vorhandene Telefon-
-oder Mobilnummer ist über das Telefonsymbol per `tel:` erreichbar. Ohne Person
+oder Mobilnummer ist über das Telefonsymbol per `tel:` erreichbar. Fehlt die
+Nummer im Angebot, wird sie vom eindeutig zugeordneten BMS-Ansprechpartner im
+aktiven Mandanten ergänzt (Telefon, ersatzweise Privattelefon oder Mobilnummer).
+Die Zuordnung bleibt auf passende Lieferantenkonten beschränkt; mehrdeutige
+Kontakte oder widersprüchliche Telefonnummern werden nicht automatisch verwendet.
+Die ursprünglichen Angebotskontakte und BMS-Kontaktdaten bleiben unverändert. Ohne Person
 entfällt die Kontaktzeile vollständig.
 Nach der Gültigkeit folgen Produktname, kleiner Artikelname und Preis, darunter
 Incoterm/Abholort, Verpackung, Menge, MFI und optionale Charge sowie weitere Angaben.
@@ -13,6 +18,9 @@ dem Produkt entfällt. „Bestellen“ steht unten rechts neben dem hellen, zun�
 funktionslosen Button „Gegenangebot“. Ungeklärte Verpackung heißt „ungeklärt“.
 Truck-Mengen erscheinen etwa als „1–2 LKW (24.750–49.500 kg)“; bei ungeklärter
 Verpackung gilt zunächst Sackware mit 24.750 kg je LKW als Berechnungsstandard.
+Steht nur „full truck loads“ ohne Anzahl und ohne belegte Gesamtmenge in der
+Quelle, zeigt die App „Volle LKW · Gesamtmenge offen“. Daraus wird keine
+Lieferanten-Gesamtmenge abgeleitet.
 „Incoterms 2020“ wird in der kompakten Lieferbedingung ausgeblendet; die gespeicherte
 Angabe und angebotene Alternativen bleiben erhalten. Die Blöcke „Verladung/Hinweise“
 und „Prüf- und Importhinweise“ werden weder im Angebotskopf noch an den Positionen

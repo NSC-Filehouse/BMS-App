@@ -27,12 +27,12 @@ test('detail contacts expose only one named source person and optional phone, wi
  }
  sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth',telefon:'+44 123 456',evidence:'private source'}]});
  let offer=(await loadOffers(null))[0];
- assert.deepEqual(offer.contact,{name:'Stuart Forsyth',phone:'+44 123 456'});
+ assert.deepEqual(offer.contact,{name:'Stuart Forsyth',email:'',phone:'+44 123 456'});
  assert.equal('sourceContactsJson' in offer,false);
- sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth',mobil:'+44 987 654'}]});
- assert.equal((await loadOffers(null))[0].contact.phone,'+44 987 654');
+ sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth',email:'STUART@example.test',telefon:' ',mobil:'+44 987 654'}]});
+ assert.deepEqual((await loadOffers(null))[0].contact,{name:'Stuart Forsyth',email:'stuart@example.test',phone:'+44 987 654'});
  sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth'}]});
- assert.deepEqual((await loadOffers(null))[0].contact,{name:'Stuart Forsyth',phone:''});
+ assert.deepEqual((await loadOffers(null))[0].contact,{name:'Stuart Forsyth',email:'',phone:''});
 });
 test('shared pool returns different sources with canonical suppliers and applies status/date filters to both reads', async () => {
   const offers = await loadOffers(null, { optionId: 1 });

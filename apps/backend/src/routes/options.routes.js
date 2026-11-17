@@ -5,6 +5,7 @@ const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { loadOffers, berlinDate } = require('../options/read');
+const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
@@ -25,7 +26,8 @@ router.get('/options',requireMandant,requirePilotFeature('options'),asyncHandler
 router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const offers=await loadOffers(null,{optionId:positiveId(req.params.id)});
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- sendEnvelope(res,{data:{...offers[0],readOnly:Number(offers[0].sourceMandantId)!==Number(req.database.firmaId)},
+ const offer=await enrichOptionContactPhone(req.database,offers[0]);
+ sendEnvelope(res,{data:{...offer,readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
 router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
@@ -33,7 +35,8 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const offer=offers[0],positionId=positiveId(req.params.positionId);
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- sendEnvelope(res,{data:{...offer,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
+ const detail=await enrichOptionContactPhone(req.database,offer);
+ sendEnvelope(res,{data:{...detail,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
 router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const source=await loadOptionSource(positiveId(req.params.id),'mail');

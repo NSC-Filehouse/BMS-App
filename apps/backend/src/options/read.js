@@ -9,13 +9,13 @@ const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase
 const {createPackagingDisplay}=require('./packaging-display');
 const {checkMfi}=require('./mfi-compatibility');
 const {checkMaterial}=require('./material-facts');
-const {personName}=require('./supplier-contacts');
+const {personName,emailOf}=require('./supplier-contacts');
 function sourceSupplierContact(source) {
   let stored;try{stored=typeof source==='string'?JSON.parse(source):source;}catch{}
   const candidates=Array.isArray(stored?.candidates)?stored.candidates.filter(c=>c && personName(c.name) && !c.automated):[];
   if(candidates.length!==1)return null;
   const contact=candidates[0];
-  return {name:contact.name,phone:String(contact.telefon || contact.mobil || '').trim()};
+  return {name:contact.name,email:emailOf(contact.email),phone:String(contact.telefon || '').trim() || String(contact.mobil || '').trim()};
 }
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })

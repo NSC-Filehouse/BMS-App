@@ -27,6 +27,16 @@ test('truck quantities use compact LKW labels with a bags mass default and respe
  assert.equal(optionQuantity({quantityMinKg:10000,quantityMaxKg:20000},key=>key),'10.000–20.000 kg');
  assert.equal(optionPackagingText({normalization:{provenance:{packaging:{source:'history'}}}}),'ungeklärt');
 });
+
+test('full trucks without a quoted count show an open total rather than an invented quantity',()=>{
+ const source={quantityKind:'truckloads',quantityUnit:'truckload',quantityText:'full truck loads'};
+ const t=key=>key==='option_full_trucks_open_quantity'?'Volle LKW · Gesamtmenge offen':key;
+ assert.equal(optionQuantity(source,t),'Volle LKW · Gesamtmenge offen');
+ assert.equal(optionQuantity({...source,quantityText:''},t),'Volle LKW · Gesamtmenge offen');
+ assert.equal(optionQuantity({...source,quantityMaxKg:49500},t),'49.500 kg');
+ assert.equal(optionQuantity({...source,confirmedQuantityKg:24750},t),'24.750 kg');
+ assert.equal(optionQuantity({...source,stockKg:30000},t),'30.000 kg');
+});
 test('mail images resolve only stored safe CID images while external requests remain blocked',()=>{
  const html=optionMailDocument('<img src="cid:IMAGE%40mail"><img src="https://example.test/tracker">','html',[{cid:'image@mail',mime:'image/png',data:'AA=='}]);
  assert.match(html,/src="data:image\/png;base64,AA=="/);assert.match(html,/img-src data:/);
