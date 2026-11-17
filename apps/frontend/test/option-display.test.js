@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {optionDeliveryTerm,optionPackagingText,optionPackaging,optionPackagingLayout,optionArticleBlocked,optionArticleUnverified,optionPositionTitle,optionCategory,optionPositionPath} from '../src/utils/optionDisplay.js';
+import {optionDeliveryTerm,optionPackagingText,optionPackaging,optionPackagingLayout,optionArticleBlocked,optionArticleUnverified,optionPositionTitle,optionCategory,optionPositionPath,optionMfi,optionQuantity} from '../src/utils/optionDisplay.js';
 import {optionMailDocument} from '../src/utils/optionSource.js';
 
 test('titles include the prepared MFI once with spaces and categories use BMS names',()=>{
@@ -9,6 +9,23 @@ test('titles include the prepared MFI once with spaces and categories use BMS na
  assert.equal(optionPositionTitle({articleName:'PPH 3000 OG',mfi:null}),'PPH 3000 OG');
  assert.equal(optionCategory({materialCategory:'PPCP'}),'PP Copo');
  assert.equal(optionPositionPath(621,1895),'/options/621/positions/1895');
+});
+
+test('MFI methods follow the value in parentheses and missing methods leave no placeholder',()=>{
+ assert.equal(optionMfi({mfi:8,mfiTestCondition:'230 °C / 2,16 kg'}),'8 (230 °C / 2,16 kg)');
+ assert.equal(optionMfi({mfi:8,mfiTo:10}),'8–10');
+ assert.equal(optionMfi({mfi:null,mfiTestCondition:'230 °C'}),'');
+ assert.equal(optionPositionTitle({articleName:'PPCP',mfi:8,mfiTestCondition:'230 °C / 2,16 kg'}),'PPCP MFI 8 (230 °C / 2,16 kg)');
+});
+
+test('truck quantities use compact LKW labels with a bags mass default and respect recognized loading weights',()=>{
+ const source={quantityKind:'truckloads',quantityUnit:'truckload',truckMin:1,truckMax:2};
+ assert.equal(optionQuantity(source,key=>key),'1–2 LKW (24.750–49.500 kg)');
+ assert.equal(optionQuantity({...source,truckMin:1,truckMax:1},key=>key),'1 LKW (24.750 kg)');
+ assert.equal(optionQuantity({...source,truckLoadKg:25000},key=>key),'1–2 LKW (25.000–50.000 kg)');
+ assert.equal(optionQuantity({...source,quantityMinKg:25000,quantityMaxKg:50000},key=>key),'1–2 LKW (24.750–49.500 kg)');
+ assert.equal(optionQuantity({quantityMinKg:10000,quantityMaxKg:20000},key=>key),'10.000–20.000 kg');
+ assert.equal(optionPackagingText({normalization:{provenance:{packaging:{source:'history'}}}}),'ungeklärt');
 });
 test('mail images resolve only stored safe CID images while external requests remain blocked',()=>{
  const html=optionMailDocument('<img src="cid:IMAGE%40mail"><img src="https://example.test/tracker">','html',[{cid:'image@mail',mime:'image/png',data:'AA=='}]);

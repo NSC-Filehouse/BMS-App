@@ -26,7 +26,7 @@ export function optionPositionTitle(position) {
   if(position?.mfi==null)return name;
   // The displayed measurement comes from the prepared source, never a grade number.
   const withoutMfi=name.replace(/\b(?:MFI|MFR)\s*[:=]?\s*\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?/gi,'').replace(/\s+/g,' ').trim();
-  return `${withoutMfi} MFI ${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi?`–${optionNumber(position.mfiTo)}`:''}`.trim();
+  return `${withoutMfi} MFI ${optionMfi(position)}`.trim();
 }
 
 export function optionCategory(position) {
@@ -44,6 +44,17 @@ export function optionQuantity(position, t) {
   if(position?.quantityKind==='minimum-and-stock' && (position.minimumOrderKg!=null || position.stockKg!=null)) {
     return [position.minimumOrderKg!=null ? `Mindestabnahme ${optionNumber(position.minimumOrderKg)} kg` : null,
       position.stockKg!=null ? `Chargenbestand ${optionNumber(position.stockKg)} kg` : null].filter(Boolean).join(' · ');
+  }
+  if (/\b(?:trucks?|truckloads?|loads?|lkw|ladungen?)\b/i.test(`${position?.quantityKind || ''} ${position?.quantityUnit || ''}`)) {
+    const min=Number(position.truckMin ?? position.quantityMin) || null;
+    const max=Number(position.truckMax ?? position.quantityMax) || min;
+    const loadKg=Number(position.truckLoadKg) || 24750;
+    if(max>0) {
+      const count=min && min!==max?`${optionNumber(min)}–${optionNumber(max)}`:optionNumber(max);
+      const mass=min && min!==max?`${optionNumber(min*loadKg)}–${optionNumber(max*loadKg)}`:optionNumber(max*loadKg);
+      return `${count} LKW (${mass} kg)`;
+    }
+    return position.quantityText || 'LKW';
   }
   if (position?.quantityMinKg !== null && position?.quantityMinKg !== undefined) {
     const minKg = optionNumber(position.quantityMinKg);
@@ -66,8 +77,9 @@ export function optionQuantity(position, t) {
 
 export function optionPackagingText(source, lang = 'de') {
   const provenance=source?.normalization?.provenance?.packaging?.source;
-  if(provenance && provenance!=='original' && source?.positionPackaging!=='Mehrere Verpackungsarten')return lang==='en'?'Clarify packaging':'Verpackungsart klären';
-  return source?.packagingDisplay?.[lang === 'en' ? 'en' : 'de'] || source?.positionPackaging || source?.packagingText || '';
+  if(provenance && provenance!=='original' && source?.positionPackaging!=='Mehrere Verpackungsarten')return lang==='en'?'Unresolved':'ungeklärt';
+  const value=source?.packagingDisplay?.[lang === 'en' ? 'en' : 'de'] || source?.positionPackaging || source?.packagingText || '';
+  return /^(?:Verpackungsart klären|Clarify packaging)$/i.test(value)?(lang==='en'?'Unresolved':'ungeklärt'):value;
 }
 
 export function optionPackaging(position, lang = 'de') {

@@ -178,9 +178,9 @@ test('material conflicts cannot be acknowledged away during purchase validation'
     {articleIndex:'A',acknowledgeUnverifiedMfi:true}),error=>error.details.code==='ARTICLE_MATERIAL_EXCLUDED');
 });
 
-test('current target article is rechecked and missing MFI requires explicit acknowledgement',async()=>{
+test('current target article is rechecked; incomplete facts need no extra acknowledgement but contradictions still block',async()=>{
   const f=fixture();
-  await assert.rejects(f.validateOptionArticle({},f.source,{articleIndex:'A'}),e=>e.details.code==='ARTICLE_MFI_UNVERIFIED');
+  assert.ok(await f.validateOptionArticle({},f.source,{articleIndex:'A'}));
   assert.ok(await f.validateOptionArticle({},f.source,{articleIndex:'A',acknowledgeUnverifiedMfi:true}));
   await assert.rejects(f.validateOptionArticle({},{...f.source,mfi:10},{articleIndex:'A',acknowledgeUnverifiedMfi:true}),e=>e.details.code==='ARTICLE_MFI_EXCLUDED');
   await assert.rejects(f.validateOptionArticle({},f.source,{articleIndex:'INVALID'}),e=>e.details.code==='OPTION_ARTICLE_NOT_FOUND');

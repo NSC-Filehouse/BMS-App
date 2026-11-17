@@ -164,7 +164,6 @@ async function validateOptionArticle(database, position, line) {
   const material=checkMaterial(position,article);
   if(material.blocked)throw createHttpError(422,`Artikel passt nicht zur Option: ${material.reasons.join('; ')}`,{code:'ARTICLE_MATERIAL_EXCLUDED'});
   if (mfi.blocked) throw createHttpError(422, `Artikel passt technisch nicht zur Option: ${mfi.reasons.join('; ')}`, { code: 'ARTICLE_MFI_EXCLUDED' });
-  if ((!mfi.complete || !material.complete) && line.acknowledgeUnverifiedMfi !== true) throw createHttpError(422, 'Bitte die wegen fehlender Angaben ungeprüfte Artikelzuordnung bestätigen.', { code: 'ARTICLE_MFI_UNVERIFIED' });
   return article;
 }
 

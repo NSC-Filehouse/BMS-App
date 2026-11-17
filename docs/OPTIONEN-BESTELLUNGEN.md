@@ -8,14 +8,21 @@ zulässiger Artikelvorschlag wird vorbelegt. Eine zusätzliche Lieferanten-Best�
 entfällt; die Übernahme in den Bestellwarenkorb bestätigt die aktuelle Auswahl.
 Eine abweichende Lieferantenauswahl
 und die manuelle Artikelsuche bleiben möglich. Technische MFI-Widersprüche sperren
-den Artikel; fehlende Prüfbedingungen erfordern eine ausdrückliche Bestätigung.
+den Artikel. Fehlende Materialangaben oder Prüfbedingungen verlangen keine
+zusätzliche Bestätigungsbox; die Übernahme bestätigt die gewählte Artikelzuordnung.
 Die Auswahl ändert keine gemeinsame Optionszuordnung und erzeugt keine Lernregel.
 Der Dialog zeigt Lieferant, Artikel, Verpackungsart und Mengenangaben von Beginn
 an. Die Artikelsuche wird über die Lupe geöffnet. Genau ein widerspruchsfreier
-Artikelkandidat wird vorausgewählt, auch wenn unvollständige Quellenangaben noch
-eine Bestätigung verlangen. Bei mehreren oder keinen Kandidaten bleibt die Auswahl
+Artikelkandidat wird vorausgewählt, auch bei unvollständigen Quellenangaben.
+Bei mehreren oder keinen Kandidaten bleibt die Auswahl
 leer. Die Artikelbezeichnung enthält keine angehängte interne Artikelkennung.
 Bei fehlenden Vorschlägen erscheint der Hinweis auf die Artikelsuche.
+Lieferant und Artikel verwenden eine kleinere Schrift in Auswahl und Trefferliste.
+Die Bestellmenge ist stets sichtbar und startet mit der maximal verfügbaren
+Restmenge; der Benutzer kann sie reduzieren. Die Auswahl übernimmt genau diese
+Menge in den Warenkorb. Die API prüft positive Mengen auf Gramm genau gegen die
+für die gewählte Verpackung verfügbare Restmenge; Speichern und Übergabe prüfen
+weiterhin unter Sperre gegen konkurrierende Bestellungen.
 Bei einem anderen Lieferanten im bestehenden Warenkorb führt die Fehlermeldung
 über "Zum Bestellwarenkorb" direkt dorthin. Der Rückweg führt zur Optionsseite und
 zur betroffenen Position; der Bestelldialog wird nicht automatisch wieder geöffnet.
@@ -46,7 +53,7 @@ Die zentrale Tabelle `BMSApp.tbl_Temp_Best_Position` erhält:
 | --- | --- | --- |
 | `OptionID` | `INT NULL` | `NULL`: normale Bestellung; sonst `BMSApp.tblOptionen.op_id` |
 | `OptionPositionID` | `INT NULL` | Konkrete `BMSApp.tblOptionenPositionen.opp_id` innerhalb dieser Option |
-| `tbp_option_mfi_acknowledged` | `BIT NOT NULL` | Technische Einzelbestätigung bei unvollständiger MFI-Prüfung |
+| `tbp_option_mfi_acknowledged` | `BIT NOT NULL` | Historische Einzelbestätigung; im Bestellweg nicht mehr erforderlich |
 
 Die beiden IDs sind gemeinsam gesetzt oder gemeinsam `NULL`. Fremdschlüssel
 prüfen auch ihre Zusammengehörigkeit. Es gibt kein zusätzliches Windows-Userfeld.
@@ -92,18 +99,18 @@ Konkrete Truck-Anzahlen werden automatisch berechnet. Eine eindeutig erkannte
 Verpackungsart wird vorausgewählt: über die normierte Verpackungs-ID oder eine
 eindeutige Bezeichnung aus der Bestellauswahlliste. Reine Vermutungen und Angaben
 wie "Sackware / Big Bags / Octabins" gelten nicht als eindeutige Verpackungsart.
-Fehlende, vermutete oder nicht zuordenbare Verpackung lässt die Auswahl offen.
-"Verpackungsart klären" verlangt eine ausdrückliche Auswahl, auch bei einer festen
-kg-Menge. Es gibt keinen Silo-Rückfallwert und keine Vorbelegung aus Einkaufshistorie
-oder typischem Ladegewicht. Siloware ergibt nach Auswahl 25.000 kg je Truck.
+Fehlende, vermutete oder nicht zuordenbare Verpackung wird im Bestelldialog mit
+Sackware vorbelegt. Originale und bereits bestätigte Verpackungen haben Vorrang.
+Die Angebotsansicht zeigt die ursprüngliche Verpackung weiterhin als „ungeklärt“;
+die Vorbelegung verändert keine Quelldaten. Siloware ergibt nach Auswahl 25.000 kg je Truck.
 Bei Sackware und anderen Verpackungsarten gelten
 24.750 kg je Truck. Eine Spanne 1–2 Trucks verwendet die Obergrenze 2. Der Dialog
 zeigt direkt die kg-Gesamtmenge, ohne Einheitenauswahl und ohne zusätzliche
 Mengenbestätigung. Bereits belegte kleinere kg-/Chargenmengen begrenzen weiterhin
 das Angebot. Frühere manuelle Truck-Bestätigungen ändern diese feste Regel nicht.
 Liste und Detailansicht berechnen ihre verfügbare Menge anhand der erkannten
-Verpackung und ziehen gespeicherte Bestellungen ab. Bei mehrdeutiger Verpackung
-ohne belegte kg-Menge wird kein pauschaler Silo-Bestand angezeigt. Im Bestellweg
+Verpackung und ziehen gespeicherte Bestellungen ab. Bei ungeklärter Verpackung
+rechnen sie zunächst mit 24.750 kg Sackware je LKW. Im Bestellweg
 bleibt die ausdrücklich gewählte Verpackungsart für die Mengenprüfung maßgeblich.
 
 Steht in der Quelle nur "full truck loads" ohne Anzahl, bleibt die Anzahl offen.

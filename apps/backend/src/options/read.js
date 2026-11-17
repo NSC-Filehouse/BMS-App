@@ -9,6 +9,14 @@ const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase
 const {createPackagingDisplay}=require('./packaging-display');
 const {checkMfi}=require('./mfi-compatibility');
 const {checkMaterial}=require('./material-facts');
+const {personName}=require('./supplier-contacts');
+function sourceSupplierContact(source) {
+  let stored;try{stored=typeof source==='string'?JSON.parse(source):source;}catch{}
+  const candidates=Array.isArray(stored?.candidates)?stored.candidates.filter(c=>c && personName(c.name) && !c.automated):[];
+  if(candidates.length!==1)return null;
+  const contact=candidates[0];
+  return {name:contact.name,phone:String(contact.telefon || contact.mobil || '').trim()};
+}
 function berlinDate() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).map(part => [part.type, part.value]));
@@ -46,10 +54,9 @@ function mapPosition(row,today) {
   const normalizedTruckLoad=Number(position.normalization?.maxTruckLoadKg);
   const packaging=String(position.positionPackaging || position.normalization?.packaging || '').trim();
   const truckLoadKg=position.normalization?.provenance?.packaging?.source==='original' && [24750,25000].includes(normalizedTruckLoad)?normalizedTruckLoad:
-    position.normalization?.provenance?.packaging?.source==='original' && Number(position.packagingTypeId)>0 && packaging?purchaseTruckLoadKg(packaging):null;
+    position.normalization?.provenance?.packaging?.source==='original' && Number(position.packagingTypeId)>0 && packaging?purchaseTruckLoadKg(packaging):24750;
   position.truckLoadKg=offeredTruckCount(position)!=null?truckLoadKg:null;
-  // The list/detail quantity describes the recognized packaging. Purchase
-  // allocation still checks the packaging explicitly selected for that order.
+  // Unknown packaging starts with bags; order allocation uses the chosen package.
   Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0),truckLoadKg));
   return position;
 }
@@ -64,7 +71,7 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
     o.op_GueltigBis AS validUntil, o.op_QuellGueltigBis AS sourceValidUntil, o.op_IstDemo AS isDemo,
     o.op_Incoterm AS incoterm, o.op_Ladeort AS loadingLocation, o.op_Verpackung AS packagingText,
     o.op_Konditionen AS termsText, o.op_Kommentar AS comment, o.op_Nachverhandelbar AS negotiable,
-    o.op_NachverhandelbarQuelle AS negotiableEvidence,
+    o.op_NachverhandelbarQuelle AS negotiableEvidence,o.op_AnbieterKontaktJson AS sourceContactsJson,
     CASE WHEN DATALENGTH(o.op_QuelleMailtext)>0 THEN 1 ELSE 0 END AS hasSourceMail,
     CASE WHEN DATALENGTH(o.op_QuelleDatei)>0 THEN 1 ELSE 0 END AS hasSourceFile,
     o.op_QuelleDateiname AS sourceFileName,o.op_QuelleDateiMime AS sourceFileMime
@@ -118,7 +125,8 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
       AND p.opp_GeloeschtAm IS NULL AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);
   const packagingDisplay = createPackagingDisplay(await loadPurchasePackagingOptions());
-  const byId = new Map(heads.map(row => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
+  const byId = new Map(heads.map(({sourceContactsJson,...row}) => [Number(row.id), { ...row, id: Number(row.id), sourceMandantId: Number(row.sourceMandantId),
+    contact:sourceSupplierContact(sourceContactsJson),
     packagingDisplay: packagingDisplay(row.packagingText),
     supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));

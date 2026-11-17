@@ -59,6 +59,20 @@ test('selection returns confirmed target data and preserves offer price and manu
   assert.equal(data.header.loadingLocationSource,'manual');assert.equal(data.header.deliveryTermId,1);
   assert.equal('windowsUser' in data.position,false);
 });
+
+test('selection defaults to the remaining maximum and accepts only positive available gram-precise partial amounts',async()=>{
+ remainingKg=20000;
+ assert.equal((await(await select(choice())).json()).data.position.amount,20000);
+ assert.equal((await(await select({...choice(),amount:'12500.001'})).json()).data.position.amount,12500.001);
+ for(const amount of [null,'',0,-1,20000.001,0.0001,'bad']) {
+  const response=await select({...choice(),amount});
+  assert.equal(response.status,422,String(amount));
+  assert.equal((await response.json()).error.code,'OPTION_QUANTITY_EXCEEDED');
+ }
+ truckOffer=true;remainingKg=50000;
+ assert.equal((await(await select({...choice(),amount:30000})).json()).data.position.amount,30000);
+ assert.equal((await select({...choice(),amount:49500.001})).status,422);
+});
 test('source contact exact email wins over ranking and is carried to the order header',async()=>{
  source.sourceContactsJson=JSON.stringify({candidates:[{email:'source@borealisgroup.com',name:'Source Contact'}]});
  try{
@@ -101,10 +115,10 @@ test('truck selection calculates kg from source count and packaging without a ma
   assert.equal(response.meta.sourcePackagingTypeId,78);assert.equal(response.meta.sourcePackagingSource,'original');assert.equal(response.meta.sourcePackagingEvidence,'25kg bags');
   assert.equal((await select({...choice(),packagingTypeId:null})).status,422);
   const bags=await(await select({...choice(),packagingTypeId:78})).json();
-  assert.equal(bags.data.position.offeredKg,49500);assert.equal(bags.data.position.remainingKg,49500);assert.equal(bags.data.position.amount,24750);
+  assert.equal(bags.data.position.offeredKg,49500);assert.equal(bags.data.position.remainingKg,49500);assert.equal(bags.data.position.amount,49500);
   const chosen=await(await select({...choice(),packagingTypeId:79})).json();
   assert.equal(chosen.data.header.packagingTypeId,79);assert.equal(chosen.data.header.packagingType,'Siloware');
-  assert.equal(chosen.data.position.originalPackagingType,'Sackware');assert.equal(chosen.data.position.amount,25000);
+  assert.equal(chosen.data.position.originalPackagingType,'Sackware');assert.equal(chosen.data.position.amount,50000);
   assert.equal(chosen.data.position.optionPackagingTypeId,79);
   assert.equal(chosen.data.position.offeredKg,50000);assert.equal(quantityRequests.length,0);
   remainingKg=250;

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 let calls = [];
 let positions;
+let sourceContactsJson;
 require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryAccess:async()=>{throw new Error('Unexpected ERP query');},
   runSQLQuerySqlServer: async (database, sql, params) => {
@@ -9,14 +10,30 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     assert.equal((sql.match(/\?/g) || []).length, params.length);
     if (sql.includes('tblSprachenTexte')) return [{id:78,de:'Sackware',en:'Bags'},{id:79,de:'Siloware',en:'Silo/bulk'}];
     if (sql.includes('AS sourceMandantId')) return [
-      { id: 1, sourceMandantId: 3, supplierName: 'Total Petrochemicals & Refining SA/NV', packagingText:'Bags and / or Bulk' },
+      { id: 1, sourceMandantId: 3, supplierName: 'Total Petrochemicals & Refining SA/NV', packagingText:'Bags and / or Bulk',sourceContactsJson },
       { id: 2, sourceMandantId: 19, supplierName: 'TotalEnergies' },
     ];
     return positions;
   },
 } };
 const { loadOffers } = require('../src/options/read');
-test.beforeEach(() => { calls = [];positions=[{ id: 10, optionId: 1 }, { id: 20, optionId: 2 }]; });
+test.beforeEach(() => { calls = [];sourceContactsJson=null;positions=[{ id: 10, optionId: 1 }, { id: 20, optionId: 2 }]; });
+
+test('detail contacts expose only one named source person and optional phone, without raw source evidence',async()=>{
+ for(const source of [null,'invalid',JSON.stringify({candidates:[]}),JSON.stringify({candidates:[{email:'sales@example.test'}]}),
+  JSON.stringify({candidates:[{name:'Stuart Forsyth'},{name:'Other Person'}]})]) {
+  sourceContactsJson=source;
+  assert.equal((await loadOffers(null))[0].contact,null);
+ }
+ sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth',telefon:'+44 123 456',evidence:'private source'}]});
+ let offer=(await loadOffers(null))[0];
+ assert.deepEqual(offer.contact,{name:'Stuart Forsyth',phone:'+44 123 456'});
+ assert.equal('sourceContactsJson' in offer,false);
+ sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth',mobil:'+44 987 654'}]});
+ assert.equal((await loadOffers(null))[0].contact.phone,'+44 987 654');
+ sourceContactsJson=JSON.stringify({candidates:[{name:'Stuart Forsyth'}]});
+ assert.deepEqual((await loadOffers(null))[0].contact,{name:'Stuart Forsyth',phone:''});
+});
 test('shared pool returns different sources with canonical suppliers and applies status/date filters to both reads', async () => {
   const offers = await loadOffers(null, { optionId: 1 });
   assert.deepEqual(offers.map(offer => offer.sourceMandantId), [3, 19]);
@@ -70,9 +87,9 @@ test('list and detail availability follow recognized truck packaging and subtrac
     assert.equal(position.remainingKg,expected);assert.equal(position.truckLoadKg,weight);
   }
   positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1,positionPackaging:'Sackware / Big Bags / Octabins'}];
-  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,null);
+  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,24750);
   positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1}];
-  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,null);
+  assert.equal((await loadOffers(null))[0].positions[0].remainingKg,24750);
   positions=[{id:10,optionId:1,quantityKind:'truckloads',truckMax:1,positionPackaging:'Octa',packagingTypeId:81,normalizationJson:JSON.stringify({provenance:{packaging:{source:'original'}}})}];
   assert.equal((await loadOffers(null))[0].positions[0].remainingKg,24750);
 });

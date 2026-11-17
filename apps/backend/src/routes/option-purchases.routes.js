@@ -76,6 +76,10 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     if(availability.remainingKg<=0)throw createHttpError(422,'Diese Optionsposition ist für die gewählte Verpackung bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   }
   const deliveryTerm = choices.incoterms.find(row => row.text.trim().toLowerCase()===String(source.incoterm || '').trim().toLowerCase());
+  const amount=Object.hasOwn(req.body,'amount')?Number(req.body.amount):availability.remainingKg;
+  if(!Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*1000))
+    || Math.abs(amount*1000-Math.round(amount*1000))>0.00001 || amount>availability.remainingKg)
+    throw createHttpError(422,'Bitte eine gültige Bestellmenge bis zur verfügbaren Restmenge eingeben.',{code:'OPTION_QUANTITY_EXCEEDED',remainingKg:availability.remainingKg});
   const price = source.opp_PreisProTonne;
   sendEnvelope(res,{data:{
     header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '',
@@ -85,7 +89,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     position:{optionId:Number(source.opp_op_id),optionPositionId:Number(source.opp_id),
       supplierId:supplier.id,supplierName:supplier.name,articleIndex:article.articleIndex,
       article:source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName,masterArticleName:article.articleName,
-      amount:Math.min(availability.remainingKg,isTruckOffer(source)?purchaseTruckLoadKg(chosenPackaging.text):Number(source.opp_MengeVonKg)||availability.remainingKg),
+      amount,
       optionPackagingTypeId:chosenPackaging.id,
       purchasePrice:price==null || optionPriceNeedsReview(price)?'':Number(price),
       originalPackagingType:source.opp_Verpackung || source.packagingText || '',originalPackagingTypeId:source.opp_Verpackungsart_id,

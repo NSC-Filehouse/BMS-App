@@ -10,8 +10,8 @@ export function defaultOptionPackagingId(meta) {
     const matches=choices.filter(row=>[row.text,...(row.aliases || [])].some(value=>key(value) && key(value)===key(meta.sourcePackaging)));
     if(matches.length===1)return matches[0].id;
   }
-  // An absent, guessed or ambiguous packaging never supplies a default.
-  return '';
+  // The order starts with bags when the source does not identify one package.
+  return choices.find(row=>[row.text,...(row.aliases || [])].some(value=>/^(?:Sackware|Bags)$/i.test(String(value).trim())))?.id || '';
 }
 
 export function truckOptionAvailability(meta,packaging) {

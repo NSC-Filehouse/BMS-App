@@ -1,7 +1,18 @@
 # Optionen und Forecast
 
-Die Optionsansichten kennzeichnen den Anbieter ausdrücklich mit „Option kommt von“.
+Die Optionsansichten kennzeichnen den Anbieter mit „Anbieter“.
 In den Details stehen Beschriftung und Wert auch auf schmalen Ansichten nebeneinander.
+Mail- und PDF-Symbole stehen klein direkt am Anbieternamen. Ein eindeutig belegter
+Ansprechpartner steht darunter ohne eigene Beschriftung; eine vorhandene Telefon-
+oder Mobilnummer ist über das Telefonsymbol per `tel:` erreichbar. Ohne Person
+entfällt die Kontaktzeile vollständig.
+Nach der Gültigkeit folgen Produktname, kleiner Artikelname und Preis, darunter
+Incoterm/Abholort, Verpackung, Menge, MFI und optionale Charge sowie weitere Angaben.
+Die Prüfmethode steht ohne Präfix in Klammern hinter dem MFI. Der Trennstrich vor
+dem Produkt entfällt. „Bestellen“ steht unten rechts neben dem hellen, zunächst
+funktionslosen Button „Gegenangebot“. Ungeklärte Verpackung heißt „ungeklärt“.
+Truck-Mengen erscheinen etwa als „1–2 LKW (24.750–49.500 kg)“; bei ungeklärter
+Verpackung gilt zunächst Sackware mit 24.750 kg je LKW als Berechnungsstandard.
 „Incoterms 2020“ wird in der kompakten Lieferbedingung ausgeblendet; die gespeicherte
 Angabe und angebotene Alternativen bleiben erhalten. Die Blöcke „Verladung/Hinweise“
 und „Prüf- und Importhinweise“ werden weder im Angebotskopf noch an den Positionen
@@ -16,10 +27,10 @@ wird „BAGS“ zu „Sackware“ und „Bags and / or Bulk“ zu „Sackware un
 angebotene Alternativen bleiben erhalten. Die Übersetzung wählt keine Verpackung
 aus und verändert weder Originalangaben noch Berechnungen oder gespeicherte Daten.
 
-„Mail anzeigen“ öffnet den gespeicherten Mailtext in einer isolierten Ansicht
+Das Mail-Symbol öffnet den gespeicherten Mailtext in einer isolierten Ansicht
 ohne Skripte oder externe Ressourcen. Referenzierte Inline-Grafiken werden vom
 OptionReader in `op_QuelleMailbilderJson` gesichert und als lokale Bilddaten angezeigt.
-„PDF öffnen“ zeigt das unveränderte Original mit PDF.js innerhalb der App, einschließlich
+Das PDF-Symbol zeigt das unveränderte Original mit PDF.js innerhalb der App, einschließlich
 XFA-Formularen. Nur wenn Abruf, Einlesen oder Darstellung des Originals scheitern,
 wird die erzeugte lesbare Vorschau geladen und ausdrücklich als Ersatzansicht bezeichnet.
 Bei fehlender Berechtigung wird keine Ersatzdatei angefordert.

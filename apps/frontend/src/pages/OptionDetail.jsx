@@ -1,7 +1,8 @@
 import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PhoneIcon from '@mui/icons-material/Phone';
 import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
 import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -9,13 +10,13 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
   return <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)', alignItems: 'start', columnGap: 1.5, py: 0.7, minWidth: 0 }}>
     <Typography variant="body2" color="text.secondary">{label}</Typography>
-    <Typography variant="body2" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{value}</Typography>
+    <Typography component="div" variant="body2" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{value}</Typography>
   </Box>;
 }
 
@@ -90,28 +91,34 @@ export default function OptionDetail() {
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
     {!loading && !error && offer && <Card sx={{ mb: 1.5 }}><CardContent>
-        <InfoRow label={t('option_from')} value={offer.supplierName} />
-        <OptionSourceDocuments key={offer.id} offer={offer} />
+        <InfoRow label={t('option_from')} value={<>
+          <Box component="span" sx={{display:'inline-flex',alignItems:'center',maxWidth:'100%'}}><Box component="span" sx={{minWidth:0}}>{offer.supplierName}</Box><OptionSourceDocuments key={offer.id} offer={offer} /></Box>
+          {offer.contact?.name && <Box sx={{display:'flex',alignItems:'center',gap:0.5}}>
+            <span>{offer.contact.name}</span>
+            {offer.contact.phone && <Tooltip title={offer.contact.phone}><IconButton component="a" href={`tel:${offer.contact.phone.replace(/[^+\d*#]/g,'')}`} size="small" color="primary" aria-label={`${t('phone_label')}: ${offer.contact.name}`}><PhoneIcon fontSize="small" /></IconButton></Tooltip>}
+          </Box>}
+        </>} />
         {offer.isDemo && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_demo_notice')}</Alert>}
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
-        <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
-        <InfoRow label={t('option_packaging')} value={packaging.common || 'Verpackungsart klären'} />
-      {offer.positions?.map((position) => <Box id={`position-${position.id}`} key={position.id} sx={{ pt: 1.5, mt: 1.5, borderTop:'1px solid',borderColor:'divider',scrollMarginTop: 80 }}>
+      {offer.positions?.map((position) => <Box id={`position-${position.id}`} key={position.id} sx={{ pt: 1, scrollMarginTop: 80 }}>
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
         <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>{optionPositionTitle(position)}</Typography>
         {position.singleCandidateName && <Typography variant="caption" color="text.secondary">{position.singleCandidateName}</Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
-        <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0} sx={{mb:1}}>Bestellen</Button>
-        <InfoRow label={t('option_quantity')} value={position.confirmedQuantityKg!=null?`${optionNumber(position.confirmedQuantityKg)} kg`:optionQuantity(position, t)} />
+        <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
+        <InfoRow label={t('option_packaging')} value={packaging.positions[position.id] || packaging.common || (lang==='en'?'Unresolved':'ungeklärt')} />
+        <InfoRow label={t('option_quantity')} value={position.confirmedQuantityKg!=null && !position.truckMax && !position.truckMin?`${optionNumber(position.confirmedQuantityKg)} kg`:optionQuantity(position, t)} />
         {position.orderedKg>0 && <InfoRow label="Noch verfügbar" value={`${optionNumber(position.remainingKg)} kg`} />}
-        <InfoRow label={t('option_packaging')} value={packaging.positions[position.id]} />
+        <InfoRow label={t('option_mfi')} value={optionMfi(position)} />
         <InfoRow label={t('option_batch')} value={position.batchNo} />
-        <InfoRow label={t('option_mfi')} value={position.mfi==null?null:`${optionNumber(position.mfi)}${position.mfiTo!=null && position.mfiTo!==position.mfi?`–${optionNumber(position.mfiTo)}`:''}`} />
-        <InfoRow label={lang==='en'?'Test method':'Messmethode'} value={position.mfiTestCondition} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
         {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && <Alert severity="warning">Die bisherige Artikelzuordnung muss geprüft werden. Bitte beim Bestellen einen passenden Artikel wählen.</Alert>}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
+        <Box sx={{display:'flex',justifyContent:'flex-end',gap:1,mt:2}}>
+          <Button variant="contained" disabled sx={{'&.Mui-disabled':{bgcolor:'grey.100',color:'text.secondary'}}}>Gegenangebot</Button>
+          <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0}>Bestellen</Button>
+        </Box>
       </Box>)}
     </CardContent></Card>}
     <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
