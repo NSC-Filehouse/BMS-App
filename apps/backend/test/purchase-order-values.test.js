@@ -7,6 +7,7 @@ const { commonLoadingLocations, findPackaging, packagingKey } = require('../src/
 test('supplier purchase names and internal names stay separate through defaults and legacy draft enrichment', async () => {
   const mod = { exports: {} }, calls = [];
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-values.js'), 'utf8'))((name) => {
+    if (name === './packaging-types') return require('../src/db/packaging-types');
     if (name === '../config') return {};
     return { runSQLQueryAccess: async (_database, sql, params) => {
       calls.push({ sql, params });
@@ -71,6 +72,7 @@ test('historical loading-place lookup reads both pickup fields across all orders
       { articleIndex: '04634', loadingLocationText: 'Weiteres Werk' }];
   };
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-values.js'), 'utf8'))((name) => {
+    if (name === './packaging-types') return require('../src/db/packaging-types');
     if (name === '../config') return {};
     assert.equal(name, './access');
     return { runSQLQueryAccess: query };

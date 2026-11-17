@@ -13,12 +13,13 @@ import { apiRequest } from '../api/client.js';
 import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
-const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('.') : '–';
-const priceText = (value) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
+const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00Z`).toLocaleDateString(lang === 'en' ? 'en-GB' : 'de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : '–';
+const priceText = (value, locale) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
 export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false }) {
   const { lang, t } = useI18n();
+  const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const [order, setOrder] = React.useState(initialOrder);
   const [options, setOptions] = React.useState({ packagingTypes: [], incoterms: [] });
   const [locations, setLocations] = React.useState([]);
@@ -142,7 +143,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     {restoredFilesMissing && <Alert severity="info">{t('temp_order_draft_attachment_hint')}</Alert>}
     {error && <Alert severity="error">{error}</Alert>}
     {locationError && <Alert severity="error">{locationError}</Alert>}
-    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">Für diesen Lieferanten ist kein bisheriger Ladeort gespeichert. Bitte einen neuen Ladeort eingeben.</Alert>}
+    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">{t('purchase_no_loading_history')}</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
         <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{t('temp_order_attachment_label')}</Typography>
@@ -169,20 +170,20 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       </Box>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       <Autocomplete freeSolo forcePopupIcon options={contacts} value={order.supplierContact || null} inputValue={order.supplierContact || ''}
-        disabled={disabled || loading} noOptionsText="Kein Ansprechpartner hinterlegt"
+        disabled={disabled || loading} noOptionsText={t('purchase_no_contact')}
         onChange={(_event,value)=>update({supplierContact:value || ''})}
         onInputChange={(_event,value,reason)=>{if(reason==='input'||reason==='clear')update({supplierContact:value});}}
-        renderInput={params=><TextField {...params} label="Ansprechpartner" size="small" />} />
+        renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
-        <TextField label="Zahlungsziel" size="small" value={order.paymentConditionText || ''} InputProps={{ readOnly: true }} />
+        <TextField label={t('payment_terms_label')} size="small" value={order.paymentConditionText || ''} InputProps={{ readOnly: true }} />
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
-        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>
+        }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.deliveryTermId && !options.incoterms.some(p=>String(p.id)===String(order.deliveryTermId)) &&
-            <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || 'Gespeicherter Incoterm'}</MenuItem>}
+            <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || t('purchase_saved_incoterm')}</MenuItem>}
           {options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label="Ladeort" required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
+        <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label={t('purchase_loading_location')} required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
           sx={{flex:1,minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
           SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,MenuProps:{PaperProps:{sx:{maxHeight:320}}}}}
           onChange={(e) => {
@@ -190,24 +191,24 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           const selected=locationOptions.find(item=>same(item.text,e.target.value));
           update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:selected?.source==='manual'?'manual':'supplier_order_history' });
         }}>
-          <MenuItem value="" disabled>Bitte wählen</MenuItem>
+          <MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.loadingLocationText && !locationOptions.some(p=>p.text===order.loadingLocationText) &&
             <MenuItem value={order.loadingLocationText} disabled><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
           {locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
-        </TextField><IconButton size="small" color="primary" aria-label="Neuen Ladeort hinzufügen" title="Neuen Ladeort hinzufügen" disabled={disabled} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
-        {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?'Adresse ausblenden':'Adresse anzeigen'}</Button>}
+        </TextField><IconButton size="small" color="primary" aria-label={t('purchase_add_loading_location')} title={t('purchase_add_loading_location')} disabled={disabled} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
+        {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?t('purchase_hide_address'):t('purchase_show_address')}</Button>}
         {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
         </Box>
-        <TextField label="Verpackungsart" required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
+        <TextField label={t('packaging_type_label')} required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
             positions: previous.positions.map((p) => isNew && !p.amountTouched && p.optionId==null ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
-        }}><MenuItem value="" disabled>Bitte wählen</MenuItem>
+        }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.packagingTypeId && !options.packagingTypes.some(p=>String(p.id)===String(order.packagingTypeId)) &&
-            <MenuItem value={order.packagingTypeId} disabled>{order.packagingType || 'Gespeicherte Verpackungsart'}</MenuItem>}
+            <MenuItem value={order.packagingTypeId} disabled>{order.packagingType || t('purchase_saved_packaging')}</MenuItem>}
           {options.packagingTypes.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
       </Box>
-      <TextField label="Sonstiges" multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
+      <TextField label={t('wpz_option_other')} multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     <PurchaseOrderSummary positions={order.positions} />
     {order.positions.map((p, index) => {
@@ -216,29 +217,29 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && fieldErrors.articleType ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{p.article}</Typography>
-          <IconButton size="small" color="primary" aria-label="Position kopieren" disabled={disabled} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>
-          <IconButton size="small" color="error" aria-label="Position entfernen" disabled={disabled} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>
+          <IconButton size="small" color="primary" aria-label={t('purchase_copy_position')} disabled={disabled} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>
+          <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>
         </Box>
         {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
-          <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName || last.masterArticleName}</Typography>}
-        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`Artikelindex: ${p.articleIndex} · `:''}Ursprüngliche Verpackung: {p.originalPackagingType || '–'}</Typography>
-        {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option){p.remainingKg!=null?` · Bei Auswahl verfügbar: ${Number(p.remainingKg).toLocaleString('de-DE')} kg`:''}</Typography>}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>{t('purchase_internal_name')}: {p.masterArticleName || last.masterArticleName}</Typography>}
+        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`${t('product_article_index')}: ${p.articleIndex} · `:''}{t('original_packaging_type_label')}: {p.originalPackagingType || '–'}</Typography>
+        {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">{t('purchase_option_title')}{p.remainingKg!=null?` · ${t('purchase_available_at_selection')}: ${Number(p.remainingKg).toLocaleString(locale)} kg`:''}</Typography>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
-          <TextField label="Menge (kg)" required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
-          <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter EK: {priceText(last.lastPurchasePrice)}</Typography>
-            <TextField fullWidth label="EK (€/t)" required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
-          <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Letzter Liefertermin: {formatDate(last.lastDeliveryDate)}</Typography>
-            <TextField fullWidth label="Liefertermin" required type="date" size="small" error={attempted && errors.requestedDeliveryDate} value={String(p.requestedDeliveryDate || '').slice(0, 10)} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
+          <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled} inputProps={{ min: 0.001, step: 0.001 }} />
+          <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
+            <TextField fullWidth label={t('purchase_price_input')} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
+          <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>
+            <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={attempted && errors.requestedDeliveryDate} value={String(p.requestedDeliveryDate || '').slice(0, 10)} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
         </Box>
-        <TextField label="Reserviert für" size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
-        <TextField label="Positionshinweis" size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
+        <TextField label={t('purchase_reserved_for')} size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
+        <TextField label={t('purchase_position_note')} size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
       </CardContent></Card>;
     })}
-    {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? 'Pro Bestellung ist nur eine Artikelart möglich.' : 'Pflichtfelder fehlen.'}</Alert>}
+    {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type') : t('purchase_missing_fields')}</Alert>}
     <PurchaseOrderActions>
-      <Button variant="outlined" onClick={onContinue} disabled={disabled}>Weiter einkaufen</Button>
-      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? 'Speichern erneut prüfen' : isNew ? 'Bestellentwurf speichern' : 'Speichern'}</Button>
-      {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>Löschen</Button>}
+      <Button variant="outlined" onClick={onContinue} disabled={disabled}>{t('cart_continue_shopping')}</Button>
+      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? t('purchase_retry_save') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
+      {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>{t('delete_label')}</Button>}
     </PurchaseOrderActions>
     {newLocationOpen && <LoadingLocationDialog onClose={()=>setNewLocationOpen(false)} onConfirm={text=>{
       setNewLocations(previous=>previous.some(item=>same(item.text,text))?previous:[...previous,{id:`manual:${text}`,text,source:'manual'}]);

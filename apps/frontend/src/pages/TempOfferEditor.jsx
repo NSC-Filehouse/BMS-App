@@ -67,6 +67,8 @@ export default function TempOfferEditor() {
     packagingTypes: [],
     incoterms: [],
   });
+  const [optionsLanguage, setOptionsLanguage] = React.useState(null);
+  const [optionsError, setOptionsError] = React.useState('');
   const [defaults, setDefaults] = React.useState({
     contacts: [],
     deliveryAddresses: [],
@@ -85,6 +87,7 @@ export default function TempOfferEditor() {
   const [draftKey, setDraftKey] = React.useState('');
   React.useEffect(() => {
     let active = true;
+    const requestedLanguage = lang;
     setLoading(true);
     setError('');
     (async () => {
@@ -127,6 +130,7 @@ export default function TempOfferEditor() {
       if (!active) return;
       setForm(next);
       setOptions(opts);
+      setOptionsLanguage(requestedLanguage);
       setDefaults(d);
       setCustomerQuery(next.customerName || '');
       setDirty(false);
@@ -156,6 +160,18 @@ export default function TempOfferEditor() {
       active = false;
     };
   }, [id, copyId, initialCustomer, mandant, navigate]);
+  // Refresh choices independently so a language change never resets the draft.
+  React.useEffect(() => {
+    setOptionsError('');
+    if (!optionsLanguage || optionsLanguage === lang) return;
+    let active = true;
+    apiRequest('/temp-offers/meta').then((response) => {
+      if (!active) return;
+      setOptions(response.data);
+      setOptionsLanguage(lang);
+    }).catch((cause) => { if (active) setOptionsError(cause.message); });
+    return () => { active = false; };
+  }, [lang, optionsLanguage, mandant]);
   React.useEffect(() => {
     let active = true;
     const q = customerQuery.trim();
@@ -497,6 +513,7 @@ export default function TempOfferEditor() {
           <TextField
             select
             label={t('packaging_type_label')}
+            disabled={optionsLanguage !== lang}
             value={form.packagingId || ''}
             onChange={(e) => {
               const p = options.packagingTypes.find(
@@ -515,6 +532,7 @@ export default function TempOfferEditor() {
               </MenuItem>
             ))}
           </TextField>
+          {optionsError && <Alert severity="error">{optionsError}</Alert>}
           {isFca || form.deliveryAddressManual ? (
             <TextField
               label={t(

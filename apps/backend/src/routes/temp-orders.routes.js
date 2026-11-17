@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const config = require('../config');
+const { loadPackagingTypes } = require('../db/packaging-types');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
@@ -202,33 +203,6 @@ function mapRepresentativeName(row) {
 
 function normalizePackagingText(value) {
   return asText(value).toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
-}
-
-async function loadPackagingTypes(lang) {
-  const safeLang = String(lang || 'de').toLowerCase() === 'en' ? 'en' : 'de';
-  const sql = `
-    SELECT
-      [spT_ID] AS id,
-      [spT_SortKey] AS sortKey,
-      CASE
-        WHEN ? = 'en' AND NULLIF(LTRIM(RTRIM([spT_en])), N'') IS NOT NULL
-          THEN LTRIM(RTRIM([spT_en]))
-        ELSE LTRIM(RTRIM([spT_de]))
-      END AS text
-    FROM ${PACKAGING_TEXT_TABLE}
-    WHERE [spT_GruppenID] = 1
-      AND LTRIM(RTRIM(COALESCE([spT_Ort], N''))) = N'BE, AB'
-      AND NULLIF(LTRIM(RTRIM(COALESCE([spT_de], N''))), N'') IS NOT NULL
-    ORDER BY [spT_SortKey] ASC, [spT_ID] ASC
-  `;
-  const rows = await runSQLQuerySqlServer(config.sql.database, sql, [safeLang]);
-  return (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      id: Number(row.id),
-      sortKey: Number(row.sortKey),
-      text: asText(row.text),
-    }))
-    .filter((row) => Number.isInteger(row.id) && row.id > 0 && row.text);
 }
 
 async function loadPackagingTypeById(packagingTypeId, lang) {
@@ -1318,7 +1292,7 @@ router.get('/temp-orders/payment-texts', requireMandant, asyncHandler(async (req
   });
 }));
 
-router.get('/temp-orders/packaging-types', requireMandant, asyncHandler(async (req, res) => {
+router.get(['/packaging-types', '/temp-orders/packaging-types'], requireMandant, asyncHandler(async (req, res) => {
   const lang = resolveLang(req);
   const data = await loadPackagingTypes(lang);
   sendEnvelope(res, {

@@ -1,5 +1,5 @@
-const config = require('../config');
-const { runSQLQueryAccess, runSQLQuerySqlServer } = require('./access');
+const { runSQLQueryAccess } = require('./access');
+const { loadPackagingTypes } = require('./packaging-types');
 
 const text = (value) => String(value ?? '').trim();
 const normalized = (value) => text(value).toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
@@ -29,12 +29,8 @@ async function loadPurchaseOptions(database, lang = 'de') {
 }
 
 async function loadPurchasePackagingOptions(lang='de') {
-  const rows=await runSQLQuerySqlServer(config.sql.database,`SELECT [spT_ID] AS id,[spT_de] AS de,[spT_en] AS en
-    FROM [dbo].[tblSprachenTexte]
-    WHERE [spT_GruppenID]=1 AND LTRIM(RTRIM(COALESCE([spT_Ort],N'')))=N'BE, AB'
-      AND NULLIF(LTRIM(RTRIM([spT_de])),N'') IS NOT NULL ORDER BY [spT_SortKey],[spT_ID]`,[]);
-  return rows.map(row=>({id:Number(row.id),text:text(lang==='en'?row.en || row.de:row.de),
-    key:packagingKey(row.de),aliases:[text(row.de),text(row.en)].filter(Boolean)}));
+  const rows = await loadPackagingTypes(lang);
+  return rows.map(row => ({ ...row, key: packagingKey(row.aliases[0]) }));
 }
 
 function purchaseTruckLoadKg(packaging) {
