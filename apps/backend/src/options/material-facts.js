@@ -8,14 +8,14 @@ const plain = value => String(value ?? '').normalize('NFKC').replace(/<[^>]*>/g,
   .replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/&quot;/gi,'"')
   .replace(/\s+/g,' ').trim();
 const normalize = value => plain(value).toLocaleLowerCase('de-DE');
-function quality(value) {
+function quality(value, conflictValue='unknown') {
   const input=plain(value);
-  const nt=/\b(?:NTP|NT|OG|off[\s-]*grade|near[\s-]*(?:to[\s-]*)?prime|non[\s-]*prime)\b/i;
+  const nt=/\b(?:NTP|NT|OG|off[\s-]*(?:grade|spec)|near[\s-]*(?:to[\s-]*)?prime|non[\s-]*prime)\b/i;
   const prime=/\b(?:prime|1A)\b/i;
   // Explicit business rule: material described as "ex Sabic" is NT. A loading
   // place (ex Feluy) or another producer after ex does not establish quality.
   const exSabic=/\bex[\s:–-]+sabic\b/i;
-  if(nt.test(input) || exSabic.test(input))return prime.test(input.replace(new RegExp(nt.source,'gi'),''))?'unknown':'NT';
+  if(nt.test(input) || exSabic.test(input))return prime.test(input.replace(new RegExp(nt.source,'gi'),''))?conflictValue:'NT';
   return prime.test(input)?'1A':'unknown';
 }
 function additives(value, article=false) {
@@ -39,7 +39,7 @@ function parsed(value) {try{return typeof value==='string'?JSON.parse(value):val
 function deriveMaterialFacts(position, sourceText=null) {
   const local=[position.productName || position.articleName,position.quality,position.propertiesText].filter(Boolean).join(' ');
   const source=normalize(sourceText);
-  const derived={quality:quality(local),additives:additives(local),color:color(local)};
+  const derived={quality:quality(local,'conflict'),additives:additives(local),color:color(local)};
   const supplied=position.materialFacts || parsed(position.sourceMeasurementsJson).materialFacts;
   const result={version:VERSION};
   for(const name of Object.keys(VALUES)) {
@@ -53,7 +53,7 @@ function deriveMaterialFacts(position, sourceText=null) {
     const valid=VALUES[name].includes(fact?.value) && fact.value!=='unknown' && evidence
       && detector(evidence)===fact.value
       && (sourceText!=null ? source.includes(normalize(evidence)) : supplied?.version===VERSION && fact.verified===true);
-    const conflict=valid && derived[name]!=='unknown' && derived[name]!==fact.value;
+    const conflict=derived[name]==='conflict' || (valid && derived[name]!=='unknown' && derived[name]!==fact.value);
     const known=conflict?'unknown':valid?fact.value:derived[name];
     // An AI assertion must be source-backed. Legacy position text remains a
     // traceable fallback; unrelated mail rows are never parsed as local facts.
@@ -62,7 +62,7 @@ function deriveMaterialFacts(position, sourceText=null) {
     const localEvidence=known==='unknown'?'':plain(candidates.find(value=>detector(value)===known
       && (sourceText==null || source.includes(normalize(value)))) || '').slice(0,1000);
     const localVerified=Boolean(localEvidence) && (sourceText==null || source.includes(normalize(localEvidence)));
-    result[name]={value:known,evidence:conflict?evidence:valid?evidence:localEvidence || null,
+    result[name]={value:known,evidence:valid?evidence:localEvidence || null,
       verified:!conflict && (valid || localVerified),source:conflict?'conflict':name==='quality' && /\bex[\s:–-]+sabic\b/i.test(valid?evidence:localEvidence)?'business-rule-ex-sabic':valid?'source-evidence':'position-text'};
     if(sourceText!=null && !result[name].verified)result[name].value='unknown';
   }

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('../src/options/purchase-quantity');
 
-function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
+function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={}}={}) {
   const calls=[];
   const source={opp_id:10,opp_op_id:1,opp_MengeVonKg:10000,opp_MengeBisKg:25000,sourceMandantId:3,
     supplierName:'Borealis',supplierKey:'borealis',...sourceOverride};
@@ -24,7 +24,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={}}={}) {
       ];
     }},'../db/app-tables':{appTableSql:key=>key},'../utils':require('../src/utils'),
     './read':{berlinDate:()=> '2026-11-12'},'./supplier-identity':require('../src/options/supplier-identity'),
-    './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg'}:null,
+    './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg',...articleOverride}:null,
       candidatesFor:async(database,position,options)=>({data:[],database,position,options})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),
     './material-facts':require('../src/options/material-facts'),
@@ -176,6 +176,17 @@ test('material conflicts cannot be acknowledged away during purchase validation'
   const f=fixture();
   await assert.rejects(f.validateOptionArticle({}, {...f.source,articleName:'LDPE NTP ex SABIC',quality:'NTP'},
     {articleIndex:'A',acknowledgeUnverifiedMfi:true}),error=>error.details.code==='ARTICLE_MATERIAL_EXCLUDED');
+});
+
+test('purchase validation treats an offspec catalog article as NT', async () => {
+  const f = fixture({articleOverride:{articleName:'LDPE Offspec MFI 1-4'}});
+  const position = {...f.source,articleName:'LDPE',quality:'Offgrade',mfi:2};
+  const line = {articleIndex:'A'};
+  assert.ok(await f.validateOptionArticle({},position,line));
+  await assert.rejects(f.validateOptionArticle({},{...position,quality:'1A'},line),
+    error => error.details.code==='ARTICLE_MATERIAL_EXCLUDED');
+  await assert.rejects(f.validateOptionArticle({},{...position,mfi:5},line),
+    error => error.details.code==='ARTICLE_MFI_EXCLUDED');
 });
 
 test('current target article is rechecked; incomplete facts need no extra acknowledgement but contradictions still block',async()=>{
