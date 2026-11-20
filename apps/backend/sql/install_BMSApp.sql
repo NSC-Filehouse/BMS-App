@@ -1,7 +1,7 @@
 /* BMS-App: complete schema installation, baseline 2026-11-17.
    Execute this ONE file in the selected central BMS database (SSMS or sqlcmd -d).
    Source: current BMSApp schema inspected with Windows integrated authentication.
-   Includes OptionReader tables and the contact-creation operation contract.
+   Includes OptionReader tables, contact-creation and option-offer tables.
    Does not create ERP databases, accounts, test offers, supplier mappings or business data.
    Existing tables/data are retained. Incompatible columns abort the whole transaction.
    This is an installation baseline, not an upgrade of arbitrary historical versions.
@@ -1052,6 +1052,59 @@ BEGIN TRY
 );');
  END;
 
+ IF OBJECT_ID(N'BMSApp.OptionOfferMailOutbox',N'U') IS NULL
+ BEGIN
+  EXEC(N'CREATE TABLE [BMSApp].[OptionOfferMailOutbox] (
+    [Id] [bigint] IDENTITY(1,1) NOT NULL,
+    [CompanyId] [int] NOT NULL,
+    [OptionPositionId] [int] NOT NULL,
+    [CustomerNumber] [nvarchar](10) COLLATE Latin1_General_CI_AS NOT NULL,
+    [ArticleIndex] [nvarchar](50) COLLATE Latin1_General_CI_AS NOT NULL,
+    [ContactId] [int] NOT NULL,
+    [ContactName] [nvarchar](200) COLLATE Latin1_General_CI_AS NOT NULL,
+    [RecipientEmail] [nvarchar](320) COLLATE Latin1_General_CI_AS NOT NULL,
+    [SenderCode] [nvarchar](3) COLLATE Latin1_General_CI_AS NOT NULL,
+    [SenderName] [nvarchar](200) COLLATE Latin1_General_CI_AS NOT NULL,
+    [SenderEmail] [nvarchar](320) COLLATE Latin1_General_CI_AS NOT NULL,
+    [SalePricePerTonne] [decimal](19,4) NOT NULL,
+    [Currency] [char](3) COLLATE Latin1_General_CI_AS NOT NULL,
+    [IncotermId] [int] NOT NULL,
+    [IncotermText] [nvarchar](250) COLLATE Latin1_General_CI_AS NOT NULL,
+    [Status] [nvarchar](20) COLLATE Latin1_General_CI_AS NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_Status] DEFAULT (N''pending''),
+    [MailServiceId] [nvarchar](100) COLLATE Latin1_General_CI_AS NULL,
+    [SentAt] [datetime2](7) NULL,
+    [AttemptCount] [int] NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_AttemptCount] DEFAULT ((0)),
+    [NextAttemptAt] [datetime2](7) NULL,
+    [LockedAt] [datetime2](7) NULL,
+    [LastError] [nvarchar](2000) COLLATE Latin1_General_CI_AS NULL,
+    [CreatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_CreatedAt] DEFAULT (sysutcdatetime()),
+    [UpdatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_UpdatedAt] DEFAULT (sysutcdatetime()),
+    CONSTRAINT [PK_OptionOfferMailOutbox] PRIMARY KEY CLUSTERED ([Id] ASC),
+    CONSTRAINT [UQ_OptionOfferMailOutbox_Customer] UNIQUE NONCLUSTERED ([CompanyId] ASC, [OptionPositionId] ASC, [CustomerNumber] ASC)
+);');
+ END;
+
+ IF OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet',N'U') IS NULL
+ BEGIN
+  EXEC(N'CREATE TABLE [BMSApp].[tbl_Temp_Aktivitaet] (
+    [Id] [bigint] IDENTITY(1,1) NOT NULL,
+    [OptionOfferMailId] [bigint] NOT NULL,
+    [CompanyId] [int] NOT NULL,
+    [CustomerNumber] [nvarchar](10) COLLATE Latin1_General_CI_AS NOT NULL,
+    [ActivityDate] [datetime2](7) NOT NULL,
+    [EmployeeCode] [nvarchar](3) COLLATE Latin1_General_CI_AS NOT NULL,
+    [Description] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NOT NULL,
+    [Status] [nvarchar](20) COLLATE Latin1_General_CI_AS NOT NULL CONSTRAINT [DF_tbl_Temp_Aktivitaet_Status] DEFAULT (N''pending''),
+    [BmsActivityId] [int] NULL,
+    [ImportedAt] [datetime2](7) NULL,
+    [LastError] [nvarchar](2000) COLLATE Latin1_General_CI_AS NULL,
+    [CreatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_tbl_Temp_Aktivitaet_CreatedAt] DEFAULT (sysutcdatetime()),
+    [UpdatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_tbl_Temp_Aktivitaet_UpdatedAt] DEFAULT (sysutcdatetime()),
+    CONSTRAINT [PK_tbl_Temp_Aktivitaet] PRIMARY KEY CLUSTERED ([Id] ASC),
+    CONSTRAINT [UQ_tbl_Temp_Aktivitaet_OptionOfferMail] UNIQUE NONCLUSTERED ([OptionOfferMailId] ASC)
+);');
+ END;
+
  IF OBJECT_ID(N'BMSApp.ContactCreationOperation',N'U') IS NULL
  BEGIN
   EXEC(N'CREATE TABLE [BMSApp].[ContactCreationOperation] (
@@ -1795,6 +1848,43 @@ BEGIN TRY
 {"table":"VlSalePushState","column":"vps_SentAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"VlSalePushState","column":"vps_CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"VlSalePushState","column":"vps_UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"Id","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"CompanyId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"OptionPositionId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"CustomerNumber","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"ArticleIndex","type":"nvarchar","length":100,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"ContactId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"ContactName","type":"nvarchar","length":400,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"RecipientEmail","type":"nvarchar","length":640,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"SenderCode","type":"nvarchar","length":6,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"SenderName","type":"nvarchar","length":400,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"SenderEmail","type":"nvarchar","length":640,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"SalePricePerTonne","type":"decimal","length":9,"precision":19,"scale":4,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"Currency","type":"char","length":3,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"IncotermId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"IncotermText","type":"nvarchar","length":500,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"Status","type":"nvarchar","length":40,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"MailServiceId","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"SentAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"AttemptCount","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"NextAttemptAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"LockedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"LastError","type":"nvarchar","length":4000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"Id","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"OptionOfferMailId","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"CompanyId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"CustomerNumber","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Aktivitaet","column":"ActivityDate","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"EmployeeCode","type":"nvarchar","length":6,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Aktivitaet","column":"Description","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Aktivitaet","column":"Status","type":"nvarchar","length":40,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Aktivitaet","column":"BmsActivityId","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"ImportedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"LastError","type":"nvarchar","length":4000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Aktivitaet","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Aktivitaet","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"OperationId","type":"uniqueidentifier","length":16,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"UserId","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"ContactCreationOperation","column":"Mandant","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
@@ -1915,6 +2005,10 @@ BEGIN TRY
   EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UX_VlMailUserSetting_UserEmail] ON [BMSApp].[VlMailUserSetting] ([vms_UserEmail] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.VlSalePushState') AND name=N'IX_VlSalePushState_Pending')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_VlSalePushState_Pending] ON [BMSApp].[VlSalePushState] ([vps_Status] ASC, [vps_NextAttemptAt] ASC, [vps_ID] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'IX_OptionOfferMailOutbox_Status')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_OptionOfferMailOutbox_Status] ON [BMSApp].[OptionOfferMailOutbox] ([Status] ASC, [NextAttemptAt] ASC, [Id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'IX_tbl_Temp_Aktivitaet_Status')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Aktivitaet_Status] ON [BMSApp].[tbl_Temp_Aktivitaet] ([Status] ASC, [Id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'IX_ContactCreationOperation_Scope')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_ContactCreationOperation_Scope] ON [BMSApp].[ContactCreationOperation] ([UserId] ASC, [Mandant] ASC, [CustomerNumber] ASC, [CreatedAt] DESC);');
 
@@ -1999,6 +2093,16 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[VlMailOutbox] WITH CHECK ADD CONSTRAINT [CK_VlMailOutbox_Status] CHECK ([vmo_Status]=N''skipped'' OR [vmo_Status]=N''failed'' OR [vmo_Status]=N''sent'' OR [vmo_Status]=N''sending'' OR [vmo_Status]=N''pending'');');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.VlSalePushState') AND name=N'CK_VlSalePushState_Status')
   EXEC(N'ALTER TABLE [BMSApp].[VlSalePushState] WITH CHECK ADD CONSTRAINT [CK_VlSalePushState_Status] CHECK ([vps_Status]=N''skipped'' OR [vps_Status]=N''failed'' OR [vps_Status]=N''sent'' OR [vps_Status]=N''sending'' OR [vps_Status]=N''pending'');');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'CK_OptionOfferMailOutbox_Status')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [CK_OptionOfferMailOutbox_Status] CHECK ([Status] IN (N''pending'', N''sending'', N''submitted'', N''sent'', N''failed'', N''unknown''));');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'CK_OptionOfferMailOutbox_SentAt')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [CK_OptionOfferMailOutbox_SentAt] CHECK ([Status] <> N''sent'' OR [SentAt] IS NOT NULL);');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'CK_OptionOfferMailOutbox_SalePrice')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [CK_OptionOfferMailOutbox_SalePrice] CHECK ([SalePricePerTonne] >= 0);');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'CK_tbl_Temp_Aktivitaet_Status')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [CK_tbl_Temp_Aktivitaet_Status] CHECK ([Status] IN (N''pending'', N''importing'', N''imported'', N''failed''));');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'CK_tbl_Temp_Aktivitaet_Imported')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [CK_tbl_Temp_Aktivitaet_Imported] CHECK ([Status] <> N''imported'' OR ([BmsActivityId] IS NOT NULL AND [ImportedAt] IS NOT NULL));');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_InputJson')
   EXEC(N'ALTER TABLE [BMSApp].[ContactCreationOperation] WITH CHECK ADD CONSTRAINT [CK_ContactCreationOperation_InputJson] CHECK (ISJSON([InputJson])=1);');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_RequestJson')
@@ -2051,9 +2155,13 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[VlMailOutbox] WITH CHECK ADD CONSTRAINT [FK_VlMailOutbox_TempOrder] FOREIGN KEY ([vmo_OrderID]) REFERENCES [BMSApp].[tbl_Temp_Auftrag] ([ta_id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.VlSalePushState') AND name=N'FK_VlSalePushState_TempOrder')
   EXEC(N'ALTER TABLE [BMSApp].[VlSalePushState] WITH CHECK ADD CONSTRAINT [FK_VlSalePushState_TempOrder] FOREIGN KEY ([vps_OrderID]) REFERENCES [BMSApp].[tbl_Temp_Auftrag] ([ta_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'FK_OptionOfferMailOutbox_OptionPositionId')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [FK_OptionOfferMailOutbox_OptionPositionId] FOREIGN KEY ([OptionPositionId]) REFERENCES [BMSApp].[tblOptionenPositionen] ([opp_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'FK_tbl_Temp_Aktivitaet_OptionOfferMailId')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Aktivitaet_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
 
  COMMIT TRANSACTION;
- SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,42 AS expectedTables,N'installed' AS result;
+ SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,44 AS expectedTables,N'installed' AS result;
 END TRY
 BEGIN CATCH
  IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;

@@ -4,7 +4,7 @@
 
 Die vollständige aktuelle Tabellenstruktur steht ausschließlich in
 [`apps/backend/sql/install_BMSApp.sql`](../apps/backend/sql/install_BMSApp.sql).
-Das Skript legt 42 Tabellen mit Schlüsseln, Standardwerten, Prüfbedingungen,
+Das Skript legt 44 Tabellen mit Schlüsseln, Standardwerten, Prüfbedingungen,
 Indizes und Fremdschlüsseln an. Enthalten sind Angebote, Aufträge, Bestellungen,
 Anhänge, Kunden-/Kontakt-/Adressvorgänge, Mail-/Push-Zustände und alle Options-
 und OptionReader-Tabellen. Auch die zuvor fehlenden CREATE-Definitionen für
@@ -14,7 +14,8 @@ Die vollständige Liste mit Name, Zweck und noch fehlenden Tabellen steht in
 
 Die Baseline vom 17.11.2026 wurde gegen die aktuelle BMSApp-Struktur mit
 Windows-Anmeldung geprüft: 41 vorhandene Tabellen, 718 Spalten, 108 Indizes und
-21 Fremdschlüssel. `ContactCreationOperation` ergänzt den aktuellen Codevertrag.
+21 Fremdschlüssel. `ContactCreationOperation`, `OptionOfferMailOutbox` und
+`tbl_Temp_Aktivitaet` ergänzen das Installationsschema.
 Test-Replay-Tabellen, Demo-Angebote und standortspezifische Lieferantenkonten,
 Regeln, Zugangsdaten oder Geschäftsdaten gehören nicht zur Installation.
 

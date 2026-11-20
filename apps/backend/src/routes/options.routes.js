@@ -7,6 +7,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require(
 const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
+const { loadOptionOfferCustomers } = require('../options/customer-offers');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
@@ -37,6 +38,15 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  const detail=await enrichOptionContactPhone(req.database,offer);
  sendEnvelope(res,{data:{...detail,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
+}));
+router.get('/options/:id/positions/:positionId/offer-customers', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
+ const optionId = positiveId(req.params.id);
+ const positionId = positiveId(req.params.positionId);
+ const [offer] = await loadOffers(null, { optionId, includeMatchInputs: true });
+ const position = offer?.positions.find(row => row.id === positionId);
+ if (!position) throw createHttpError(404, 'Optionsposition nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
+ res.set('Cache-Control', 'private, no-store');
+ sendEnvelope(res, { data: await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position), meta: { mandant: req.mandant } });
 }));
 router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const source=await loadOptionSource(positiveId(req.params.id),'mail');

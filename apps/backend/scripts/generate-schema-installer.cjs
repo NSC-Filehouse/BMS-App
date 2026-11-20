@@ -5,6 +5,7 @@ const input=argument('--input');
 if(!input){console.error('Usage: node generate-schema-installer.cjs --input schema.json [--output install_BMSApp.sql]');process.exit(1);}
 const output=argument('--output') || path.resolve(__dirname,'../sql/install_BMSApp.sql');
 const schema=JSON.parse(fs.readFileSync(input,'utf8').replace(/^\uFEFF/,''));
+require('./option-offer-schema.cjs')(schema);
 const missingContact=!schema.tables.some(t=>t.name==='ContactCreationOperation');
 const quote=value=>'['+String(value).replaceAll(']',']]')+']';
 const literal=value=>"N'"+String(value).replaceAll("'","''")+"'";
@@ -25,7 +26,7 @@ function keyColumns(index){return columns(index).filter(c=>!c.is_included_column
 let sql=`/* BMS-App: complete schema installation, baseline 2026-11-17.
    Execute this ONE file in the selected central BMS database (SSMS or sqlcmd -d).
    Source: current BMSApp schema inspected with Windows integrated authentication.
-   Includes OptionReader tables and the contact-creation operation contract.
+   Includes OptionReader tables, contact-creation and option-offer tables.
    Does not create ERP databases, accounts, test offers, supplier mappings or business data.
    Existing tables/data are retained. Incompatible columns abort the whole transaction.
    This is an installation baseline, not an upgrade of arbitrary historical versions.

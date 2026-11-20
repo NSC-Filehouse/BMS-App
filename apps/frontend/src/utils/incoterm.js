@@ -2,6 +2,19 @@ export function isFcaIncoterm(value) {
   return /^FCA(?:$|[^A-Z])/i.test(String(value || '').trim());
 }
 
+export function findHistoricalIncoterm(value, options) {
+  const normalize = text => String(text || '').trim().toUpperCase();
+  const historical = normalize(value);
+  if (!historical) return null;
+  const exact = options.filter(option => normalize(option.text) === historical);
+  if (exact.length) return exact.length === 1 ? exact[0] : null;
+  const codeOf = text => normalize(text).match(/^([A-Z]{3})(?:$|[\s/\-])/)?.[1];
+  const code = codeOf(historical);
+  if (!code) return null;
+  const matches = options.filter(option => codeOf(option.text) === code);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 const emptyAddress = () => ({ deliveryAddress: '', deliveryAddressId: '', deliveryAddressManual: false, deliveryAddressNewlyCreated: false });
 const addressFields = (form) => ({
   deliveryAddress: form.deliveryAddress || '',

@@ -24,7 +24,7 @@ function berlinDate() {
 }
 function dateOnly(value) { return value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : null; }
 const numeric = value => value == null ? null : Number(value);
-function mapPosition(row,today) {
+function mapPosition(row,today,includeMatchInputs) {
   const position = {...row};
   for (const key of ['quantityMin', 'quantityMax', 'price', 'mfi', 'density', 'quantityMinKg', 'quantityMaxKg', 'pricePerTonne', 'c2',
     'minimumOrderKg','stockKg','truckMin','truckMax','bagWeightKg','palletWeightKg','mfiTo','confirmedQuantityKg']) position[key] = numeric(position[key]);
@@ -49,8 +49,9 @@ function mapPosition(row,today) {
   position.matchStatus = row.matchStatus || 'unmatched';
   const single=row.singleCandidateJson?JSON.parse(row.singleCandidateJson):null;
   position.singleCandidateName=single && !checkMfi(position,single).blocked && !checkMaterial(position,single).blocked?single.articleName:null;
+  if (includeMatchInputs) position.singleCandidateIndex = position.singleCandidateName ? single.articleIndex : null;
   delete position.singleCandidateJson;
-  delete position.sourceMeasurementsJson;
+  if (!includeMatchInputs) delete position.sourceMeasurementsJson;
   const normalizedTruckLoad=Number(position.normalization?.maxTruckLoadKg);
   const packaging=String(position.positionPackaging || position.normalization?.packaging || '').trim();
   const truckLoadKg=position.normalization?.provenance?.packaging?.source==='original' && [24750,25000].includes(normalizedTruckLoad)?normalizedTruckLoad:
@@ -60,7 +61,7 @@ function mapPosition(row,today) {
   Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0),truckLoadKg));
   return position;
 }
-async function loadOffers(companyIds = [], { optionId = null } = {}) {
+async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs = false } = {}) {
   if (companyIds && !companyIds.length) return [];
   // null selects the shared pool; arrays retain explicit source filtering.
   const today = berlinDate();
@@ -130,7 +131,7 @@ async function loadOffers(companyIds = [], { optionId = null } = {}) {
     packagingDisplay: packagingDisplay(row.packagingText),
     supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
     isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
-  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push({ ...mapPosition(row,today), packagingDisplay: packagingDisplay(row.positionPackaging) }));
+  positions.forEach(row => byId.get(Number(row.optionId))?.positions.push({ ...mapPosition(row,today,includeMatchInputs), packagingDisplay: packagingDisplay(row.positionPackaging) }));
   return [...byId.values()].filter(offer => offer.positions.length);
 }
 module.exports = { loadOffers, berlinDate, dateOnly };

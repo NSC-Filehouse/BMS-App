@@ -137,6 +137,20 @@ async function supplierCandidates(database, position, { q = '', preferredSupplie
   return candidates.map(row=>({...row,preferred:selected?same(row.id,selected.id):row.preferred}));
 }
 
+async function exactNameCandidates(database, position, names, { page = 1, pageSize = 30, all = false } = {}) {
+  const namesJson = JSON.stringify(names);
+  const rows = await runSQLQueryAccess(database, `${articleSelect()}
+    AND (a.agA_Artikelname IN(SELECT [value] FROM OPENJSON(?)) OR a.agA_Artikelname_Lieferant IN(SELECT [value] FROM OPENJSON(?)))
+    ORDER BY a.agA_Artikelname,a.agA_Artikelindex${all ? '' : ' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,
+  [namesJson, namesJson, ...(all ? [] : [(page - 1) * pageSize, pageSize])]);
+  return rows.map(article => ({
+    ...article,
+    mfiCheck: checkMfi(position, article),
+    materialCheck: checkMaterial(position, article),
+    reason: 'Passender Produktname im aktiven Mandanten',
+  })).filter(article => !article.materialCheck.blocked);
+}
+
 async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30,all=false } = {}) {
   const input = { ...position,id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
     candidateCount:position.candidateCount,matchVersion:position.matchVersion,matchCalculatedAt:position.matchCalculatedAt,
@@ -148,12 +162,7 @@ async function purchaseCandidates(database, position, { q = '', page = 1, pageSi
   // Exact product identities in the active catalog are safe suggestions; further
   // target articles are available through the existing manual search.
   const names = [position.opp_Artikelname_Lieferant, position.opp_Artikelname].map(text).filter(Boolean);
-  const rows = await runSQLQueryAccess(database, `${articleSelect()}
-    AND (a.agA_Artikelname IN(SELECT [value] FROM OPENJSON(?)) OR a.agA_Artikelname_Lieferant IN(SELECT [value] FROM OPENJSON(?)))
-    ORDER BY a.agA_Artikelname,a.agA_Artikelindex${all?'':' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY'}`,
-  [JSON.stringify(names),JSON.stringify(names),...(all?[]:[(page-1)*pageSize,pageSize])]);
-  const data=rows.map(article => ({ ...article, mfiCheck: checkMfi(input, article),materialCheck:checkMaterial(input,article),reason: 'Passender Produktname im aktiven Mandanten' }))
-    .filter(article=>!article.materialCheck.blocked);
+  const data = await exactNameCandidates(database, input, names, { page, pageSize, all });
   return { data,total:data.length };
 }
 
@@ -201,4 +210,4 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null,pa
   }
 }
 
-module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,validateOptionArticle,validateOptionSupplier,assertOptionQuantities };
+module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,exactNameCandidates,validateOptionArticle,validateOptionSupplier,assertOptionQuantities };

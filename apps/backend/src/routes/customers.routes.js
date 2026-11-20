@@ -533,6 +533,16 @@ function mapRepresentatives(rows) {
     .filter((rep) => rep.name || rep.phone || rep.email);
 }
 
+async function loadCustomerRepresentatives(database, customerId) {
+  const rows = await runSQLQueryAccess(database, `
+    SELECT [kdA_lfdNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail], [kdA_Ranking]
+    FROM [dbo].[tblKun_Ansprech]
+    WHERE [kdA_KdNR] = ?
+    ORDER BY ISNULL([kdA_Ranking], 9), [kdA_Name] ASC, [kdA_Vorname] ASC
+  `, [customerId]);
+  return mapRepresentatives(rows);
+}
+
 function mapCustomerActivities(rows, customerId) {
   return (Array.isArray(rows) ? rows : [])
     .map((row, index) => ({
@@ -783,14 +793,7 @@ router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
 
   const creditLimit = await loadCustomerCreditLimit(req.database, id);
 
-  const repsSql = `
-    SELECT [kdA_lfdNR], [kdA_Vorname], [kdA_Name], [kdA_Anrede], [kdA_Position], [kdA_Telefon], [kdA_PrivatTel], [kdA_Handy], [kdA_eMail], [kdA_Ranking]
-    FROM [dbo].[tblKun_Ansprech]
-    WHERE [kdA_KdNR] = ?
-    ORDER BY ISNULL([kdA_Ranking], 9), [kdA_Name] ASC, [kdA_Vorname] ASC
-  `;
-  const repsRows = await runSQLQueryAccess(req.database, repsSql, [id]);
-  const representatives = mapRepresentatives(repsRows);
+  const representatives = await loadCustomerRepresentatives(req.database, id);
   const salesRepresentatives = await loadCustomerSalesRepresentatives(
     req.database,
     id,
@@ -954,6 +957,18 @@ router.get('/employees/:shortCode', requireMandant, asyncHandler(async (req, res
     },
     meta: { mandant: req.mandant, shortCode },
     error: null,
+  });
+}));
+
+router.get('/customers/:id/order-contacts', requireMandant, asyncHandler(async (req, res) => {
+  const customer = await requireVisibleCustomer(req, req.params.id);
+  const contacts = await loadCustomerRepresentatives(req.database, customer.kd_KdNR);
+  res.set('Cache-Control', 'private, no-store');
+  sendEnvelope(res, {
+    data: contacts.filter(contact => contact.id && contact.name).map(({ id, name, position, ranking, email }) => ({
+      id, name, position, ranking, hasEmail: Boolean(email),
+    })),
+    meta: { mandant: req.mandant },
   });
 }));
 

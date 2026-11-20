@@ -15,12 +15,14 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 | `DailyVlMailOutbox` | Versandaufträge für die tägliche Verfügbarkeitsliste. |
 | `DeliveryAddressOperation` | Vorgangsstatus und Wiederholungssicherung der Lieferadressanlage. |
 | `OrderMailOutbox` | Versandaufträge und Wiederholungen für Auftragsmails. |
+| `OptionOfferMailOutbox` | Versandstatus je Mandant, Optionsposition und Kunde für persönliche Optionsangebote. |
 | `OrderReminderState` | Erinnerungszustände für noch nicht übergebene App-Aufträge. |
 | `PurchaseOrderCsMailOutbox` | Bestellmails an den Customer Service. |
 | `PurchaseOrderMailOutbox` | Bestellmails an Lieferanten. |
 | `PushMandantSetting` | Push-Einstellungen je Benutzer und Mandant. |
 | `PushSubscription` | Browser-Anmeldungen für Push-Benachrichtigungen. |
 | `tbl_Temp_Ang_Position` | Positionen der in der App erstellten Angebote. |
+| `tbl_Temp_Aktivitaet` | Vorbereitete Kundenaktivitäten zur Übergabe an den BMS-Import. |
 | `tbl_Temp_Angebot` | Kopfdaten der in der App erstellten Angebote. |
 | `tbl_Temp_Auf_Position` | Positionen der in der App erstellten Verkaufsaufträge. |
 | `tbl_Temp_Auftrag` | Kopfdaten und Übergabestatus der Verkaufsaufträge. |
@@ -53,8 +55,8 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 Nach der gezielten Anlage von `BMSApp.ContactCreationOperation` auf
 `DB04 / BMS` am **17.11.2026** gilt:
 
-- **Vorhanden:** alle 42 App-Tabellen.
-- **Fehlt:** keine der vom Installationsskript vorgesehenen App-Tabellen.
+- **Vorhanden zum Prüfzeitpunkt:** alle 42 damals vorgesehenen App-Tabellen.
+- **Seither im Installationsskript hinzugekommen:** `OptionOfferMailOutbox` und `tbl_Temp_Aktivitaet`.
 
 Die neue Tabelle wurde einschließlich ihrer 16 Spalten, zwei Indizes,
 vier Prüfbedingungen und drei Standardwerte mit dem Installationsskript

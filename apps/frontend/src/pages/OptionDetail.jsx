@@ -2,7 +2,9 @@ import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CheckIcon from '@mui/icons-material/Check';
 import PhoneIcon from '@mui/icons-material/Phone';
+import OptionOfferCustomers from '../components/OptionOfferCustomers.jsx';
 import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
 import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -10,6 +12,7 @@ import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
+import { getMandant } from '../utils/mandant.js';
 import { optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
@@ -38,6 +41,14 @@ export default function OptionDetail() {
   const endpoint=`/options/${encodeURIComponent(id)}${positionId?`/positions/${encodeURIComponent(positionId)}`:''}`;
   const [purchasePosition,setPurchasePosition] = React.useState(null);
   const validityRefresh = useOptionValidityRefresh();
+  const mandant = getMandant();
+  const position = offer?.positions?.[0];
+  const audienceKey = positionId && position && offer.id === Number(id) && position.id === Number(positionId)
+    ? JSON.stringify([mandant, endpoint, position.snapshotId, position.matchProcessingStatus,
+      position.articleIndex, position.suggestedArticleIndex, validityRefresh])
+    : '';
+  const [audienceResult, setAudienceResult] = React.useState(null);
+  const audience = audienceResult?.key === audienceKey ? audienceResult : null;
 
   React.useEffect(() => {
     let active = true;
@@ -52,7 +63,20 @@ export default function OptionDetail() {
       .catch((cause) => { if (active) setError(cause?.message || t('loading_error')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [endpoint, t, sourceQuery,validityRefresh]);
+  }, [endpoint, t, sourceQuery,validityRefresh,mandant]);
+
+  React.useEffect(() => {
+    if (!audienceKey) return undefined;
+    const controller = new AbortController();
+    apiRequest(`${endpoint}/offer-customers`, { signal: controller.signal })
+      .then(response => {
+        if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, ...response.data });
+      })
+      .catch(cause => {
+        if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, error: cause.message || t('loading_error') });
+      });
+    return () => controller.abort();
+  }, [audienceKey, endpoint, t]);
 
   React.useEffect(() => {
     if (!offer || !location.hash) return;
@@ -103,8 +127,16 @@ export default function OptionDetail() {
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
       {offer.positions?.map((position) => <Box id={`position-${position.id}`} key={position.id} sx={{ pt: 1, scrollMarginTop: 80 }}>
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
-        <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>{optionPositionTitle(position)}</Typography>
-        {position.singleCandidateName && <Typography variant="caption" color="text.secondary">{position.singleCandidateName}</Typography>}
+        <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>
+          {optionPositionTitle(position)}
+          {audience?.article && <CheckIcon
+            color="success" fontSize="small" titleAccess={t('option_article_found')}
+            sx={{ verticalAlign: 'text-bottom', ml: 0.75 }}
+          />}
+        </Typography>
+        {(audience?.article?.name || position.singleCandidateName) && <Typography variant="caption" color="text.secondary">
+          {audience?.article?.name || position.singleCandidateName}
+        </Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
         <InfoRow label={t('option_packaging')} value={packaging.positions[position.id] || packaging.common || (lang==='en'?'Unresolved':'ungeklärt')} />
@@ -116,11 +148,16 @@ export default function OptionDetail() {
         {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && <Alert severity="warning">Die bisherige Artikelzuordnung muss geprüft werden. Bitte beim Bestellen einen passenden Artikel wählen.</Alert>}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
         <Box sx={{display:'flex',justifyContent:'flex-end',gap:1,mt:2}}>
-          <Button variant="contained" disabled sx={{'&.Mui-disabled':{bgcolor:'grey.100',color:'text.secondary'}}}>Gegenangebot</Button>
+          <Button variant="contained" disabled sx={{'&.Mui-disabled':{bgcolor:'grey.100',color:'text.secondary'}}}>{t('option_counter_option')}</Button>
           <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0}>Bestellen</Button>
         </Box>
       </Box>)}
     </CardContent></Card>}
+    {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
+      <OptionOfferCustomers key={`${mandant}:${position.id}:${audience?.article?.index ?? ''}`}
+        customers={audience?.customers ?? []} position={position} loading={!audience} error={audience?.error}
+      />
+    )}
     <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
     {offer && purchasePosition && !error && <OptionPurchaseDialog key={purchasePosition.id} offer={offer} position={purchasePosition}
       preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)} onClose={()=>setPurchasePosition(null)} />}

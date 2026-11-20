@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../src/utils/incoterm.js';
+import { isFcaIncoterm, findHistoricalIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../src/utils/incoterm.js';
 
 const delivery = { clientReferenceId: 'customer1', incotermId: 1, incotermText: 'CPT', deliveryAddress: 'Customer warehouse', deliveryAddressId: '51', deliveryAddressManual: false, deliveryAddressNewlyCreated: false };
 const fca = { id: 99, text: 'FCA / Free Carrier' };
@@ -8,6 +8,15 @@ const fca = { id: 99, text: 'FCA / Free Carrier' };
 test('FCA detection accepts the configured label and rejects partial matches', () => {
   assert.equal(isFcaIncoterm(' fca / Free Carrier'), true);
   assert.equal(isFcaIncoterm('FCAfoo'), false);
+});
+
+test('historical Incoterm matches the current label or a single translated code', () => {
+  const alternatives = [fca, { id: 100, text: 'FCA / Pickup' }];
+  assert.equal(findHistoricalIncoterm('FCA / Frei Frachtführer', [fca]), fca);
+  assert.equal(findHistoricalIncoterm(' fca / free carrier ', alternatives), fca);
+  assert.equal(findHistoricalIncoterm('FCA / Frei Frachtführer', alternatives), null);
+  assert.equal(findHistoricalIncoterm('custom transport', alternatives), null);
+  assert.equal(findHistoricalIncoterm(null, alternatives), null);
 });
 
 test('switching to FCA clears the customer FK and switching back restores the selected delivery address', () => {

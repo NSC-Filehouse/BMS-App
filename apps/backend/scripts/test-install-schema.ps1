@@ -17,8 +17,8 @@ try {
   $installTestSql=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../sql/install_BMSApp.sql') -Raw
   & (Join-Path $PSScriptRoot 'install-schema.ps1') -Server $Server -Database $installTestDatabase
   $installTestCommand.CommandText=@'
-IF (SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>42 THROW 51010,N'Incomplete table installation.',1;
-IF (SELECT COUNT(*) FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>21 THROW 51010,N'Incomplete foreign keys.',1;
+IF (SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>44 THROW 51010,N'Incomplete table installation.',1;
+IF (SELECT COUNT(*) FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>23 THROW 51010,N'Incomplete foreign keys.',1;
 IF EXISTS(SELECT 1 FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp' AND (f.is_disabled=1 OR f.is_not_trusted=1)) THROW 51010,N'Untrusted foreign key.',1;
 INSERT BMSApp.PushMandantSetting(pms_UserEmail,pms_CompanyId,pms_Mandant) VALUES(N'schema-test@example.invalid',0,N'TEST');
 '@
