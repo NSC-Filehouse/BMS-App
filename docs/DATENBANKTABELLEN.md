@@ -52,15 +52,13 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 
 ## Stand der geprüften Installation
 
-Nach der gezielten Anlage von `BMSApp.ContactCreationOperation` auf
-`DB04 / BMS` am **17.11.2026** gilt:
+Auf `DB04 / BMS` waren am **20.11.2026** alle 44 App-Tabellen vorhanden.
+`OptionOfferMailOutbox` und `tbl_Temp_Aktivitaet` wurden mit Windows-Anmeldung
+angelegt und anhand des Installationsskripts geprüft. Beide Tabellen waren
+nach der Installation leer.
 
-- **Vorhanden zum Prüfzeitpunkt:** alle 42 damals vorgesehenen App-Tabellen.
-- **Seither im Installationsskript hinzugekommen:** `OptionOfferMailOutbox` und `tbl_Temp_Aktivitaet`.
-
-Die neue Tabelle wurde einschließlich ihrer 16 Spalten, zwei Indizes,
-vier Prüfbedingungen und drei Standardwerte mit dem Installationsskript
-abgeglichen. Dabei wurden keine Kontakte oder anderen Geschäftsdaten angelegt.
+`ContactCreationOperation` wurde bereits am **17.11.2026** angelegt und mit
+dem Installationsskript abgeglichen.
 Die erfolgreiche Neuinstallation und Wiederholung des vollständigen Schemas
 wurden in eigenen, danach entfernten Testdatenbanken geprüft. Alte
 Replay-/Test-Sicherungstabellen gehören nicht zur Installation.

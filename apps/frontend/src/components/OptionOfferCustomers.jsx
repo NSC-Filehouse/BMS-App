@@ -7,11 +7,11 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { findHistoricalIncoterm } from '../utils/incoterm.js';
+import { findOptionOfferIncoterm } from '../utils/incoterm.js';
 import { optionPrice } from '../utils/optionDisplay.js';
 import { isValidSalePrice } from '../utils/salePrice.js';
 
-function OfferCustomerFields({ customer, incoterms, referencePrice }) {
+function OfferCustomerFields({ customer, incoterms, optionIncoterm, referencePrice }) {
   const { t } = useI18n();
   const [contacts, setContacts] = React.useState(null);
   const [contactError, setContactError] = React.useState('');
@@ -37,7 +37,7 @@ function OfferCustomerFields({ customer, incoterms, referencePrice }) {
 
   const selectedContact = contacts?.find(contact => contact.id === contactId);
   const priceInvalid = salePrice !== '' && !isValidSalePrice(salePrice);
-  const incotermId = changedIncoterm ?? findHistoricalIncoterm(customer.lastIncoterm, incoterms)?.id ?? '';
+  const incotermId = changedIncoterm ?? findOptionOfferIncoterm(optionIncoterm, customer.lastIncoterm, incoterms)?.id ?? '';
 
   return <Stack spacing={1.25}>
     <Typography component="h3" variant="subtitle2">{customer.name}</Typography>
@@ -87,7 +87,7 @@ function OfferCustomerFields({ customer, incoterms, referencePrice }) {
   </Stack>;
 }
 
-function OptionOfferDialog({ customers, position, onClose }) {
+function OptionOfferDialog({ customers, position, optionIncoterm, onClose }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [incoterms, setIncoterms] = React.useState([]);
@@ -111,7 +111,8 @@ function OptionOfferDialog({ customers, position, onClose }) {
       <Stack spacing={2} divider={<Divider />}>
         {incotermError && <Alert severity="error">{incotermError}</Alert>}
         {customers.map(customer => <OfferCustomerFields
-          key={customer.id} customer={customer} incoterms={incoterms} referencePrice={referencePrice}
+          key={customer.id} customer={customer} incoterms={incoterms} optionIncoterm={optionIncoterm}
+          referencePrice={referencePrice}
         />)}
       </Stack>
     </DialogContent>
@@ -122,7 +123,7 @@ function OptionOfferDialog({ customers, position, onClose }) {
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, position, loading, error }) {
+export default function OptionOfferCustomers({ customers, position, optionIncoterm, loading, error }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
@@ -169,7 +170,7 @@ export default function OptionOfferCustomers({ customers, position, loading, err
         </Stack>
       ) : <Typography variant="body2" color="text.secondary">{t('option_offer_no_customers')}</Typography>)}
       {dialogOpen && chosen.length > 0 && <OptionOfferDialog
-        customers={chosen} position={position} onClose={() => setDialogOpen(false)}
+        customers={chosen} position={position} optionIncoterm={optionIncoterm} onClose={() => setDialogOpen(false)}
       />}
     </CardContent>
   </Card>;

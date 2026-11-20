@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isFcaIncoterm, findHistoricalIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../src/utils/incoterm.js';
+import { isFcaIncoterm, findOptionOfferIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../src/utils/incoterm.js';
 
 const delivery = { clientReferenceId: 'customer1', incotermId: 1, incotermText: 'CPT', deliveryAddress: 'Customer warehouse', deliveryAddressId: '51', deliveryAddressManual: false, deliveryAddressNewlyCreated: false };
 const fca = { id: 99, text: 'FCA / Free Carrier' };
@@ -10,13 +10,21 @@ test('FCA detection accepts the configured label and rejects partial matches', (
   assert.equal(isFcaIncoterm('FCAfoo'), false);
 });
 
-test('historical Incoterm matches the current label or a single translated code', () => {
+test('option offers prefer an unambiguous option Incoterm, then use the last purchase', () => {
+  const dap = { id: 24, text: 'DAP / Geliefert Benannter Ort' };
+  const ddp = { id: 26, text: 'DDP / Geliefert Verzollt' };
+  const terms = [fca, dap, ddp];
+  assert.equal(findOptionOfferIncoterm('DAP', 'FCA / Free Carrier', terms), dap);
+  assert.equal(findOptionOfferIncoterm('', 'FCA / Frei Frachtführer', terms), fca);
+  assert.equal(findOptionOfferIncoterm('FCA / DDP (Incoterms 2020)', 'DAP', terms), dap);
+  assert.equal(findOptionOfferIncoterm('FCA / DDP (Incoterms 2020)', null, terms), null);
+  assert.equal(findOptionOfferIncoterm('custom transport', null, terms), null);
+});
+
+test('option offer Incoterm accepts the exact label when a code has multiple dropdown entries', () => {
   const alternatives = [fca, { id: 100, text: 'FCA / Pickup' }];
-  assert.equal(findHistoricalIncoterm('FCA / Frei Frachtführer', [fca]), fca);
-  assert.equal(findHistoricalIncoterm(' fca / free carrier ', alternatives), fca);
-  assert.equal(findHistoricalIncoterm('FCA / Frei Frachtführer', alternatives), null);
-  assert.equal(findHistoricalIncoterm('custom transport', alternatives), null);
-  assert.equal(findHistoricalIncoterm(null, alternatives), null);
+  assert.equal(findOptionOfferIncoterm(' fca / free carrier ', null, alternatives), fca);
+  assert.equal(findOptionOfferIncoterm(null, 'FCA / Frei Frachtführer', alternatives), null);
 });
 
 test('switching to FCA clears the customer FK and switching back restores the selected delivery address', () => {
