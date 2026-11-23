@@ -180,7 +180,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         </Box>
         {showArticleSearch && <Box id={articleSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label={t('purchase_article_search')} placeholder={t('purchase_article_query')} value={articleQuery} onChange={e=>setArticleQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&articleQuery.trim().length>=2)void loadArticles(articleQuery.trim());}} /><Button disabled={busy||articleQuery.trim().length<2} onClick={()=>loadArticles(articleQuery.trim())}>{t('purchase_search')}</Button></Box>}
       {<Box sx={{display:'grid',gap:0.5}}>
-        <TextField label={t('packaging_type_label')} required select size="small" disabled={busy || packagingLoading || Boolean(packagingError)} value={packagingTypeId} onChange={e=>{
+        <TextField label={t('packaging_type_label')} required select size="small" disabled={busy || packagingLoading || Boolean(packagingError)} value={selectedPackaging?.id ?? ''} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);setOrderAmount(null);
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);

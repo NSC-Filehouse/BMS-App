@@ -138,6 +138,29 @@ test('an open offer reloads English choices without resetting packaging, comment
   assert.equal(view.calls.filter(call => call.path === '/temp-offers/meta').length, 2);
 });
 
+test('option purchase waits for the matching menu item before displaying the default packaging', async () => {
+  let resolvePackaging;
+  const packagingResponse = new Promise(resolve => { resolvePackaging = resolve; });
+  const view = await mount('../src/components/OptionPurchaseDialog.jsx', { offer: { id: 1 }, position: { id: 10 } }, async (path, lang) => {
+    if (path === '/packaging-types') return packagingResponse;
+    if (path.includes('/suppliers?')) return { data: [], meta: {
+      packagingTypes: choices(lang), sourcePackagingSource: 'original', sourcePackagingTypeId: 78,
+      offeredKg: 50000, remainingKg: 50000, orderedKg: 0, truckOffer: true, offeredTrucks: 2,
+    } };
+    if (path.includes('/articles?')) return { data: [] };
+    throw new Error(path);
+  });
+  await view.flush();
+  assert.equal(view.field('Verpackungsart').props.disabled, true);
+  assert.equal(view.field('Verpackungsart').props.value, '');
+
+  resolvePackaging({ data: choices('de') });
+  await view.flush();
+  assert.equal(view.field('Verpackungsart').props.disabled, false);
+  assert.equal(view.field('Verpackungsart').props.value, 78);
+  assert.equal(view.field('Bestellmenge (kg)').props.value, 49500);
+});
+
 test('an open option purchase refreshes packaging labels while retaining manual quantity and selected ID', async () => {
   const view = await mount('../src/components/OptionPurchaseDialog.jsx', { offer: { id: 1 }, position: { id: 10 } }, async (path, lang) => {
     if (path === '/packaging-types') return { data: choices(lang) };
