@@ -10,6 +10,8 @@ Dietmar Meyer, Stefan Göde, Mark Winkler und Olaf Bader erhalten App-Vollzugrif
 auf alle regulären Mandanten. Die App prüft pro Anmeldung die aktive FX-Identität
 anhand von SSO-Anmeldename, Personalnummer und Kürzel. Der Mandant `TES` ist
 für diese vier Konten in der Auswahl und serverseitig gesperrt.
+Elbpolymer (`EPO`, ID 18) ist für alle Konten aus der Mandantenliste der App
+entfernt.
 
 ## Angebote
 

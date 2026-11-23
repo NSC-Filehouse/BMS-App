@@ -32,7 +32,8 @@ export function getSelectableMandants(items, user = null) {
     .map(normalizeMandantOption)
     .filter((item) => {
       if (!item.name) return false;
-      if (executiveAccess) return item.id !== TEST_MANDANT_ID && item.shortName.toUpperCase() !== 'TES';
+      if (executiveAccess) return item.id !== TEST_MANDANT_ID && item.shortName.toUpperCase() !== 'TES'
+        && item.id !== 18 && item.shortName.toUpperCase() !== 'EPO';
       if (item.id === TEST_MANDANT_ID) return canSelectTestMandant;
       return item.id === null || !MANDANT_EXCLUDE_IDS.has(item.id);
     });

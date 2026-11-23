@@ -91,6 +91,20 @@ test('hides Test for other viewers but keeps it for MFR and NSC', () => {
   }
 });
 
+test('never exposes Elbpolymer in customer representative mandants, including for executives', () => {
+  const rows = [
+    { MandantID: 18, MandantKuerzel: 'EPO', MandantName: 'Elbpolymer', Aussendienst: 'TLA' },
+    { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'TLA' },
+  ];
+  const executive = { shortCode: 'OBA', fullName: 'Olaf Bader', userId: 'Bader', personNumber: 276, active: true };
+  const representatives = buildSalesRepresentativeList('TLA', rows, rows[0], executive);
+  assert.deepEqual(representatives, [{
+    shortCode: 'TLA',
+    primary: true,
+    mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
+  }]);
+});
+
 test('hides every mandant from the configured customer-detail exclusion list', () => {
   const rows = [0, 1, 6, 8, 13, 14, 15, 16, 17, 18].map((id) => ({
     MandantID: id,

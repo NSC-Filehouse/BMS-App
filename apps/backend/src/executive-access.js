@@ -7,6 +7,8 @@ const EXECUTIVES = [
 
 const TEST_MANDANT_ID = 0;
 const TEST_MANDANT_CODE = 'TES';
+const HIDDEN_MANDANT_ID = 18;
+const HIDDEN_MANDANT_CODE = 'EPO';
 
 function hasExecutiveAccess(identity) {
   if (identity?.active !== true) return false;
@@ -25,9 +27,23 @@ function isTestMandant(database) {
     || String(database?.shortName ?? '').trim().toUpperCase() === TEST_MANDANT_CODE;
 }
 
+function isHiddenMandant(database) {
+  return String(database?.firmaId ?? '').trim() === String(HIDDEN_MANDANT_ID)
+    || String(database?.shortName ?? '').trim().toUpperCase() === HIDDEN_MANDANT_CODE;
+}
+
 // Shared records can be reached without switching to their source mandant.
 function excludeTestMandantSql(identity, column) {
   return hasExecutiveAccess(identity) ? `AND ${column} <> ${TEST_MANDANT_ID}` : '';
 }
 
-module.exports = { hasExecutiveAccess, isTestMandant, excludeTestMandantSql, TEST_MANDANT_ID, TEST_MANDANT_CODE };
+module.exports = {
+  hasExecutiveAccess,
+  isTestMandant,
+  isHiddenMandant,
+  excludeTestMandantSql,
+  TEST_MANDANT_ID,
+  TEST_MANDANT_CODE,
+  HIDDEN_MANDANT_ID,
+  HIDDEN_MANDANT_CODE,
+};

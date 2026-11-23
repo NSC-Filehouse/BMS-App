@@ -3,7 +3,7 @@ const logger = require('../logger');
 const { createHttpError } = require('../utils');
 const { canConnectToDatabase, runSQLQueryFx, runSQLQuerySqlServer } = require('./access');
 const { getUserIdentityByEmail } = require('./users');
-const { hasExecutiveAccess, isTestMandant } = require('../executive-access');
+const { hasExecutiveAccess, isTestMandant, isHiddenMandant } = require('../executive-access');
 
 const mandantsCache = new Map();
 const dbAvailabilityCache = new Map();
@@ -249,7 +249,9 @@ async function loadMandantsForIdentity(identity) {
       name: String(row.firma || row.md_Firma || '').trim(),
       shortName: String(row.firmaKurz || row.md_FirmaKurz || '').trim().toUpperCase(),
     }))
-    .filter((m) => m.name && m.shortName && (!executiveAccess || !isTestMandant(m)))
+    .filter((m) => m.name && m.shortName
+      && !isHiddenMandant(m)
+      && (!executiveAccess || !isTestMandant(m)))
     .map((m) => ({
       ...m,
       databaseName: buildTenantDatabaseName(m.shortName),

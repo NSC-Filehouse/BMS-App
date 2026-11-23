@@ -20,6 +20,7 @@ function parseIntegerList(value) {
 }
 
 export const MANDANT_EXCLUDE_IDS = parseIntegerList(runtimeEnv.VITE_MANDANT_EXCLUDE_IDS);
+MANDANT_EXCLUDE_IDS.add(18);
 
 export const RESOURCES = {
   customers: { key: 'customers', label: 'Kunden', pk: 'kd_KdNR' },

@@ -5,6 +5,7 @@ const accessPath = require.resolve('../src/db/access');
 const catalog = [
   { firmaId: 0, firma: 'Test', firmaKurz: 'TES' },
   { firmaId: 1, firma: 'MLHolding', firmaKurz: 'HOL' },
+  { firmaId: 18, firma: 'Elbpolymer', firmaKurz: 'EPO' },
   { firmaId: 3, firma: 'Frupack', firmaKurz: 'FRU' },
 ];
 const queries = [];
@@ -46,6 +47,8 @@ test('the four active executives can use every regular mandant and cannot resolv
     assert.ok(Object.values(pilotFeaturesForIdentity(identity)).every(Boolean));
     assert.deepEqual((await getMandantsForIdentity(identity)).map(row => row.firmaId).sort(), [1, 3]);
     assert.equal((await getDatabaseConnectionForIdentity(identity, 'Frupack')).firmaId, 3);
+    await assert.rejects(getDatabaseConnectionForIdentity(identity, 'Elbpolymer'), { status: 403 });
+    await assert.rejects(getDatabaseConnectionForIdentityById(identity, 18), { status: 403 });
     await assert.rejects(getDatabaseConnectionForIdentity(identity, 'Test'), { status: 403 });
     await assert.rejects(getDatabaseConnectionForIdentityById(identity, 0), { status: 403 });
     assert.equal((await getCustomerAccessScope(identity, regularMandant)).isFullAccess, true);
