@@ -28,6 +28,7 @@ import { getSelectedCustomer, setSelectedCustomer } from '../utils/customerSelec
 import CustomerRequiredDialog from '../components/CustomerRequiredDialog.jsx';
 import TempPlanningHint from '../components/TempPlanningHint.jsx';
 import { getMandant } from '../utils/mandant.js';
+import ProductOfferCustomers from '../components/ProductOfferCustomers.jsx';
 import { buildProductSourceQuery } from '../utils/vlScope.js';
 
 function formatPrice(value) {
@@ -92,6 +93,9 @@ export default function ProductDetail({ modal = false }) {
   const vlMandantId = String(location.state?.vlMandantId || '').trim();
   const sourceQuery = buildProductSourceQuery(vlMandantId, location.state?.vlScope);
 
+  const stockParams = new URLSearchParams(sourceQuery);
+  if (location.state?.stockStorageId != null) stockParams.set('stockStorageId', location.state.stockStorageId);
+  const stockQuery = stockParams.size ? `?${stockParams}` : '';
   const [item, setItem] = React.useState(null);
   const readOnlyVl = Boolean(location.state?.vlReadOnly)
     || Boolean(item?.sourceMandantName && item.sourceMandantName.trim().toLowerCase() !== getMandant().trim().toLowerCase());
@@ -235,7 +239,7 @@ export default function ProductDetail({ modal = false }) {
         setWpzId(null);
         setWpzData(null);
         setWpzOpen(false);
-        const res = await apiRequest(`/products/${encodeURIComponent(id)}${sourceQuery}`);
+        const res = await apiRequest(`/products/${encodeURIComponent(id)}${stockQuery}`);
         if (!alive) return;
         const baseItem = res?.data || null;
         if (!baseItem) {
@@ -271,7 +275,7 @@ export default function ProductDetail({ modal = false }) {
     })();
 
     return () => { alive = false; };
-  }, [id, sourceQuery, t]);
+  }, [id, sourceQuery, stockQuery, t]);
 
   React.useEffect(() => {
     const action = location.state?.pendingCustomerAction;
@@ -430,6 +434,10 @@ export default function ProductDetail({ modal = false }) {
             </Box>
           </CardContent>
         </Card>
+      )}
+      {!loading && !error && item && location.state?.fromVl && (
+        <ProductOfferCustomers key={JSON.stringify([getMandant(), id, stockQuery])}
+          item={item} query={stockQuery} readOnly={readOnlyVl} />
       )}
     </>
   );

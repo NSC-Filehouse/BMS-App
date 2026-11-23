@@ -508,8 +508,7 @@ router.get('/products/grouped', requireMandant, asyncHandler(async (req, res) =>
   });
 }));
 
-router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
-  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
+async function loadProductDetail(req, viewDatabase, { includeStockOfferCost = false } = {}) {
   const id = req.params.id;
   const key = parseProductId(id);
 
@@ -521,6 +520,7 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
       AND COALESCE([Bestell-Pos], '') = ?
       AND COALESCE([Kunststoff], '') = ?
       AND COALESCE([Kunststoff_Untergruppe], '') = ?
+      ${req.query.stockStorageId != null ? "AND COALESCE([bePL_LagerID], '') = ?" : ''}
   `;
   const rows = await runSQLQueryAccess(viewDatabase, sql, [
     key.article,
@@ -528,6 +528,7 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
     key.beNumber,
     key.plastic,
     key.sub,
+    ...(req.query.stockStorageId != null ? [String(req.query.stockStorageId)] : []),
   ]);
 
   const row = Array.isArray(rows) && rows.length ? rows[0] : null;
@@ -538,10 +539,20 @@ router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
   const item = mapProductRow(row, viewDatabase);
   const planning = await loadProductPlanning(req, viewDatabase, [item]);
 
+  return {
+    ...applyTempOrderPlanning(item, planning),
+    ...(includeStockOfferCost && { stockCostPerTonne: asNumber(getField(row, 'EPtest')) }),
+  };
+}
+
+require('./product-offers.routes')(router, loadProductDetail);
+
+router.get('/products/:id', requireMandant, asyncHandler(async (req, res) => {
+  const viewDatabase = await resolveVlDatabase(req, req.query?.vlMandantId);
   sendEnvelope(res, {
     status: 200,
-    data: applyTempOrderPlanning(item, planning),
-    meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id },
+    data: await loadProductDetail(req, viewDatabase),
+    meta: { ...buildVlMeta(req, viewDatabase), idField: 'id', id: req.params.id },
     error: null,
   });
 }));

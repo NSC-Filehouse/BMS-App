@@ -174,6 +174,16 @@ Die [Schema-Installation](INSTALLATION.md) legt keine Demo-Angebote an und
 sind in der Git-Historie verfügbar.
 
 Forecast ist ein geschützter Platzhalter ohne eigenes Datenschema.
+## Kundenangebote aus der VL
+
+Die Käuferkarte verwendet den Artikelindex des Herkunftsmandanten. Fremde
+VL-Positionen sind bei vorhandenen Kundenrechten lesbar. Nach der BMSApp-
+Basisinstallation ergänzt `apps/backend/sql/upgrades/stock-offers.sql` die Spalte
+`StockPositionKey` in der gemeinsamen Versandwarteschlange. `OfferJson`
+enthält `stockOrderPosition` und `stockStorageId` für den externen
+BMS-Ausgabeprozess. Nach dessen Prüfung und einem Testversand kann der
+Artikelversand zusätzlich mit `BMS_STOCK_OFFER_MAIL_ENABLED=true` freigegeben werden.
+
 ## Kundenangebote aus einer Option
 
 Die Kundenkarte nutzt Käufer aus der Verkaufshistorie des im aktiven Mandanten
@@ -181,7 +191,7 @@ zugeordneten Artikels. Normale Benutzer sehen ihre Kunden anhand
 `kd_Aussendienst`. Explizite mandantenbezogene AD-Vollrechte oder die
 bestehende App-Vollzugriffsregel schalten den Filter für weitere sichtbare AD
 frei. Die Vorauswahl ist das Kürzel des angemeldeten Benutzers.
-Diese Einschränkung gilt nur für die Käuferliste der Optionen.
+Diese Einschränkung gilt für die Käuferkarten in Optionsdetails und VL-Artikeldetails.
 
 Im Angebotsdialog ist CFR anhand des Kürzels vorausgewählt. Der angezeigte
 Text stammt aus den BMS-Lieferbedingungen. Bei FCA ist der benannte Abholort

@@ -82,14 +82,14 @@ function PickupFields({ draft, loadingLocation, pickupLocations, pickup, update 
   </Stack>;
 }
 
-function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocation, pickupLocations, updateDraft, costPrice, maxQuantity, previousPrice }) {
+function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocation, pickupLocations, updateDraft, costPrice, maxQuantity, previousPrice, contactsEndpoint }) {
   const { t, lang } = useI18n();
   const [contactError, setContactError] = React.useState('');
   const update = patch => updateDraft(customer.id, patch);
 
   React.useEffect(() => {
     const controller = new AbortController();
-    apiRequest(`/customers/${encodeURIComponent(customer.id)}/order-contacts`, { signal: controller.signal })
+    apiRequest(contactsEndpoint || `/customers/${encodeURIComponent(customer.id)}/order-contacts`, { signal: controller.signal })
       .then(response => {
         if (!controller.signal.aborted) updateDraft(customer.id, { contacts: response.data });
       })
@@ -97,7 +97,7 @@ function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocati
         if (!controller.signal.aborted) setContactError(error.message || t('loading_error'));
       });
     return () => controller.abort();
-  }, [customer.id, t, updateDraft]);
+  }, [customer.id, t, updateDraft, contactsEndpoint]);
 
   const quantityInvalid = !validQuantity(values.quantityKg, maxQuantity);
   const priceInvalid = values.salePrice !== '' && !isValidSalePrice(values.salePrice);
@@ -164,7 +164,7 @@ function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocati
   </Stack>;
 }
 
-function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sendEnabled, onQueued, onClose }) {
+function OptionOfferDialog({ customers, position, loadingLocation, endpoint, query, stock, sendEnabled, onQueued, onClose }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [incoterms, setIncoterms] = React.useState([]);
@@ -175,7 +175,10 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
   const costPrice = !position.priceNeedsReview && Number.isFinite(position.pricePerTonne) ? position.pricePerTonne : null;
   const maxQuantity = Number.isFinite(position.remainingKg) ? position.remainingKg : null;
   const defaultTerm = findOptionOfferIncoterm(incoterms);
-  const values = customers.map(customer => offerValues(customer.id, drafts[customer.id] ?? emptyDraft, defaultTerm, incoterms, loadingLocation));
+  const values = customers.map(customer => offerValues(customer.id, {
+    quantityKg: stock && maxQuantity > 0 ? String(Math.min(Number(defaultQuantityKg), maxQuantity)) : undefined,
+    ...drafts[customer.id],
+  }, defaultTerm, incoterms, loadingLocation));
   const needsPickup = values.some(row => row.isFca);
 
   const updateDraft = React.useCallback((id, patch) => setDrafts(previous => ({
@@ -193,7 +196,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
   React.useEffect(() => {
     if (!needsPickup || pickupLocations !== null) return undefined;
     const controller = new AbortController();
-    apiRequest(`${endpoint}/pickup-locations`, { signal: controller.signal })
+    apiRequest(`${endpoint}/pickup-locations${query}`, { signal: controller.signal })
       .then(response => { if (!controller.signal.aborted) setPickupLocations(response.data); })
       .catch(cause => {
         if (controller.signal.aborted) return;
@@ -201,13 +204,13 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
         setError(cause.message || t('loading_error'));
       });
     return () => controller.abort();
-  }, [endpoint, needsPickup, pickupLocations, t]);
+  }, [endpoint, query, needsPickup, pickupLocations, t]);
 
   async function send() {
     setBusy(true);
     setError('');
     try {
-      const response = await apiRequest(`${endpoint}/send`, { method: 'POST', body: JSON.stringify({ customers: values }) });
+      const response = await apiRequest(`${endpoint}/send${query}`, { method: 'POST', body: JSON.stringify({ customers: values }) });
       onQueued(response.data.customers);
       onClose();
     } catch (cause) {
@@ -226,7 +229,8 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
           <OfferCustomerFields key={customer.id} customer={customer} draft={drafts[customer.id] ?? emptyDraft}
             values={values[index]} incoterms={incoterms} loadingLocation={loadingLocation} updateDraft={updateDraft}
             pickupLocations={pickupLocations ?? []} costPrice={costPrice} maxQuantity={maxQuantity}
-            previousPrice={values[index - 1]?.salePrice} />
+            previousPrice={values[index - 1]?.salePrice}
+            contactsEndpoint={stock ? `${endpoint}/contacts/${encodeURIComponent(customer.id)}${query}` : undefined} />
         ))}
       </Stack>
     </DialogContent>
@@ -239,7 +243,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, sendEnabled, onQueued }) {
+export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, sendEnabled, onQueued }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
@@ -256,9 +260,9 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
     <CardContent sx={{ '&:last-child': { pb: 1.5 } }}>
       <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
         <Typography id={titleId} variant="subtitle1" component="h2">{t('option_offer_customers')}</Typography>
-        <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
+        {!readOnly && <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
           <MailOutlineIcon sx={{ fontSize: 26 }} />
-        </IconButton>
+        </IconButton>}
       </Stack>
       {salesFilter?.enabled && <TextField select size="small" label={t('option_offer_sales_filter')} value={filter}
         InputLabelProps={{ shrink: true }}
@@ -274,14 +278,14 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {visible.map(customer => (
             <Box component="li" key={customer.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
-              <Checkbox size="small" disabled={customer.sent || customer.queued}
+              {!readOnly && <Checkbox size="small" disabled={customer.sent || customer.queued}
                 checked={!customer.sent && !customer.queued && selection.includes(customer.id)}
                 inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
                 onChange={event => {
                   const checked = event.target.checked;
                   setSelection(previous => checked ? [...previous, customer.id] : previous.filter(id => id !== customer.id));
                 }}
-              />
+              />}
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
                 {customer.salesCode && <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
@@ -296,8 +300,8 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
           ))}
         </Stack>
       ) : <Typography variant="body2" color="text.secondary">{t('option_offer_no_customers')}</Typography>)}
-      {dialogOpen && chosen.length > 0 && <OptionOfferDialog
-        customers={chosen} position={position} loadingLocation={loadingLocation} endpoint={endpoint}
+      {!readOnly && dialogOpen && chosen.length > 0 && <OptionOfferDialog
+        customers={chosen} position={position} loadingLocation={loadingLocation} endpoint={endpoint} query={query} stock={stock}
         sendEnabled={sendEnabled} onQueued={onQueued} onClose={() => setDialogOpen(false)}
       />}
     </CardContent>

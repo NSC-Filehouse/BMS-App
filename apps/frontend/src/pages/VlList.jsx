@@ -760,6 +760,7 @@ export default function VlList() {
         source: item,
         fromVl: true,
         vlMandantId: getProductSourceMandantId(item, vlMandantId),
+        stockStorageId: item.storageId ?? '',
         vlReturnState,
         returnTo: createVlReturnTo(location, vlReturnState),
       },

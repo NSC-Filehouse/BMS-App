@@ -35,7 +35,7 @@ require.cache[require.resolve('../src/db/customer-access')] = { exports: {
   getCustomerAccessScope: async () => customerScope,
   buildCustomerScopeFilter: () => ({ whereSql: '', params: [] }),
 } };
-const { loadOptionOfferCustomers } = require('../src/options/customer-offers');
+const { loadOptionOfferCustomers, loadCustomerOfferAudience } = require('../src/options/customer-offers');
 const { buildOfferSubmissions } = require('../src/options/offer-submission');
 
 const owner = { sourceMandantId: 3 };
@@ -54,6 +54,21 @@ test.beforeEach(() => {
   customerScope = { shortCode: 'ADM', isMainTenant: true, isFullAccess: true };
   invoices = [{ id: 'A', name: 'Kunde A', salesCode: 'ADM' }, { id: 'B', name: 'Kunde B', salesCode: 'ADM' }];
   accepted = [{ CustomerNumber: 'a', Status: 'sent' }, { CustomerNumber: 'b', Status: 'submitted' }];
+});
+
+test('a stock offer uses the exact stock key and the same customer scope without option matching', async () => {
+  const stockPositionKey = 'a'.repeat(64);
+  const result = await loadCustomerOfferAudience(sameDatabase, {}, catalogArticle, stockPositionKey);
+  assert.equal(result.article.index, 'A-PP');
+  assert.equal(result.customers[0].sent, true);
+  assert.equal(result.customers[1].queued, true);
+  assert.equal(calls.length, 2);
+  const buyerQuery = calls.find(call => call.sql.includes('dbo.tblRechnung'));
+  const statusQuery = calls.find(call => call.sql.includes('CustomerNumber, Status'));
+  assert.match(buyerQuery.sql, /k.kd_Aussendienst/);
+  assert.deepEqual(buyerQuery.params, ['A-PP', 'ADM']);
+  assert.match(statusQuery.sql, /OptionPositionId IS NULL AND StockPositionKey/);
+  assert.deepEqual(statusQuery.params, [3, stockPositionKey]);
 });
 
 test('an eligible match returns scoped buyers and only the recorded sent status for this position', async () => {

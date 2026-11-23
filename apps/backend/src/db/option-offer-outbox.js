@@ -15,13 +15,25 @@ function optionOfferMailEnabled() {
   return Boolean(config.optionOfferMail.enabled && config.mailService.enabled && config.mailService.baseAddress && config.mailService.apiKey);
 }
 
+async function stockOfferMailEnabled() {
+  if (!config.optionOfferMail.stockEnabled || !optionOfferMailEnabled()) return false;
+  const [row] = await run(`
+    SELECT CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
+      AND OBJECT_ID(N'BMSApp.OptionOfferDocument', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
+  `);
+  return Boolean(row?.ready);
+}
+
 async function queueOptionOffers(offers) {
   return withSqlTransaction(config.sql.database, async ({ query }) => {
     for (const offer of [...offers].sort((left, right) => left.customerId.localeCompare(right.customerId))) {
+      const sourceColumn = offer.stockPositionKey ? 'StockPositionKey' : 'OptionPositionId';
+      const sourceId = offer.stockPositionKey ?? offer.positionId;
       const idQuery = await query(`
         SELECT Id AS id, Status AS status FROM ${outbox} WITH (UPDLOCK, HOLDLOCK)
-        WHERE CompanyId = ? AND OptionPositionId = ? AND CustomerNumber = ?
-      `, [offer.companyId, offer.positionId, offer.customerId]);
+        WHERE CompanyId = ? AND ${sourceColumn} = ? AND CustomerNumber = ?
+          ${offer.stockPositionKey ? 'AND OptionPositionId IS NULL' : ''}
+      `, [offer.companyId, sourceId, offer.customerId]);
       const existing = idQuery.rows[0];
       const fields = [offer.articleIndex, offer.contactId, offer.contactName, offer.recipientEmail,
         offer.senderCode, offer.senderName, offer.senderEmail, offer.salePrice, offer.incotermId, offer.incotermText];
@@ -40,11 +52,11 @@ async function queueOptionOffers(offers) {
       }
       const id = existing?.id ?? (await query(`
         INSERT INTO ${outbox}
-          (CompanyId, OptionPositionId, CustomerNumber, ArticleIndex, ContactId, ContactName, RecipientEmail,
+          (CompanyId, ${sourceColumn}, CustomerNumber, ArticleIndex, ContactId, ContactName, RecipientEmail,
            SenderCode, SenderName, SenderEmail, SalePricePerTonne, Currency, IncotermId, IncotermText)
         OUTPUT inserted.Id AS id
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS decimal(19,4)), N'EUR', ?, ?)
-      `, [offer.companyId, offer.positionId, offer.customerId, ...fields])).rows[0].id;
+      `, [offer.companyId, sourceId, offer.customerId, ...fields])).rows[0].id;
       await query(`INSERT INTO ${documents} (OptionOfferMailId, OfferJson) VALUES (?, ?)`, [id, JSON.stringify(offer)]);
     }
   });
@@ -82,7 +94,7 @@ async function updateOffer(row, status, message = null, mailServiceId = null) {
 
 async function confirmSent(row, offer, reference, mailServiceId, sentAt) {
   const price = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(offer.salePrice);
-  const description = `Option ${offer.article} per E-Mail an ${offer.contactName} angeboten (${reference}). VK ${price}/t, Incoterm ${offer.incotermCode}.`;
+  const description = `${offer.stockPositionKey ? 'Artikel' : 'Option'} ${offer.article} per E-Mail an ${offer.contactName} angeboten (${reference}). VK ${price}/t, Incoterm ${offer.incotermCode}.`;
   const sentDate = new Date(sentAt);
   const date = typeof sentAt === 'string' && Number.isFinite(sentDate.getTime()) ? sentDate.toISOString().slice(0, -1) : null;
   await withSqlTransaction(config.sql.database, async ({ query }) => {
@@ -167,4 +179,4 @@ function startOptionOfferMailWorker() {
   void process();
 }
 
-module.exports = { optionOfferMailEnabled, queueOptionOffers, startOptionOfferMailWorker, classifyServiceStatus, deliverOffer };
+module.exports = { optionOfferMailEnabled, stockOfferMailEnabled, queueOptionOffers, startOptionOfferMailWorker, classifyServiceStatus, deliverOffer };

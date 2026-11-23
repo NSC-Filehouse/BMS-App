@@ -17,7 +17,13 @@ function decimal(value, places) {
   return Number.isSafeInteger(rounded) && Math.abs(number * factor - rounded) < 0.00001 ? rounded / factor : null;
 }
 
-async function buildOfferSubmissions(req, option, position) {
+function buildOfferSubmissions(req, option, position) {
+  return buildCustomerOfferSubmissions(req, {
+    ...position, validUntil: position.validUntil || option.validUntil,
+  }, () => loadOptionOfferCustomers(req.database, req.userIdentity, option, position));
+}
+
+async function buildCustomerOfferSubmissions(req, position, loadAudience) {
   const rows = req.body?.customers;
   if (!Array.isArray(rows) || !rows.length || rows.length > 500
     || rows.some(row => !row || !text(row.customerId) || text(row.customerId).length > 10)) {
@@ -32,10 +38,10 @@ async function buildOfferSubmissions(req, option, position) {
   if (!senderEmail || !senderName || senderName.length > 200 || !senderCode || senderCode.length > 3) {
     throw invalid('Für Ihren Außendienst-Zugang fehlen gültige Absenderdaten.');
   }
-  const eligible = await loadOptionOfferCustomers(req.database, sender, option, position);
+  const eligible = await loadAudience();
   const buyers = new Map(eligible.customers.map(customer => [customerKey(customer.id), customer]));
   if (!eligible.article || customerIds.some(id => !buyers.has(id))) {
-    throw invalid('Mindestens ein Kunde ist für dieses Optionsangebot nicht verfügbar.', 'OPTION_OFFER_CUSTOMER_UNAVAILABLE');
+    throw invalid('Mindestens ein Kunde ist für dieses Angebot nicht verfügbar.', 'OPTION_OFFER_CUSTOMER_UNAVAILABLE');
   }
   const termIds = rows.map(row => Number(row.incotermId));
   if (termIds.some(id => !Number.isInteger(id) || id < 1 || id > 2147483647)) throw invalid('Bitte einen Incoterm auswählen.');
@@ -69,9 +75,13 @@ async function buildOfferSubmissions(req, option, position) {
     }
     if (salePrice === null || salePrice < 0) throw invalid(`Bitte den Verkaufspreis für ${customer.name} eingeben.`);
     return {
-      messageKey: randomUUID(), companyId: Number(req.database.firmaId), positionId: position.id,
+      messageKey: randomUUID(), companyId: Number(req.database.firmaId), positionId: position.id, ...(position.stockPositionKey && {
+        stockPositionKey: position.stockPositionKey,
+        stockOrderPosition: position.stockOrderPosition,
+        stockStorageId: position.stockStorageId,
+      }),
       articleIndex: eligible.article.index, article: eligible.article.name, batch: text(position.batchNo),
-      validUntil: position.validUntil || option.validUntil, availableQuantityKg, quantityKg, salePrice, currency: 'EUR', nonBinding: true,
+      validUntil: position.validUntil, availableQuantityKg, quantityKg, salePrice, currency: 'EUR', nonBinding: true,
       incotermId, incotermText, incotermCode: code, pickup,
       customerId: customer.id, customerName: customer.name, contactId: contact.id, contactName: contact.name, recipientEmail,
       language: contact.language === 'de' || contact.language === 'en' ? contact.language : (req.get('x-lang') === 'en' ? 'en' : 'de'),
@@ -80,4 +90,4 @@ async function buildOfferSubmissions(req, option, position) {
   });
 }
 
-module.exports = { buildOfferSubmissions };
+module.exports = { buildOfferSubmissions, buildCustomerOfferSubmissions };

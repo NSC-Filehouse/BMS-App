@@ -72,6 +72,7 @@ const config = {
 
   optionOfferMail: {
     enabled: toBool(process.env.BMS_OPTION_OFFER_MAIL_ENABLED, false),
+    stockEnabled: toBool(process.env.BMS_STOCK_OFFER_MAIL_ENABLED, false),
   },
 
   orderMail: {

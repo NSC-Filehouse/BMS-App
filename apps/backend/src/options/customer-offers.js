@@ -62,8 +62,14 @@ async function loadArticleCustomers(database, userIdentity, articleIndex) {
 }
 
 async function loadOfferCustomerStatuses(companyId, positionId) {
+  if (positionId == null) return new Map();
   // The UI can be deployed ahead of the separately installed schema.
-  const rows = await runSQLQuerySqlServer(config.sql.database, `
+  const rows = typeof positionId === 'string' ? await runSQLQuerySqlServer(config.sql.database, `
+    IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
+      EXEC sys.sp_executesql
+        N'SELECT CustomerNumber, Status FROM BMSApp.OptionOfferMailOutbox WHERE CompanyId = @company AND OptionPositionId IS NULL AND StockPositionKey = @stock',
+        N'@company INT, @stock NVARCHAR(64)', @company = ?, @stock = ?;
+  `, [companyId, positionId]) : await runSQLQuerySqlServer(config.sql.database, `
     IF OBJECT_ID(N'BMSApp.OptionOfferMailOutbox', N'U') IS NOT NULL
       EXEC sys.sp_executesql
         N'SELECT CustomerNumber, Status FROM BMSApp.OptionOfferMailOutbox
@@ -75,11 +81,15 @@ async function loadOfferCustomerStatuses(companyId, positionId) {
 
 async function loadOptionOfferCustomers(database, userIdentity, offer, position) {
   const article = await resolveOfferArticle(database, offer, position);
+  return loadCustomerOfferAudience(database, userIdentity, article, position.id);
+}
+
+async function loadCustomerOfferAudience(database, userIdentity, article, sourceId) {
   const articleIndex = text(article?.articleIndex);
   if (!articleIndex) return { article: null, customers: [] };
   const [{ customers, salesFilter }, statuses] = await Promise.all([
     loadArticleCustomers(database, userIdentity, articleIndex),
-    loadOfferCustomerStatuses(Number(database.firmaId), position.id),
+    loadOfferCustomerStatuses(Number(database.firmaId), sourceId),
   ]);
   return {
     article: { index: articleIndex, name: text(article.articleName) },
@@ -107,4 +117,4 @@ async function loadOfferContacts(database, customerIds) {
   }));
 }
 
-module.exports = { loadOptionOfferCustomers, loadOfferContacts };
+module.exports = { loadOptionOfferCustomers, loadCustomerOfferAudience, loadOfferContacts };
