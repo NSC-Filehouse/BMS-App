@@ -4,6 +4,44 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { commonLoadingLocations, findPackaging, packagingKey } = require('../src/db/purchase-order-values');
 
+test('supplier terms load contacts and translate the last order payment condition from the central database', async () => {
+  const mod = { exports: {} };
+  const tenantDatabase = { name: 'tenant' };
+  const centralDatabase = 'central';
+  const contact = { id: 23, firstName: 'Sam', lastName: 'Taylor', ranking: 1 };
+  const dependencies = {
+    '../config': { sql: { database: centralDatabase } },
+    './packaging-types': {},
+    './access': {
+      runSQLQueryAccess: async (database, sql, params) => {
+        assert.equal(database, tenantDatabase);
+        assert.deepEqual(params, ['TOTAL']);
+        if (sql.includes('[tblBestellung]')) return [{ paymentConditionId: 17, deliveryTermText: 'FCA' }];
+        assert.match(sql, /\[tblKun_Ansprech\]/);
+        return [contact];
+      },
+      runSQLQuerySqlServer: async (database, sql, params) => {
+        assert.equal(database, centralDatabase);
+        assert.match(sql, /\[tblZahltext_Sprachen\]/);
+        assert.deepEqual(params, [17, 'en']);
+        return [{ text: '30 days' }];
+      },
+    },
+  };
+  new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-values.js'), 'utf8'))((name) => {
+    assert.ok(Object.hasOwn(dependencies, name), name);
+    return dependencies[name];
+  }, mod);
+
+  assert.deepEqual(await mod.exports.loadSupplierTerms(tenantDatabase, 'TOTAL', 'en'), {
+    paymentConditionId: 17,
+    paymentConditionText: '30 days',
+    deliveryTermText: 'FCA',
+    supplierContact: 'Sam Taylor',
+    contacts: [{ ...contact, name: 'Sam Taylor' }],
+  });
+});
+
 test('supplier purchase names and internal names stay separate through defaults and legacy draft enrichment', async () => {
   const mod = { exports: {} }, calls = [];
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-values.js'), 'utf8'))((name) => {

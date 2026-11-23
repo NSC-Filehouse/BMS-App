@@ -39,6 +39,7 @@ test('all packaging choices retain IDs and fall back to German for missing or wh
   assert.match(calls[0].sql, /ORDER BY \[spT_SortKey\], \[spT_ID\]/);
 
   const purchase = loadModule('../src/db/purchase-order-values.js', {
+    '../config': { sql: { database: 'BMS' } },
     './access': {}, './packaging-types': shared,
   });
   const purchaseChoices = await purchase.loadPurchasePackagingOptions('en');
