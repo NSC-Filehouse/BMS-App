@@ -15,12 +15,15 @@ import {optionArticleBlocked,optionPositionTitle,optionQuantity} from '../utils/
 
 const fieldFontSize='0.8125rem';
 
-export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, supplier, article, returnTo, onClose }) {
+export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, supplier: initialSupplier, supplierEditable, article, returnTo, onClose }) {
   const { t, lang } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const navigate = useNavigate();
   const location=useLocation();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
+  const [suppliers,setSuppliers] = React.useState(null);
+  const [supplierId,setSupplierId] = React.useState(initialSupplier?.id);
+  const supplier = supplierEditable && suppliers ? suppliers.find(row => row.id === supplierId) : initialSupplier;
   const [contacts,setContacts]=React.useState([]),[contact,setContact]=React.useState(null);
   const [contactMeta,setContactMeta]=React.useState({}),[contactsLoading,setContactsLoading]=React.useState(false);
   const [contactError,setContactError]=React.useState(''),[contactCreateOpen,setContactCreateOpen]=React.useState(false);
@@ -46,8 +49,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     const controller = new AbortController();
     const query = new URLSearchParams({ q: '', supplierId: preferredSupplierId || '' });
     apiRequest(`${base}/suppliers?${query}`, { signal: controller.signal })
-      .then(({ meta = {} }) => {
+      .then(({ data = [], meta = {} }) => {
         if (controller.signal.aborted) return;
+        setSuppliers(data);
         setAvailability(meta);
         setPackagingTypeId(defaultOptionPackagingId(meta));
         setTotalAmount(meta.truckOffer ? meta.confirmedTruckCount ?? '' : meta.confirmedQuantityKg ?? '');
@@ -123,10 +127,15 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     <DialogTitle>{t('purchase_option_title')}</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important','& .MuiInputBase-root':{fontSize:fieldFontSize}}}>
       <Typography>{optionPositionTitle(position)}</Typography>
-      {supplier && article && <Box>
-        <Typography variant="body2">{t('supplier_label')}: {supplier.name}{supplier.city ? ` · ${supplier.city}` : ''}</Typography>
-        <Typography variant="body2">{t('product_article')}: {article.articleName}</Typography>
-      </Box>}
+      {supplierEditable ? <Autocomplete options={suppliers ?? (initialSupplier ? [initialSupplier] : [])}
+        value={supplier ?? null} disabled={busy || availabilityLoading || Boolean(availabilityError)}
+        isOptionEqualToValue={(a,b)=>a.id===b.id} getOptionKey={row=>row.id}
+        getOptionLabel={row=>`${row.name}${row.city ? ` · ${row.city}` : ''}`}
+        noOptionsText={t('supplier_options_unidentified')}
+        onChange={(_event,value)=>{setContact(null);setSupplierId(value?.id);}}
+        renderInput={params=><TextField {...params} label={t('supplier_label')} required size="small" />} />
+        : supplier && <Typography variant="body2">{t('supplier_label')}: {supplier.name}{supplier.city ? ` · ${supplier.city}` : ''}</Typography>}
+      {article && <Typography variant="body2">{t('product_article')}: {article.articleName}</Typography>}
       {supplier && <>
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
           <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}

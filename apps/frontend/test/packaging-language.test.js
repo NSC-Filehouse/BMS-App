@@ -181,6 +181,36 @@ test('an ambiguous option requires inline supplier and compatible article choice
   assert.equal(articleField().props.value, article);
 });
 
+test('a single or preferred supplier is shown only in the order dialog', async () => {
+  const supplier = { id: 'LF1', name: 'Supplier 1', city: 'Feluy' };
+  const article = { articleIndex: 'A', articleName: 'Article A' };
+  const props = { enabled: true, offer: { id: 1 }, position: { id: 10 } };
+  for (const suppliers of [[supplier], [{ ...supplier, preferred: true }, { id: 'LF2', name: 'Supplier 2' }]]) {
+    const view = await mount('../src/components/OptionPurchaseControls.jsx', props, async path => {
+      if (path.includes('/suppliers?')) return { data: suppliers };
+      if (path.includes('/articles?')) return { data: [article] };
+      throw new Error(path);
+    });
+    await view.flush();
+    assert.throws(() => view.find(node => node.type === 'Autocomplete' && node.props.options === suppliers), /Expected element not found/);
+    const order = view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen'));
+    assert.equal(order.props.disabled, false);
+    order.props.onClick();
+    await view.flush();
+    const dialog = view.find(node => node.props?.supplierEditable);
+    assert.equal(dialog.props.supplier, suppliers[0]);
+
+    const popup = await mount('../src/components/OptionPurchaseDialog.jsx', dialog.props, async path => {
+      if (path.includes('/suppliers?')) return { data: suppliers };
+      if (path.includes('/contacts?')) return { data: [] };
+      if (path === '/packaging-types') return { data: choices('de') };
+      throw new Error(path);
+    });
+    await popup.flush();
+    assert.equal(popup.find(node => node.type === 'Autocomplete' && node.props.options === suppliers).props.value, suppliers[0]);
+  }
+});
+
 test('option purchase waits for the matching menu item before displaying the default packaging', async () => {
   let resolvePackaging;
   const packagingResponse = new Promise(resolve => { resolvePackaging = resolve; });

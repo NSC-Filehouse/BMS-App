@@ -10,7 +10,9 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const { t } = useI18n();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers, setSuppliers] = React.useState(null);
-  const [supplier, setSupplier] = React.useState(null);
+  const [selectedSupplier, setSelectedSupplier] = React.useState(null);
+  const automaticSupplier = suppliers?.find(row => row.preferred) || (suppliers?.length === 1 ? suppliers[0] : null);
+  const supplier = automaticSupplier || selectedSupplier;
   const [supplierError, setSupplierError] = React.useState('');
   const [articles, setArticles] = React.useState(null);
   const [article, setArticle] = React.useState(null);
@@ -28,7 +30,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     apiRequest(`${base}/suppliers?${query}`, { signal: controller.signal }).then(({ data = [] }) => {
       if (controller.signal.aborted) return;
       setSuppliers(data);
-      setSupplier(data.find(row => row.preferred) || (data.length === 1 ? data[0] : null));
     }).catch(cause => {
       if (!controller.signal.aborted) setSupplierError(cause.message);
     });
@@ -60,15 +61,15 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   return <>
     {enabled && <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
       {supplierError && <Alert severity="error">{supplierError}</Alert>}
-      {suppliers?.length > 1 && !supplier && <Typography variant="body2">
+      {!automaticSupplier && suppliers?.length > 1 && !supplier && <Typography variant="body2">
         {t('purchase_select_supplier', { name: offer.supplierName })}
       </Typography>}
-      <Autocomplete options={suppliers ?? []} value={supplier} loading={!suppliers && !supplierError}
+      {suppliers && !automaticSupplier && <Autocomplete options={suppliers} value={supplier}
         isOptionEqualToValue={(a, b) => a.id === b.id} getOptionKey={row => row.id}
         getOptionLabel={row => `${row.name}${row.city ? ` · ${row.city}` : ''}`}
         noOptionsText={t('supplier_options_unidentified')}
-        onChange={(_event, value) => setSupplier(value)}
-        renderInput={params => <TextField {...params} label={t('supplier_label')} required size="small" />} />
+        onChange={(_event, value) => setSelectedSupplier(value)}
+        renderInput={params => <TextField {...params} label={t('supplier_label')} required size="small" />} />}
       {suppliers?.length === 0 && <Typography variant="body2" color="text.secondary">{t('supplier_options_unidentified')}</Typography>}
       {articleError && <Alert severity="error">{articleError}</Alert>}
       {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && !article &&
@@ -104,6 +105,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
         disabled={!enabled || !supplier || !article || optionArticleBlocked(article) || position.remainingKg === 0}>{t('purchase_order_action')}</Button>
     </Box>
     {enabled && purchaseOpen && <OptionPurchaseDialog offer={offer} position={position} preferredSupplierId={preferredSupplierId}
-      supplier={supplier} article={article} returnTo={returnTo} onClose={() => setPurchaseOpen(false)} />}
+      supplier={supplier} supplierEditable={Boolean(automaticSupplier)} article={article} returnTo={returnTo} onClose={() => setPurchaseOpen(false)} />}
   </>;
 }
