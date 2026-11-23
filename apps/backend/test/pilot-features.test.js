@@ -12,6 +12,12 @@ test('pilot features belong to the three verified employee identities', () => {
   }
 });
 
+test('Kevin Musah receives the purchase order and options features', () => {
+  assert.deepEqual(pilotFeaturesForIdentity({ shortCode: 'KMU', personNumber: 126, userId: 'Musah', active: true }), {
+    offers: false, offerToOrder: false, purchaseOrders: true, options: true, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
+  });
+});
+
 test('a matching short code alone never opens pilot features', () => {
   for (const identity of [
     { shortCode: 'AKI', personNumber: 999, userId: 'other', active: true },
@@ -19,6 +25,9 @@ test('a matching short code alone never opens pilot features', () => {
     { shortCode: 'NSC', personNumber: 228, userId: 'n.schroeder', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'other', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: false },
+    { shortCode: 'KMU', personNumber: 127, userId: 'musah', active: true },
+    { shortCode: 'KMU', personNumber: 126, userId: 'other', active: true },
+    { shortCode: 'KMU', personNumber: 126, userId: 'musah', active: false },
     null,
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity(identity), {
