@@ -45,11 +45,8 @@ export default function OptionsList() {
         grouped.get(key).push({ offer, position });
       });
     });
-    const sortedGroups = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b, 'de'));
-    if (listView === 'received' && sortedGroups[0]?.[0] === '') {
-      sortedGroups.push(sortedGroups.shift());
-    }
-    return sortedGroups;
+    return [...grouped.entries()].sort(([a], [b]) =>
+      listView === 'received' ? b.localeCompare(a) : a.localeCompare(b, 'de'));
   }, [offers, query, listView, t]);
 
   return (
