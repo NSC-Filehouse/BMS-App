@@ -76,6 +76,21 @@ function offerXml(offer, number) {
   ].join('\n');
 }
 
+function defaultOfferBody(offer, number) {
+  if (offer.language === 'en') return [
+    'Dear Sir or Madam,',
+    `Please find our non-binding offer ${number} attached. Our general terms and conditions of sale and delivery apply.`,
+    `We hope our offer meets your requirements. When placing your order, please quote our offer reference ${number}. If you have any questions, we will be happy to help.`,
+    `Kind regards\n${offer.senderName}`,
+  ].join('\n\n');
+  return [
+    'Sehr geehrte Damen und Herren,',
+    `anbei senden wir Ihnen unser freibleibendes Angebot ${number} zu unseren allgemeinen Geschäfts- und Lieferbedingungen.`,
+    `Wir hoffen, unser Angebot sagt Ihnen zu, und freuen uns auf Ihren Auftrag. Bei Ihrer Bestellung bitten wir Sie, unsere Angebotsreferenz ${number} anzugeben. Für Rückfragen stehen wir Ihnen gerne zur Verfügung.`,
+    `Mit freundlichen Grüßen\n${offer.senderName}`,
+  ].join('\n\n');
+}
+
 function assembleOfferMail(offer, document, delivery) {
   const fromAddress = singleEmail(offer.senderEmail);
   const recipient = singleEmail(offer.recipientEmail);
@@ -93,9 +108,19 @@ function assembleOfferMail(offer, document, delivery) {
   const controls = `<div style="margin-top:20px"><p>${escapeMarkup(links.request)}</p>`
     + `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${actionRows}</table>`
     + `<p>${escapeMarkup(links.fallback)}</p></div>`;
+  const en = offer.language === 'en';
+  const nonBinding = en ? /\bnon[\s\u00a0\u2010-\u2011-]+binding\b/i : /\bfreibleibend\p{L}*\b/iu;
+  const mailText = document.body || defaultOfferBody(offer, document.number);
+  const visibleText = document.isBodyHtml
+    ? mailText.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '').replace(/&nbsp;/gi, ' ')
+    : mailText;
+  const notice = nonBinding.test(visibleText) ? '' : en
+    ? '<p>This offer is non-binding.</p>'
+    : '<p>Dieses Angebot ist freibleibend.</p>';
+  const footer = notice + controls;
   const body = document.isBodyHtml
-    ? (/<\/body\s*>/i.test(document.body) ? document.body.replace(/<\/body\s*>/i, match => controls + match) : document.body + controls)
-    : `<div style="white-space:pre-wrap">${escapeMarkup(document.body).replace(/\r\n|\r|\n/g, '<br>')}</div>${controls}`;
+    ? (/<\/body\s*>/i.test(mailText) ? mailText.replace(/<\/body\s*>/i, match => footer + match) : mailText + footer)
+    : `<div style="white-space:pre-wrap">${escapeMarkup(mailText).replace(/\r\n|\r|\n/g, '<br>')}</div>${footer}`;
   return {
     clientMessageId: delivery?.clientMessageId ?? `bms-app:option-offer:${offer.messageKey}`,
     fromAddress, fromDisplayName: offer.senderName,
@@ -142,7 +167,6 @@ function readTempOfferDocument(row, offer) {
   return {
     number, pdf, isBodyHtml: false,
     subject: en ? `Your offer ${number}` : `Ihr Angebot ${number}`,
-    body: en ? 'Please find our offer attached.' : 'Anbei erhalten Sie unser Angebot.',
   };
 }
 
@@ -182,7 +206,7 @@ async function sampleOfferEml(offer) {
   const sample = { ...offer, senderEmail: 'aussendienst@example.invalid', recipientEmail: 'kunde@example.invalid' };
   const mail = assembleOfferMail(sample, {
     number: 'MUSTER-001', subject: 'Muster - Ihr Angebot',
-    body: 'Muster für die spätere BMS-Begleitmail.', isBodyHtml: false, pdf: await createSampleOfferPdf(sample),
+    isBodyHtml: false, pdf: await createSampleOfferPdf(sample),
   });
   const boundary = randomUUID();
   const encoded = bytes => Buffer.from(bytes).toString('base64').match(/.{1,76}/g).join('\r\n');

@@ -219,8 +219,10 @@ weitere Anhänge bereitstellen. Die Eigenschaften sind `source` (Wert `bms`),
 `messageKey`, `number`, `subject`, `body`, `isBodyHtml` und optional
 `attachments` mit `fileName`, `contentType` und `contentBase64`. Dazu
 müssen `TempOfferId`, `OfferJson.messageKey` und die BMS-Angebotsnummer zur
-Anforderung passen. Ohne diese Begleitdaten verwendet die App einen kurzen
-Mailtext in der Kontaktsprache.
+Anforderung passen. Ohne diese Begleitdaten verwendet die App die Standardmail
+mit Anrede, Angebotsreferenz und Grußformel in der Kontaktsprache. Die Mail
+bezeichnet das Angebot als freibleibend. Bei einem ERP-Mailtext ergänzt die App
+diesen Hinweis, falls er fehlt.
 
 Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
 Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“

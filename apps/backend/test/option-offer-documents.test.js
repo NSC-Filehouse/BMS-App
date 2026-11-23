@@ -16,7 +16,7 @@ const original = {
   body: '<html><body>Originaltext aus BMS.</body></html>', isBodyHtml: true, pdfBase64: pdf.toString('base64'),
 };
 
-test('one mail carries unchanged wording and three separate reply drafts for a single customer', () => {
+test('ERP wording gets a non-binding notice and three separate reply drafts', () => {
   const request = assembleOfferMail(offer, readBmsOfferDocument(JSON.stringify(original), offer.messageKey));
   assert.equal(request.fromAddress, 'ad@example.invalid');
   assert.deepEqual(request.to, [{ address: 'einkauf@example.invalid', displayName: 'Einkauf' }]);
@@ -24,6 +24,7 @@ test('one mail carries unchanged wording and three separate reply drafts for a s
   assert.equal(request.bcc, undefined);
   assert.equal(request.subject, original.subject);
   assert.match(request.body, /^<html><body>Originaltext aus BMS\./);
+  assert.match(request.body, /Dieses Angebot ist freibleibend\./);
   const actions = [...request.body.matchAll(/<a href="(mailto:[^"]+)"[^>]*><span[^>]*>([^<]+)<\/span><\/a>/g)];
   assert.deepEqual(actions.map(action => action[2]), ['Angebot annehmen', 'Gegenangebot machen', 'Angebot nicht interessant']);
   const drafts = actions.map(action => new URL(action[1].replaceAll('&amp;', '&')));
@@ -39,6 +40,18 @@ test('one mail carries unchanged wording and three separate reply drafts for a s
   assert.deepEqual(request.attachments[0].content, pdf);
   assert.match(request.attachments[1].content.toString(), /<Incoterm>FCA<\/Incoterm>/);
   assert.equal(request.clientMessageId, 'bms-app:option-offer:unique-offer');
+});
+
+test('standard offer mail uses the template and existing non-binding wording is kept once', () => {
+  const document = { number: 'AN-123', pdf, subject: 'Ihr Angebot' };
+  const de = assembleOfferMail(offer, document).body;
+  assert.match(de, /Sehr geehrte Damen und Herren,[\s\S]*freibleibendes Angebot AN-123[\s\S]*Angebotsreferenz AN-123[\s\S]*Für Rückfragen[\s\S]*Mit freundlichen Grüßen<br>A\. Vertrieb/);
+  assert.doesNotMatch(de, /Dieses Angebot ist freibleibend/);
+  const en = assembleOfferMail({ ...offer, language: 'en' }, document).body;
+  assert.match(en, /Dear Sir or Madam,[\s\S]*non-binding offer AN-123[\s\S]*Kind regards/);
+  assert.doesNotMatch(en, /This offer is non-binding/);
+  const erp = assembleOfferMail(offer, { ...document, isBodyHtml: true, body: '<body>Unser <b>freibleibendes</b> Angebot.</body>' }).body;
+  assert.doesNotMatch(erp, /Dieses Angebot ist freibleibend/);
 });
 
 test('XML escapes customer-visible fields and communicates only known batch limits', () => {
