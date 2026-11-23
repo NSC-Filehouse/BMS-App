@@ -60,6 +60,7 @@ test('an eligible match returns scoped buyers and only the recorded sent status 
   const result = await loadOptionOfferCustomers(sameDatabase, {}, owner, position);
   assert.deepEqual(result, {
     article: { index: 'A-PP', name: catalogArticle.articleName },
+    salesFilter: { enabled: false, defaultCode: 'ADM' },
     customers: [
       { id: 'A', name: 'Kunde A', salesCode: 'ADM', sent: true, queued: false, failed: false },
       { id: 'B', name: 'Kunde B', salesCode: 'ADM', sent: false, queued: true, failed: false },
@@ -75,9 +76,11 @@ test('an eligible match returns scoped buyers and only the recorded sent status 
 
 test('explicit cross-sales access may display different representatives for filtering', async () => {
   customerScope.userGroup = 'GR04';
+  customerScope.shortCode = ' adm ';
   invoices[1].salesCode = 'AD2';
   const result = await loadOptionOfferCustomers(sameDatabase, {}, owner, position);
   assert.deepEqual(result.customers.map(customer => customer.salesCode), ['ADM', 'AD2']);
+  assert.deepEqual(result.salesFilter, { enabled: true, defaultCode: 'ADM' });
   assert.deepEqual(calls.find(call => call.sql.includes('dbo.tblRechnung')).params, ['A-PP']);
 });
 

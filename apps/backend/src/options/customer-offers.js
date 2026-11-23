@@ -36,8 +36,9 @@ async function loadArticleCustomers(database, userIdentity, articleIndex) {
   const scope = await getCustomerAccessScope(userIdentity, database);
   const { whereSql, params } = buildCustomerScopeFilter(scope, 'k');
   const canFilterSales = ['BMS_APP_FULL_ACCESS', 'AD01', 'GR04'].includes(scope.userGroup);
-  const salesCode = text(scope.shortCode);
-  if (!canFilterSales && !salesCode) return [];
+  const salesCode = text(scope.shortCode).toUpperCase();
+  const salesFilter = { enabled: canFilterSales, defaultCode: salesCode };
+  if (!canFilterSales && !salesCode) return { customers: [], salesFilter };
   const rows = await runSQLQueryAccess(database, `
     SELECT k.kd_KdNR AS id, k.kd_Name1 AS name, k.kd_Name2 AS name2, k.kd_Aussendienst AS salesCode
     FROM dbo.tblKunden k
@@ -51,12 +52,13 @@ async function loadArticleCustomers(database, userIdentity, articleIndex) {
     ${whereSql ? `AND (${whereSql})` : ''}
     ${canFilterSales ? '' : "AND UPPER(LTRIM(RTRIM(k.kd_Aussendienst))) = ?"}
     ORDER BY k.kd_Name1, k.kd_Name2, k.kd_KdNR
-  `, [articleIndex, ...params, ...(canFilterSales ? [] : [salesCode.toUpperCase()])]);
-  return rows.map(row => ({
+  `, [articleIndex, ...params, ...(canFilterSales ? [] : [salesCode])]);
+  const customers = rows.map(row => ({
     id: text(row.id),
     name: [text(row.name), text(row.name2)].filter(Boolean).join(' ') || text(row.id),
     salesCode: text(row.salesCode).toUpperCase(),
   }));
+  return { customers, salesFilter };
 }
 
 async function loadOfferCustomerStatuses(companyId, positionId) {
@@ -75,12 +77,13 @@ async function loadOptionOfferCustomers(database, userIdentity, offer, position)
   const article = await resolveOfferArticle(database, offer, position);
   const articleIndex = text(article?.articleIndex);
   if (!articleIndex) return { article: null, customers: [] };
-  const [customers, statuses] = await Promise.all([
+  const [{ customers, salesFilter }, statuses] = await Promise.all([
     loadArticleCustomers(database, userIdentity, articleIndex),
     loadOfferCustomerStatuses(Number(database.firmaId), position.id),
   ]);
   return {
     article: { index: articleIndex, name: text(article.articleName) },
+    salesFilter,
     customers: customers.map(customer => {
       const status = statuses.get(customer.id.toUpperCase());
       return { ...customer, sent: status === 'sent', queued: Boolean(status && !['sent', 'failed'].includes(status)),

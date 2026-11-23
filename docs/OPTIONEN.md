@@ -180,7 +180,8 @@ Forecast ist ein geschützter Platzhalter ohne eigenes Datenschema.
 Die Kundenkarte nutzt Käufer aus der Verkaufshistorie des im aktiven Mandanten
 zugeordneten Artikels. Normale Benutzer sehen ihre Kunden anhand
 `kd_Aussendienst`. Explizite mandantenbezogene AD-Vollrechte oder die
-bestehende App-Vollzugriffsregel gestatten die Auswahl weiterer sichtbarer AD.
+bestehende App-Vollzugriffsregel schalten den Filter für weitere sichtbare AD
+frei. Die Vorauswahl ist das Kürzel des angemeldeten Benutzers.
 Diese Einschränkung gilt nur für die Käuferliste der Optionen.
 
 Im Angebotsdialog ist CFR anhand des Kürzels vorausgewählt. Der angezeigte

@@ -239,14 +239,16 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, position, loadingLocation, loading, error, endpoint, sendEnabled, onQueued }) {
+export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, sendEnabled, onQueued }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
-  const [salesCode, setSalesCode] = React.useState('');
+  const [salesCode, setSalesCode] = React.useState(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const salesCodes = [...new Set(customers.map(customer => customer.salesCode).filter(Boolean))].sort();
-  const filter = salesCodes.includes(salesCode) ? salesCode : '';
+  const defaultSalesCode = salesFilter?.defaultCode ?? '';
+  const salesCodes = [...new Set([defaultSalesCode, ...customers.map(customer => customer.salesCode)].filter(Boolean))].sort();
+  const hasExplicitFilter = salesCode === '' || salesCodes.includes(salesCode);
+  const filter = salesFilter?.enabled ? (hasExplicitFilter ? salesCode : defaultSalesCode) : '';
   const visible = filter ? customers.filter(customer => customer.salesCode === filter) : customers;
   const chosen = visible.filter(customer => !customer.sent && !customer.queued && selection.includes(customer.id));
 
@@ -255,12 +257,14 @@ export default function OptionOfferCustomers({ customers, position, loadingLocat
       <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
         <Typography id={titleId} variant="subtitle1" component="h2">{t('option_offer_customers')}</Typography>
         <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
-          <MailOutlineIcon fontSize="small" />
+          <MailOutlineIcon sx={{ fontSize: 26 }} />
         </IconButton>
       </Stack>
-      {salesCodes.length > 1 && <TextField select size="small" label={t('option_offer_sales_filter')} value={filter}
-        InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}
-        onChange={event => { setSalesCode(event.target.value); setSelection([]); }} sx={{ mb: 1, minWidth: 130 }}>
+      {salesFilter?.enabled && <TextField select size="small" label={t('option_offer_sales_filter')} value={filter}
+        InputLabelProps={{ shrink: true }}
+        SelectProps={{ displayEmpty: true, MenuProps: { sx: { '& .MuiMenuItem-root': { fontSize: '0.8rem' } } } }}
+        onChange={event => { setSalesCode(event.target.value); setSelection([]); }}
+        sx={{ mb: 1, minWidth: 130, '& .MuiSelect-select': { fontSize: '0.8rem' } }}>
         <MenuItem value="">{t('option_offer_all_sales')}</MenuItem>
         {salesCodes.map(code => <MenuItem key={code} value={code}>{code}</MenuItem>)}
       </TextField>}

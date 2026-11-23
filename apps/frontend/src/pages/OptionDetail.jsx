@@ -172,7 +172,8 @@ export default function OptionDetail() {
     </CardContent></Card>}
     {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
       <OptionOfferCustomers key={`${mandant}:${position.id}:${audience?.article?.index ?? ''}`}
-        customers={audience?.customers ?? []} position={position} loadingLocation={offer.loadingLocation}
+        customers={audience?.customers ?? []} salesFilter={audience?.salesFilter}
+        position={position} loadingLocation={offer.loadingLocation}
         loading={!audience} error={audience?.error} endpoint={audienceEndpoint}
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
