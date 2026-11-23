@@ -188,14 +188,16 @@ test('an ambiguous option requires inline supplier and compatible article choice
   assert.equal(articleField().props.value, article);
 });
 
-test('a single or preferred supplier is shown only in the order dialog', async () => {
+test('the first selectable article is preselected and a resolved supplier appears in the order dialog', async () => {
   const supplier = { id: 'LF1', name: 'Supplier 1', city: 'Feluy' };
   const article = { articleIndex: 'A', articleName: 'Article A' };
+  const blocked = { articleIndex: 'B', articleName: 'Blocked article', mfiCheck: { blocked: true } };
+  const alternative = { articleIndex: 'C', articleName: 'Article C' };
   const props = { enabled: true, offer: { id: 1 }, position: { id: 10 }, renderDetails: renderPurchaseDetails };
   for (const suppliers of [[supplier], [{ ...supplier, preferred: true }, { id: 'LF2', name: 'Supplier 2' }]]) {
     const view = await mount('../src/components/OptionPurchaseControls.jsx', props, async path => {
       if (path.includes('/suppliers?')) return { data: suppliers };
-      if (path.includes('/articles?')) return { data: [article] };
+      if (path.includes('/articles?')) return { data: [blocked, article, alternative] };
       throw new Error(path);
     });
     await view.flush();
@@ -206,6 +208,7 @@ test('a single or preferred supplier is shown only in the order dialog', async (
     await view.flush();
     const dialog = view.find(node => node.props?.supplierEditable);
     assert.equal(dialog.props.supplier, suppliers[0]);
+    assert.equal(dialog.props.article, article);
 
     const popup = await mount('../src/components/OptionPurchaseDialog.jsx', dialog.props, async path => {
       if (path.includes('/suppliers?')) return { data: suppliers };

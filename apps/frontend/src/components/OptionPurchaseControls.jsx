@@ -48,7 +48,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     apiRequest(`${base}/articles?q=`, { signal: controller.signal }).then(({ data = [] }) => {
       if (controller.signal.aborted) return;
       setArticles(rows => rows ? [...data, ...rows.filter(row => !data.some(match => match.articleIndex === row.articleIndex))] : data);
-      setArticle(current => current ?? (data.length === 1 && !optionArticleBlocked(data[0]) ? data[0] : null));
+      setArticle(current => current ?? data.find(row => !optionArticleBlocked(row)) ?? null);
     }).catch(cause => {
       if (!controller.signal.aborted) setArticleError(cause.message);
     });
