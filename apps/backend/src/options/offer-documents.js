@@ -64,8 +64,16 @@ function assembleOfferMail(offer, document) {
   const recipient = singleEmail(offer.recipientEmail);
   if (!fromAddress || !recipient) throw new Error('Ungültiger Absender oder Empfänger.');
   const links = responseLinks(offer, document.number, fromAddress);
-  const controls = `<div style="margin-top:20px"><p>${escapeMarkup(links.request)}</p><p>${links.actions.map(action =>
-    `<a href="${escapeMarkup(action.url)}" style="display:inline-block;padding:8px 12px;margin:0 8px 8px 0;background:#245078;color:#fff;text-decoration:none">${escapeMarkup(action.label)}</a>`).join('')}</p></div>`;
+  const spacer = '<tr aria-hidden="true"><td height="12" style="font-size:1px;line-height:12px">&nbsp;</td></tr>';
+  const actionRows = links.actions.map((action, index) => {
+    const background = index === 0 ? '#E9EFF6' : '#245078';
+    const foreground = index === 0 ? '#24405C' : '#FFFFFF';
+    return `<tr><td bgcolor="${background}" style="padding:9px 14px;mso-padding-alt:9px 14px">`
+      + `<a href="${escapeMarkup(action.url)}" style="color:${foreground};font-weight:bold;text-decoration:underline">${escapeMarkup(action.label)}</a>`
+      + '</td></tr>';
+  }).join(spacer);
+  const controls = `<div style="margin-top:20px"><p>${escapeMarkup(links.request)}</p>`
+    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${actionRows}</table></div>`;
   const body = document.isBodyHtml
     ? (/<\/body\s*>/i.test(document.body) ? document.body.replace(/<\/body\s*>/i, match => controls + match) : document.body + controls)
     : `<div style="white-space:pre-wrap">${escapeMarkup(document.body).replace(/\r\n|\r|\n/g, '<br>')}</div>${controls}`;

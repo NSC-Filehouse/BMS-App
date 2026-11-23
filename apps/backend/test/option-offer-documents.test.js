@@ -26,6 +26,7 @@ test('one mail carries unchanged original wording, both reply drafts and only on
   assert.match(request.body, /^<html><body>Originaltext aus BMS\./);
   assert.match(request.body, /mailto:ad@example\.invalid\?subject=AN-123.*Wunschpreis/);
   assert.equal((request.body.match(/mailto:/g) || []).length, 2);
+  assert.match(request.body, /Angebot nicht interessant<\/a><\/td><\/tr><tr aria-hidden="true"><td height="12"[^>]*>&nbsp;<\/td><\/tr><tr><td bgcolor="#245078"[^>]*><a[^>]*>Gegenangebot machen<\/a>/);
   assert.match(request.body, /kurzfristige Rückantwort/);
   assert.deepEqual(request.attachments[0].content, pdf);
   assert.match(request.attachments[1].content.toString(), /<Incoterm>FCA<\/Incoterm>/);
