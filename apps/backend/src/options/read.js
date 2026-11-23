@@ -70,7 +70,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
   const scopeParams = companyIds || [];
   const heads = await runSQLQuerySqlServer(config.sql.database, `SELECT o.op_id AS id, o.op_MandantID AS sourceMandantId,
     o.op_Lieferantenname AS supplierName, o.op_Lieferantenkennung AS supplierKey, o.op_Antwortadresse AS supplierReplyTo, o.op_Angebotsnummer AS externalOfferNo,
-    o.op_GueltigBis AS validUntil, o.op_QuellGueltigBis AS sourceValidUntil, o.op_IstDemo AS isDemo,
+    o.op_EingangAm AS receivedDate, o.op_GueltigBis AS validUntil, o.op_QuellGueltigBis AS sourceValidUntil, o.op_IstDemo AS isDemo,
     o.op_Incoterm AS incoterm, o.op_Ladeort AS loadingLocation, o.op_Verpackung AS packagingText,
     o.op_Konditionen AS termsText, o.op_Kommentar AS comment, o.op_Nachverhandelbar AS negotiable,
     o.op_NachverhandelbarQuelle AS negotiableEvidence,o.op_AnbieterKontaktJson AS sourceContactsJson,
@@ -133,7 +133,8 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     contact:sourceSupplierContact(sourceContactsJson),
     packagingDisplay: packagingDisplay(row.packagingText),
     supplierKey: supplierKey(row.supplierName, row.supplierReplyTo || row.supplierKey),
-    isDemo: Boolean(row.isDemo), validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
+    isDemo: Boolean(row.isDemo), receivedDate: dateOnly(row.receivedDate),
+    validUntil: dateOnly(row.validUntil), sourceValidUntil: dateOnly(row.sourceValidUntil), positions: [] }]));
   positions.forEach(row => byId.get(Number(row.optionId))?.positions.push({ ...mapPosition(row,today,includeMatchInputs), packagingDisplay: packagingDisplay(row.positionPackaging) }));
   return [...byId.values()].filter(offer => offer.positions.length);
 }

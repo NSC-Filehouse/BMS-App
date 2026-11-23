@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Box, CircularProgress, InputAdornment, TextField, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, FormControlLabel, InputAdornment, Radio, RadioGroup, TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -12,6 +12,7 @@ import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 export default function OptionsList() {
   const [offers, setOffers] = React.useState([]);
   const [query, setQuery] = React.useState('');
+  const [listView, setListView] = React.useState('grouped');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const navigate = useNavigate();
@@ -39,29 +40,41 @@ export default function OptionsList() {
           position.materialCategory, position.quality, position.batchNo, offer.loadingLocation]
           .filter(Boolean).join(' ').toLocaleLowerCase();
         if (search && !haystack.includes(search)) return;
-        const category = optionCategory(position) || t('option_other_category');
-        if (!grouped.has(category)) grouped.set(category, []);
-        grouped.get(category).push({ offer, position });
+        const key = listView === 'received' ? (offer.receivedDate || '') : (optionCategory(position) || t('option_other_category'));
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push({ offer, position });
       });
     });
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b, 'de'));
-  }, [offers, query, t]);
+    return [...grouped.entries()].sort(([a], [b]) =>
+      listView === 'received' ? b.localeCompare(a) : a.localeCompare(b, 'de'));
+  }, [offers, query, listView, t]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%', minWidth: 0 }}>
       <Typography variant="h5" sx={{ mb: 1.5 }}>{t('options_title')}</Typography>
       <TextField
         fullWidth size="small" value={query} onChange={(event) => setQuery(event.target.value)}
-        placeholder={t('options_search')} sx={{ mb: 1.25 }}
+        placeholder={t('options_search')} sx={{ mb: 0.25 }}
         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
       />
+      <RadioGroup
+        row aria-label={t('options_list_view')} value={listView}
+        onChange={(event) => setListView(event.target.value)}
+        sx={{ mb: 0.5, columnGap: 1.5, '& .MuiFormControlLabel-root': { m: 0 },
+          '& .MuiRadio-root': { p: 0.5 }, '& .MuiFormControlLabel-label': { typography: 'caption' } }}
+      >
+        <FormControlLabel value="grouped" control={<Radio size="small" />} label={t('options_list_grouped')} />
+        <FormControlLabel value="received" control={<Radio size="small" />} label={t('options_list_received')} />
+      </RadioGroup>
       {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>}
       {!loading && !error && groups.length === 0 && <Typography color="text.secondary">{t('options_empty')}</Typography>}
       <Box sx={{ overflowY: 'auto', minHeight: 0, display: 'grid', alignContent: 'start', gap: 0.4 }}>
-        {groups.map(([category, entries]) => (
-          <Box key={category} sx={{ minWidth: 0 }}>
-            <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.35, fontWeight: 700 }}>{category}</Typography>
+        {groups.map(([key, entries]) => (
+          <Box key={key} sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.35, fontWeight: 700 }}>
+              {listView === 'received' ? (optionDate(key) || t('options_list_received_unknown')) : key}
+            </Typography>
             {entries.map(({ offer, position }) => (
               <Box
                 key={`${offer.id}-${position.id}`}
