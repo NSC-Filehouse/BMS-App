@@ -46,7 +46,9 @@ powershell.exe -NoProfile -File apps/backend/scripts/install-schema.ps1 -Server 
 ```
 
 Bereits vorhandene Tabellen und Daten bleiben erhalten. Fehlende Tabellen,
-Indizes und Fremdschlüssel werden angelegt. Abweichende erforderliche Spalten
+Indizes und Fremdschlüssel werden angelegt. Die optionalen Positionsverweise
+zwischen Auftrag, Angebot, Bestellung und Option ergänzt das Skript auch in
+bestehenden Tabellen. Abweichende erforderliche Spalten
 führen zum Abbruch mit vollständigem Rollback. Das Skript ist eine aktuelle
 Installationsbaseline, kein automatischer Datenkonverter für beliebige alte
 App-Versionen. Frühere Migrationen liegen weiterhin in der Git-Historie.

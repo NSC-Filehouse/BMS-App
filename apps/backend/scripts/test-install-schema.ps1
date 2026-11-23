@@ -18,7 +18,7 @@ try {
   & (Join-Path $PSScriptRoot 'install-schema.ps1') -Server $Server -Database $installTestDatabase
   $installTestCommand.CommandText=@'
 IF (SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>45 THROW 51010,N'Incomplete table installation.',1;
-IF (SELECT COUNT(*) FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>24 THROW 51010,N'Incomplete foreign keys.',1;
+IF (SELECT COUNT(*) FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp')<>29 THROW 51010,N'Incomplete foreign keys.',1;
 IF EXISTS(SELECT 1 FROM sys.foreign_keys f JOIN sys.tables t ON t.object_id=f.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=N'BMSApp' AND (f.is_disabled=1 OR f.is_not_trusted=1)) THROW 51010,N'Untrusted foreign key.',1;
 INSERT BMSApp.PushMandantSetting(pms_UserEmail,pms_CompanyId,pms_Mandant) VALUES(N'schema-test@example.invalid',0,N'TEST');
 '@
@@ -27,16 +27,44 @@ INSERT BMSApp.PushMandantSetting(pms_UserEmail,pms_CompanyId,pms_Mandant) VALUES
   $installTestCommand.CommandText="IF (SELECT COUNT(*) FROM BMSApp.PushMandantSetting WHERE pms_UserEmail=N'schema-test@example.invalid')<>1 THROW 51010,N'Repeated install changed existing rows.',1;"
   [void]$installTestCommand.ExecuteNonQuery()
   Write-Output 'PASS: empty installation, complete constraints, repeated installation and existing-row preservation.'
-  $installTestCommand.CommandText='DROP TABLE BMSApp.ContactCreationOperation; ALTER TABLE BMSApp.PushSubscription ALTER COLUMN ps_Language NVARCHAR(9) NULL;'
+  $installTestCommand.CommandText=@'
+DROP TABLE BMSApp.ContactCreationOperation;
+ALTER TABLE BMSApp.PushSubscription ALTER COLUMN ps_Language NVARCHAR(9) NULL;
+ALTER TABLE BMSApp.tbl_Temp_Auf_Position DROP CONSTRAINT FK_tbl_Temp_Auf_Position_tap_offer_position_id;
+DROP INDEX IX_tbl_Temp_Auf_Position_tap_offer_position_id ON BMSApp.tbl_Temp_Auf_Position;
+ALTER TABLE BMSApp.tbl_Temp_Auf_Position DROP COLUMN tap_offer_position_id;
+INSERT BMSApp.tbl_Temp_Auftrag(ta_company_id,ta_ClientReferenceId,ta_client_name,ta_client_address,ta_completed,ta_CreateDate,ta_LastModifiedBy,ta_LastModifiedDate,ta_IsConfirmed)
+VALUES(0,N'TEST',N'Test customer',N'Test address',0,SYSUTCDATETIME(),N'schema-test',SYSUTCDATETIME(),0);
+INSERT BMSApp.tbl_Temp_Auf_Position(tap_ta_id,tap_line_no,tap_be_number,tap_article,tap_amount_in_kg,tap_warehouse,tap_price,tap_mfi,tap_LastModifiedBy)
+VALUES(CONVERT(int,SCOPE_IDENTITY()),1,N'TEST',N'Test article',1000,N'TEST',0,N'TEST',N'schema-test');
+'@
   [void]$installTestCommand.ExecuteNonQuery()
   $installTestRejected=$false
   try {$installTestCommand.CommandText=$installTestSql;[void]$installTestCommand.ExecuteNonQuery()}
   catch [System.Data.SqlClient.SqlException] {if($_.Exception.Number -ne 51001){throw};$installTestRejected=$true}
   if(!$installTestRejected){throw 'Incompatible existing columns were not rejected.'}
-  $installTestCommand.CommandText="IF OBJECT_ID(N'BMSApp.ContactCreationOperation',N'U') IS NOT NULL THROW 51010,N'Partial installation was not rolled back.',1; IF (SELECT COUNT(*) FROM BMSApp.PushMandantSetting WHERE pms_UserEmail=N'schema-test@example.invalid')<>1 THROW 51010,N'Existing data changed after rejected installation.',1; ALTER TABLE BMSApp.PushSubscription ALTER COLUMN ps_Language NVARCHAR(10) NULL;"
+  $installTestCommand.CommandText=@'
+IF OBJECT_ID(N'BMSApp.ContactCreationOperation',N'U') IS NOT NULL OR COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position',N'tap_offer_position_id') IS NOT NULL
+    THROW 51010,N'Partial installation was not rolled back.',1;
+IF (SELECT COUNT(*) FROM BMSApp.PushMandantSetting WHERE pms_UserEmail=N'schema-test@example.invalid')<>1
+    THROW 51010,N'Existing data changed after rejected installation.',1;
+ALTER TABLE BMSApp.PushSubscription ALTER COLUMN ps_Language NVARCHAR(10) NULL;
+'@
   [void]$installTestCommand.ExecuteNonQuery()
   $installTestCommand.CommandText=$installTestSql;[void]$installTestCommand.ExecuteNonQuery()
-  Write-Output 'PASS: incompatible-schema rejection, atomic rollback and recovery.'
+  $installTestCommand.CommandText=@'
+IF (SELECT COUNT(*) FROM BMSApp.tbl_Temp_Auf_Position WHERE tap_article=N'Test article' AND tap_offer_position_id IS NULL)<>1
+    THROW 51010,N'Position upgrade changed an existing row.',1;
+BEGIN TRY
+    UPDATE BMSApp.tbl_Temp_Auf_Position SET tap_offer_position_id=-1 WHERE tap_article=N'Test article';
+    THROW 51010,N'Position link accepted a missing target.',1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>547 THROW;
+END CATCH;
+'@
+  [void]$installTestCommand.ExecuteNonQuery()
+  Write-Output 'PASS: incompatible-schema rollback and position link upgrade without changing existing positions.'
 } finally {
   if($installTestConnection){$installTestConnection.Dispose()}
   if($installTestCreated){

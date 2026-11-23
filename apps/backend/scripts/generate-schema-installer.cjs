@@ -12,6 +12,33 @@ const literal=value=>"N'"+String(value).replaceAll("'","''")+"'";
 const full=name=>`[BMSApp].${quote(name)}`;
 const execute=sql=>`EXEC(${literal(sql)});`;
 const on=flag=>flag?'ON':'OFF';
+const positionReferences=[
+ ['tbl_Temp_Ang_Position','tagp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
+ ['tbl_Temp_Auf_Position','tap_purchase_position_id','tbl_Temp_Best_Position','tbp_id'],
+ ['tbl_Temp_Auf_Position','tap_offer_position_id','tbl_Temp_Ang_Position','tagp_id'],
+ ['tbl_Temp_Auf_Position','tap_option_position_id','tblOptionenPositionen','opp_id'],
+ ['tbl_Temp_Best_Position','tbp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
+];
+for(const [tableName,name,referencedTable,referencedColumn] of positionReferences){
+ if(!schema.columns.some(column=>column.tableName===tableName && column.name===name)){
+  schema.columns.push({
+   tableName,name,typeName:'int',max_length:4,precision:10,scale:0,
+   is_nullable:true,is_identity:false,is_computed:false,collation_name:null,
+  });
+ }
+ const indexName=`IX_${tableName}_${name}`;
+ const tableIndexes=schema.indexes.filter(index=>index.tableName===tableName);
+ if(!tableIndexes.some(index=>index.name===indexName)){
+  const indexId=Math.max(0,...tableIndexes.map(index=>index.index_id))+1;
+  schema.indexes.push({tableName,name:indexName,index_id:indexId,type_desc:'NONCLUSTERED',allow_row_locks:true,allow_page_locks:true});
+  schema.indexColumns.push({tableName,index_id:indexId,columnName:name,key_ordinal:1});
+ }
+ const fkName=`FK_${tableName}_${name}`;
+ if(!schema.foreignKeys.some(fk=>fk.tableName===tableName && fk.name===fkName)){
+  schema.foreignKeys.push({tableName,name:fkName,referencedTable,referencedSchema:'BMSApp',deleteAction:'NO_ACTION',updateAction:'NO_ACTION'});
+  schema.foreignKeyColumns.push({name:fkName,constraint_column_id:1,columnName:name,referencedColumn});
+ }
+}
 if(schema.triggers.length || schema.userTypes.length || schema.tables.some(t=>t.temporal_type||t.is_memory_optimized))throw Error('Additional schema features require explicit handling.');
 if(schema.indexes.some(index=>index.dataSpace && index.dataSpace!=='PRIMARY'))throw Error('Custom filegroups/partition schemes require explicit handling.');
 function type(column){
@@ -73,6 +100,10 @@ const contactDefaults={AttemptCount:'((0))',CreatedAt:'(sysutcdatetime())',Updat
 const contactSchema=contactColumns.map(([name,typeName,max_length,is_nullable],i)=>({tableName:'ContactCreationOperation',column_id:i+1,name,typeName,max_length,precision:contactTypes[typeName][0],scale:contactTypes[typeName][1],is_nullable:Boolean(is_nullable),is_identity:false,is_computed:false,collation_name:['char','nvarchar'].includes(typeName)?collation:null,defaultName:contactDefaults[name]?'DF_ContactCreationOperation_'+name:null,defaultDefinition:contactDefaults[name] || null}));
 const contactDDL=`CREATE TABLE [BMSApp].[ContactCreationOperation] (\n${contactSchema.map(c=>`    ${quote(c.name)} ${type(c)}${c.collation_name?' COLLATE '+c.collation_name:''} ${c.is_nullable?'NULL':'NOT NULL'}${c.defaultDefinition?` CONSTRAINT ${quote(c.defaultName)} DEFAULT ${c.defaultDefinition}`:''}`).join(',\n')},\n    CONSTRAINT [PK_ContactCreationOperation] PRIMARY KEY CLUSTERED ([OperationId])\n);`;
 if(missingContact)sql+=`\n IF OBJECT_ID(N'BMSApp.ContactCreationOperation',N'U') IS NULL\n BEGIN\n  ${execute(contactDDL)}\n END;\n`;
+sql+='\n -- Add optional position links to existing installations before checking their columns.\n';
+for(const [tableName,name] of positionReferences){
+ sql+=` IF COL_LENGTH(${literal('BMSApp.'+tableName)},${literal(name)}) IS NULL\n  ${execute(`ALTER TABLE ${full(tableName)} ADD ${quote(name)} [int] NULL;`)}\n`;
+}
 // Keep the compatibility manifest inside the one executable SQL file. It
 // contains schema metadata only; no environment names, accounts or row data.
 const expected=[...schema.columns,...(missingContact?contactSchema:[])].map(c=>({table:c.tableName,column:c.name,type:c.typeName,length:c.max_length,precision:c.precision,scale:c.scale,nullable:c.is_nullable,identity:c.is_identity,computed:c.is_computed,collation:c.collation_name}));
@@ -92,7 +123,7 @@ for(const check of checks){
  if(check.is_disabled||check.is_not_trusted)throw Error('Disabled/untrusted check requires review.');
  sql+=` IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(${literal('BMSApp.'+check.tableName)}) AND name=${literal(check.name)})\n  ${execute(`ALTER TABLE ${full(check.tableName)} WITH CHECK ADD CONSTRAINT ${quote(check.name)} CHECK${check.is_not_for_replication?' NOT FOR REPLICATION':''} ${check.definition};`)}\n`;
 }
-sql+='\n -- Foreign keys, including the option-position/current-matching cycle.\n';
+sql+='\n -- Foreign keys, including the reciprocal position links.\n';
 for(const fk of schema.foreignKeys){
  if(fk.is_disabled||fk.is_not_trusted||fk.referencedSchema!=='BMSApp')throw Error('Foreign key requires additional review.');
  const pairs=schema.foreignKeyColumns.filter(c=>c.name===fk.name).sort((a,b)=>a.constraint_column_id-b.constraint_column_id);

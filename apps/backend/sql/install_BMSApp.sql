@@ -354,6 +354,7 @@ BEGIN TRY
     [tagp_cost_price] [decimal](18,4) NOT NULL CONSTRAINT [DF_Temp_Ang_Position_cost] DEFAULT ((0)),
     [tagp_wpz_original] [bit] NOT NULL CONSTRAINT [DF_Temp_Ang_Position_wpz] DEFAULT ((1)),
     [tagp_wpz_comment] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
+    [tagp_order_position_id] [int] NULL,
     CONSTRAINT [PK_Temp_Ang_Position] PRIMARY KEY CLUSTERED ([tagp_id] ASC),
     CONSTRAINT [UQ_Temp_Ang_Position_key] UNIQUE NONCLUSTERED ([tagp_offer_id] ASC, [tagp_line_key] ASC),
     CONSTRAINT [UQ_Temp_Ang_Position_line] UNIQUE NONCLUSTERED ([tagp_offer_id] ASC, [tagp_line_no] ASC)
@@ -448,6 +449,9 @@ BEGIN TRY
     [tap_Artikelindex] [nvarchar](50) COLLATE Latin1_General_CI_AS NULL,
     [tap_ValutaDatum] [datetime2](7) NULL,
     [tap_is_working_price] [bit] NOT NULL CONSTRAINT [DF_tbl_Temp_Auf_Position_tap_is_working_price] DEFAULT ((0)),
+    [tap_purchase_position_id] [int] NULL,
+    [tap_offer_position_id] [int] NULL,
+    [tap_option_position_id] [int] NULL,
     CONSTRAINT [PK_tbl_Temp_Auf_Position] PRIMARY KEY CLUSTERED ([tap_id] ASC),
     CONSTRAINT [UQ_tbl_Temp_Auf_Position_ta_line] UNIQUE NONCLUSTERED ([tap_ta_id] ASC, [tap_line_no] ASC)
 );');
@@ -543,6 +547,7 @@ BEGIN TRY
     [OptionID] [int] NULL,
     [OptionPositionID] [int] NULL,
     [tbp_option_mfi_acknowledged] [bit] NOT NULL CONSTRAINT [DF_Temp_Best_Position_option_mfi] DEFAULT ((0)),
+    [tbp_order_position_id] [int] NULL,
     CONSTRAINT [PK_tbl_Temp_Best_Position] PRIMARY KEY CLUSTERED ([tbp_id] ASC),
     CONSTRAINT [UQ_tbl_Temp_Best_Position_line] UNIQUE NONCLUSTERED ([tbp_tb_id] ASC, [tbp_line_no] ASC)
 );');
@@ -1137,6 +1142,18 @@ BEGIN TRY
     CONSTRAINT [PK_ContactCreationOperation] PRIMARY KEY CLUSTERED ([OperationId])
 );');
  END;
+
+ -- Add optional position links to existing installations before checking their columns.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Ang_Position',N'tagp_order_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] ADD [tagp_order_position_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position',N'tap_purchase_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] ADD [tap_purchase_position_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position',N'tap_offer_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] ADD [tap_offer_position_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position',N'tap_option_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] ADD [tap_option_position_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_order_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_order_position_id] [int] NULL;');
 
  -- Fail before adding constraints/indexes to incompatible existing tables.
  DECLARE @expectedColumns NVARCHAR(MAX)=N'[
@@ -1913,7 +1930,12 @@ BEGIN TRY
 {"table":"ContactCreationOperation","column":"AttemptCount","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"LockedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
-{"table":"ContactCreationOperation","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null}
+{"table":"ContactCreationOperation","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Ang_Position","column":"tagp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Auf_Position","column":"tap_purchase_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Auf_Position","column":"tap_offer_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Auf_Position","column":"tap_option_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Best_Position","column":"tbp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null}
 ]';
  IF EXISTS (
   SELECT e.tableName,e.columnName,e.typeName,e.maxLength,e.precisionValue,e.scaleValue,e.nullableValue,e.identityValue,e.computedValue,e.collationName
@@ -2024,6 +2046,16 @@ BEGIN TRY
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Aktivitaet_Status] ON [BMSApp].[tbl_Temp_Aktivitaet] ([Status] ASC, [Id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'IX_ContactCreationOperation_Scope')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_ContactCreationOperation_Scope] ON [BMSApp].[ContactCreationOperation] ([UserId] ASC, [Mandant] ASC, [CustomerNumber] ASC, [CreatedAt] DESC);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'IX_tbl_Temp_Ang_Position_tagp_order_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Ang_Position_tagp_order_position_id] ON [BMSApp].[tbl_Temp_Ang_Position] ([tagp_order_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'IX_tbl_Temp_Auf_Position_tap_purchase_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Auf_Position_tap_purchase_position_id] ON [BMSApp].[tbl_Temp_Auf_Position] ([tap_purchase_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'IX_tbl_Temp_Auf_Position_tap_offer_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Auf_Position_tap_offer_position_id] ON [BMSApp].[tbl_Temp_Auf_Position] ([tap_offer_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'IX_tbl_Temp_Auf_Position_tap_option_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Auf_Position_tap_option_position_id] ON [BMSApp].[tbl_Temp_Auf_Position] ([tap_option_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'IX_tbl_Temp_Best_Position_tbp_order_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Best_Position_tbp_order_position_id] ON [BMSApp].[tbl_Temp_Best_Position] ([tbp_order_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
 
  -- Check constraints.
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.CreditLimitMailOutbox') AND name=N'CK_CreditLimitMailOutbox_Status')
@@ -2129,7 +2161,7 @@ BEGIN TRY
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_Status')
   EXEC(N'ALTER TABLE [BMSApp].[ContactCreationOperation] WITH CHECK ADD CONSTRAINT [CK_ContactCreationOperation_Status] CHECK ([Status] IN (N''sending'',N''unknown'',N''failed'',N''created''));');
 
- -- Foreign keys, including the option-position/current-matching cycle.
+ -- Foreign keys, including the reciprocal position links.
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.CustomerCreationMandant') AND name=N'FK_CustomerCreationMandant_Operation')
   EXEC(N'ALTER TABLE [BMSApp].[CustomerCreationMandant] WITH CHECK ADD CONSTRAINT [FK_CustomerCreationMandant_Operation] FOREIGN KEY ([OperationId]) REFERENCES [BMSApp].[CustomerCreation] ([OperationId]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.CustomerCreationRollback') AND name=N'FK_CustomerCreationRollback_Operation')
@@ -2178,6 +2210,16 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Aktivitaet_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferDocument') AND name=N'FK_OptionOfferDocument_OptionOfferMailId')
   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferDocument] WITH CHECK ADD CONSTRAINT [FK_OptionOfferDocument_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'FK_tbl_Temp_Ang_Position_tagp_order_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Ang_Position_tagp_order_position_id] FOREIGN KEY ([tagp_order_position_id]) REFERENCES [BMSApp].[tbl_Temp_Auf_Position] ([tap_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'FK_tbl_Temp_Auf_Position_tap_purchase_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Auf_Position_tap_purchase_position_id] FOREIGN KEY ([tap_purchase_position_id]) REFERENCES [BMSApp].[tbl_Temp_Best_Position] ([tbp_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'FK_tbl_Temp_Auf_Position_tap_offer_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Auf_Position_tap_offer_position_id] FOREIGN KEY ([tap_offer_position_id]) REFERENCES [BMSApp].[tbl_Temp_Ang_Position] ([tagp_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'FK_tbl_Temp_Auf_Position_tap_option_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Auf_Position_tap_option_position_id] FOREIGN KEY ([tap_option_position_id]) REFERENCES [BMSApp].[tblOptionenPositionen] ([opp_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'FK_tbl_Temp_Best_Position_tbp_order_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Best_Position_tbp_order_position_id] FOREIGN KEY ([tbp_order_position_id]) REFERENCES [BMSApp].[tbl_Temp_Auf_Position] ([tap_id]);');
 
  COMMIT TRANSACTION;
  SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,45 AS expectedTables,N'installed' AS result;
