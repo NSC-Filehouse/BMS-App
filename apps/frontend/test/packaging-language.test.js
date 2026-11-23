@@ -140,12 +140,14 @@ test('an open offer reloads English choices without resetting packaging, comment
   assert.equal(view.calls.filter(call => call.path === '/temp-offers/meta').length, 2);
 });
 
+const renderPurchaseDetails = ({ supplierField, purchaseControls }) => [supplierField, purchaseControls];
+
 test('an ambiguous option requires inline supplier and compatible article choices before opening the order', async () => {
   const suppliers = [{ id: 'LF1', name: 'Supplier 1' }, { id: 'LF2', name: 'Supplier 2' }];
   const blocked = { articleIndex: 'A', articleName: 'Article A', mfiCheck: { blocked: true } };
   const article = { articleIndex: 'B', articleName: 'Article B' };
   const view = await mount('../src/components/OptionPurchaseControls.jsx', {
-    enabled: true, offer: { id: 1, supplierName: 'Supplier' }, position: { id: 10 },
+    enabled: true, offer: { id: 1, supplierName: 'Supplier' }, position: { id: 10 }, renderDetails: renderPurchaseDetails,
   }, async path => {
     if (path.includes('/suppliers?')) return { data: suppliers };
     if (path.endsWith('/articles?q=')) return { data: [blocked] };
@@ -184,7 +186,7 @@ test('an ambiguous option requires inline supplier and compatible article choice
 test('a single or preferred supplier is shown only in the order dialog', async () => {
   const supplier = { id: 'LF1', name: 'Supplier 1', city: 'Feluy' };
   const article = { articleIndex: 'A', articleName: 'Article A' };
-  const props = { enabled: true, offer: { id: 1 }, position: { id: 10 } };
+  const props = { enabled: true, offer: { id: 1 }, position: { id: 10 }, renderDetails: renderPurchaseDetails };
   for (const suppliers of [[supplier], [{ ...supplier, preferred: true }, { id: 'LF2', name: 'Supplier 2' }]]) {
     const view = await mount('../src/components/OptionPurchaseControls.jsx', props, async path => {
       if (path.includes('/suppliers?')) return { data: suppliers };

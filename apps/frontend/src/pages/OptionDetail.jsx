@@ -131,9 +131,14 @@ export default function OptionDetail() {
     </Box>
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
-    {!loading && !error && offer && <Card sx={{ mb: 1.5 }}><CardContent>
+    {!loading && !error && offer && position && <OptionPurchaseControls
+      key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
+      enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
+      returnTo={createReturnTo(location)}
+      renderDetails={({ supplierField, purchaseControls }) => <Card sx={{ mb: 1.5 }}><CardContent>
         <InfoRow label={t('option_from')} value={<>
           <Box component="span" sx={{display:'inline-flex',alignItems:'center',maxWidth:'100%'}}><Box component="span" sx={{minWidth:0}}>{offer.supplierName}</Box><OptionSourceDocuments key={offer.id} offer={offer} /></Box>
+          {supplierField}
           {offer.contact?.name && <Box sx={{display:'flex',alignItems:'center',gap:0.5}}>
             <span>{offer.contact.name}</span>
             {offer.contact.phone && <Tooltip title={offer.contact.phone}><IconButton component="a" href={`tel:${offer.contact.phone.replace(/[^+\d*#]/g,'')}`} size="small" color="primary" aria-label={`${t('phone_label')}: ${offer.contact.name}`}><PhoneIcon fontSize="small" /></IconButton></Tooltip>}
@@ -142,7 +147,7 @@ export default function OptionDetail() {
         {offer.isDemo && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_demo_notice')}</Alert>}
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}
-      {offer.positions?.map((position) => <Box id={`position-${position.id}`} key={position.id} sx={{ pt: 1, scrollMarginTop: 80 }}>
+      <Box id={`position-${position.id}`} sx={{ pt: 1, scrollMarginTop: 80 }}>
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
         <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>
           {optionPositionTitle(position)}
@@ -163,11 +168,9 @@ export default function OptionDetail() {
         <InfoRow label={t('option_batch')} value={position.batchNo} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
-        <OptionPurchaseControls key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
-          enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
-          returnTo={createReturnTo(location)} />
-      </Box>)}
-    </CardContent></Card>}
+        {purchaseControls}
+      </Box>
+    </CardContent></Card>} />}
     {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
       <OptionOfferCustomers key={`${mandant}:${position.id}:${audience?.article?.index ?? ''}`}
         customers={audience?.customers ?? []} salesFilter={audience?.salesFilter}

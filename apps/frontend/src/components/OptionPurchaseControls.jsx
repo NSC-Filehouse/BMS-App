@@ -6,7 +6,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { optionArticleBlocked } from '../utils/optionDisplay.js';
 import OptionPurchaseDialog from './OptionPurchaseDialog.jsx';
 
-export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo }) {
+export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails }) {
   const { t } = useI18n();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers, setSuppliers] = React.useState(null);
@@ -58,19 +58,20 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     setArticleSearch({ q });
   }
 
-  return <>
-    {enabled && <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
+  const supplierField = enabled && !automaticSupplier && (suppliers || supplierError) ?
+    <Box sx={{ display: 'grid', gap: 0.5, my: 0.75, minWidth: 0, whiteSpace: 'normal' }}>
       {supplierError && <Alert severity="error">{supplierError}</Alert>}
-      {!automaticSupplier && suppliers?.length > 1 && !supplier && <Typography variant="body2">
-        {t('purchase_select_supplier', { name: offer.supplierName })}
-      </Typography>}
-      {suppliers && !automaticSupplier && <Autocomplete options={suppliers} value={supplier}
+      {suppliers && <Autocomplete options={suppliers} value={supplier}
         isOptionEqualToValue={(a, b) => a.id === b.id} getOptionKey={row => row.id}
         getOptionLabel={row => `${row.name}${row.city ? ` · ${row.city}` : ''}`}
         noOptionsText={t('supplier_options_unidentified')}
         onChange={(_event, value) => setSelectedSupplier(value)}
         renderInput={params => <TextField {...params} label={t('supplier_label')} required size="small" />} />}
       {suppliers?.length === 0 && <Typography variant="body2" color="text.secondary">{t('supplier_options_unidentified')}</Typography>}
+    </Box> : null;
+
+  const purchaseControls = <>
+    {enabled && <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
       {articleError && <Alert severity="error">{articleError}</Alert>}
       {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && !article &&
         <Alert severity="warning">{t('purchase_review_article_assignment')}</Alert>}
@@ -107,4 +108,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     {enabled && purchaseOpen && <OptionPurchaseDialog offer={offer} position={position} preferredSupplierId={preferredSupplierId}
       supplier={supplier} supplierEditable={Boolean(automaticSupplier)} article={article} returnTo={returnTo} onClose={() => setPurchaseOpen(false)} />}
   </>;
+
+  return renderDetails({ supplierField, purchaseControls });
 }
