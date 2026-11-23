@@ -606,6 +606,7 @@ BEGIN TRY
     [tba_CreatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_tbl_Temp_Bestellung_Anhang_CreatedAt] DEFAULT (sysutcdatetime()),
     [tba_DeletedAt] [datetime2](7) NULL,
     [tba_DeletedBy] [nvarchar](100) COLLATE Latin1_General_CI_AS NULL,
+    [tba_OptionSnapshot] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
     CONSTRAINT [PK_tbl_Temp_Bestellung_Anhang] PRIMARY KEY CLUSTERED ([tba_ID] ASC)
 );');
  END;
@@ -1157,6 +1158,10 @@ BEGIN TRY
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_order_position_id') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_order_position_id] [int] NULL;');
 
+ -- Preserve the original option data with each generated purchase attachment.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung_Anhang',N'tba_OptionSnapshot') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung_Anhang] ADD [tba_OptionSnapshot] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL;');
+
  -- Use one ERP offer and PDF for every new customer-mail job.
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'tag_offer_pdf') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] ADD [tag_offer_pdf] VARBINARY(MAX) NULL;');
@@ -1588,6 +1593,7 @@ BEGIN TRY
 {"table":"tbl_Temp_Bestellung_Anhang","column":"tba_CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Bestellung_Anhang","column":"tba_DeletedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Bestellung_Anhang","column":"tba_DeletedBy","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Bestellung_Anhang","column":"tba_OptionSnapshot","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_id","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
 {"table":"tblOptionen","column":"op_MandantID","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tblOptionen","column":"op_LieferantID","type":"nvarchar","length":100,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},

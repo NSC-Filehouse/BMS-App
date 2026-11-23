@@ -160,9 +160,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
                 <Typography variant="body2" title={attachment.fileName} sx={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: removed ? 'text.disabled' : 'text.primary', textDecoration: removed ? 'line-through' : 'none' }}>
                   {attachment.fileName}{removed ? ` (${t('temp_order_attachment_removed')})` : ''}
                 </Typography>
-                <IconButton size="small" disabled={disabled} color={removed ? 'primary' : 'error'} aria-label={removed ? t('undo_label') : t('delete_label')} onClick={() => update((previous) => ({ ...previous,
+                {!attachment.isOptionPdf && <IconButton size="small" disabled={disabled} color={removed ? 'primary' : 'error'} aria-label={removed ? t('undo_label') : t('delete_label')} onClick={() => update((previous) => ({ ...previous,
                   removeAttachmentIds: removed ? (previous.removeAttachmentIds || []).filter((value) => value !== attachmentId) : [...(previous.removeAttachmentIds || []), attachmentId],
-                }))}>{removed ? <UndoIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}</IconButton>
+                }))}>{removed ? <UndoIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}</IconButton>}
               </Box>;
             })}
             {pendingAttachmentFiles.map((file, index) => <Box key={`pending-${index}-${file.name}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>

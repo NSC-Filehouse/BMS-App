@@ -13,6 +13,14 @@ const literal=value=>"N'"+String(value).replaceAll("'","''")+"'";
 const full=name=>`[BMSApp].${quote(name)}`;
 const execute=sql=>`EXEC(${literal(sql)});`;
 const on=flag=>flag?'ON':'OFF';
+const optionSnapshotTable='tbl_Temp_Bestellung_Anhang';
+const optionSnapshotColumn='tba_OptionSnapshot';
+if(!schema.columns.some(column=>column.tableName===optionSnapshotTable && column.name===optionSnapshotColumn)){
+ schema.columns.push({
+  tableName:optionSnapshotTable,name:optionSnapshotColumn,typeName:'nvarchar',max_length:-1,
+  precision:0,scale:0,is_nullable:true,is_identity:false,is_computed:false,collation_name:'Latin1_General_CI_AS',
+ });
+}
 const positionReferences=[
  ['tbl_Temp_Ang_Position','tagp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
  ['tbl_Temp_Auf_Position','tap_purchase_position_id','tbl_Temp_Best_Position','tbp_id'],
@@ -105,6 +113,11 @@ sql+='\n -- Add optional position links to existing installations before checkin
 for(const [tableName,name] of positionReferences){
  sql+=` IF COL_LENGTH(${literal('BMSApp.'+tableName)},${literal(name)}) IS NULL\n  ${execute(`ALTER TABLE ${full(tableName)} ADD ${quote(name)} [int] NULL;`)}\n`;
 }
+const optionSnapshot=schema.columns.find(column=>column.tableName===optionSnapshotTable && column.name===optionSnapshotColumn);
+sql+=`\n -- Preserve the original option data with each generated purchase attachment.
+ IF COL_LENGTH(${literal('BMSApp.'+optionSnapshotTable)},${literal(optionSnapshotColumn)}) IS NULL
+  ${execute(`ALTER TABLE ${full(optionSnapshotTable)} ADD ${quote(optionSnapshotColumn)} ${type(optionSnapshot)} COLLATE ${optionSnapshot.collation_name} NULL;`)}
+`;
 sql+=addOptionOfferSchema.offerMailUpgrade;
 // Keep the compatibility manifest inside the one executable SQL file. It
 // contains schema metadata only; no environment names, accounts or row data.

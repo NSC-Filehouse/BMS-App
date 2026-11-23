@@ -8,7 +8,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
-  loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments } = require('../db/purchase-order-attachments');
+  loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
 const { loadHolidayRows } = require('../db/holidays');
@@ -554,7 +554,7 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
     }
     const attachmentInput = normalizeAttachmentInput(req);
     if (attachmentInput.removeAttachmentIds.length) throw createHttpError(400, 'Eine neue Bestellung hat noch keine gespeicherten Anhänge.');
-    await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
+    const sources = await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
     const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
       [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
       [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
@@ -567,9 +567,11 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
       asText(req.body?.comment) || null, user, now, user, now]);
     const id = result.rows[0].id;
     await insertPurchasePositions(query, id, positions, user, now);
-    await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
     const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
-    return withPurchaseOrderAttachments(mapOrder(saved.rows[0], await loadPositions(id, query)), query);
+    const order = mapOrder(saved.rows[0], await loadPositions(id, query));
+    if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user, now });
+    await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
+    return withPurchaseOrderAttachments(order, query);
   });
   sendEnvelope(res, { status: 201, data: created, meta: { mandant: req.mandant } });
 }));
@@ -597,7 +599,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   const updated = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
-    await assertOptionQuantities(query,positions,id,packaging.text,req.userIdentity);
+    const sources = await assertOptionQuantities(query,positions,id,packaging.text,req.userIdentity);
     await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
       [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
       WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
@@ -605,7 +607,9 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
     await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
     await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
     const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
-    return withPurchaseOrderAttachments(mapOrder(saved.rows[0], await loadPositions(id, query)), query);
+    const order = mapOrder(saved.rows[0], await loadPositions(id, query));
+    await syncPurchaseOptionPdf(query, { order, sources, user, now });
+    return withPurchaseOrderAttachments(order, query);
   });
   sendEnvelope(res, { data: updated, meta: { mandant: req.mandant } });
 }));
@@ -643,7 +647,7 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
       await validateOptionArticle(req.database,source,{...position,acknowledgeUnverifiedMfi:Boolean(position.acknowledgeUnverifiedMfi)});
       position.optionSourceChanged=source.sourceVersion;
     }
-    await assertOptionQuantities(query,positions,id,row.packagingType,req.userIdentity);
+    const sources = await assertOptionQuantities(query,positions,id,row.packagingType,req.userIdentity);
     const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
     for (const position of namedPositions) {
       const stored = positions.find(item => item.id === position.id);
@@ -654,8 +658,10 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
     normalizePositions(positions);
     const loading = await resolveLoadingAddress(req.database, { ...row, positions });
     await validateWorkingDates(positions, loading.address);
+    const order = mapOrder({ ...row, status: STATUS.APP_FINALIZED, returnComment: '', completedBy: userShortCode, closingDate: now, lastModifiedBy: userShortCode, lastModifiedAt: now }, positions);
+    if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user: userShortCode, now });
     await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_status]=1,[tb_return_comment]=NULL,[tb_completed_by]=?,[tb_closing_date]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=? AND [tb_status] IN (0,3)`, [userShortCode, now, userShortCode, now, id, companyId]);
-    return { mapped: await withPurchaseOrderAttachments(mapOrder({ ...row, status: 1, returnComment: '', completedBy: userShortCode, closingDate: now, lastModifiedBy: userShortCode, lastModifiedAt: now }, positions), query), alreadyFinalized: false };
+    return { mapped: await withPurchaseOrderAttachments(order, query), alreadyFinalized: false };
   });
   const mapped = finalized.mapped;
   const updatedPositions = mapped.positions;

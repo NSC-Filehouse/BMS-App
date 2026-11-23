@@ -6,7 +6,8 @@ const path = require('node:path');
 function fixture({ failAttachments = false } = {}) {
   const sent = [];
   const calls = [];
-  const selected = [{ fileName: 'Prüfung.pdf', mimeType: 'application/pdf', buffer: Buffer.from('selected-pdf') },
+  const selected = [{ fileName: 'Option.pdf', mimeType: 'application/pdf', buffer: Buffer.from('generated-pdf'), isOptionPdf: true },
+    { fileName: 'Prüfung.pdf', mimeType: 'application/pdf', buffer: Buffer.from('selected-pdf') },
     { fileName: 'Foto.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('selected-photo') }];
   const dependencies = {
     '../config': { sql: { database: 'BMS', columns: { firmaId: 'id', firmaKurz: 'short', firma: 'name' }, tables: {} },
@@ -40,8 +41,8 @@ test('the purchase order mail worker sends only the internal CS mail with select
   const f = fixture();
   await f.processPendingPurchaseOrderMails();
   assert.deepEqual(f.sent.map((mail) => mail.recipient), ['cs@example.test']);
-  assert.deepEqual(f.sent[0].attachments.map((a) => a.fileName), ['Prüfung.pdf', 'Foto.jpg']);
-  assert.equal(f.sent[0].attachments[0].buffer.toString(), 'selected-pdf');
+  assert.deepEqual(f.sent[0].attachments.map((a) => a.fileName), ['Option.pdf', 'Prüfung.pdf', 'Foto.jpg']);
+  assert.equal(f.sent[0].attachments[0].buffer.toString(), 'generated-pdf');
   assert.ok(f.calls.every((sql) => !sql.includes('tb_supplier_mail_status') && !sql.includes('[pom_')));
 });
 

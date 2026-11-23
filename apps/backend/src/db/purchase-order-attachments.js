@@ -1,10 +1,15 @@
 const multer = require('multer');
 const config = require('../config');
+const logger = require('../logger');
 const { createHttpError } = require('../utils');
 const { appTableSql } = require('./app-tables');
 const { runSQLQuerySqlServer } = require('./access');
+const { capturePurchaseOption, renderPurchaseOptionPdf } = require('../options/purchase-order-pdf');
 
 const TABLE = appTableSql('tempPurchaseOrderAttachment');
+const OPTION_FILE_NAME = 'Option.pdf';
+const OPTION_SNAPSHOT = '[tba_OptionSnapshot]';
+let optionSnapshotSupported = false;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_BATCH_SIZE = 100 * 1024 * 1024;
 // Keep the file picker and upload limits identical to temp-orders.routes.js.
@@ -85,15 +90,27 @@ function normalizeAttachmentInput(req) {
   return { files, removeAttachmentIds };
 }
 
+async function supportsOptionSnapshot(query) {
+  if (optionSnapshotSupported) return true;
+  const sql = "SELECT COL_LENGTH(?, N'tba_OptionSnapshot') AS optionSnapshotLength";
+  const rows = query ? (await query(sql, [TABLE])).rows : await runSQLQuerySqlServer(config.sql.database, sql, [TABLE]);
+  optionSnapshotSupported = rows?.[0]?.optionSnapshotLength === -1;
+  return optionSnapshotSupported;
+}
+
 async function loadPurchaseOrderAttachments(orderId, { query, includeContent = false, attachmentId } = {}) {
+  const hasOptionSnapshot = await supportsOptionSnapshot(query);
+  const optionFirst = hasOptionSnapshot ? `CASE WHEN ${OPTION_SNAPSHOT} IS NULL THEN 1 ELSE 0 END, ` : '';
+  const optionMarker = hasOptionSnapshot ? `, CASE WHEN ${OPTION_SNAPSHOT} IS NULL THEN 0 ELSE 1 END AS isOptionPdf` : '';
   const sql = `SELECT [tba_ID] AS id, [tba_FileName] AS fileName, [tba_MimeType] AS mimeType,
-    [tba_SizeBytes] AS sizeBytes, [tba_CreatedAt] AS createdAt${includeContent ? ', [tba_Content] AS buffer' : ''}
-    FROM ${TABLE} WHERE [tba_tb_id]=? AND [tba_DeletedAt] IS NULL${attachmentId === undefined ? '' : ' AND [tba_ID]=?'} ORDER BY [tba_ID]`;
+    [tba_SizeBytes] AS sizeBytes, [tba_CreatedAt] AS createdAt${optionMarker}${includeContent ? ', [tba_Content] AS buffer' : ''}
+    FROM ${TABLE} WHERE [tba_tb_id]=? AND [tba_DeletedAt] IS NULL${attachmentId === undefined ? '' : ' AND [tba_ID]=?'} ORDER BY ${optionFirst}[tba_ID]`;
   const params = attachmentId === undefined ? [orderId] : [orderId, attachmentId];
   const rows = query ? (await query(sql, params)).rows : await runSQLQuerySqlServer(config.sql.database, sql, params);
   return (rows || []).map((row) => ({
     id: Number(row.id), fileName: normalizeFileName(row.fileName) || 'attachment',
     mimeType: row.mimeType || 'application/octet-stream', sizeBytes: Number(row.sizeBytes || 0), createdAt: row.createdAt || null,
+    ...(row.isOptionPdf ? { isOptionPdf: true } : {}),
     ...(includeContent ? { buffer: row.buffer } : {}),
   }));
 }
@@ -105,9 +122,10 @@ async function withPurchaseOrderAttachments(order, query) {
 
 async function savePurchaseOrderAttachments(query, { orderId, files, removeAttachmentIds, user, now }) {
   // Individual statements also avoid exceeding SQL Server's parameter limit.
+  const manualOnly = removeAttachmentIds.length && await supportsOptionSnapshot(query) ? ` AND ${OPTION_SNAPSHOT} IS NULL` : '';
   for (const id of removeAttachmentIds) {
     const result = await query(`UPDATE ${TABLE} SET [tba_DeletedAt]=?, [tba_DeletedBy]=?
-      OUTPUT INSERTED.[tba_ID] AS id WHERE [tba_tb_id]=? AND [tba_ID]=? AND [tba_DeletedAt] IS NULL`, [now, user, orderId, id]);
+      OUTPUT INSERTED.[tba_ID] AS id WHERE [tba_tb_id]=? AND [tba_ID]=? AND [tba_DeletedAt] IS NULL${manualOnly}`, [now, user, orderId, id]);
     if (!result.rows?.length) throw createHttpError(404, 'Anhang für diese Bestellung nicht gefunden.', { code: 'PURCHASE_ORDER_ATTACHMENT_NOT_FOUND' });
   }
   for (const file of files) {
@@ -116,7 +134,49 @@ async function savePurchaseOrderAttachments(query, { orderId, files, removeAttac
   }
 }
 
+// The caller holds the order write lock and the option positions have already been validated.
+async function syncPurchaseOptionPdf(query, { order, sources, user, now }) {
+  if (!await supportsOptionSnapshot(query)) {
+    if (sources.size) throw createHttpError(503, 'Die Datenbankerweiterung für Option.pdf fehlt.', { code: 'PURCHASE_OPTION_PDF_SCHEMA_MISSING' });
+    return;
+  }
+  const { id: orderId } = order;
+  const { rows: [existing] } = await query(`SELECT [tba_ID] AS id, ${OPTION_SNAPSHOT} AS snapshotJson
+    FROM ${TABLE} WHERE [tba_tb_id]=? AND [tba_DeletedAt] IS NULL AND ${OPTION_SNAPSHOT} IS NOT NULL`, [orderId]);
+  if (!sources.size) {
+    if (existing) {
+      await query(`UPDATE ${TABLE} SET [tba_DeletedAt]=?, [tba_DeletedBy]=? WHERE [tba_tb_id]=? AND [tba_ID]=?`,
+        [now, user, orderId, existing.id]);
+    }
+    return;
+  }
+
+  let content;
+  let snapshotJson;
+  try {
+    const previous = existing ? JSON.parse(existing.snapshotJson) : {};
+    const snapshots = Object.fromEntries([...sources].map(([id, source]) => [
+      id, previous[id] ?? capturePurchaseOption(source, now),
+    ]));
+    snapshotJson = JSON.stringify(snapshots);
+    content = await renderPurchaseOptionPdf(order, snapshots);
+    if (content.length > MAX_FILE_SIZE) throw new Error('Option.pdf exceeds the attachment size limit');
+  } catch (error) {
+    logger.error(`Option.pdf für Bestellung ${orderId} konnte nicht erstellt werden`, error);
+    throw createHttpError(422, 'Option.pdf konnte nicht erstellt werden. Die Bestellung wurde nicht gespeichert oder übergeben.', {
+      code: 'PURCHASE_OPTION_PDF_FAILED',
+    });
+  }
+  if (existing) {
+    await query(`UPDATE ${TABLE} SET [tba_Content]=CAST(? AS VARBINARY(MAX)), [tba_SizeBytes]=?, ${OPTION_SNAPSHOT}=?
+      WHERE [tba_tb_id]=? AND [tba_ID]=?`, [content, content.length, snapshotJson, orderId, existing.id]);
+    return;
+  }
+  await query(`INSERT INTO ${TABLE} ([tba_tb_id],[tba_FileName],[tba_MimeType],[tba_Content],[tba_SizeBytes],[tba_CreatedBy],[tba_CreatedAt],${OPTION_SNAPSHOT})
+    VALUES (?,?,?,CAST(? AS VARBINARY(MAX)),?,?,?,?)`, [orderId, OPTION_FILE_NAME, 'application/pdf', content, content.length, user, now, snapshotJson]);
+}
+
 module.exports = {
   attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
-  loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments,
+  loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf,
 };

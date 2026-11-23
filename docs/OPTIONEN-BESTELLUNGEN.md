@@ -89,6 +89,20 @@ Status bleibt: 0 Entwurf, 1 an BMS übergeben, 2 durch BMS übernommen, 3 Nachar
 Die interne CS-Mail nennt die Optionsreferenzen. Der ERP-Importer muss `OptionID` übernehmen/auswerten. Die App erfindet
 keinen externen Bestellendpunkt, solange dieser nicht existiert.
 
+## Automatisches Optionsblatt
+
+Beim Speichern einer Optionsbestellung erzeugt die App ein gemeinsames
+`Option.pdf` für die bestellten Optionspositionen. Das PDF steht in der
+Bestellung und in der internen CS-Mail vor den manuell hochgeladenen Anhängen.
+Bei Änderungen aktualisiert die App die Bestellwerte anhand der gespeicherten
+Optionsdaten. Wird die letzte Optionsposition entfernt, entfällt das Optionsblatt.
+Bestehende bearbeitbare Optionsbestellungen erhalten es beim nächsten Speichern
+oder bei der Übergabe. Bereits übergebene Bestellungen werden nicht rückwirkend geändert.
+
+Bestehende Installationen führen vor der Nutzung
+[`purchase-option-pdf.sql`](../apps/backend/sql/upgrades/purchase-option-pdf.sql)
+in der zentralen BMS-Datenbank aus. Die Neuinstallation enthält die Spalte bereits.
+
 ## Teilmengen und Gleichzeitigkeit
 
 Die Obergrenze gilt pro Optionsposition gemeinsam für alle Mandanten/Lieferanten.

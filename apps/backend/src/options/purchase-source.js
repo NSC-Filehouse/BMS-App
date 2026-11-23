@@ -36,7 +36,9 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
     o.op_MandantID AS sourceMandantId,o.op_LieferantID AS sourceSupplierId,o.op_Lieferantenname AS supplierName,
     o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_AnbieterKontaktJson AS sourceContactsJson,o.op_Ladeort AS loadingLocation,
-    o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,
+    o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,o.op_Angebotsnummer AS externalOfferNo,
+    o.op_Konditionen AS termsText,p.opp_Ladehinweis AS loadingText,p.opp_Charge AS batchNo,
+    p.opp_PreisRoh AS rawPrice,p.opp_PreiseinheitRoh AS rawPriceUnit,p.opp_Waehrung AS rawCurrency,
     p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
     p.opp_Artikelname_Lieferant AS articleName,p.opp_Kunststofftyp AS materialCategory,p.opp_Zustand AS quality,
     p.opp_ZustandNorm AS qualityNorm,p.opp_Eigenschaften AS propertiesText,p.opp_Dichte AS density,p.opp_DichteEinheit AS densityUnit,
@@ -187,6 +189,7 @@ async function validateOptionSupplier(database,position,supplierId) {
 
 async function assertOptionQuantities(query, positions, excludeOrderId = null,packagingType=null,identity) {
   const grouped = new Map();
+  const sources = new Map();
   for (const line of positions.filter(p => p.optionId != null)) {
     const id = positiveId(line.optionPositionId);
     const prior = grouped.get(id);
@@ -209,7 +212,9 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null,pa
     if (!fitsQuantity(cap,available.orderedKg,request.amount)) throw createHttpError(422,
       `Optionsmenge überschritten. Noch verfügbar: ${remainingKg.toLocaleString('de-DE')} kg.`,
       { code: 'OPTION_QUANTITY_EXCEEDED', optionPositionId:id,...available,offeredKg:cap,remainingKg });
+    sources.set(id, source);
   }
+  return sources;
 }
 
 module.exports = { positiveId,loadOptionPosition,loadOptionAvailability,confirmOptionQuantity,supplierCandidates,purchaseCandidates,exactNameCandidates,validateOptionArticle,validateOptionSupplier,assertOptionQuantities };

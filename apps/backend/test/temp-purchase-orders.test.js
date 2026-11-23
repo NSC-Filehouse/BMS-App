@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { PDFDocument } = require('pdf-lib');
 
 function fixture(options = {}) {
   const routes = [];
@@ -21,19 +22,32 @@ function fixture(options = {}) {
     assert.equal((sql.match(/\?/g) || []).length, params.length, `SQL parameter count: ${sql}`);
     calls.push({ sql, params });
     assert.doesNotMatch(sql, /\bAND\s+AND\b/i, 'composed list predicates must be valid SQL');
+    if (sql.includes('COL_LENGTH')) {
+      return { rows: [{ optionSnapshotLength: options.optionSnapshotSupported === false ? null : -1 }] };
+    }
     if (sql.includes('INSERT INTO tempPurchaseOrderAttachment')) {
-      const [orderId, fileName, mimeType, buffer, sizeBytes, user, now] = params;
-      attachments.push({ tba_ID: attachments.length + 1, tba_tb_id: orderId, tba_FileName: fileName, tba_MimeType: mimeType, tba_Content: buffer, tba_SizeBytes: sizeBytes, tba_CreatedBy: user, tba_CreatedAt: now });
+      const [orderId, fileName, mimeType, buffer, sizeBytes, user, now, snapshot] = params;
+      attachments.push({ tba_ID: attachments.length + 1, tba_tb_id: orderId, tba_FileName: fileName, tba_MimeType: mimeType, tba_Content: buffer, tba_SizeBytes: sizeBytes, tba_CreatedBy: user, tba_CreatedAt: now, tba_OptionSnapshot: snapshot });
       return { rows: [] };
     }
     if (sql.includes('UPDATE tempPurchaseOrderAttachment')) {
-      const row = attachments.find((a) => a.tba_tb_id === params[2] && a.tba_ID === params[3] && !a.tba_DeletedAt);
+      const row = attachments.find((a) => a.tba_tb_id === params.at(-2) && a.tba_ID === params.at(-1) && !a.tba_DeletedAt);
+      if (sql.includes('SET [tba_Content]')) {
+        [row.tba_Content, row.tba_SizeBytes, row.tba_OptionSnapshot] = params;
+        return { rows: [] };
+      }
+      if (row?.tba_OptionSnapshot && sql.includes('[tba_OptionSnapshot] IS NULL')) return { rows: [] };
       if (row) { row.tba_DeletedAt = params[0]; row.tba_DeletedBy = params[1]; }
       return { rows: row ? [{ id: row.tba_ID }] : [] };
     }
     if (sql.includes('FROM tempPurchaseOrderAttachment')) {
       if (failAttachmentRead) throw new Error('Simulated attachment read error');
-      return { rows: attachments.filter((a) => a.tba_tb_id === params[0] && !a.tba_DeletedAt && (params.length === 1 || a.tba_ID === params[1])).map((a) => project(sql, a)) };
+      const rows = attachments.filter((a) => a.tba_tb_id === params[0] && !a.tba_DeletedAt && (params.length === 1 || a.tba_ID === params[1]));
+      if (sql.includes('AS snapshotJson')) {
+        return { rows: rows.filter((a) => a.tba_OptionSnapshot).map((a) => project(sql, a)) };
+      }
+      if (sql.includes('ORDER BY CASE')) rows.sort((a, b) => Number(Boolean(b.tba_OptionSnapshot)) - Number(Boolean(a.tba_OptionSnapshot)) || a.tba_ID - b.tba_ID);
+      return { rows: rows.map((a) => ({ ...project(sql, a), isOptionPdf: sql.includes('AS isOptionPdf') && Boolean(a.tba_OptionSnapshot) })) };
     }
     if (sql.includes('COUNT(*) AS total FROM orders')) return { rows: [{ total: 0 }] };
     if (sql.includes('OFFSET ? ROWS')) return { rows: [] };
@@ -108,16 +122,37 @@ function fixture(options = {}) {
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
     '../db/timeline': { appendTimelineEntries: async (entries) => timeline.push(...entries) },
     '../options/purchase-source': {
-      loadOptionPosition: async (optionId,positionId)=>({opp_id:positionId,opp_op_id:optionId,opp_Artikelname_Lieferant:'Optionsmaterial',opp_Verpackung:'Sackware'}),
+      loadOptionPosition: async (optionId,positionId)=>({opp_id:positionId,opp_op_id:optionId,opp_Artikelname_Lieferant:'Optionsmaterial',
+        opp_Verpackung:'Sackware', opp_MengeBisKg:49500, opp_PreisProTonne:options.optionPrice ?? 950,
+        externalOfferNo:'MP-2026-1198', validUntil:'2026-12-31'}),
       validateOptionArticle: async ()=>({articleName:'Optionsartikel'}),
       validateOptionSupplier: async (_database,_source,supplierId)=>{if(options.optionSupplierId && supplierId!==options.optionSupplierId)throw new Error('Optionslieferant stimmt nicht überein');},
-      assertOptionQuantities: async (_query,positions)=>{if(options.optionQuantityLimit!=null && positions.filter(p=>p.optionId!=null).reduce((sum,p)=>sum+p.amount,0)>options.optionQuantityLimit)throw new Error('Optionsmenge überschritten');},
+      assertOptionQuantities: async (_query, positions) => {
+        const optionLines = positions.filter((position) => position.optionId != null);
+        if (options.optionQuantityLimit != null && optionLines.reduce((sum, position) => sum + position.amount, 0) > options.optionQuantityLimit) {
+          throw new Error('Optionsmenge überschritten');
+        }
+        const sources = new Map();
+        for (const position of optionLines) {
+          sources.set(position.optionPositionId, await dependencies['../options/purchase-source'].loadOptionPosition(position.optionId, position.optionPositionId));
+        }
+        return sources;
+      },
     },
   };
   const attachmentModule = { exports: {} };
+  const optionPdf = require('../src/options/purchase-order-pdf');
   const attachmentDependencies = {
     multer: require('multer'), '../config': dependencies['../config'], '../utils': dependencies['../utils'],
     './app-tables': dependencies['../db/app-tables'], './access': dependencies['../db/access'],
+    '../logger': { error() {} },
+    '../options/purchase-order-pdf': {
+      ...optionPdf,
+      renderPurchaseOptionPdf: (...args) => {
+        if (options.failOptionPdf) throw new Error('Simulated PDF failure');
+        return optionPdf.renderPurchaseOptionPdf(...args);
+      },
+    },
   };
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-attachments.js'), 'utf8'))((name) => {
     assert.ok(name in attachmentDependencies, name); return attachmentDependencies[name];
@@ -459,20 +494,80 @@ test('purchase creation period filters mirror today and Monday-based week filter
 });
 
 test('option reference survives create, copy, edit, detail and hand-off without a historical purchase',async()=>{
-  const f=fixture();const input=body();
+  const options = {};
+  const f=fixture(options);const input=body();
   input.loadingLocationSource='manual';input.loadingLocationText='Neues Werk\n12345 Musterstadt';
   input.positions=[{...input.positions[0],articleIndex:'NEW',optionId:7,optionPositionId:11,supplierConfirmed:true,articleConfirmed:true,amount:1000}];
-  const created=(await f.request(input)).data;
+  const created=(await f.request(input, 'post', '/temp-purchase-orders', { files: [file()] })).data;
   assert.equal(created.positions[0].optionId,7);assert.equal(created.positions[0].optionPositionId,11);
   assert.equal(created.positions[0].article,'Optionsmaterial');assert.equal(created.loadingLocationSource,'manual');
   assert.equal(created.loadingLocationId,null);assert.equal(created.loadingLocationChanged,true);
+  assert.deepEqual(created.attachments.map((attachment) => attachment.fileName), ['Option.pdf', 'Prüfung.pdf']);
+  const [generated] = created.attachments;
+  assert.equal(generated.isOptionPdf, true);
+  const retry = await f.request(input);
+  assert.equal(retry.meta.alreadyCreated, true);
+  assert.equal(f.attachments.length, 2);
   const original=created.positions[0];
+  options.optionPrice = 1300;
   const edited=(await f.request({...created,positions:[original,{...original,id:undefined,copyOfPositionId:original.id,amount:500}]},'put','/temp-purchase-orders/:id')).data;
   assert.equal(edited.positions.length,2);assert.ok(edited.positions.every(p=>p.optionId===7&&p.optionPositionId===11));
+  assert.equal(edited.attachments[0].id, generated.id);
+  assert.equal(JSON.parse(f.attachments[0].tba_OptionSnapshot)[11].price, '950,00 EUR/t');
+  const downloaded = await f.request({}, 'get', '/temp-purchase-orders/:id/attachments/:attachmentId', { params: { attachmentId: String(generated.id) } });
+  assert.equal(downloaded.headers['Content-Type'], 'application/pdf');
+  const pdf = await PDFDocument.load(downloaded.buffer);
+  assert.equal(pdf.getTitle(), 'Option zur Bestellung');
+  assert.ok(pdf.getPageCount() >= 2);
+  await assert.rejects(f.request({ ...edited, removeAttachmentIds: [generated.id] }, 'put', '/temp-purchase-orders/:id'),
+    (error) => error.details.code === 'PURCHASE_ORDER_ATTACHMENT_NOT_FOUND');
   await assert.rejects(f.request({...edited,positions:[{...edited.positions[0],optionId:null,optionPositionId:null}]},'put','/temp-purchase-orders/:id'),e=>e.details.code==='OPTION_REFERENCE_CHANGED');
   const sent=(await f.request({},'post','/temp-purchase-orders/:id/finalize')).data;
   assert.equal(sent.status,1);assert.equal(sent.positions[1].optionPositionId,11);
+  assert.equal(sent.attachments[0].id, generated.id);
+  assert.equal(f.attachments.length, 2);
   assert.equal(f.timeline[0].payloadJson.optionId,7);
+});
+
+test('an existing draft gets the options PDF before already saved attachments and can lose its last option line', async () => {
+  const options = { optionSnapshotSupported: false };
+  const f = fixture(options);
+  const created = (await f.request(body(), 'post', '/temp-purchase-orders', { files: [file('Option.pdf')] })).data;
+  assert.equal(created.attachments.length, 1);
+  assert.equal(created.attachments[0].isOptionPdf, undefined);
+  options.optionSnapshotSupported = true;
+  const [line] = created.positions;
+  const fromOption = { ...line, id: undefined, optionId: 7, optionPositionId: 11, supplierConfirmed: true, articleConfirmed: true };
+  const edit = (positions) => f.request({ ...created, positions }, 'put', '/temp-purchase-orders/:id');
+  const updated = (await edit([line, fromOption])).data;
+  assert.deepEqual(updated.attachments.map((attachment) => attachment.id), [2, 1]);
+  assert.equal(updated.attachments[0].isOptionPdf, true);
+  const withoutOption = (await edit([updated.positions[0]])).data;
+  assert.deepEqual(withoutOption.attachments, created.attachments);
+});
+
+test('an existing option can be handed off for the first time with a generated PDF', async () => {
+  const f = fixture();
+  await f.request(body(), 'post', '/temp-purchase-orders', { files: [file()] });
+  Object.assign(f.lines[0], { OptionID: 7, OptionPositionID: 11 });
+  const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+  assert.equal(sent.status, 1);
+  assert.deepEqual(sent.attachments.map((attachment) => attachment.fileName), ['Option.pdf', 'Prüfung.pdf']);
+});
+
+test('an option order is rolled back if PDF rendering fails or the required schema is missing', async () => {
+  const input = body();
+  Object.assign(input.positions[0], { optionId: 7, optionPositionId: 11, supplierConfirmed: true, articleConfirmed: true });
+  for (const [options, code] of [
+    [{ failOptionPdf: true }, 'PURCHASE_OPTION_PDF_FAILED'],
+    [{ optionSnapshotSupported: false }, 'PURCHASE_OPTION_PDF_SCHEMA_MISSING'],
+  ]) {
+    const f = fixture(options);
+    await assert.rejects(f.request(input, 'post', '/temp-purchase-orders', { files: [file()] }), (error) => error.details.code === code);
+    assert.equal(f.headers.length, 0);
+    assert.equal(f.lines.length, 0);
+    assert.equal(f.attachments.length, 0);
+  }
 });
 
 test('unconfirmed option selections and excess quantities cannot create a draft',async()=>{

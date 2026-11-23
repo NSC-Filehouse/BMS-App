@@ -52,10 +52,17 @@ test('incompatible installations abort atomically instead of altering or deletin
  const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
  assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,782);
+ assert.equal(manifest.length,783);
  assert.equal(new Set(manifest.map(c=>c.table)).size,45);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
  const pdf=manifest.find(c=>c.table==='tbl_Temp_Angebot' && c.column==='tag_offer_pdf');
  assert.deepEqual([pdf.type,pdf.length,pdf.nullable],['varbinary',-1,true]);
+ const snapshot=manifest.find(c=>c.table==='tbl_Temp_Bestellung_Anhang' && c.column==='tba_OptionSnapshot');
+ assert.deepEqual([snapshot.type,snapshot.length,snapshot.nullable],['nvarchar',-1,true]);
+ const upgrade=fs.readFileSync(path.join(sqlDirectory,'upgrades/purchase-option-pdf.sql'),'utf8');
+ const definition='[tba_OptionSnapshot] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL';
+ assert.equal(sql.split(definition).length-1,2,'new and existing databases get the same nullable column');
+ assert.ok(upgrade.includes(definition));
+ assert.match(upgrade,/IF COL_LENGTH\(N'BMSApp\.tbl_Temp_Bestellung_Anhang', N'tba_OptionSnapshot'\) IS NULL/);
  assert.match(sql,/FOREIGN KEY \(\[TempOfferId\]\) REFERENCES \[BMSApp\]\.\[tbl_Temp_Angebot\] \(\[tag_id\]\)/);
 });
