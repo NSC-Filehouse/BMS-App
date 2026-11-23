@@ -140,6 +140,47 @@ test('an open offer reloads English choices without resetting packaging, comment
   assert.equal(view.calls.filter(call => call.path === '/temp-offers/meta').length, 2);
 });
 
+test('an ambiguous option requires inline supplier and compatible article choices before opening the order', async () => {
+  const suppliers = [{ id: 'LF1', name: 'Supplier 1' }, { id: 'LF2', name: 'Supplier 2' }];
+  const blocked = { articleIndex: 'A', articleName: 'Article A', mfiCheck: { blocked: true } };
+  const article = { articleIndex: 'B', articleName: 'Article B' };
+  const view = await mount('../src/components/OptionPurchaseControls.jsx', {
+    enabled: true, offer: { id: 1, supplierName: 'Supplier' }, position: { id: 10 },
+  }, async path => {
+    if (path.includes('/suppliers?')) return { data: suppliers };
+    if (path.endsWith('/articles?q=')) return { data: [blocked] };
+    if (path.endsWith('/articles?q=Article')) return { data: [article] };
+    throw new Error(path);
+  });
+  const order = () => view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen'));
+  const supplierField = () => view.find(node => node.type === 'Autocomplete' && node.props.options === suppliers);
+  const articleField = () => view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled);
+  await view.flush();
+  assert.equal(order().props.disabled, true);
+  assert.equal(supplierField().props.value, null);
+  assert.equal(articleField().props.value, null);
+  assert.equal(articleField().props.getOptionDisabled(blocked), true);
+
+  supplierField().props.onChange(null, suppliers[1]);
+  view.find(node => node.type === 'IconButton' && node.props['aria-expanded'] === false).props.onClick();
+  await view.flush();
+  const searchInput = () => view.find(node => node.type === 'TextField' && node.props.fullWidth);
+  searchInput().props.onChange({ target: { value: 'Article' } });
+  await view.flush();
+  searchInput().props.onKeyDown({ key: 'Enter' });
+  await view.flush();
+  assert.equal(order().props.disabled, false);
+  order().props.onClick();
+  await view.flush();
+  const dialog = view.find(node => node.props?.supplier && node.props?.onClose);
+  assert.equal(dialog.props.supplier, suppliers[1]);
+  assert.equal(dialog.props.article, article);
+  dialog.props.onClose();
+  await view.flush();
+  assert.equal(supplierField().props.value, suppliers[1]);
+  assert.equal(articleField().props.value, article);
+});
+
 test('option purchase waits for the matching menu item before displaying the default packaging', async () => {
   let resolvePackaging;
   const packagingResponse = new Promise(resolve => { resolvePackaging = resolve; });

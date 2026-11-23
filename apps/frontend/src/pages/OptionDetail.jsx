@@ -5,7 +5,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckIcon from '@mui/icons-material/Check';
 import PhoneIcon from '@mui/icons-material/Phone';
 import OptionOfferCustomers from '../components/OptionOfferCustomers.jsx';
-import OptionPurchaseDialog from '../components/OptionPurchaseDialog.jsx';
+import OptionPurchaseControls from '../components/OptionPurchaseControls.jsx';
+import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
@@ -28,6 +29,7 @@ export default function OptionDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, lang } = useI18n();
+  const { features } = useFeatureAccess();
   const sourceQuery = React.useMemo(() => {
     const input = new URLSearchParams(location.search), result = new URLSearchParams();
     for (const key of ['vlMandantId', 'vlScope']) if (input.has(key)) result.set(key, input.get(key));
@@ -39,7 +41,6 @@ export default function OptionDetail() {
   const [deleting, setDeleting] = React.useState(false);
   const [deleteConfirm,setDeleteConfirm]=React.useState(false);
   const endpoint=`/options/${encodeURIComponent(id)}${positionId?`/positions/${encodeURIComponent(positionId)}`:''}`;
-  const [purchasePosition,setPurchasePosition] = React.useState(null);
   const validityRefresh = useOptionValidityRefresh();
   const mandant = getMandant();
   const position = offer?.positions?.[0];
@@ -57,7 +58,6 @@ export default function OptionDetail() {
     setLoading(true);
     setError('');
     setOffer(null);
-    setPurchasePosition(null);
     apiRequest(`${endpoint}?${sourceQuery}`)
       .then((response) => { if (!active)return;const data=response?.data || null;
         if(!positionId && data?.positions?.length){const hashId=location.hash.match(/^#position-(\d+)$/)?.[1];const selected=hashId?data.positions.find(p=>String(p.id)===hashId):data.positions[0];if(!selected)throw Error('Optionsposition nicht mehr verfügbar.');navigate(optionPositionPath(data.id,selected.id)+location.search,{replace:true,state:location.state});return;}
@@ -162,12 +162,10 @@ export default function OptionDetail() {
         <InfoRow label={t('option_mfi')} value={optionMfi(position)} />
         <InfoRow label={t('option_batch')} value={position.batchNo} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />
-        {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && <Alert severity="warning">Die bisherige Artikelzuordnung muss geprüft werden. Bitte beim Bestellen einen passenden Artikel wählen.</Alert>}
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
-        <Box sx={{display:'flex',justifyContent:'flex-end',gap:1,mt:2}}>
-          <Button variant="contained" disabled sx={{'&.Mui-disabled':{bgcolor:'grey.100',color:'text.secondary'}}}>{t('option_counter_option')}</Button>
-          <Button variant="contained" onClick={()=>setPurchasePosition(position)} disabled={position.remainingKg===0}>Bestellen</Button>
-        </Box>
+        <OptionPurchaseControls key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
+          enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
+          returnTo={createReturnTo(location)} />
       </Box>)}
     </CardContent></Card>}
     {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
@@ -179,7 +177,5 @@ export default function OptionDetail() {
       />
     )}
     <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
-    {offer && purchasePosition && !error && <OptionPurchaseDialog key={purchasePosition.id} offer={offer} position={purchasePosition}
-      preferredSupplierId={location.state?.optionSupplierId} returnTo={createReturnTo(location)} onClose={()=>setPurchasePosition(null)} />}
   </Box>;
 }

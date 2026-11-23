@@ -1,6 +1,5 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem,TextField, Typography } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import ContactCreateDialog from './ContactCreateDialog.jsx';
 import {getMandant} from '../utils/mandant.js';
@@ -16,27 +15,18 @@ import {optionArticleBlocked,optionPositionTitle,optionQuantity} from '../utils/
 
 const fieldFontSize='0.8125rem';
 
-export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, returnTo, onClose }) {
+export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, supplier, article, returnTo, onClose }) {
   const { t, lang } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const navigate = useNavigate();
   const location=useLocation();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
-  const [suppliers,setSuppliers] = React.useState([]);
-  const [supplier,setSupplier] = React.useState(null);
   const [contacts,setContacts]=React.useState([]),[contact,setContact]=React.useState(null);
   const [contactMeta,setContactMeta]=React.useState({}),[contactsLoading,setContactsLoading]=React.useState(false);
   const [contactError,setContactError]=React.useState(''),[contactCreateOpen,setContactCreateOpen]=React.useState(false);
   const [contactNotice,setContactNotice]=React.useState('');
   const contactMandant=getMandant();
   const contactScope=React.useRef(null);contactScope.current={supplierId:supplier?.id,mandant:contactMandant};
-  const [showArticleSearch,setShowArticleSearch] = React.useState(false);
-  const articleSearchId=React.useId();
-  const [articles,setArticles] = React.useState([]);
-  const [article,setArticle] = React.useState(null);
-  const [articleQuery,setArticleQuery] = React.useState('');
-  const [articlesLoaded,setArticlesLoaded] = React.useState(false);
-  const [articlesLoading,setArticlesLoading] = React.useState(false);
   const [orderAmount,setOrderAmount] = React.useState(null);
   const [availability,setAvailability] = React.useState({});
   const [totalAmount,setTotalAmount]=React.useState('');
@@ -50,35 +40,27 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const [busy,setBusy] = React.useState(false);
   const [error,setError] = React.useState('');
   const [errorCode,setErrorCode] = React.useState('');
-  const loadSuppliers = async (q = '') => {
-    setBusy(true);setError('');
-    try {
-      const query = new URLSearchParams({q,supplierId:preferredSupplierId || ''});
-      const response = await apiRequest(`${base}/suppliers?${query}`);
-      const rows = response.data || [];
-      setSuppliers(rows);setAvailability(response.meta || {});
-      if(!q){
-        const meta=response.meta || {};
+  const [availabilityLoading,setAvailabilityLoading] = React.useState(true);
+  const [availabilityError,setAvailabilityError] = React.useState('');
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams({ q: '', supplierId: preferredSupplierId || '' });
+    apiRequest(`${base}/suppliers?${query}`, { signal: controller.signal })
+      .then(({ meta = {} }) => {
+        if (controller.signal.aborted) return;
+        setAvailability(meta);
         setPackagingTypeId(defaultOptionPackagingId(meta));
-        setTotalAmount(meta.truckOffer?meta.confirmedTruckCount??'':meta.confirmedQuantityKg??'');
-        setTotalUnit(meta.truckOffer?'truck':meta.confirmedQuantityKg!=null?'kg':'');
-      }
-      if (!q) setSupplier(rows.find(row=>row.preferred) || (rows.length===1?rows[0]:null));
-      return response;
-    } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
-  };
-  const loadArticles = async (q = '') => {
-    setBusy(true);setError('');setArticlesLoading(true);
-    setArticlesLoaded(false);setArticles([]);setArticle(null);
-    try {
-      const response = await apiRequest(`${base}/articles?${new URLSearchParams({q})}`);
-      const rows=response.data || [];
-      setArticles(rows);setArticlesLoaded(true);
-      setArticle(rows.length===1&&!optionArticleBlocked(rows[0])?rows[0]:null);
-      return response;
-    } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);setArticlesLoading(false);}
-  };
-  React.useEffect(()=>{void(async()=>{await loadSuppliers();await loadArticles();})();},[]);
+        setTotalAmount(meta.truckOffer ? meta.confirmedTruckCount ?? '' : meta.confirmedQuantityKg ?? '');
+        setTotalUnit(meta.truckOffer ? 'truck' : meta.confirmedQuantityKg != null ? 'kg' : '');
+      })
+      .catch(cause => {
+        if (!controller.signal.aborted) setAvailabilityError(cause.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAvailabilityLoading(false);
+      });
+    return () => controller.abort();
+  }, [base, preferredSupplierId]);
   React.useEffect(()=>{
     let active=true;
     setPackagingLoading(true);setPackagingError('');
@@ -133,23 +115,18 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
   const requestedAmount=orderAmount ?? effectiveAvailability.remainingKg ?? '';
   const invalidAmount=requestedAmount==='' || !Number.isFinite(Number(requestedAmount)) || Number(requestedAmount)<=0 || Number(requestedAmount)>effectiveAvailability.remainingKg;
-  const unavailable = packagingLoading || Boolean(packagingError) || effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || !selectedPackaging;
+  const choicesUnavailable = availabilityLoading || Boolean(availabilityError) || packagingLoading || Boolean(packagingError);
+  const unavailable = choicesUnavailable || effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || !selectedPackaging;
   const enteringQuantity=!automaticTruck && (availability.remainingKg===null || quantityEditing);
   const totalKg=confirmedTotalKg(totalAmount,totalUnit,selectedPackaging);
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>{t('purchase_option_title')}</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important','& .MuiInputBase-root':{fontSize:fieldFontSize}}}>
       <Typography>{optionPositionTitle(position)}</Typography>
-      {suppliers.length>1 && !supplier && <Typography variant="body2">{t('purchase_select_supplier', { name: offer.supplierName })}</Typography>}
-      <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
-      <Autocomplete options={suppliers} value={supplier} disabled={busy} sx={{flex:1,minWidth:0}}
-        isOptionEqualToValue={(a,b)=>a.id===b.id}
-        getOptionKey={row=>row.id}
-        getOptionLabel={row=>`${row.name}${row.city?` · ${row.city}`:''}`}
-        renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{fontSize:fieldFontSize,overflowWrap:'anywhere'}}>{row.name}{row.city?` · ${row.city}`:''}</Box>}
-        onChange={(_e,value)=>{setSupplier(value);setArticle(articles.length===1&&!optionArticleBlocked(articles[0])?articles[0]:null);}}
-        renderInput={params=><TextField {...params} label={t('supplier_label')} required size="small" />} />
-      </Box>
+      {supplier && article && <Box>
+        <Typography variant="body2">{t('supplier_label')}: {supplier.name}{supplier.city ? ` · ${supplier.city}` : ''}</Typography>
+        <Typography variant="body2">{t('product_article')}: {article.articleName}</Typography>
+      </Box>}
       {supplier && <>
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
           <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}
@@ -165,22 +142,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {contactError && <Alert severity="error">{contactError}</Alert>}
         {contactNotice && <Alert severity="warning">{contactNotice}</Alert>}
       </>}
-        {articlesLoading && <Typography variant="body2" role="status">{t('purchase_articles_loading')}</Typography>}
-        {articlesLoaded && !articles.length && <Typography variant="body2">{t('purchase_no_article')}</Typography>}
-        <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
-        <Autocomplete options={articles} value={article} disabled={busy} sx={{flex:1,minWidth:0}} isOptionEqualToValue={(a,b)=>a.articleIndex===b.articleIndex}
-          loading={articlesLoading} loadingText={t('purchase_articles_loading')}
-          getOptionLabel={row=>row.articleName}
-          getOptionDisabled={row=>optionArticleBlocked(row)}
-          noOptionsText={t('purchase_no_article_search')}
-          renderOption={({key,...props},row)=><Box key={key} component="li" {...props} sx={{display:'block !important',overflowWrap:'anywhere'}}><Typography sx={{fontSize:fieldFontSize}}>{row.articleName}</Typography>{optionArticleBlocked(row) && <Typography variant="caption" color="error">{[...(row.mfiCheck?.reasons || []),...(row.materialCheck?.reasons || [])].join('; ') || t('purchase_article_mismatch')}</Typography>}</Box>}
-          onChange={(_e,value)=>setArticle(value)}
-          renderInput={params=><TextField {...params} label={t('product_article')} placeholder={t('purchase_select_article')} required size="small" />} />
-        <IconButton aria-label={t('purchase_search_article')} title={t('purchase_search_article')} aria-expanded={showArticleSearch} aria-controls={articleSearchId} disabled={busy} onClick={()=>setShowArticleSearch(value=>!value)}><SearchIcon /></IconButton>
-        </Box>
-        {showArticleSearch && <Box id={articleSearchId} sx={{display:'flex',gap:1}}><TextField autoFocus size="small" fullWidth label={t('purchase_article_search')} placeholder={t('purchase_article_query')} value={articleQuery} onChange={e=>setArticleQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&articleQuery.trim().length>=2)void loadArticles(articleQuery.trim());}} /><Button disabled={busy||articleQuery.trim().length<2} onClick={()=>loadArticles(articleQuery.trim())}>{t('purchase_search')}</Button></Box>}
       {<Box sx={{display:'grid',gap:0.5}}>
-        <TextField label={t('packaging_type_label')} required select size="small" disabled={busy || packagingLoading || Boolean(packagingError)} value={selectedPackaging?.id ?? ''} onChange={e=>{
+        <TextField label={t('packaging_type_label')} required select size="small" disabled={busy || choicesUnavailable} value={selectedPackaging?.id ?? ''} onChange={e=>{
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);setOrderAmount(null);
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
@@ -211,7 +174,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       </Box>}
       {!automaticTruck && !enteringQuantity && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false && <Box><Typography variant="body2">{t('purchase_confirmed_quantity')}: {Number(availability.confirmedQuantityKg).toLocaleString(locale)} kg</Typography><Button size="small" disabled={busy} onClick={()=>setQuantityEditing(true)}>{t('purchase_correct_quantity')}</Button></Box>}
       {effectiveAvailability.remainingKg===0 && <Alert severity="warning">{t('purchase_fully_allocated')}</Alert>}
-      {busy && <CircularProgress size={22} />}
+      {(busy || availabilityLoading) && <CircularProgress size={22} />}
+      {availabilityError && <Alert severity="error">{availabilityError}</Alert>}
       {error && <Alert severity="error">{error}
         {errorCode==='PURCHASE_CART_SUPPLIER_CONFLICT' && <Link component={RouterLink} to="/purchase-cart" state={{returnTo:cartReturnTo}} onClick={()=>savePurchaseCartContext({returnTo:cartReturnTo})} sx={{display:'block',mt:1}}>{t('purchase_open_cart')}</Link>}
       </Alert>}
