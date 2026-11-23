@@ -8,7 +8,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
-import { apiRequest, apiRequestBlob } from '../api/client.js';
+import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
 import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
@@ -44,8 +44,8 @@ function validQuantity(value, maxQuantity) {
     && Math.abs(quantity * 1000 - Math.round(quantity * 1000)) < 0.00001;
 }
 
-function isValidOffer(values, maxQuantity, requireEmail = true) {
-  return values.contactId && (!requireEmail || values.hasEmail) && isValidSalePrice(values.salePrice) && validQuantity(values.quantityKg, maxQuantity)
+function isValidOffer(values, maxQuantity) {
+  return values.contactId && values.hasEmail && isValidSalePrice(values.salePrice) && validQuantity(values.quantityKg, maxQuantity)
     && values.incotermId && (!values.isFca || Boolean(values.pickup.trim()));
 }
 
@@ -82,7 +82,7 @@ function PickupFields({ draft, loadingLocation, pickupLocations, pickup, update 
   </Stack>;
 }
 
-function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocation, pickupLocations, updateDraft, costPrice, maxQuantity, previousPrice, preview }) {
+function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocation, pickupLocations, updateDraft, costPrice, maxQuantity, previousPrice }) {
   const { t, lang } = useI18n();
   const [contactError, setContactError] = React.useState('');
   const update = patch => updateDraft(customer.id, patch);
@@ -161,9 +161,6 @@ function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocati
     </TextField>
     {values.isFca && <PickupFields draft={draft} loadingLocation={loadingLocation} pickupLocations={pickupLocations}
       pickup={values.pickup} update={update} />}
-    <Button size="small" sx={{ alignSelf: 'flex-start' }} disabled={!isValidOffer(values, maxQuantity, false)} onClick={() => preview(values)}>
-      {t('option_offer_preview')}
-    </Button>
   </Stack>;
 }
 
@@ -206,23 +203,6 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
     return () => controller.abort();
   }, [endpoint, needsPickup, pickupLocations, t]);
 
-  async function preview(row) {
-    setError('');
-    try {
-      const blob = await apiRequestBlob(`${endpoint}/preview`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customers: [row] }),
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'Muster-Optionsangebot.eml';
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (cause) {
-      setError(cause.message);
-    }
-  }
-
   async function send() {
     setBusy(true);
     setError('');
@@ -246,7 +226,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, sen
           <OfferCustomerFields key={customer.id} customer={customer} draft={drafts[customer.id] ?? emptyDraft}
             values={values[index]} incoterms={incoterms} loadingLocation={loadingLocation} updateDraft={updateDraft}
             pickupLocations={pickupLocations ?? []} costPrice={costPrice} maxQuantity={maxQuantity}
-            previousPrice={values[index - 1]?.salePrice} preview={preview} />
+            previousPrice={values[index - 1]?.salePrice} />
         ))}
       </Stack>
     </DialogContent>

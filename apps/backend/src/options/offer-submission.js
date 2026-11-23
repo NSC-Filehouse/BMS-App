@@ -17,9 +17,9 @@ function decimal(value, places) {
   return Number.isSafeInteger(rounded) && Math.abs(number * factor - rounded) < 0.00001 ? rounded / factor : null;
 }
 
-async function buildOfferSubmissions(req, option, position, { sample = false } = {}) {
+async function buildOfferSubmissions(req, option, position) {
   const rows = req.body?.customers;
-  if (!Array.isArray(rows) || !rows.length || rows.length > 500 || (sample && rows.length !== 1)
+  if (!Array.isArray(rows) || !rows.length || rows.length > 500
     || rows.some(row => !row || !text(row.customerId) || text(row.customerId).length > 10)) {
     throw invalid('Bitte gültige Kunden für das Angebot auswählen.');
   }
@@ -29,7 +29,7 @@ async function buildOfferSubmissions(req, option, position, { sample = false } =
   const senderEmail = singleEmail(sender?.email);
   const senderName = text(sender?.fullName);
   const senderCode = text(sender?.shortCode);
-  if (!sample && (!senderEmail || !senderName || senderName.length > 200 || !senderCode || senderCode.length > 3)) {
+  if (!senderEmail || !senderName || senderName.length > 200 || !senderCode || senderCode.length > 3) {
     throw invalid('Für Ihren Außendienst-Zugang fehlen gültige Absenderdaten.');
   }
   const eligible = await loadOptionOfferCustomers(req.database, sender, option, position);
@@ -59,8 +59,8 @@ async function buildOfferSubmissions(req, option, position, { sample = false } =
     const salePrice = decimal(row.salePrice, 4);
     const contact = contactsById.get(`${customerIds[index]}:${Number(row.contactId)}`);
     const recipientEmail = singleEmail(contact?.email);
-    if (!sample && (customer.sent || customer.queued)) throw invalid(`Für ${customer.name} besteht bereits ein Versandvorgang.`);
-    if (!contact || contact.name.length > 200 || (!sample && !recipientEmail)) {
+    if (customer.sent || customer.queued) throw invalid(`Für ${customer.name} besteht bereits ein Versandvorgang.`);
+    if (!contact || contact.name.length > 200 || !recipientEmail) {
       throw invalid(`Bitte für ${customer.name} einen Ansprechpartner mit Mailadresse auswählen.`);
     }
     if (!code || (code === 'FCA' && (!pickup || pickup.length > 1000))) throw invalid(`Bitte Incoterm und bei FCA den Abholort für ${customer.name} prüfen.`);

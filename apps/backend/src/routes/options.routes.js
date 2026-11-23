@@ -9,7 +9,6 @@ const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { loadOptionOfferCustomers } = require('../options/customer-offers');
 const { buildOfferSubmissions } = require('../options/offer-submission');
-const { sampleOfferEml } = require('../options/offer-documents');
 const { optionOfferMailEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
 const { loadOptionPosition, supplierCandidates } = require('../options/purchase-source');
 const { loadPurchaseLocations } = require('../db/purchase-order-values');
@@ -67,14 +66,6 @@ router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, async
  const locations = supplier ? await loadPurchaseLocations(req.database, supplier.id, [], { supplierWide: true }) : [];
  res.set('Cache-Control', 'private, no-store');
  sendEnvelope(res, { data: locations.map(location => location.text), meta: { mandant: req.mandant } });
-}));
-router.post(`${offerCustomerPath}/preview`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
- const { offer, position } = await loadOfferPositionForCustomers(req);
- const [sample] = await buildOfferSubmissions(req, offer, position, { sample: true });
- const message = await sampleOfferEml(sample);
- res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': 'message/rfc822',
-   'Content-Disposition': 'attachment; filename="Muster-Optionsangebot.eml"' });
- res.send(Buffer.from(message, 'utf8'));
 }));
 router.post(`${offerCustomerPath}/send`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
  if (!optionOfferMailEnabled()) throw createHttpError(503, 'Der Versand von Optionsangeboten ist noch nicht freigegeben.', { code: 'OPTION_OFFER_SEND_DISABLED' });

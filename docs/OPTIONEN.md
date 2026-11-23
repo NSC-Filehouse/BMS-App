@@ -186,13 +186,9 @@ Diese Einschränkung gilt nur für die Käuferliste der Optionen.
 Im Angebotsdialog ist CFR anhand des Kürzels vorausgewählt. Der angezeigte
 Text stammt aus den BMS-Lieferbedingungen. Bei FCA ist der benannte Abholort
 Pflicht. Die Menge startet mit 24.750 kg und die bekannte Restmenge begrenzt
-die Eingabe. Vorschau und Versand verwenden serverseitig geprüfte Daten.
+die Eingabe. Der Versand verwendet serverseitig geprüfte Daten.
 
-### Muster und produktiver Versand
-
-Die Mustermail ist eine herunterladbare EML mit Beispiel-PDF,
-Angebots-XML und Antwortentwürfen. Sie verwendet Adressen unter
-`example.invalid` und schreibt keinen Eintrag in die Versandwarteschlange.
+### Produktiver Versand
 
 Der produktive Versand wird mit `BMS_OPTION_OFFER_MAIL_ENABLED=true`
 freigegeben, sobald der folgende BMS-Ausgabeweg und „Senden als“ für den
