@@ -125,9 +125,19 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   }));
   const next = [...current, ...additions];
   write(next);
-  if (!current.length && headerDefaults) savePurchaseCartContext({ header:headerDefaults });
-  else if(confirmedPackaging!=null && headerDefaults && !context.header?.packagingTypeId)
-    savePurchaseCartContext({header:{...context.header,packagingTypeId:headerDefaults.packagingTypeId,packagingType:headerDefaults.packagingType}});
+  if (headerDefaults) {
+    const header = context.header || {};
+    const needsPackaging = confirmedPackaging != null && !header.packagingTypeId;
+    const needsIncoterm = headerDefaults.deliveryTermId && !header.deliveryTermId && !header.deliveryTermText;
+    if (!current.length) savePurchaseCartContext({ header: headerDefaults });
+    else if (needsPackaging || needsIncoterm) {
+      savePurchaseCartContext({ header: {
+        ...header,
+        ...(needsPackaging ? { packagingTypeId: headerDefaults.packagingTypeId, packagingType: headerDefaults.packagingType } : {}),
+        ...(needsIncoterm ? { deliveryTermId: headerDefaults.deliveryTermId, deliveryTermText: headerDefaults.deliveryTermText } : {}),
+      } });
+    }
+  }
   if (returnTo) savePurchaseCartContext({ returnTo });
   return next;
 }

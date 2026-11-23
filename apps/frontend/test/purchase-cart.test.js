@@ -43,6 +43,22 @@ test('truck packaging transfers to the order and does not silently overwrite an 
   assert.equal(getPurchaseCartContext().header.packagingTypeId,79);assert.equal(getPurchaseCartContext().header.comment,'Behalten');
 });
 
+test('adding an option fills an empty cart Incoterm and preserves an existing choice', () => {
+  const row = { ...item('A'), optionId: 1, optionPositionId: 10, amount: 25000, purchasePrice: 900 };
+  const fca = { deliveryTermId: 29, deliveryTermText: 'FCA / Frei Frachtführer' };
+  const dap = { deliveryTermId: 24, deliveryTermText: 'DAP / Geliefert Benannter Ort' };
+  addPurchaseCartItems([row]);
+  savePurchaseCartContext({ header: { comment: 'Behalten' } });
+  addPurchaseCartItems([row], null, fca);
+  assert.deepEqual(getPurchaseCartContext().header, { comment: 'Behalten', ...fca });
+  assert.equal(getPurchaseCartItems().length, 1);
+
+  savePurchaseCartContext({ header: dap });
+  addPurchaseCartItems([{ ...row, optionId: 2, optionPositionId: 20 }], null, fca);
+  assert.deepEqual(getPurchaseCartContext().header, dap);
+  assert.equal(getPurchaseCartItems().length, 2);
+});
+
 test('new purchase lines start empty and use the packaging load, with one article per ID', () => {
   addPurchaseCartItems([item('A', 'Siloware'), { ...item('A'), article: 'Alter Name', purchasePrice: 900, requestedDeliveryDate: '2025-01-01', amount: 123 }]);
   const rows = getPurchaseCartItems();

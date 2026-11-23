@@ -8,6 +8,7 @@ import * as quantities from '../src/utils/optionQuantityConfirmation.js';
 import * as optionDisplay from '../src/utils/optionDisplay.js';
 import * as loadingLocations from '../src/utils/loadingLocationDraft.js';
 import * as contactRanking from '../src/utils/contactRanking.js';
+import * as incoterm from '../src/utils/incoterm.js';
 import * as loadingLocationDisplay from '../src/utils/loadingLocationDisplay.js';
 
 const i18nSource = readFileSync(new URL('../src/utils/i18n.jsx', import.meta.url), 'utf8');
@@ -72,6 +73,7 @@ async function mount(relativePath, props, request, params = {}) {
     '../utils/optionDisplay.js': optionDisplay,
     '../utils/loadingLocationDraft.js': loadingLocations,
     '../utils/contactRanking.js': contactRanking,
+    '../utils/incoterm.js': incoterm,
     '../utils/loadingLocationDisplay.js': loadingLocationDisplay,
     '../utils/optionPurchaseNavigation.js': { optionPurchaseReturnTo: () => ({ pathname: '/test' }) },
     '../utils/navigation.js': { createReturnTo: () => ({}), navigateToReturn: navigate },
@@ -206,4 +208,42 @@ test('purchase editor and totals use English labels and preserve positions durin
   await summary.flush();
   assert.ok(summary.text().includes('Total quantity'));
   assert.ok(summary.text().includes('Total amount'));
+});
+
+test('an option purchase keeps its Incoterm code when ERP IDs and labels change with the language', async () => {
+  const de = { id: 29, text: 'FCA / Frei Frachtführer' };
+  const en = { id: 40, text: 'FCA / Free Carrier' };
+  const initialOrder = { supplierId: 'LF', deliveryTermId: de.id, deliveryTermText: de.text,
+    positions: [{ lineId: 'one', optionId: 1, articleIndex: 'A', article: 'Grade' }] };
+  const view = await mount('../src/components/PurchaseOrderEditor.jsx', { initialOrder, isNew: true }, async (path, lang) => {
+    if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices(lang),
+      incoterms: [lang === 'en' ? en : de], defaults: {} } };
+    if (path.startsWith('/purchase-order-loading-locations')) return { data: [] };
+    throw new Error(path);
+  });
+  await view.flush();
+  assert.equal(view.field('Incoterm').props.value, de.id);
+  view.switchLanguage('en');
+  await view.flush();
+  assert.equal(view.field('Incoterm').props.value, en.id);
+  assert.ok(view.text().includes(en.text));
+  view.switchLanguage('de');
+  await view.flush();
+  assert.equal(view.field('Incoterm').props.value, de.id);
+});
+
+test('a purchase without an Incoterm uses supplier history only for regular positions', async () => {
+  const priorTerm = { id: 24, text: 'DAP / Geliefert Benannter Ort' };
+  for (const [optionId, expectedId] of [[1, ''], [null, priorTerm.id]]) {
+    const initialOrder = { supplierId: 'LF', positions: [{ lineId: 'one', optionId, articleIndex: 'A', article: 'Grade' }] };
+    const view = await mount('../src/components/PurchaseOrderEditor.jsx', { initialOrder, isNew: true }, async (path, lang) => {
+      if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices(lang),
+        incoterms: [priorTerm], defaults: { deliveryTermText: priorTerm.text } } };
+      if (path.startsWith('/purchase-order-loading-locations')) return { data: [] };
+      if (path.endsWith('/purchase-defaults')) return { data: { defaults: {} } };
+      throw new Error(path);
+    });
+    await view.flush();
+    assert.equal(view.field('Incoterm').props.value, expectedId);
+  }
 });

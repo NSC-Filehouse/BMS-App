@@ -1,5 +1,6 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
+const { findIncotermByCode } = require('../incoterm');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
@@ -75,7 +76,9 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     availability=quantityAvailability(source,availability.orderedKg,purchaseTruckLoadKg(chosenPackaging.text));
     if(availability.remainingKg<=0)throw createHttpError(422,'Diese Optionsposition ist für die gewählte Verpackung bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   }
-  const deliveryTerm = choices.incoterms.find(row => row.text.trim().toLowerCase()===String(source.incoterm || '').trim().toLowerCase());
+  const sourceIncoterm = String(source.incoterm ?? '').trim().toLowerCase();
+  const exactTerms = choices.incoterms.filter(row => row.text.trim().toLowerCase() === sourceIncoterm);
+  const deliveryTerm = exactTerms.length === 1 ? exactTerms[0] : findIncotermByCode(choices.incoterms, sourceIncoterm);
   const amount=Object.hasOwn(req.body,'amount')?Number(req.body.amount):availability.remainingKg;
   if(!Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*1000))
     || Math.abs(amount*1000-Math.round(amount*1000))>0.00001 || amount>availability.remainingKg)

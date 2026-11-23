@@ -8,9 +8,18 @@ let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true}
 let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false;
 const contactRows=[{id:41,name:'Herr Source Contact',firstName:'Source',lastName:'Contact',email:'source@borealisgroup.com',ranking:2},{id:42,name:'Other Contact',email:'other@borealisgroup.com',ranking:1}];
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',opp_Verpackungsart_id:78,packagingSource:'original',packagingEvidence:'25kg bags',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
+const incoterms = {
+  de: [
+    { id: 24, text: 'DAP / Geliefert Benannter Ort' },
+    { id: 26, text: 'DDP / Geliefert Verzollt' },
+    { id: 29, text: 'FCA / Frei Frachtführer' },
+  ],
+  en: [{ id: 35, text: 'DAP / Delivered At Place' }, { id: 40, text: 'FCA / Free Carrier' }],
+};
 const mod={exports:{}};
 const deps={
   express,'../utils':require('../src/utils'),
+  '../incoterm':require('../src/incoterm'),
   '../middlewares/mandant.middleware':{requireMandant:(req,res,next)=>{req.database={firmaId:10};req.userIdentity=identity;next();}},
   '../middlewares/pilot-feature.middleware':require('../src/middlewares/pilot-feature.middleware'),
   '../options/purchase-source':{
@@ -21,7 +30,15 @@ const deps={
     purchaseCandidates:async(_db,_source,options)=>{assert.equal(options.all,true);return {data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1};},
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },
-  '../db/purchase-order-values':{loadPurchaseOptions:async()=>({packagingTypes:[{id:78,text:'Sackware'},{id:79,text:'Siloware'}],incoterms:[{id:1,text:'FCA'}]}),loadPurchasePackagingOptions:async()=>[{id:78,text:'Sackware',aliases:['Sackware','Bags']},{id:79,text:'Siloware',aliases:['Siloware','Silo/bulk']}],purchaseTruckLoadKg:require('../src/db/purchase-order-values').purchaseTruckLoadKg,loadSupplierTerms:async()=>({supplierContact:'Other Contact',contacts:contactRows})},
+  '../db/purchase-order-values': {
+    loadPurchaseOptions: async (database, lang) => {
+      assert.equal(database.firmaId, 10);
+      return { packagingTypes: [{ id: 78, text: 'Sackware' }, { id: 79, text: 'Siloware' }], incoterms: incoterms[lang] };
+    },
+    loadPurchasePackagingOptions: async () => [{ id: 78, text: 'Sackware', aliases: ['Sackware', 'Bags'] }, { id: 79, text: 'Siloware', aliases: ['Siloware', 'Silo/bulk'] }],
+    purchaseTruckLoadKg: require('../src/db/purchase-order-values').purchaseTruckLoadKg,
+    loadSupplierTerms: async () => ({ supplierContact: 'Other Contact', contacts: contactRows }),
+  },
   '../options/price-plausibility':require('../src/options/price-plausibility'),
   '../options/packaging-display':require('../src/options/packaging-display'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
@@ -33,7 +50,7 @@ let server,base;
 test.before(async()=>{server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});base=`http://127.0.0.1:${server.address().port}/options/1/positions/10/purchase`;});
 test.after(()=>new Promise(resolve=>server.close(resolve)));
 test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};expired=false;price=987;remainingKg=10000;quantityRequests=[];truckOffer=false;});
-const select=body=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const select=(body,lang='de')=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json','x-lang':lang},body:JSON.stringify(body)});
 const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true,packagingTypeId:78});
 
 test('one supplier or article never replaces explicit selection',async()=>{
@@ -56,8 +73,48 @@ test('selection returns confirmed target data and preserves offer price and manu
   const response=await select(choice());assert.equal(response.status,200);const {data}=await response.json();
   assert.equal(data.position.optionId,1);assert.equal(data.position.optionPositionId,10);assert.equal(data.position.articleIndex,'TARGET');
   assert.equal(data.position.purchasePrice,987);assert.equal(data.position.amount,10000);
-  assert.equal(data.header.loadingLocationSource,'manual');assert.equal(data.header.deliveryTermId,1);
+  assert.equal(data.header.loadingLocationSource,'manual');assert.equal(data.header.deliveryTermId,29);
+  assert.equal(data.header.deliveryTermText,'FCA / Frei Frachtführer');
   assert.equal('windowsUser' in data.position,false);
+});
+
+test('selection maps the option code to its ERP ID and label in the requested language', async () => {
+  const original = source.incoterm;
+  try {
+    for (const [value, lang, id, text] of [
+      [' fca / Free Carrier ', 'de', 29, 'FCA / Frei Frachtführer'],
+      ['FCA / Frei Frachtführer', 'en', 40, 'FCA / Free Carrier'],
+      ['DAP Incoterms 2020', 'de', 24, 'DAP / Geliefert Benannter Ort'],
+      ['FCA / DDP (Incoterms 2020)', 'de', '', ''],
+      ['FCAfoo', 'de', '', ''],
+      ['EXW / Ex Works', 'de', '', ''],
+    ]) {
+      source.incoterm = value;
+      const response = await select(choice(), lang);
+      assert.equal(response.status, 200);
+      const { data } = await response.json();
+      assert.equal(data.header.deliveryTermId, id, value);
+      assert.equal(data.header.deliveryTermText, text, value);
+    }
+  } finally {
+    source.incoterm = original;
+  }
+});
+
+test('selection leaves an ambiguous ERP code open unless the option identifies an exact label', async () => {
+  const original = source.incoterm;
+  incoterms.de.push({ id: 101, text: 'FCA / Abholstelle' });
+  try {
+    source.incoterm = 'FCA / Free Carrier';
+    const noMatch = await (await select(choice())).json();
+    assert.equal(noMatch.data.header.deliveryTermId, '');
+    source.incoterm = 'FCA / Frei Frachtführer';
+    const exact = await (await select(choice())).json();
+    assert.equal(exact.data.header.deliveryTermId, 29);
+  } finally {
+    source.incoterm = original;
+    incoterms.de.pop();
+  }
 });
 
 test('selection defaults to the remaining maximum and accepts only positive available gram-precise partial amounts',async()=>{

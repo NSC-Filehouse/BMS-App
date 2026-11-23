@@ -10,6 +10,7 @@ import CompactAddressOption from './CompactAddressOption.jsx';
 import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import {loadingLocationParts} from '../utils/loadingLocationDisplay.js';
 import { apiRequest } from '../api/client.js';
+import { findIncotermByCode } from '../utils/incoterm.js';
 import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -51,8 +52,11 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         const packageValue = previous.packagingType || (original.length === 1 ? original[0] : '');
         const packaging = data.packagingTypes.find((p) => Number(previous.packagingTypeId) === p.id)
           || data.packagingTypes.find((p) => packageValue && p.aliases.some((alias) => packagingKey(alias) === packagingKey(packageValue)));
+        const isOptionPurchase = previous.positions.some((position) => position.optionId != null);
+        const deliveryTermText = previous.deliveryTermText || (isOptionPurchase ? '' : data.defaults.deliveryTermText);
         const incoterm = data.incoterms.find((p) => Number(previous.deliveryTermId) === p.id)
-          || data.incoterms.find((p) => same(p.text, previous.deliveryTermText || data.defaults.deliveryTermText));
+          || data.incoterms.find((p) => same(p.text, deliveryTermText))
+          || (isOptionPurchase ? findIncotermByCode(data.incoterms, deliveryTermText) : null);
         return { ...previous, supplierContact: previous.supplierContact ?? data.defaults.supplierContact,
           paymentConditionId: isNew ? data.defaults.paymentConditionId : previous.paymentConditionId,
           paymentConditionText: isNew ? data.defaults.paymentConditionText : previous.paymentConditionText,

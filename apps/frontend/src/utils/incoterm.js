@@ -1,9 +1,20 @@
+function incotermCode(value) {
+  return String(value ?? '').trim().match(/^([a-z]{3})(?![a-z])/i)?.[1].toUpperCase() || '';
+}
+
+export function findIncotermByCode(options, value) {
+  const code = incotermCode(value);
+  if (!code) return null;
+  const matches = options.filter(option => incotermCode(option.text) === code);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function isFcaIncoterm(value) {
-  return /^FCA(?:$|[^A-Z])/i.test(String(value || '').trim());
+  return incotermCode(value) === 'FCA';
 }
 
 export function findOptionOfferIncoterm(options) {
-  return options.find(option => /^CFR(?![A-Z])/i.test(String(option.text || '').trim())) ?? null;
+  return options.find(option => incotermCode(option.text) === 'CFR') ?? null;
 }
 
 const emptyAddress = () => ({ deliveryAddress: '', deliveryAddressId: '', deliveryAddressManual: false, deliveryAddressNewlyCreated: false });

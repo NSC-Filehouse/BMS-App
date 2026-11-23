@@ -1,11 +1,11 @@
 const { randomUUID } = require('node:crypto');
 const { runSQLQueryAccess } = require('../db/access');
 const { createHttpError } = require('../utils');
+const { incotermCode } = require('../incoterm');
 const { loadOptionOfferCustomers, loadOfferContacts } = require('./customer-offers');
 const { singleEmail } = require('./offer-documents');
 
 const text = value => String(value ?? '').trim();
-const incotermCode = label => text(label).match(/^([a-z]{3})(?![a-z])/i)?.[1].toUpperCase() || '';
 const customerKey = value => text(value).toUpperCase();
 const invalid = (message, code = 'OPTION_OFFER_INVALID') => createHttpError(422, message, { code });
 
