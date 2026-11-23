@@ -60,7 +60,16 @@ function offeredTruckCount(position) {
   if(!isTruckOffer(position))return null;
   const maximum=number(position.truckMax ?? position.quantityMax);
   const minimum=number(position.truckMin ?? position.quantityMin);
-  return maximum>0?maximum:minimum>0?minimum:null;
+  if(maximum>0)return maximum;
+  if(minimum>0)return minimum;
+  const confirmed=number(position.confirmedTruckCount);
+  if(confirmed>0)return confirmed;
+  const stock=number(position.stockKg ?? position.opp_ChargenbestandKg);
+  if((stock!=null && stock>=0)
+    || number(position.quantityMaxKg ?? position.opp_MengeBisKg)>0
+    || number(position.quantityMinKg ?? position.opp_MengeVonKg)>0
+    || number(position.confirmedQuantityKg)>0)return null;
+  return 1;
 }
 
 module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount };

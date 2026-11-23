@@ -19,8 +19,7 @@ funktionslosen Button „Gegenangebot“. Ungeklärte Verpackung heißt „ungek
 Truck-Mengen erscheinen etwa als „1–2 LKW (24.750–49.500 kg)“; bei ungeklärter
 Verpackung gilt zunächst Sackware mit 24.750 kg je LKW als Berechnungsstandard.
 Steht nur „full truck loads“ ohne Anzahl und ohne belegte Gesamtmenge in der
-Quelle, zeigt die App „Volle LKW · Gesamtmenge offen“. Daraus wird keine
-Lieferanten-Gesamtmenge abgeleitet.
+Quelle, setzt die App für Anzeige und Bestellung eine LKW-Ladung an.
 „Incoterms 2020“ wird in der kompakten Lieferbedingung ausgeblendet; die gespeicherte
 Angabe und angebotene Alternativen bleiben erhalten. Die Blöcke „Verladung/Hinweise“
 und „Prüf- und Importhinweise“ werden weder im Angebotskopf noch an den Positionen

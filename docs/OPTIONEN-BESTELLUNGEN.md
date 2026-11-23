@@ -113,9 +113,9 @@ Verpackung und ziehen gespeicherte Bestellungen ab. Bei ungeklärter Verpackung
 rechnen sie zunächst mit 24.750 kg Sackware je LKW. Im Bestellweg
 bleibt die ausdrücklich gewählte Verpackungsart für die Mengenprüfung maßgeblich.
 
-Steht in der Quelle nur "full truck loads" ohne Anzahl, bleibt die Anzahl offen.
-Der Benutzer gibt die angebotene Truck-Anzahl ein und bestätigt sie; die App
-berechnet die kg-Menge anhand der Verpackung. Auch hier gibt es keine kg-/t-Auswahl.
+Steht in der Quelle nur "full truck loads" ohne Anzahl oder bekannte Gesamtmenge,
+setzt die App automatisch eine LKW-Ladung an und berechnet die kg-Menge anhand
+der gewählten Verpackung.
 Nur sonstige Optionen ohne belegte kg-Gesamtmenge benötigen weiterhin eine
 manuelle Menge mit ausdrücklicher kg-/t-Auswahl. Eindeutig normalisierte Mengen
 benötigen diese Bestätigung nicht. Der OptionReader erkennt Originaleinheiten,

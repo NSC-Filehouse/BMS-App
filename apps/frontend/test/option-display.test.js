@@ -28,11 +28,11 @@ test('truck quantities use compact LKW labels with a bags mass default and respe
  assert.equal(optionPackagingText({normalization:{provenance:{packaging:{source:'history'}}}}),'ungeklärt');
 });
 
-test('full trucks without a quoted count show an open total rather than an invented quantity',()=>{
+test('full trucks without a quoted count show one load when no total is known',()=>{
  const source={quantityKind:'truckloads',quantityUnit:'truckload',quantityText:'full truck loads'};
- const t=key=>key==='option_full_trucks_open_quantity'?'Volle LKW · Gesamtmenge offen':key;
- assert.equal(optionQuantity(source,t),'Volle LKW · Gesamtmenge offen');
- assert.equal(optionQuantity({...source,quantityText:''},t),'Volle LKW · Gesamtmenge offen');
+ const t=key=>key;
+ assert.equal(optionQuantity(source,t),'1 LKW (24.750 kg)');
+ assert.equal(optionQuantity({...source,truckLoadKg:25000},t),'1 LKW (25.000 kg)');
  assert.equal(optionQuantity({...source,quantityMaxKg:49500},t),'49.500 kg');
  assert.equal(optionQuantity({...source,confirmedQuantityKg:24750},t),'24.750 kg');
  assert.equal(optionQuantity({...source,stockKg:30000},t),'30.000 kg');

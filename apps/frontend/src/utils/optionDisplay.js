@@ -56,7 +56,7 @@ export function optionQuantity(position, t) {
     }
     if(position.stockKg!=null)return `${optionNumber(position.stockKg)} kg`;
     if(position.quantityMinKg==null && position.quantityMaxKg==null)
-      return position.confirmedQuantityKg!=null?`${optionNumber(position.confirmedQuantityKg)} kg`:t('option_full_trucks_open_quantity');
+      return position.confirmedQuantityKg!=null?`${optionNumber(position.confirmedQuantityKg)} kg`:`1 LKW (${optionNumber(loadKg)} kg)`;
   }
   if (position?.quantityMinKg !== null && position?.quantityMinKg !== undefined) {
     const minKg = optionNumber(position.quantityMinKg);
