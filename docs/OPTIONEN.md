@@ -180,8 +180,8 @@ VL-Positionen sind bei vorhandenen Kundenrechten lesbar. Nach der BMSApp-
 Basisinstallation ergänzt `apps/backend/sql/upgrades/stock-offers.sql` die Spalte
 `StockPositionKey` in der gemeinsamen Versandwarteschlange. `OfferJson`
 enthält `stockOrderPosition` und `stockStorageId` für den externen
-BMS-Ausgabeprozess. Nach dessen Prüfung und einem Testversand kann der
-Artikelversand zusätzlich mit `BMS_STOCK_OFFER_MAIL_ENABLED=true` freigegeben werden.
+BMS-Ausgabeprozess. Die Übergabe aus der VL ist standardmäßig aktiv.
+Mit `BMS_STOCK_OFFER_MAIL_ENABLED=false` lässt sie sich abschalten.
 
 ## Kundenangebote aus einer Option
 
@@ -199,8 +199,9 @@ die Eingabe. Der Versand verwendet serverseitig geprüfte Daten.
 
 ### Interner Testversand
 
-Der Testversand verwendet `BMS_OPTION_OFFER_MAIL_ENABLED=true` und
-„Senden als“ für den Außendienst im MailService. Pro ausgewähltem Kunden
+Der Testversand ist standardmäßig aktiv und verwendet „Senden als“ für den
+Außendienst im MailService. `BMS_OPTION_OFFER_MAIL_ENABLED=false` schaltet den
+Versand und die Übergabe neuer Angebote aus Optionen und VL ab. Pro ausgewähltem Kunden
 legt die App ein reguläres Angebot mit einer Position und Status 1 in
 `BMSApp.tbl_Temp_Angebot` an. `OptionOfferMailOutbox.TempOfferId` verweist
 auf `tag_id`. Optionsposition beziehungsweise VL-Position und Kundennummer

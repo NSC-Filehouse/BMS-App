@@ -100,7 +100,8 @@ und legt einen Versandauftrag zum Angebot an. Sobald Status 2, die BMS-Nummer
 und eine PDF vorliegen, erscheint die Datei im Angebotsdetail. Der gemeinsame
 Mail-Worker sendet die Testmail ausschließlich an AKI und NSC. Sie enthält
 die unveränderte ERP-PDF und die Angebots-XML mit allen Positionen. Der Worker
-benötigt `BMS_OPTION_OFFER_MAIL_ENABLED=true` und einen eingerichteten MailService.
+benötigt einen eingerichteten MailService und ist standardmäßig aktiv.
+Mit `BMS_OPTION_OFFER_MAIL_ENABLED=false` lässt sich der Versand abschalten.
 Die Testmail erzeugt keinen Eintrag in der Kundenhistorie. Bestehende Angebote
 ohne Versandauftrag bleiben ohne Mail.
 
