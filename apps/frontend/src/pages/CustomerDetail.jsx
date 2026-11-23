@@ -1322,7 +1322,7 @@ export default function CustomerDetail() {
                     {(offer.positions || []).map((p, i) => <Typography key={i} variant="caption">{i + 1}. {p.article} · {p.quantity} {p.unit} · {p.price} EUR/{p.priceBasis} {p.unit}</Typography>)}
                   </CardContent>
                 </Card>)}
-                {features.offers && appOffers.items.length >= 50 && <Button onClick={() => navigate('/temp-offers', { state: { listState: { customerId: id } } })}>Alle eigenen Angebote dieses Kunden</Button>}
+                {features.offers && appOffers.items.length >= 50 && <Button onClick={() => navigate('/temp-offers', { state: { listState: { customerId: id } } })}>Alle App-Angebote dieses Kunden</Button>}
                 {!docs.offers.loading && !docs.offers.error && docs.offers.items.length === 0 && (!features.offers || !appOffers.items.length) && (
                   <Typography variant="body2" sx={{ opacity: 0.7 }}>{t('customer_docs_empty_offers')}</Typography>
                 )}

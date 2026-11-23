@@ -354,7 +354,7 @@ router.get('/vl/entries', requireMandant, require('../middlewares/pilot-feature.
   const { page, pageSize, q } = parseListParams(req.query, { page: 1, pageSize: 100, sort: 'vl', dir: 'ASC' });
   const search = parseProductSearch(q);
   const { whereSql, params } = buildWhereClause(req.query);
-  const offers = await loadOffers(null, { includeExpired: false });
+  const offers = await loadOffers(null, { includeExpired: false, identity: req.userIdentity });
   const batches = await Promise.all(databases.map(async database => {
     const stocks = await runSQLQueryAccess(database, `SELECT * FROM ${VIEW_SQL} ${whereSql}`, params).catch(error => {
       if (scope) throw createHttpError(503, 'Frupack Gruppe konnte nicht vollständig geladen werden.', { code: 'FRUPACK_GROUP_UNAVAILABLE', sourceMandantId: database.firmaId });

@@ -11,7 +11,8 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
   const query=async(sql,params)=>{
     calls.push({sql,params});assert.equal((sql.match(/\?/g)||[]).length,params.length);
     if(sql.includes('SUM(tbp_amount'))return {rows:[{orderedKg}]};
-    return {rows:available?[source]:[]};
+    const excluded = source.sourceMandantId === 0 && sql.includes('AND o.op_MandantID <> 0');
+    return {rows:available && !excluded?[source]:[]};
   };
   const dependencies={
     '../config':{sql:{database:'central'}},'../db/access':{withSqlTransaction:async(_db,work)=>work({query}),runSQLQuerySqlServer:async(_db,sql,params)=>{
@@ -23,6 +24,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
         {id:'OTHER',name:'Unrelated GmbH',city:'Berlin'},
       ];
     }},'../db/app-tables':{appTableSql:key=>key},'../utils':require('../src/utils'),
+    '../executive-access':require('../src/executive-access'),
     './read':{berlinDate:()=> '2026-11-12'},'./supplier-identity':require('../src/options/supplier-identity'),
     './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg',...articleOverride}:null,
       candidatesFor:async(database,position,options)=>({data:[],database,position,options})},
@@ -64,6 +66,18 @@ test('manual total is saved under the source lock and becomes the shared cap wit
   assert.doesNotMatch(update.sql,/SET opp_MengeVon|opp_GeaendertAm/);
   assert.match(confirmedQuantitySql(),/opp_MengeBestaetigtQuellHash=/);
   assert.doesNotMatch(quantitySourceHashSql(),/opp_MengeVonKg|opp_GeaendertAm|NormalisierungJson/);
+});
+
+test('executives cannot confirm quantities or order from a Test option by ID', async () => {
+  const f = fixture({ sourceOverride: { sourceMandantId: 0 } });
+  const identity = { active: true, shortCode: 'OBA', personNumber: 276, userId: 'Bader' };
+  await assert.rejects(f.confirmOptionQuantity(1, 10, {
+    totalKg: 20000, quantityConfirmed: true, quantitySourceHash: 'original',
+  }, identity.shortCode, identity), { details: { code: 'OPTION_NOT_AVAILABLE' } });
+  await assert.rejects(f.assertOptionQuantities(f.query, [
+    { optionId: 1, optionPositionId: 10, amount: 1000 },
+  ], null, null, identity), { details: { code: 'OPTION_NOT_AVAILABLE' } });
+  assert.ok(f.calls.every(call => call.sql.includes('AND o.op_MandantID <> 0')));
 });
 
 test('explicit kg/t selection converts only tonnes, persists kg and rejects unspecified units',async()=>{

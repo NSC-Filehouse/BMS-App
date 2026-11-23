@@ -18,7 +18,7 @@ async function offeredSupplier(req,source,id){
  return supplier;
 }
 router.get(`${base}/contacts`,...guard,asyncHandler(async(req,res)=>{
- const source=await loadOptionPosition(req.params.id,req.params.positionId);
+ const source=await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
  const supplier=await offeredSupplier(req,source,req.query.supplierId);
  const terms=await loadSupplierTerms(req.database,supplier.id,req.header('x-lang')==='en'?'en':'de');
  const contacts=terms.contacts || [];
@@ -26,7 +26,7 @@ router.get(`${base}/contacts`,...guard,asyncHandler(async(req,res)=>{
 }));
 
 router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
-  const source = await loadOptionPosition(req.params.id,req.params.positionId);
+  const source = await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
   const data = await supplierCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),preferredSupplierId:req.query.supplierId});
   const availability = await loadOptionAvailability(source);
   const packagingTypes=await loadPurchasePackagingOptions(req.header('x-lang')==='en'?'en':'de');
@@ -41,11 +41,11 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
     quantityText:source.quantityText,truckMin:source.truckMin,truckMax:source.truckMax,maxTruckLoadKg:source.maxTruckLoadKg}});
 }));
 router.post(`${base}/quantity`, ...guard, asyncHandler(async(req,res)=>{
-  const data=await confirmOptionQuantity(req.params.id,req.params.positionId,req.body,req.userIdentity?.shortCode || req.userEmail || 'APP');
+  const data=await confirmOptionQuantity(req.params.id,req.params.positionId,req.body,req.userIdentity?.shortCode || req.userEmail || 'APP',req.userIdentity);
   sendEnvelope(res,{data});
 }));
 router.get(`${base}/articles`, ...guard, asyncHandler(async (req,res) => {
-  const source = await loadOptionPosition(req.params.id,req.params.positionId);
+  const source = await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
   const result = await purchaseCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),all:true});
   const {data,...meta} = result;
   sendEnvelope(res,{data,meta});
@@ -53,7 +53,7 @@ router.get(`${base}/articles`, ...guard, asyncHandler(async (req,res) => {
 router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   if (req.body?.supplierConfirmed !== true || req.body?.articleConfirmed !== true)
     throw createHttpError(422,'Bitte Lieferant und Artikel ausdrücklich bestätigen.',{code:'OPTION_SELECTION_REQUIRED'});
-  const source = await loadOptionPosition(req.params.id,req.params.positionId);
+  const source = await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
   // A manually changed supplier must still be a real, selectable ERP supplier.
   const supplier=await offeredSupplier(req,source,req.body.supplierId);
   const article = await validateOptionArticle(req.database,source,req.body);

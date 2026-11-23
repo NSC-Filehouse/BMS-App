@@ -1,6 +1,7 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
+const { excludeTestMandantSql } = require('../executive-access');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
@@ -61,7 +62,7 @@ function mapPosition(row,today,includeMatchInputs) {
   Object.assign(position,quantityAvailability(position,Number(row.orderedKg || 0),truckLoadKg));
   return position;
 }
-async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs = false } = {}) {
+async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs = false, identity } = {}) {
   if (companyIds && !companyIds.length) return [];
   // null selects the shared pool; arrays retain explicit source filtering.
   const today = berlinDate();
@@ -79,6 +80,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     FROM ${appTableSql('options')} o WHERE ${scope}
       AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      ${excludeTestMandantSql(identity, 'o.op_MandantID')}
     ORDER BY o.op_GueltigBis,o.op_id DESC`, [...scopeParams, today, ...(optionId == null ? [] : [optionId])]);
   if (!heads.length) return [];
   // Scope positions through their header, without a potentially >2100-ID IN list.
@@ -123,6 +125,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
     WHERE ${scope} AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      ${excludeTestMandantSql(identity, 'o.op_MandantID')}
       AND p.opp_GeloeschtAm IS NULL AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);
   const packagingDisplay = createPackagingDisplay(await loadPurchasePackagingOptions());

@@ -18,6 +18,7 @@ const { articleHash, queueSql } = require('../options/matching-contract');
 const { checkMfi } = require('../options/mfi-compatibility');
 const {checkMaterial}=require('../options/material-facts');
 const { appTableSql } = require('../db/app-tables');
+const { excludeTestMandantSql } = require('../executive-access');
 const router = express.Router();
 const OPTIONS = appTableSql('options'), POSITIONS = appTableSql('optionPositions');
 function positiveId(value) {
@@ -26,17 +27,17 @@ function positiveId(value) {
  return id;
 }
 router.get('/options',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- sendEnvelope(res,{data:await loadOffers(null),meta:{mandant:req.mandant}});
+ sendEnvelope(res,{data:await loadOffers(null,{identity:req.userIdentity}),meta:{mandant:req.mandant}});
 }));
 router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const offers=await loadOffers(null,{optionId:positiveId(req.params.id)});
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id),identity:req.userIdentity});
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  const offer=await enrichOptionContactPhone(req.database,offers[0]);
  sendEnvelope(res,{data:{...offer,readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
 router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const offers=await loadOffers(null,{optionId:positiveId(req.params.id)});
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id),identity:req.userIdentity});
  const offer=offers[0],positionId=positiveId(req.params.positionId);
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
@@ -46,7 +47,7 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
 async function loadOfferPositionForCustomers(req) {
  const optionId = positiveId(req.params.id);
  const positionId = positiveId(req.params.positionId);
- const [offer] = await loadOffers(null, { optionId, includeMatchInputs: true });
+ const [offer] = await loadOffers(null, { optionId, includeMatchInputs: true, identity: req.userIdentity });
  const position = offer?.positions.find(row => row.id === positionId);
  if (!position) throw createHttpError(404, 'Optionsposition nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
  return { offer, position };
@@ -60,7 +61,7 @@ router.get(offerCustomerPath, ...offerCustomerGuard, asyncHandler(async (req, re
  sendEnvelope(res, { data: { ...audience, sendEnabled: optionOfferMailEnabled() }, meta: { mandant: req.mandant } });
 }));
 router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
- const position = await loadOptionPosition(positiveId(req.params.id), positiveId(req.params.positionId));
+ const position = await loadOptionPosition(positiveId(req.params.id), positiveId(req.params.positionId), null, { identity: req.userIdentity });
  const suppliers = await supplierCandidates(req.database, position);
  const supplier = suppliers.find(item => item.preferred);
  const locations = supplier ? await loadPurchaseLocations(req.database, supplier.id, [], { supplierWide: true }) : [];
@@ -76,13 +77,13 @@ router.post(`${offerCustomerPath}/send`, ...offerCustomerGuard, asyncHandler(asy
  sendEnvelope(res, { status: 202, data: { customers: submissions.map(item => item.customerId) } });
 }));
 router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const source=await loadOptionSource(positiveId(req.params.id),'mail');
+ const source=await loadOptionSource(positiveId(req.params.id),'mail',req.userIdentity);
  res.set('Cache-Control','private, no-store');
  let images;try{images=JSON.parse(source.imagesJson || 'null');}catch{}
  sendEnvelope(res,{data:{body:source.body,format:source.format,images:images?.images || [],missingImages:images?.missing || []},meta:{mandant:req.mandant}});
 }));
 router.get('/options/:id/source/file',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const source=await loadOptionSource(positiveId(req.params.id),'file');
+ const source=await loadOptionSource(positiveId(req.params.id),'file',req.userIdentity);
  const mime=sourceFileType(source);
  const extension={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg'}[mime];
  res.set({'Content-Type':mime,'Content-Disposition':`inline; filename="option-${positiveId(req.params.id)}.${extension}"`,
@@ -90,7 +91,7 @@ router.get('/options/:id/source/file',requireMandant,requirePilotFeature('option
  res.send(source.content);
 }));
 router.get('/options/:id/source/preview',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const source=await loadOptionSource(positiveId(req.params.id),'file');
+ const source=await loadOptionSource(positiveId(req.params.id),'file',req.userIdentity);
  if(sourceFileType(source)!=='application/pdf')throw createHttpError(415,'Die Originaldatei ist keine PDF.',{code:'OPTION_SOURCE_TYPE_UNSUPPORTED'});
  let readableSourcePdf;
  try {({readableSourcePdf}=require('../options/source-pdf'));}
@@ -196,7 +197,8 @@ router.delete('/options/:id',requireMandant,requirePilotFeature('options'),async
  const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
  const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE ${OPTIONS} SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
   op_GeaendertVon=?,op_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.op_id AS id
-  WHERE op_id=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'`,[actor,actor,positiveId(req.params.id)]);
+  WHERE op_id=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'
+   ${excludeTestMandantSql(req.userIdentity, 'op_MandantID')}`,[actor,actor,positiveId(req.params.id)]);
  if(!rows.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();
 }));
@@ -207,7 +209,8 @@ router.delete('/options/:id/positions/:positionId',requireMandant,requirePilotFe
   opp_GeaendertVon=?,opp_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.opp_id AS id
   FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
   WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0
-   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')`,[actor,actor,positiveId(req.params.id),positiveId(req.params.positionId)]);
+   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
+   ${excludeTestMandantSql(req.userIdentity, 'o.op_MandantID')}`,[actor,actor,positiveId(req.params.id),positiveId(req.params.positionId)]);
  if(!rows.length)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();
 }));

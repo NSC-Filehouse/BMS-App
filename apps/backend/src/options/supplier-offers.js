@@ -1,9 +1,10 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('../db/access');
 const { loadOffers } = require('./read');
+const { excludeTestMandantSql } = require('../executive-access');
 const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity');
 
-async function loadSupplierOffers(database, customer) {
+async function loadSupplierOffers(database, customer, identity) {
   const names = [customer.kd_Name1, customer.kd_Name2, customer.kd_Kurz].filter(Boolean);
   const known = names.map(knownSupplier).find(Boolean)
     || knownSupplier(customer.kd_HomePage) || knownSupplier(customer.kd_eMail);
@@ -14,7 +15,7 @@ async function loadSupplierOffers(database, customer) {
     // Existing reviewed account links also work for less familiar suppliers.
     const accounts = await runSQLQuerySqlServer(config.sql.database, `SELECT olk_LieferantenNummer AS number,
       olk_MandantID AS mandantId,olk_Lieferantenkennung AS supplierKey,olk_Lieferantenname AS supplierName
-      FROM BMSApp.tblOptionenLieferantenKonto WHERE olk_Aktiv=1`);
+      FROM BMSApp.tblOptionenLieferantenKonto WHERE olk_Aktiv=1 ${excludeTestMandantSql(identity, 'olk_MandantID')}`);
     for (const account of accounts) {
       if (Number(account.mandantId) === Number(database.firmaId) && account.number === customer.kd_KdNR
         || names.some(name => companyKey(name) === companyKey(account.supplierName))) {
@@ -24,7 +25,7 @@ async function loadSupplierOffers(database, customer) {
     }
   }
   keys.delete('unknown');
-  const offers = keys.size ? (await loadOffers(null)).filter(offer => keys.has(offer.supplierKey)) : [];
+  const offers = keys.size ? (await loadOffers(null, { identity })).filter(offer => keys.has(offer.supplierKey)) : [];
   return { offers, supplierIdentified: keys.size > 0 };
 }
 module.exports = { loadSupplierOffers };

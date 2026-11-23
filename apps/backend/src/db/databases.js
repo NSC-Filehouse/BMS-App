@@ -3,6 +3,7 @@ const logger = require('../logger');
 const { createHttpError } = require('../utils');
 const { canConnectToDatabase, runSQLQueryFx, runSQLQuerySqlServer } = require('./access');
 const { getUserIdentityByEmail } = require('./users');
+const { hasExecutiveAccess, isTestMandant } = require('../executive-access');
 
 const mandantsCache = new Map();
 const dbAvailabilityCache = new Map();
@@ -216,6 +217,7 @@ async function getMandantsForUser(email) {
   if (cached) return cached;
 
   const identity = await getUserIdentityByEmail(normalizedEmail);
+  if (hasExecutiveAccess(identity)) return getMandantsForIdentity(identity);
   const loaded = await loadMandantsForIdentity(identity);
   setCachedMandants(normalizedEmail, loaded);
   return loaded;
@@ -223,6 +225,7 @@ async function getMandantsForUser(email) {
 
 function getIdentityMandantsCacheKey(identity) {
   const personNumber = String(identity?.personNumber || '').trim();
+  if (hasExecutiveAccess(identity)) return `executive:${personNumber}`;
   if (personNumber) return `person:${personNumber}`;
 
   const userId = String(identity?.userId || '').trim().toLowerCase();
@@ -235,7 +238,8 @@ async function loadMandantsForIdentity(identity) {
   if (!identity) return [];
 
   const normalizedEmail = normalizeEmail(identity.email);
-  const rows = isFilehouseEmail(normalizedEmail)
+  const executiveAccess = hasExecutiveAccess(identity);
+  const rows = executiveAccess || isFilehouseEmail(normalizedEmail)
     ? await queryMandantsForFilehouse()
     : await queryMandantsForIdentity(identity);
 
@@ -245,7 +249,7 @@ async function loadMandantsForIdentity(identity) {
       name: String(row.firma || row.md_Firma || '').trim(),
       shortName: String(row.firmaKurz || row.md_FirmaKurz || '').trim().toUpperCase(),
     }))
-    .filter((m) => m.name && m.shortName)
+    .filter((m) => m.name && m.shortName && (!executiveAccess || !isTestMandant(m)))
     .map((m) => ({
       ...m,
       databaseName: buildTenantDatabaseName(m.shortName),

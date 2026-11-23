@@ -1,6 +1,7 @@
 const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { createHttpError } = require('../utils');
 const { isCustomerRollbackPreviewExecutable } = require('../customer-creation-policy');
+const { hasExecutiveAccess, TEST_MANDANT_ID, TEST_MANDANT_CODE } = require('../executive-access');
 
 // Deliberately fixed to the authorized central database and app-owned schema.
 const DATABASE = 'BMS';
@@ -74,7 +75,21 @@ async function loadCreationOperation(operationId, userId, companyId) {
   return row ? { operationId: row.OperationId, state: row.Status, status: row.HttpStatus, response: row.ResponseJson ? JSON.parse(row.ResponseJson) : null } : null;
 }
 
-async function loadDeveloperCreatedCustomers(mandant) {
+function rollbackTargetScope(identity) {
+  if (!hasExecutiveAccess(identity)) {
+    return { sql: "UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'AKI',N'MFR',N'NSC')", params: [] };
+  }
+  // A rollback can also delete ERP copies outside the selected mandant.
+  return {
+    sql: `[o].[TargetCompanyId] <> ? AND [o].[StammMandant] <> ?
+        AND NOT EXISTS (SELECT 1 FROM [BMSApp].[CustomerCreationMandant] [copy]
+                        WHERE [copy].[OperationId] = [o].[OperationId] AND [copy].[Mandant] = ?)`,
+    params: [TEST_MANDANT_ID, TEST_MANDANT_CODE, TEST_MANDANT_CODE],
+  };
+}
+
+async function loadAppCreatedCustomers(mandant, identity) {
+  const scope = rollbackTargetScope(identity);
   try {
     return await runSQLQuerySqlServer(DATABASE, `
       SELECT [o].[OperationId] AS [operationId], [o].[ErpOperationId] AS [erpOperationId],
@@ -93,9 +108,9 @@ async function loadDeveloperCreatedCustomers(mandant) {
       ) [r]
       WHERE [m].[Mandant]=? AND [m].[Status]=N'angelegt'
         AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
-        AND [o].[CustomerNumber] IS NOT NULL AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'AKI',N'MFR',N'NSC')
+        AND [o].[CustomerNumber] IS NOT NULL AND ${scope.sql}
         AND COALESCE([r].[Status], N'') <> N'completed'
-      ORDER BY [o].[CreatedAt] DESC, [o].[OperationId] DESC`, [mandant]);
+      ORDER BY [o].[CreatedAt] DESC, [o].[OperationId] DESC`, [mandant, ...scope.params]);
   } catch (error) { requireHistorySchema(error); }
 }
 
@@ -113,7 +128,8 @@ async function loadLatestResumableRollback(operationId) {
   } catch (error) { requireHistorySchema(error); }
 }
 
-async function loadRollbackTarget(operationId, mandant) {
+async function loadRollbackTarget(operationId, mandant, identity) {
+  const scope = rollbackTargetScope(identity);
   try {
     const rows = await runSQLQuerySqlServer(DATABASE, `
       SELECT TOP (1) [o].[OperationId] AS [operationId], [o].[ErpOperationId] AS [erpOperationId],
@@ -123,7 +139,7 @@ async function loadRollbackTarget(operationId, mandant) {
       INNER JOIN [BMSApp].[CustomerCreationMandant] [m] ON [m].[OperationId]=[o].[OperationId]
       WHERE [o].[OperationId]=? AND [m].[Mandant]=? AND [m].[Status]=N'angelegt'
         AND [o].[Status] IN (N'created',N'partial') AND [o].[ErpOperationId] IS NOT NULL
-        AND UPPER(LTRIM(RTRIM([o].[UserShortCode]))) IN (N'AKI',N'MFR',N'NSC')`, [operationId, mandant]);
+        AND ${scope.sql}`, [operationId, mandant, ...scope.params]);
     return rows[0] || null;
   } catch (error) { requireHistorySchema(error); }
 }
@@ -228,7 +244,7 @@ module.exports = {
   reserveCreation,
   finishCreation,
   loadCreationOperation,
-  loadDeveloperCreatedCustomers,
+  loadAppCreatedCustomers,
   loadLatestResumableRollback,
   loadRollbackTarget,
   saveRollbackPreview,

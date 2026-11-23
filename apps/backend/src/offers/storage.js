@@ -73,11 +73,13 @@ async function insert(query, table, fields, values, extras = {}) {
   );
 }
 async function read(query, id, companyId, owner, locked = false) {
+  const ownerSql = owner === null ? '' : ' AND h.tag_created_by=?';
+  const params = owner === null ? [id, companyId] : [id, companyId, owner];
   const row = (
     await query(
       `SELECT ${headerSelect} FROM ${H} h ${locked ? 'WITH (UPDLOCK,HOLDLOCK)' : ''}
-    WHERE h.tag_id=? AND h.tag_company_id=? AND h.tag_created_by=?`,
-      [id, companyId, owner],
+    WHERE h.tag_id=? AND h.tag_company_id=?${ownerSql}`,
+      params,
     )
   ).rows[0];
   if (!row) return null;

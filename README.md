@@ -4,9 +4,16 @@ Installation, das einzige aktuelle SQL-Installationsskript und Schema-Prüfungen
 [INSTALLATION.md](docs/INSTALLATION.md).
 Tabellen mit Zweck und aktuellem Fehlbestand: [DATENBANKTABELLEN.md](docs/DATENBANKTABELLEN.md).
 
-## Angebote (Pilot MFR, NSC, AKI)
+## App-Zugriff für die Geschäftsführung
 
-Eigene Angebote mit aktivem BMS-Artikelkatalog, Kundenwechsel beim Kopieren und
+Dietmar Meyer, Stefan Göde, Mark Winkler und Olaf Bader erhalten App-Vollzugriff
+auf alle regulären Mandanten. Die App prüft pro Anmeldung die aktive FX-Identität
+anhand von SSO-Anmeldename, Personalnummer und Kürzel. Der Mandant `TES` ist
+für diese vier Konten in der Auswahl und serverseitig gesperrt.
+
+## Angebote
+
+App-Angebote mit aktivem BMS-Artikelkatalog, Kundenwechsel beim Kopieren und
 optionaler Bestandsreservierung: [Bedienung, SQL-Einrichtung und externer
 BMS-Importvertrag](docs/ANGEBOTE.md). Die Freigabe erzeugt keine Verkaufsbuchung,
 Mail oder Push-Nachricht.
@@ -14,8 +21,8 @@ Mail oder Push-Nachricht.
 ## Kunden über die BMS-Kunden-API anlegen
 
 Das blaue Plus neben der Seitennavigation öffnet die Kundenanlage. Es erscheint
-im persönlichen Hauptmandanten des angemeldeten Mitarbeiters. Umfassender
-Mandantenzugriff ersetzt diese Regel nicht. Die Entwickler AKI, MFR und NSC dürfen
+im persönlichen Hauptmandanten des angemeldeten Mitarbeiters und für die
+Geschäftsführung in jedem regulären Mandanten. Die Entwickler AKI, MFR und NSC dürfen
 das Plus in allen für sie zugänglichen Mandanten einschließlich `TES` verwenden.
 Die Kunden-API kann weiterhin nicht nach `TES` kopieren; dort lässt sich die
 Maske öffnen, aber die Schnittstelle unterstützt keine Anlage mit TES als Ziel.
@@ -485,8 +492,8 @@ erforderlich.
 
 Die im Frontend angezeigten Mandanten koennen ueber `VITE_MANDANT_EXCLUDE_IDS` als
 kommagetrennte BMS-Mandanten-IDs ausgeblendet werden. Die Einstellung wirkt auf
-die Auswahl im Frontend; die eigentliche Berechtigungspruefung des Backends bleibt
-unveraendert.
+die Auswahl im Frontend für reguläre Benutzer. Die Geschäftsführung sieht
+alle regulären Mandanten aus dem Serverkatalog.
 
 Der offizielle Testmandant mit ID `0` bleibt fuer die meisten Benutzer ausgeblendet.
 Benutzer mit den Kuerzeln `MFR` oder `NSC` sehen ihn wieder, sofern die bestehende
@@ -512,7 +519,13 @@ Installationsskript enthalten.
 
 Bekannte MFI-Widersprueche sind ein harter Ausschluss. Der Reader entfernt sie aus den Kandidaten, die App blockiert sie auch bei manueller Artikelsuche ohne uebergehbare Warnung. Die kleine synchronisierte `options/mfi-compatibility.js` validiert nur den einzeln angeklickten Artikel; sie startet keinen Katalogabgleich. Fehlende Messwerte oder Pruefbedingungen werden als ungeprueft gekennzeichnet und erfordern bei manueller Auswahl eine ausdrueckliche Bestaetigung. Bestehende Zuordnungen werden bei Widerspruechen sichtbar markiert und nicht automatisch ersetzt.
 
-Die verifizierten Pilotidentitaeten AKI, NSC und MFR erhalten optionsVlPreview. Ihre VL nutzt GET /vl/entries: Bestands- und Optionspositionen werden gemeinsam vor der Pagination nach der bestehenden aufsteigenden MFI-Regel sortiert. Optionspositionen sind gruen, oeffnen die Optionsdetails und bieten keine Warenkorb-/Reservierungsaktionen. Die Testvorschau zeigt auch abgelaufene Angebote mit entsprechendem Hinweis. Frupack-Gruppen- und Einzelmandantenrechte werden serverseitig geprueft; fremde Optionsdetails sind lesend.
+Die vier Geschäftsführer und die verifizierten Pilotidentitäten AKI, NSC und MFR
+erhalten die Optionsvorschau. Ihre VL nutzt `GET /vl/entries` und sortiert
+Bestands- und Optionspositionen gemeinsam vor der Pagination aufsteigend nach
+MFI. Optionspositionen sind grün und öffnen die Optionsdetails. Sie bieten in
+der VL keine Warenkorb- oder Reservierungsaktionen. Die App prüft Frupack-Gruppen-
+und Einzelmandantenrechte serverseitig. Für Schreibvorgänge, die den
+Herkunftsmandanten erfordern, wird dieser als aktiver Mandant ausgewählt.
 
 Optionsabgleiche, vollständige Kandidaten, Warteschlange, Lieferantenkonten
 und Reader-Verarbeitung sind Bestandteil des gemeinsamen Installationsschemas.

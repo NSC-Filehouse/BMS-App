@@ -1,6 +1,7 @@
 const config = require('../config');
 const { runSQLQueryAccess, runSQLQuerySqlServer,withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
+const { excludeTestMandantSql } = require('../executive-access');
 const { createHttpError } = require('../utils');
 const { berlinDate } = require('./read');
 const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity');
@@ -18,7 +19,7 @@ function positiveId(value) {
   return id;
 }
 
-async function loadOptionPosition(optionId, positionId, query = null, { lock = false } = {}) {
+async function loadOptionPosition(optionId, positionId, query = null, { lock = false, identity } = {}) {
   const execute = query || (async (sql, params) => ({ rows: await runSQLQuerySqlServer(config.sql.database, sql, params) }));
   const today = berlinDate();
   const result = await execute(`SELECT p.opp_id,p.opp_op_id,p.opp_Artikelname_Lieferant,p.opp_Artikelname,
@@ -47,7 +48,8 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
     WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
       AND o.op_Pruefstatus IN(N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
-      AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
+      AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+      ${excludeTestMandantSql(identity, 'o.op_MandantID')}`,
   [positiveId(optionId), positiveId(positionId), today, today]);
   const row = (result.rows || result)[0];
   if (!row) throw createHttpError(422, 'Diese Option ist nicht mehr gültig oder verfügbar.', { code: 'OPTION_NOT_AVAILABLE' });
@@ -64,13 +66,13 @@ async function loadOptionAvailability(position, excludeOrderId = null, query = n
   return quantityAvailability(position, Number((result.rows || result)[0]?.orderedKg || 0));
 }
 
-async function confirmOptionQuantity(optionId,positionId,body,actor) {
+async function confirmOptionQuantity(optionId,positionId,body,actor,identity) {
   let totalKg=quantityInputKg(body,body?.totalUnit==='truck'?1:null);
   if(body?.quantityConfirmed!==true || !Number.isFinite(totalKg) || totalKg<=0
     || !Number.isSafeInteger(Math.round(totalKg*1000)) || Math.abs(totalKg*1000-Math.round(totalKg*1000))>0.00001)
     throw createHttpError(422,'Bitte die angebotene Gesamtmenge und Einheit (kg oder t) auf Gramm genau eingeben und ausdrücklich bestätigen.',{code:'OPTION_QUANTITY_CONFIRMATION_REQUIRED'});
   return withSqlTransaction(config.sql.database,async({query})=>{
-    const source=await loadOptionPosition(optionId,positionId,query,{lock:true});
+    const source=await loadOptionPosition(optionId,positionId,query,{lock:true,identity});
     let packaging=null;
     if(isTruckOffer(source) || body.totalUnit==='truck') {
       if(!isTruckOffer(source))throw createHttpError(422,'Diese Option enthält keine Truck-Mengenangabe.',{code:'OPTION_TRUCK_UNIT_INVALID'});
@@ -183,7 +185,7 @@ async function validateOptionSupplier(database,position,supplierId) {
   return match;
 }
 
-async function assertOptionQuantities(query, positions, excludeOrderId = null,packagingType=null) {
+async function assertOptionQuantities(query, positions, excludeOrderId = null,packagingType=null,identity) {
   const grouped = new Map();
   for (const line of positions.filter(p => p.optionId != null)) {
     const id = positiveId(line.optionPositionId);
@@ -195,7 +197,7 @@ async function assertOptionQuantities(query, positions, excludeOrderId = null,pa
   }
   // Deterministic source locks serialize competing orders across ALL mandants.
   for (const [id, request] of [...grouped].sort(([a],[b]) => a-b)) {
-    const source = await loadOptionPosition(request.optionId,id,query,{lock:true});
+    const source = await loadOptionPosition(request.optionId,id,query,{lock:true,identity});
     if (positions.some(line => line.optionPositionId===id && line.optionSourceChanged
       && line.optionSourceChanged!==source.sourceVersion))
       throw createHttpError(422,'Die Option wurde zwischenzeitlich geändert. Bitte erneut laden.',{code:'OPTION_CHANGED'});

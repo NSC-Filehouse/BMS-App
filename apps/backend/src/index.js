@@ -27,6 +27,7 @@ const { getUserContextFromRequest } = require('./user-context');
 const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityFromRequestContext } = require('./db/users');
 const { pilotFeaturesForIdentity } = require('./pilot-features');
+const { hasExecutiveAccess } = require('./executive-access');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-outbox');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
@@ -88,6 +89,7 @@ app.get(`${config.apiBasePath}/me`, async (req, res) => {
       mainCompanyId: identity?.mainCompanyId ?? null,
       userId: identity?.userId || null,
       identityResolved: true,
+      executiveAccess: hasExecutiveAccess(identity),
       features: pilotFeaturesForIdentity(identity),
     });
   } catch {

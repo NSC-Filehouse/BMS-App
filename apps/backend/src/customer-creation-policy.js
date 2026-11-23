@@ -1,5 +1,6 @@
 const { createHash } = require('node:crypto');
 const { createHttpError } = require('./utils');
+const { hasExecutiveAccess, isTestMandant } = require('./executive-access');
 
 // Match the active FX identity on all three fields so a reused short code does
 // not grant developer access to customer creation in every tenant.
@@ -33,6 +34,7 @@ function canCreateCustomer(identity, database, settings) {
     || !Boolean(text(identity.shortCode)) || !Boolean(text(identity.userId))
     || !/^[A-Z0-9]{1,10}$/.test(mandant)) return false;
 
+  if (hasExecutiveAccess(identity)) return !isTestMandant(database);
   const personNumber = Number(identity.personNumber);
   const userId = String(identity.userId || '').trim().toLowerCase();
   if (CUSTOMER_CREATION_DEVELOPERS.some((user) => (
@@ -57,9 +59,12 @@ function isCustomerRollbackDeveloper(identity) {
     user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId
   ));
 }
-function assertCustomerRollbackDeveloper(identity) {
-  if (!isCustomerRollbackDeveloper(identity)) {
-    throw createHttpError(403, 'Der App-Rückbau ist nur für AKI, MFR und NSC freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
+function canRollbackCustomer(identity, database) {
+  return hasExecutiveAccess(identity) ? Boolean(database) && !isTestMandant(database) : isCustomerRollbackDeveloper(identity);
+}
+function assertCanRollbackCustomer(identity, database) {
+  if (!canRollbackCustomer(identity, database)) {
+    throw createHttpError(403, 'Der App-Rückbau ist für diesen Benutzer und Mandanten nicht freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
   }
 }
 function isCustomerRollbackPreviewExecutable(preview) {
@@ -177,8 +182,9 @@ module.exports = {
   UUID,
   canCreateCustomer,
   assertCanCreateCustomer,
+  canRollbackCustomer,
   isCustomerRollbackDeveloper,
-  assertCustomerRollbackDeveloper,
+  assertCanRollbackCustomer,
   isCustomerRollbackPreviewExecutable,
   normalizeCreationRequest,
   countryUsesEuroCurrency,

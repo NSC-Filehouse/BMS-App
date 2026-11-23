@@ -1,5 +1,6 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('./access');
+const { hasExecutiveAccess, isTestMandant } = require('../executive-access');
 
 // Keep this aligned with the current frontend mandant exclusion list. These
 // mandants and employee codes must not appear in the customer-linked
@@ -36,6 +37,9 @@ function isHiddenCustomerDetailEmployee(value) {
 }
 
 function isHiddenMandant(mandant, viewerIdentity) {
+  if (hasExecutiveAccess(viewerIdentity)) {
+    return isTestMandant({ firmaId: mandant.id, shortName: mandant.shortCode });
+  }
   if (mandant.id === TEST_MANDANT_ID) return !canViewTestMandant(viewerIdentity);
   return HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS.has(mandant.id);
 }

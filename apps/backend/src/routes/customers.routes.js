@@ -33,7 +33,7 @@ const {
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 const { resolveCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const customerCreationHistory = require('../db/customer-creation-history');
-const { assertCustomerRollbackDeveloper, UUID: DELIVERY_ADDRESS_UUID } = require('../customer-creation-policy');
+const { assertCanRollbackCustomer, UUID: DELIVERY_ADDRESS_UUID } = require('../customer-creation-policy');
 const {
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
@@ -643,9 +643,9 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
   const appCreatedOnly = String(req.query.appCreated || '').trim() === '1';
   let appCreatedMetadata = [];
   if (appCreatedOnly) {
-    assertCustomerRollbackDeveloper(req.userIdentity);
+    assertCanRollbackCustomer(req.userIdentity, req.database);
     if (supplierOnly) throw createHttpError(400, 'Der App-Anlagenfilter ist nur in der Kundenansicht verfügbar.', { code: 'CUSTOMER_CREATION_FILTER_INVALID' });
-    appCreatedMetadata = await customerCreationHistory.loadDeveloperCreatedCustomers(req.database.shortName);
+    appCreatedMetadata = await customerCreationHistory.loadAppCreatedCustomers(req.database.shortName, req.userIdentity);
   }
   const { page, pageSize, q, sort, dir } = parseListParams(req.query, {
     page: 1,
@@ -1194,7 +1194,7 @@ router.get('/customers/:id/orders', requireMandant, asyncHandler(async (req, res
 // Supplier options are shared across all import mandants.
 router.get('/customers/:id/options', requireMandant, require('../middlewares/pilot-feature.middleware').requirePilotFeature('options'), asyncHandler(async (req, res) => {
   const { customer } = await requireVisibleCustomerOrSupplier(req, req.params.id);
-  const { offers, supplierIdentified } = await require('../options/supplier-offers').loadSupplierOffers(req.database, customer);
+  const { offers, supplierIdentified } = await require('../options/supplier-offers').loadSupplierOffers(req.database, customer, req.userIdentity);
   sendEnvelope(res, { data: offers, meta: { mandant: req.mandant, sharedOptions: true, supplierIdentified } });
 }));
 

@@ -7,6 +7,7 @@ const { createRequire } = require('node:module');
 const express = require('express');
 const { normalize, totals } = require('../src/offers/values');
 const { headerFields, positionFields } = require('../src/offers/storage');
+const { synchronizeReservations } = require('../src/offers/reservations');
 const crypto = require('node:crypto');
 const {
   compact,
@@ -172,7 +173,7 @@ async function fixture(t) {
             total: state.headers.filter(
               (h) =>
                 h.tag_company_id === params[0] &&
-                h.tag_created_by === params[1],
+                (!sql.includes('h.tag_created_by=?') || h.tag_created_by === params[1]),
             ).length,
           },
         ],
@@ -193,12 +194,13 @@ async function fixture(t) {
       sql.includes('FROM [BMSApp].[tbl_Temp_Angebot]')
     ) {
       const list = sql.includes('OFFSET');
+      const ownerRequired = sql.includes('AND h.tag_created_by=?');
       const headers = state.headers.filter((h) =>
         list
-          ? h.tag_company_id === params[0] && h.tag_created_by === params[1]
+          ? h.tag_company_id === params[0] && (!ownerRequired || h.tag_created_by === params[1])
           : h.tag_id === params[0] &&
             h.tag_company_id === params[1] &&
-            h.tag_created_by === params[2],
+            (!ownerRequired || h.tag_created_by === params[2]),
       );
       return {
         rows: headers.map((h) => ({
@@ -250,6 +252,8 @@ async function fixture(t) {
                   userId: 'n.schroeder',
                   active: true,
                 }
+              : who === 'OBA'
+              ? { shortCode: 'OBA', personNumber: 276, userId: 'Bader', active: true }
               : {
                   shortCode: who,
                   personNumber: 999,
@@ -356,6 +360,46 @@ test('offer pilot gate and owner/tenant predicates protect list, details and eve
   assert.equal((await call('/temp-offers')).json.meta.total, 0);
   assert.equal((await call('/temp-offers/not-an-id', 'PUT', body)).status, 404);
 });
+test('executives can list and manage other authors’ offers within the active mandant', async (t) => {
+  const { state, call } = await fixture(t);
+  const mandant = { 'x-test-company': '3' };
+  const executive = { ...mandant, 'x-test-user': 'OBA' };
+  const body = input();
+  const created = await call('/temp-offers', 'POST', body, mandant);
+  const { id, version } = created.json.data;
+  assert.equal((await call('/temp-offers', 'GET', undefined, executive)).json.meta.total, 1);
+  assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, executive)).json.data.createdBy, 'NSC');
+  assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, { ...executive, 'x-test-company': '2' })).status, 404);
+  const edited = await call(`/temp-offers/${id}`, 'PUT', { ...body, version }, executive);
+  assert.equal(edited.status, 200);
+  assert.equal(state.headers[0].tag_created_by, 'NSC');
+  assert.ok(state.calls.some(({ sql, params }) => sql.startsWith('UPDATE') && params.at(-2) === 'OBA'));
+  assert.equal((await call(`/temp-offers/${id}/release`, 'POST', { version: edited.json.data.version }, executive)).status, 200);
+});
+
+test('editing another author’s offer keeps reservation ownership and records the acting user', async () => {
+  const calls = [];
+  const version = '0x0000000000000001';
+  const req = { database: { firmaId: 3, databaseName: 'BMS.FRU' }, offerCustomerId: '100', userIdentity: { shortCode: 'OBA' } };
+  const position = {
+    reserve: true, lineKey: 'key', beNumber: '03-123', warehouseId: 1,
+    articleIndex: 'A', reserveQuantity: 50, reserveUntil: '2099-01-01',
+  };
+  const query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('sp_getapplock')) return { rows: [{ lockResult: 0 }] };
+    if (sql.includes('AS version,bePR_reserviertVon')) return { rows: [{ owner: 'NSC', version }] };
+    if (sql.startsWith('DELETE') || sql.includes('SELECT bePR_BEposID') || sql.includes('tap_amount_in_kg')) return { rows: [] };
+    if (sql.includes('AS articleIndex')) return { rows: [{ amount: 100, articleIndex: 'A', unit: 'KG' }] };
+    if (sql.startsWith('INSERT')) return { rows: [{ version: Buffer.from('0000000000000002', 'hex') }] };
+    throw new Error(sql);
+  };
+  await synchronizeReservations(query, req, 1, [{ ...position, reservationVersion: version }], [position], 'NSC');
+  const insert = calls.find(({ sql }) => sql.startsWith('INSERT'));
+  assert.equal(insert.params[4], 'NSC');
+  assert.match(insert.params.at(-1), /^OBA /);
+});
+
 test('saving preserves repeated articles, validates customer, retries without duplicates and rejects stale edits', async (t) => {
   const { state, call } = await fixture(t);
   const body = input();
@@ -405,7 +449,6 @@ test('saving preserves repeated articles, validates customer, retries without du
 });
 
 test('offer reservation conflicts never overwrite another reservation or claim a mismatched article', async () => {
-  const { synchronizeReservations } = require('../src/offers/reservations');
   const req = {
     database: { firmaId: 0, databaseName: 'BMS.TES' },
     userIdentity: { shortCode: 'NSC' },

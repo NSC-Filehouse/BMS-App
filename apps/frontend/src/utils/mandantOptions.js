@@ -26,11 +26,13 @@ export function normalizeMandantOption(item) {
 export function getSelectableMandants(items, user = null) {
   const shortCode = String(user?.shortCode || '').trim().toUpperCase();
   const canSelectTestMandant = TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode);
+  const executiveAccess = user?.identityResolved === true && user?.executiveAccess === true;
 
   return (Array.isArray(items) ? items : [])
     .map(normalizeMandantOption)
     .filter((item) => {
       if (!item.name) return false;
+      if (executiveAccess) return item.id !== TEST_MANDANT_ID && item.shortName.toUpperCase() !== 'TES';
       if (item.id === TEST_MANDANT_ID) return canSelectTestMandant;
       return item.id === null || !MANDANT_EXCLUDE_IDS.has(item.id);
     });

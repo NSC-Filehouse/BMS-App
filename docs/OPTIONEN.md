@@ -163,12 +163,11 @@ dieses Codeupdate nicht rückwirkend geändert oder erneut eingelesen.
 
 ## Pilot
 
-`apps/backend/src/pilot-features.js` gibt Bestellungen, Optionen und Forecast vorläufig nur
-den drei geprüften FX-Identitäten AKI, MFR und NSC frei. Menü und direkte API-
-Aufrufe verwenden dieselbe Regel. Die spätere allgemeine Freigabe kann diese
-Funktion durch die normalen Nutzer-/Mandantenregeln ersetzen. Optionen sollen
-dann für alle Berechtigten des Mandanten sichtbar sein, unabhängig vom
-Lieferanten.
+`apps/backend/src/pilot-features.js` gibt Bestellungen, Optionen und Forecast
+für die vier Geschäftsführer und die drei geprüften FX-Identitäten AKI, MFR
+und NSC frei. Menü und direkte API-Aufrufe verwenden dieselbe Regel.
+Für die Geschäftsführer schließt die gemeinsame Optionsansicht Daten mit
+Herkunftsmandant `TES` aus.
 
 Die [Schema-Installation](INSTALLATION.md) legt keine Demo-Angebote an und
 übernimmt keine standortspezifischen Kontenzuordnungen. Historische Test-Seeds

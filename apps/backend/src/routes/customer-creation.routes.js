@@ -7,8 +7,8 @@ const {
   UUID,
   canCreateCustomer,
   assertCanCreateCustomer,
-  isCustomerRollbackDeveloper,
-  assertCustomerRollbackDeveloper,
+  canRollbackCustomer,
+  assertCanRollbackCustomer,
   normalizeCreationRequest,
 } = require('../customer-creation-policy');
 const { executeCustomerCreation } = require('../customer-creation-service');
@@ -17,7 +17,7 @@ const history = require('../db/customer-creation-history');
 const router = express.Router();
 const settings = () => config.customerApi;
 function allowed(req) { assertCanCreateCustomer(req.userIdentity, req.database, settings()); }
-function rollbackDeveloper(req) { assertCustomerRollbackDeveloper(req.userIdentity); }
+function allowRollback(req) { assertCanRollbackCustomer(req.userIdentity, req.database); }
 function apiReady() {
   return settings().enabled && Boolean(settings().baseAddress) && Boolean(settings().apiKey);
 }
@@ -35,13 +35,13 @@ function throwApiProblem(response) {
     });
 }
 router.get('/customer-creation/capabilities', requireMandant, asyncHandler(async (req, res) => {
-  const rollbackDeveloperAllowed = isCustomerRollbackDeveloper(req.userIdentity);
+  const rollbackAllowed = canRollbackCustomer(req.userIdentity, req.database);
   sendEnvelope(res, { data: {
     allowed: canCreateCustomer(req.userIdentity, req.database, settings()),
     writeEnabled: settings().writeEnabled,
-    canViewAppCreated: rollbackDeveloperAllowed,
-    canPreviewRollback: rollbackDeveloperAllowed && apiReady(),
-    canRollback: rollbackDeveloperAllowed && apiReady() && settings().writeEnabled,
+    canViewAppCreated: rollbackAllowed,
+    canPreviewRollback: rollbackAllowed && apiReady(),
+    canRollback: rollbackAllowed && apiReady() && settings().writeEnabled,
   } });
 }));
 router.get('/customer-creation/context', requireMandant, asyncHandler(async (req, res) => {
@@ -83,9 +83,9 @@ router.get('/customer-creation/operations/:id', requireMandant, asyncHandler(asy
 }));
 
 router.get('/customer-creation/operations/:id/rueckbau-vorschau', requireMandant, asyncHandler(async (req, res) => {
-  rollbackDeveloper(req);
+  allowRollback(req);
   if (!UUID.test(req.params.id)) throw createHttpError(400, 'Ungültige Vorgangs-ID.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });
-  const target = await history.loadRollbackTarget(req.params.id, req.database.shortName);
+  const target = await history.loadRollbackTarget(req.params.id, req.database.shortName, req.userIdentity);
   if (!target) throw createHttpError(404, 'Für diesen Mandanten wurde kein rückbaubarer App-Anlagevorgang gefunden.', { code: 'CUSTOMER_ROLLBACK_NOT_FOUND' });
   const resumable = await history.loadLatestResumableRollback(target.operationId);
   if (resumable) {
@@ -115,14 +115,14 @@ router.get('/customer-creation/operations/:id/rueckbau-vorschau', requireMandant
 }));
 
 router.post('/customer-creation/operations/:id/rueckbau/:rollbackId', requireMandant, asyncHandler(async (req, res) => {
-  rollbackDeveloper(req);
+  allowRollback(req);
   if (!settings().writeEnabled) {
     throw createHttpError(403, 'ERP-Schreibzugriffe sind derzeit gesperrt.', { code: 'CUSTOMER_CREATION_WRITE_DISABLED' });
   }
   if (!UUID.test(req.params.id) || !UUID.test(req.params.rollbackId)) {
     throw createHttpError(400, 'Ungültige Vorgangs-ID.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });
   }
-  const target = await history.loadRollbackTarget(req.params.id, req.database.shortName);
+  const target = await history.loadRollbackTarget(req.params.id, req.database.shortName, req.userIdentity);
   if (!target) throw createHttpError(404, 'Für diesen Mandanten wurde kein rückbaubarer App-Anlagevorgang gefunden.', { code: 'CUSTOMER_ROLLBACK_NOT_FOUND' });
   const reservation = await history.reserveRollback({
     rollbackId: req.params.rollbackId,

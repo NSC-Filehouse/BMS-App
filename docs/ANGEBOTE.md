@@ -1,9 +1,10 @@
 # Angebote in der App
 
-Die Funktion ist ausschließlich für die verifizierten aktiven Identitäten MFR,
-NSC und AKI freigeschaltet. Jeder sieht nur eigene App-Angebote im aktiven
-Mandanten, auch mit sonstigem Vollzugriff. Die bestehende lesende Anzeige von
-BMS-Angeboten beim Kunden behält ihre Berechtigungen.
+Die Funktion ist für die vier Geschäftsführer und die verifizierten aktiven
+Identitäten MFR, NSC und AKI freigeschaltet. Die Geschäftsführer können alle
+App-Angebote im aktiven regulären Mandanten sehen und im Rahmen des jeweiligen
+Status bearbeiten. MFR, NSC und AKI greifen auf ihre eigenen App-Angebote zu.
+Die lesende Anzeige von BMS-Angeboten beim Kunden folgt dem Kundenzugriff.
 
 ## Bedienung wie beim Auftrag
 

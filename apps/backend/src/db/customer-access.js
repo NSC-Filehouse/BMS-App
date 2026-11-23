@@ -1,6 +1,7 @@
 const config = require('../config');
 const { runSQLQueryFx, runSQLQueryAccess } = require('./access');
 const { getUserIdentityByEmail } = require('./users');
+const { hasExecutiveAccess } = require('../executive-access');
 
 const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 const CUSTOMER_ACCESS_SCOPE_TTL_MS = 5 * 60 * 1000;
@@ -52,6 +53,7 @@ function normalizePersonName(value) {
 }
 
 function isAppFullAccessUser(identity) {
+  if (hasExecutiveAccess(identity)) return true;
   const shortCode = normalizeUserGroup(identity?.shortCode);
   const fullName = normalizePersonName(identity?.fullName);
   return APP_FULL_ACCESS_RULES.some((rule) => (

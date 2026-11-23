@@ -3,8 +3,9 @@ const { runSQLQuerySqlServer } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
 const { createHttpError } = require('../utils');
 const { berlinDate } = require('./read');
+const { excludeTestMandantSql } = require('../executive-access');
 
-async function loadOptionSource(id, kind) {
+async function loadOptionSource(id, kind, identity) {
   const today = berlinDate();
   // Sources have the same shared visibility as the option's current positions.
   // Fetch large mail/file contents only when the user opens that source.
@@ -13,7 +14,7 @@ async function loadOptionSource(id, kind) {
     : 'o.op_QuelleDatei AS content,o.op_QuelleDateiname AS fileName,o.op_QuelleDateiMime AS mime';
   const rows = await runSQLQuerySqlServer(config.sql.database, `SELECT ${columns}
     FROM ${appTableSql('options')} o
-    WHERE o.op_id=? AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0
+    WHERE o.op_id=? AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 ${excludeTestMandantSql(identity, 'o.op_MandantID')}
       AND o.op_Pruefstatus IN(N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GueltigAb<=? AND EXISTS(SELECT 1 FROM ${appTableSql('optionPositions')} p
         WHERE p.opp_op_id=o.op_id AND p.opp_GeloeschtAm IS NULL AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?)`, [id,today,today]);

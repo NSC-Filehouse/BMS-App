@@ -1,4 +1,5 @@
 const { isFrupackEmployee } = require('./frupack-membership');
+const { hasExecutiveAccess } = require('./executive-access');
 
 // These identities are resolved from the active FX employee record using the
 // SSO SAM account. Matching all fields avoids granting access to a reused code.
@@ -12,9 +13,9 @@ function pilotFeaturesForIdentity(identity) {
   const shortCode = String(identity?.shortCode || '').trim().toUpperCase();
   const userId = String(identity?.userId || '').trim().toLowerCase();
   const personNumber = Number(identity?.personNumber);
-  const enabled = identity?.active === true && PILOT_USERS.some((user) => (
+  const enabled = hasExecutiveAccess(identity) || (identity?.active === true && PILOT_USERS.some((user) => (
     user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId
-  ));
+  )));
   return {
     offers: enabled,
     purchaseOrders: enabled,

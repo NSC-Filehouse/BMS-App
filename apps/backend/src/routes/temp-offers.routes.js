@@ -37,6 +37,7 @@ const {
   read,
 } = require('../offers/storage');
 const { synchronizeReservations } = require('../offers/reservations');
+const { hasExecutiveAccess } = require('../executive-access');
 
 const router = express.Router();
 const gate = [requireMandant, requirePilotFeature('offers')];
@@ -44,6 +45,7 @@ const query = async (sql, params = []) => ({
   rows: await runSQLQuerySqlServer(config.sql.database, sql, params),
 });
 const owner = (req) => req.userIdentity.shortCode;
+const offerOwnerFilter = (req) => hasExecutiveAccess(req.userIdentity) ? null : owner(req);
 function notFound() {
   throw createHttpError(404, 'Angebot nicht gefunden.', {
     code: 'OFFER_NOT_FOUND',
@@ -237,8 +239,13 @@ router.get(
   ...gate,
   asyncHandler(async (req, res) => {
     const { page, pageSize } = pageParams(req);
-    const params = [req.database.firmaId, owner(req)];
-    const clauses = ['h.tag_company_id=?', 'h.tag_created_by=?'];
+    const params = [req.database.firmaId];
+    const clauses = ['h.tag_company_id=?'];
+    const requestedOwner = offerOwnerFilter(req);
+    if (requestedOwner !== null) {
+      clauses.push('h.tag_created_by=?');
+      params.push(requestedOwner);
+    }
     if (req.query.customerId) {
       clauses.push('h.tag_customer_id=?');
       params.push(text(req.query.customerId, 10));
@@ -318,7 +325,7 @@ router.get(
       query,
       offerId(req),
       req.database.firmaId,
-      owner(req),
+      offerOwnerFilter(req),
     );
     if (!row) notFound();
     sendEnvelope(res, { data: row });
@@ -427,7 +434,7 @@ async function save(req) {
     let id = req.params.id ? offerId(req) : null;
     let old = null;
     if (id) {
-      old = await read(tx, id, req.database.firmaId, owner(req), true);
+      old = await read(tx, id, req.database.firmaId, offerOwnerFilter(req), true);
       if (!old) notFound();
       editable(old);
       requireVersion(old, req.body.version);
@@ -446,7 +453,7 @@ async function save(req) {
       const copySourceId = Number(req.body.copySourceId) || null;
       if (
         copySourceId &&
-        !(await read(tx, copySourceId, req.database.firmaId, owner(req)))
+        !(await read(tx, copySourceId, req.database.firmaId, offerOwnerFilter(req)))
       )
         notFound();
       const result = await insert(tx, H, headerFields, header, {
@@ -458,7 +465,7 @@ async function save(req) {
       });
       id = result.rows[0].tag_id;
     }
-    await synchronizeReservations(tx, req, id, old?.positions || [], positions);
+    await synchronizeReservations(tx, req, id, old?.positions || [], positions, old?.createdBy);
     if (old) {
       const entries = Object.entries(headerFields);
       await tx(
@@ -474,7 +481,7 @@ async function save(req) {
           ? Buffer.from(p.reservationVersion.slice(2), 'hex')
           : null,
       });
-    return read(tx, id, req.database.firmaId, owner(req));
+    return read(tx, id, req.database.firmaId, offerOwnerFilter(req));
   });
 }
 router.post(
@@ -502,7 +509,7 @@ router.post(
           tx,
           offerId(req),
           req.database.firmaId,
-          owner(req),
+          offerOwnerFilter(req),
           true,
         );
         if (!current) notFound();
@@ -527,7 +534,7 @@ router.post(
           `UPDATE ${H} SET tag_status=1,tag_released_at=SYSUTCDATETIME(),tag_modified_at=SYSUTCDATETIME(),tag_modified_by=? WHERE tag_id=?`,
           [owner(req), current.id],
         );
-        return read(tx, current.id, req.database.firmaId, owner(req));
+        return read(tx, current.id, req.database.firmaId, offerOwnerFilter(req));
       },
     );
     sendEnvelope(res, { data: row });
@@ -542,13 +549,13 @@ router.delete(
         tx,
         offerId(req),
         req.database.firmaId,
-        owner(req),
+        offerOwnerFilter(req),
         true,
       );
       if (!row) notFound();
       editable(row);
       requireVersion(row, req.body?.version);
-      await synchronizeReservations(tx, req, row.id, row.positions, []);
+      await synchronizeReservations(tx, req, row.id, row.positions, [], row.createdBy);
       await tx(`DELETE FROM ${P} WHERE tagp_offer_id=?`, [row.id]);
       await tx(`DELETE FROM ${H} WHERE tag_id=?`, [row.id]);
     });

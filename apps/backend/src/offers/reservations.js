@@ -12,6 +12,7 @@ async function synchronizeReservations(
   offerId,
   oldPositions,
   positions,
+  owner = req.userIdentity.shortCode,
 ) {
   if (![...oldPositions, ...positions].some((p) => p.reserve)) return;
   await lockTempOrderAvailability(query, req.database.firmaId);
@@ -21,7 +22,7 @@ async function synchronizeReservations(
     '[dbo].',
     `${db}.[dbo].`,
   );
-  const owner = req.userIdentity.shortCode;
+  const actor = req.userIdentity.shortCode;
   const seen = new Set();
   const conflict = () => {
     throw createHttpError(
@@ -127,7 +128,7 @@ async function synchronizeReservations(
         'Reservierungsende liegt in der Vergangenheit.',
         { code: 'INVALID_RESERVATION_END_DATE' },
       );
-    const note = `Reserviert für App-Angebot AN-${offerId}, Kunde ${req.offerCustomerId}, erstellt von ${owner}.`;
+    const note = `Reserviert für App-Angebot AN-${offerId}, Kunde ${req.offerCustomerId}, erstellt von ${actor}.`;
     const created = await query(
       `INSERT INTO ${table} (bePR_BEposID,bePR_LagerID,bePR_gewaehlt,bePR_gewaehltWER,bePR_reserviertVon,bePR_gueltigBis,bePR_Anzahl,bePR_Notiz,bePR_LastUpdate)
       OUTPUT INSERTED.zz_rowver AS version VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -140,7 +141,7 @@ async function synchronizeReservations(
         `${p.reserveUntil}T23:59:59`,
         p.reserveQuantity,
         note,
-        `${owner} ${new Date().toISOString()}`.slice(0, 50),
+        `${actor} ${new Date().toISOString()}`.slice(0, 50),
       ],
     );
     p.reservationVersion = `0x${created.rows[0].version.toString('hex')}`;
