@@ -21,6 +21,9 @@ function responseLinks(offer, number, sender) {
   const counter = en ? 'Make a counteroffer' : 'Gegenangebot machen';
   return {
     request: en ? 'We would appreciate a prompt reply.' : 'Wir bitten um kurzfristige Rückantwort.',
+    fallback: en
+      ? `If an action does not open a draft, please reply to this email and quote ${number}.`
+      : `Falls sich kein Entwurf öffnet, antworten Sie bitte direkt auf diese E-Mail und nennen Sie ${number}.`,
     actions: [
       { label: en ? 'Accept offer' : 'Angebot annehmen', url: mailto(`${number} - ${en ? 'Offer accepted' : 'Angebot angenommen'}`, en
         ? `Thank you for your offer ${number}. We accept this offer.`
@@ -71,12 +74,14 @@ function assembleOfferMail(offer, document) {
   const actionRows = links.actions.map((action, index) => {
     const background = index === 0 ? '#245078' : '#E9EFF6';
     const foreground = index === 0 ? '#FFFFFF' : '#24405C';
-    return `<tr><td bgcolor="${background}" style="padding:9px 14px;mso-padding-alt:9px 14px">`
-      + `<a href="${escapeMarkup(action.url)}" style="color:${foreground};font-weight:bold;text-decoration:underline">${escapeMarkup(action.label)}</a>`
+    return `<tr><td align="center" bgcolor="${background}" style="text-align:center;mso-padding-alt:9px 14px">`
+      + `<a href="${escapeMarkup(action.url)}" style="display:block;padding:9px 14px;text-align:center;color:${foreground} !important;font-weight:bold;text-decoration:underline">`
+      + `<span style="color:${foreground} !important;mso-style-textfill-type:solid;mso-style-textfill-fill-color:${foreground}">${escapeMarkup(action.label)}</span></a>`
       + '</td></tr>';
   }).join(spacer);
   const controls = `<div style="margin-top:20px"><p>${escapeMarkup(links.request)}</p>`
-    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${actionRows}</table></div>`;
+    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${actionRows}</table>`
+    + `<p>${escapeMarkup(links.fallback)}</p></div>`;
   const body = document.isBodyHtml
     ? (/<\/body\s*>/i.test(document.body) ? document.body.replace(/<\/body\s*>/i, match => controls + match) : document.body + controls)
     : `<div style="white-space:pre-wrap">${escapeMarkup(document.body).replace(/\r\n|\r|\n/g, '<br>')}</div>${controls}`;

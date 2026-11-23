@@ -24,7 +24,7 @@ test('one mail carries unchanged wording and three separate reply drafts for a s
   assert.equal(request.bcc, undefined);
   assert.equal(request.subject, original.subject);
   assert.match(request.body, /^<html><body>Originaltext aus BMS\./);
-  const actions = [...request.body.matchAll(/<a href="(mailto:[^"]+)"[^>]*>([^<]+)<\/a>/g)];
+  const actions = [...request.body.matchAll(/<a href="(mailto:[^"]+)"[^>]*><span[^>]*>([^<]+)<\/span><\/a>/g)];
   assert.deepEqual(actions.map(action => action[2]), ['Angebot annehmen', 'Gegenangebot machen', 'Angebot nicht interessant']);
   const drafts = actions.map(action => new URL(action[1].replaceAll('&amp;', '&')));
   assert.ok(drafts.every(draft => draft.pathname === 'ad@example.invalid' && draft.searchParams.get('subject').startsWith('AN-123')));
@@ -32,7 +32,9 @@ test('one mail carries unchanged wording and three separate reply drafts for a s
   assert.match(drafts[1].searchParams.get('body'), /Wunschpreis/);
   assert.match(drafts[2].searchParams.get('body'), /nicht interessant/);
   assert.equal((request.body.match(/<tr aria-hidden="true"><td height="12"/g) || []).length, 2);
-  assert.match(request.body, /<td bgcolor="#245078"[^>]*><a[^>]*>Angebot annehmen<\/a>/);
+  assert.equal((request.body.match(/<td align="center" bgcolor=/g) || []).length, 3);
+  assert.match(request.body, /bgcolor="#245078"[^>]*><a[^>]*><span[^>]*mso-style-textfill-fill-color:#FFFFFF">Angebot annehmen<\/span>/);
+  assert.match(request.body, /antworten Sie bitte direkt auf diese E-Mail und nennen Sie AN-123/);
   assert.match(request.body, /kurzfristige Rückantwort/);
   assert.deepEqual(request.attachments[0].content, pdf);
   assert.match(request.attachments[1].content.toString(), /<Incoterm>FCA<\/Incoterm>/);
