@@ -95,7 +95,6 @@ const config = {
   purchaseOrderMail: {
     enabled: toBool(process.env.BMS_PURCHASE_ORDER_MAIL_ENABLED, true),
     intervalSeconds: toInt(process.env.BMS_PURCHASE_ORDER_MAIL_INTERVAL_SECONDS, 60),
-    maxAttempts: toInt(process.env.BMS_PURCHASE_ORDER_MAIL_MAX_ATTEMPTS, 10),
   },
 
   creditLimitMail: {

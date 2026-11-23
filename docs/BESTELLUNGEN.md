@@ -84,9 +84,7 @@ bereits gespeichert, werden keine Dateien doppelt angelegt. Fehlen bei einer
 noch nicht gespeicherten Wiederholung Dateien, wird die Anlage abgewiesen und
 die erneute Auswahl angefordert.
 
-Die CS-Mail bei Übergabe enthält die aktiven Anhänge. Die Lieferantenmail bei
-Status 2 enthält sie ebenfalls sowie weiterhin das vorhandene BMS-Bestell-PDF,
-sofern dieses gefunden und gelesen werden kann.
+Die interne CS-Mail bei Übergabe enthält die aktiven Anhänge.
 
 ## Übersicht, Detailansicht und Löschen
 
@@ -121,9 +119,8 @@ Kopf, Positionen und vollständige Antwort werden innerhalb einer Transaktion
 ermittelt; ein Lesefehler vor dem Commit rollt die Anlage zurück.
 
 Status: 0 Entwurf, 1 an BMS übergeben, 2 von BMS übernommen, 3 Nacharbeit.
-Die bestehende interne Mail-Outbox wird bei der Übergabe verwendet. Die
-Lieferantenmail wird weiterhin erst bei Status 2 ausgelöst. Ein lokaler Test
-weist weder tatsächlichen Mail-/Push-Versand noch die externe Übernahme nach.
+Bei der Übergabe wird ausschließlich die interne CS-Mail ausgelöst.
+Die Statusänderung auf 2 löst keinen Mailversand an den Lieferanten aus.
 
 Historische BE-Nummern und Positionskennungen werden bei neuen Bestellungen
 nicht in tbp_source_bestellindex / tbp_source_position_id / tbp_source_order_date

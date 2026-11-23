@@ -1,4 +1,3 @@
-const PURCHASE_ORDER_MAIL_SUBJECT = 'BMS-App Bestellung an Lieferant';
 const PURCHASE_ORDER_CS_MAIL_SUBJECT = 'BMS-App: neue Bestellung für BMS';
 
 function text(value) {
@@ -20,11 +19,9 @@ function line(label, value) {
   return `${label}: ${text(value) || '-'}`;
 }
 
-function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantShortName, audience = 'supplier' }) {
+function formatPurchaseOrderCsMailBody({ order, positions, mandantName, mandantShortName }) {
   const lines = [
-    audience === 'cs'
-      ? 'In der BMS-App wurde eine neue Bestellung an einen Lieferanten finalisiert.'
-      : 'In der BMS-App wurde eine Bestellung an Sie freigegeben.',
+    'In der BMS-App wurde eine neue Bestellung an einen Lieferanten finalisiert.',
     '',
     'BESTELLUNG',
     line('BMS-App Bestell-ID', order?.id),
@@ -48,7 +45,7 @@ function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantSho
       `Position ${position?.lineNo || index + 1}`,
       line('Material', position?.article),
       line('Artikelindex', position?.articleIndex),
-      ...(audience==='cs' && position?.optionId!=null ? [line('Option-ID',position.optionId),line('Optionsposition',position.optionPositionId)] : []),
+      ...(position?.optionId != null ? [line('Option-ID',position.optionId),line('Optionsposition',position.optionPositionId)] : []),
       line('Menge', `${number(position?.amount)} ${text(position?.unit) || 'kg'}`),
       line('EK', `${number(position?.purchasePrice)} ${text(position?.currency) || 'EUR'}`),
       line('Gewünschter Liefertermin', date(position?.requestedDeliveryDate)),
@@ -61,13 +58,7 @@ function formatPurchaseOrderMailBody({ order, positions, mandantName, mandantSho
   return lines.join('\r\n');
 }
 
-function formatPurchaseOrderCsMailBody(args) {
-  return formatPurchaseOrderMailBody({ ...args, audience: 'cs' });
-}
-
 module.exports = {
-  PURCHASE_ORDER_MAIL_SUBJECT,
   PURCHASE_ORDER_CS_MAIL_SUBJECT,
-  formatPurchaseOrderMailBody,
   formatPurchaseOrderCsMailBody,
 };

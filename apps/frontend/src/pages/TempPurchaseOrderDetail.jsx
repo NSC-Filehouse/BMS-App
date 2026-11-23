@@ -90,8 +90,6 @@ export default function TempPurchaseOrderDetail() {
       <InfoRow label="Ladeort" value={item.loadingLocationText} />
       <InfoRow label="Verpackungsart" value={item.packagingType} />
       <InfoRow label="Sonstiges" value={item.comment} />
-      {item.supplierMailStatus && item.supplierMailStatus !== 'not_queued' && <InfoRow label="Lieferantenmail" value={t(`temp_order_mail_${item.supplierMailStatus}`)} />}
-      {item.supplierMailLastError && <Alert severity="error" sx={{ my: 1 }}>{item.supplierMailLastError}</Alert>}
       <Divider sx={{ my: 2 }} />
       <Typography variant="subtitle2" sx={{ mb: 0.25 }}>{t('temp_order_attachment_label')} ({item.attachments?.length || 0})</Typography>
       {item.attachments?.length ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 1 }}>

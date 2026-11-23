@@ -86,8 +86,7 @@ Ein neuer Ladeort wird als Text mit `tb_loading_location_source='manual'`,
 `tb_loading_location_changed=1` und technischer Adress-ID `NULL` gespeichert.
 
 Status bleibt: 0 Entwurf, 1 an BMS übergeben, 2 durch BMS übernommen, 3 Nacharbeit.
-Die CS-Mail nennt die Optionsreferenzen; die Lieferantenmail erhält keine internen
-Options-IDs. Der ERP-Importer muss `OptionID` übernehmen/auswerten. Die App erfindet
+Die interne CS-Mail nennt die Optionsreferenzen. Der ERP-Importer muss `OptionID` übernehmen/auswerten. Die App erfindet
 keinen externen Bestellendpunkt, solange dieser nicht existiert.
 
 ## Teilmengen und Gleichzeitigkeit
