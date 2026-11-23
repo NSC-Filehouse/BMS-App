@@ -6,6 +6,10 @@ import { useI18n } from '../utils/i18n.jsx';
 import { optionArticleBlocked } from '../utils/optionDisplay.js';
 import OptionPurchaseDialog from './OptionPurchaseDialog.jsx';
 
+const fieldFontSize = '0.8125rem';
+const fieldSx = { '& .MuiInputBase-root': { fontSize: fieldFontSize } };
+const listboxProps = { sx: { fontSize: fieldFontSize, '& .MuiAutocomplete-option': { overflowWrap: 'anywhere' } } };
+
 export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails }) {
   const { t } = useI18n();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
@@ -20,7 +24,9 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const [searchOpen, setSearchOpen] = React.useState(false);
   const searchId = React.useId();
   const [articleQuery, setArticleQuery] = React.useState('');
-  const [articleSearch, setArticleSearch] = React.useState({ q: '' });
+  const [searchResults, setSearchResults] = React.useState(null);
+  const [searchError, setSearchError] = React.useState('');
+  const query = articleQuery.trim();
   const [purchaseOpen, setPurchaseOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -39,34 +45,65 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   React.useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    apiRequest(`${base}/articles?${new URLSearchParams(articleSearch)}`, { signal: controller.signal }).then(({ data = [] }) => {
+    apiRequest(`${base}/articles?q=`, { signal: controller.signal }).then(({ data = [] }) => {
       if (controller.signal.aborted) return;
-      setArticles(data);
-      setArticle(data.length === 1 && !optionArticleBlocked(data[0]) ? data[0] : null);
+      setArticles(rows => rows ? [...data, ...rows.filter(row => !data.some(match => match.articleIndex === row.articleIndex))] : data);
+      setArticle(current => current ?? (data.length === 1 && !optionArticleBlocked(data[0]) ? data[0] : null));
     }).catch(cause => {
       if (!controller.signal.aborted) setArticleError(cause.message);
     });
     return () => controller.abort();
-  }, [articleSearch, base, enabled]);
+  }, [base, enabled]);
 
-  function searchArticles() {
-    const q = articleQuery.trim();
-    if (q.length < 2) return;
-    setArticles(null);
-    setArticle(null);
-    setArticleError('');
-    setArticleSearch({ q });
+  React.useEffect(() => {
+    if (!enabled || !searchOpen || query.length < 2) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      apiRequest(`${base}/articles?${new URLSearchParams({ q: query })}`, { signal: controller.signal })
+        .then(({ data = [] }) => {
+          if (!controller.signal.aborted) setSearchResults(data);
+        }).catch(cause => {
+          if (!controller.signal.aborted) setSearchError(cause.message);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [base, enabled, query, searchOpen]);
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setArticleQuery('');
+    setSearchResults(null);
+    setSearchError('');
   }
+
+  const articleOptions = {
+    isOptionEqualToValue: (a, b) => a.articleIndex === b.articleIndex,
+    getOptionKey: row => row.articleIndex,
+    getOptionLabel: row => row.articleName,
+    getOptionDisabled: optionArticleBlocked,
+    loadingText: t('purchase_articles_loading'),
+    renderOption: ({ key, ...props }, row) => <Box key={key} component="li" {...props} sx={{ display: 'block !important', overflowWrap: 'anywhere' }}>
+      {row.articleName}
+      {optionArticleBlocked(row) && <Typography display="block" variant="caption" color="error">
+        {[...(row.mfiCheck?.reasons || []), ...(row.materialCheck?.reasons || [])].join('; ') || t('purchase_article_mismatch')}
+      </Typography>}
+    </Box>,
+  };
 
   const supplierField = enabled && !automaticSupplier && (suppliers || supplierError) ?
     <Box sx={{ display: 'grid', gap: 0.5, my: 0.75, minWidth: 0, whiteSpace: 'normal' }}>
       {supplierError && <Alert severity="error">{supplierError}</Alert>}
-      {suppliers && <Autocomplete options={suppliers} value={supplier}
+      {suppliers && <Autocomplete options={suppliers} value={supplier} ListboxProps={listboxProps}
         isOptionEqualToValue={(a, b) => a.id === b.id} getOptionKey={row => row.id}
         getOptionLabel={row => `${row.name}${row.city ? ` · ${row.city}` : ''}`}
         noOptionsText={t('supplier_options_unidentified')}
         onChange={(_event, value) => setSelectedSupplier(value)}
-        renderInput={params => <TextField {...params} label={t('supplier_label')} required size="small" />} />}
+        renderInput={params => <TextField {...params} sx={fieldSx}
+          inputProps={{ ...params.inputProps, title: supplier ? params.inputProps.value : undefined }}
+          label={t('supplier_label')} required size="small" />} />}
       {suppliers?.length === 0 && <Typography variant="body2" color="text.secondary">{t('supplier_options_unidentified')}</Typography>}
     </Box> : null;
 
@@ -76,28 +113,41 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
       {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && !article &&
         <Alert severity="warning">{t('purchase_review_article_assignment')}</Alert>}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-        <Autocomplete options={articles ?? []} value={article} sx={{ flex: 1, minWidth: 0 }}
-          isOptionEqualToValue={(a, b) => a.articleIndex === b.articleIndex} getOptionKey={row => row.articleIndex}
-          loading={!articles && !articleError} loadingText={t('purchase_articles_loading')}
-          getOptionLabel={row => row.articleName} getOptionDisabled={optionArticleBlocked}
+        <Autocomplete {...articleOptions} options={articles ?? []} value={article} sx={{ flex: 1, minWidth: 0 }}
+          ListboxProps={listboxProps}
+          loading={!articles && !articleError}
           noOptionsText={t('purchase_no_article_search')}
-          renderOption={({ key, ...props }, row) => <Box key={key} component="li" {...props} sx={{ display: 'block !important', overflowWrap: 'anywhere' }}>
-            {row.articleName}
-            {optionArticleBlocked(row) && <Typography display="block" variant="caption" color="error">
-              {[...(row.mfiCheck?.reasons || []), ...(row.materialCheck?.reasons || [])].join('; ') || t('purchase_article_mismatch')}
-            </Typography>}
-          </Box>}
           onChange={(_event, value) => setArticle(value)}
-          renderInput={params => <TextField {...params} label={t('product_article')} placeholder={t('purchase_select_article')} required size="small" />} />
+          renderInput={params => <TextField {...params} sx={fieldSx}
+            inputProps={{ ...params.inputProps, title: article?.articleName }}
+            label={t('product_article')} placeholder={t('purchase_select_article')} required size="small" />} />
         <IconButton aria-label={t('purchase_search_article')} title={t('purchase_search_article')}
-          aria-expanded={searchOpen} aria-controls={searchOpen ? searchId : undefined} onClick={() => setSearchOpen(open => !open)}><SearchIcon /></IconButton>
+          aria-expanded={searchOpen} aria-controls={searchOpen ? searchId : undefined}
+          onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></IconButton>
       </Box>
-      {articles?.length === 0 && <Typography variant="body2" color="text.secondary">{t('purchase_no_article')}</Typography>}
-      {searchOpen && <Box id={searchId} sx={{ display: 'flex', gap: 1 }}>
-        <TextField autoFocus size="small" fullWidth label={t('purchase_article_search')} placeholder={t('purchase_article_query')}
-          value={articleQuery} onChange={event => setArticleQuery(event.target.value)}
-          onKeyDown={event => { if (event.key === 'Enter') searchArticles(); }} />
-        <Button disabled={articleQuery.trim().length < 2} onClick={searchArticles}>{t('purchase_search')}</Button>
+      {!searchOpen && articles?.length === 0 && <Typography variant="body2" color="text.secondary">{t('purchase_no_article')}</Typography>}
+      {searchOpen && <Box id={searchId}>
+        {searchError && <Alert severity="error">{searchError}</Alert>}
+        <Autocomplete {...articleOptions} options={searchResults ?? []} value={null} inputValue={articleQuery}
+          openOnFocus filterOptions={rows => rows} ListboxProps={listboxProps}
+          loading={query.length >= 2 && !searchResults && !searchError}
+          noOptionsText={t(query.length < 2 ? 'purchase_article_search_minimum' : 'purchase_article_search_empty')}
+          onInputChange={(_event, value, reason) => {
+            if (reason !== 'input' && reason !== 'clear') return;
+            if (value.trim() !== query) {
+              setSearchResults(null);
+              setSearchError('');
+            }
+            setArticleQuery(value);
+          }}
+          onChange={(_event, value) => {
+            if (!value) return;
+            setArticles(rows => rows?.some(row => row.articleIndex === value.articleIndex) ? rows : [...(rows ?? []), value]);
+            setArticle(value);
+            closeSearch();
+          }}
+          renderInput={params => <TextField {...params} sx={fieldSx} autoFocus size="small"
+            label={t('purchase_article_search')} placeholder={t('purchase_article_query')} />} />
       </Box>}
     </Box>}
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>

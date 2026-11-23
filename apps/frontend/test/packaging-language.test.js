@@ -166,10 +166,15 @@ test('an ambiguous option requires inline supplier and compatible article choice
   supplierField().props.onChange(null, suppliers[1]);
   view.find(node => node.type === 'IconButton' && node.props['aria-expanded'] === false).props.onClick();
   await view.flush();
-  const searchInput = () => view.find(node => node.type === 'TextField' && node.props.fullWidth);
-  searchInput().props.onChange({ target: { value: 'Article' } });
+  const searchField = () => view.find(node => node.type === 'Autocomplete' && node.props.openOnFocus);
+  searchField().props.onInputChange(null, 'Article', 'input');
   await view.flush();
-  searchInput().props.onKeyDown({ key: 'Enter' });
+  assert.equal(searchField().props.loading, true);
+  await new Promise(resolve => setTimeout(resolve, 275));
+  await view.flush();
+  assert.deepEqual(searchField().props.options, [article]);
+  assert.equal(order().props.disabled, true);
+  searchField().props.onChange(null, article);
   await view.flush();
   assert.equal(order().props.disabled, false);
   order().props.onClick();
