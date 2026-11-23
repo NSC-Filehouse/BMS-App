@@ -16,7 +16,7 @@ const original = {
   body: '<html><body>Originaltext aus BMS.</body></html>', isBodyHtml: true, pdfBase64: pdf.toString('base64'),
 };
 
-test('one mail carries unchanged original wording, both reply drafts and only one customer', () => {
+test('one mail carries unchanged wording and three separate reply drafts for a single customer', () => {
   const request = assembleOfferMail(offer, readBmsOfferDocument(JSON.stringify(original), offer.messageKey));
   assert.equal(request.fromAddress, 'ad@example.invalid');
   assert.deepEqual(request.to, [{ address: 'einkauf@example.invalid', displayName: 'Einkauf' }]);
@@ -24,9 +24,15 @@ test('one mail carries unchanged original wording, both reply drafts and only on
   assert.equal(request.bcc, undefined);
   assert.equal(request.subject, original.subject);
   assert.match(request.body, /^<html><body>Originaltext aus BMS\./);
-  assert.match(request.body, /mailto:ad@example\.invalid\?subject=AN-123.*Wunschpreis/);
-  assert.equal((request.body.match(/mailto:/g) || []).length, 2);
-  assert.match(request.body, /Angebot nicht interessant<\/a><\/td><\/tr><tr aria-hidden="true"><td height="12"[^>]*>&nbsp;<\/td><\/tr><tr><td bgcolor="#245078"[^>]*><a[^>]*>Gegenangebot machen<\/a>/);
+  const actions = [...request.body.matchAll(/<a href="(mailto:[^"]+)"[^>]*>([^<]+)<\/a>/g)];
+  assert.deepEqual(actions.map(action => action[2]), ['Angebot annehmen', 'Gegenangebot machen', 'Angebot nicht interessant']);
+  const drafts = actions.map(action => new URL(action[1].replaceAll('&amp;', '&')));
+  assert.ok(drafts.every(draft => draft.pathname === 'ad@example.invalid' && draft.searchParams.get('subject').startsWith('AN-123')));
+  assert.match(drafts[0].searchParams.get('body'), /Wir nehmen das Angebot an\./);
+  assert.match(drafts[1].searchParams.get('body'), /Wunschpreis/);
+  assert.match(drafts[2].searchParams.get('body'), /nicht interessant/);
+  assert.equal((request.body.match(/<tr aria-hidden="true"><td height="12"/g) || []).length, 2);
+  assert.match(request.body, /<td bgcolor="#245078"[^>]*><a[^>]*>Angebot annehmen<\/a>/);
   assert.match(request.body, /kurzfristige Rückantwort/);
   assert.deepEqual(request.attachments[0].content, pdf);
   assert.match(request.attachments[1].content.toString(), /<Incoterm>FCA<\/Incoterm>/);

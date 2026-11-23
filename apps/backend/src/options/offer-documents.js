@@ -22,12 +22,15 @@ function responseLinks(offer, number, sender) {
   return {
     request: en ? 'We would appreciate a prompt reply.' : 'Wir bitten um kurzfristige Rückantwort.',
     actions: [
-      { label: decline, url: mailto(`${number} - ${decline}`, en
-        ? `Thank you for offer ${number}. It is not of interest to us at this time.`
-        : `Vielen Dank für Ihr Angebot ${number}. Das Angebot ist für uns derzeit nicht interessant.`) },
+      { label: en ? 'Accept offer' : 'Angebot annehmen', url: mailto(`${number} - ${en ? 'Offer accepted' : 'Angebot angenommen'}`, en
+        ? `Thank you for your offer ${number}. We accept this offer.`
+        : `Vielen Dank für Ihr Angebot ${number}. Wir nehmen das Angebot an.`) },
       { label: counter, url: mailto(`${number} - ${en ? 'Counteroffer' : 'Gegenangebot'}`, en
         ? `Counteroffer for ${number}\r\n\r\nPrice in EUR/t: \r\nQuantity in kg: \r\nComment: `
         : `Gegenangebot zu ${number}\r\n\r\nWunschpreis in EUR/t: \r\nMenge in kg: \r\nBemerkung: `) },
+      { label: decline, url: mailto(`${number} - ${decline}`, en
+        ? `Thank you for offer ${number}. It is not of interest to us at this time.`
+        : `Vielen Dank für Ihr Angebot ${number}. Das Angebot ist für uns derzeit nicht interessant.`) },
     ],
   };
 }
@@ -66,8 +69,8 @@ function assembleOfferMail(offer, document) {
   const links = responseLinks(offer, document.number, fromAddress);
   const spacer = '<tr aria-hidden="true"><td height="12" style="font-size:1px;line-height:12px">&nbsp;</td></tr>';
   const actionRows = links.actions.map((action, index) => {
-    const background = index === 0 ? '#E9EFF6' : '#245078';
-    const foreground = index === 0 ? '#24405C' : '#FFFFFF';
+    const background = index === 0 ? '#245078' : '#E9EFF6';
+    const foreground = index === 0 ? '#FFFFFF' : '#24405C';
     return `<tr><td bgcolor="${background}" style="padding:9px 14px;mso-padding-alt:9px 14px">`
       + `<a href="${escapeMarkup(action.url)}" style="color:${foreground};font-weight:bold;text-decoration:underline">${escapeMarkup(action.label)}</a>`
       + '</td></tr>';

@@ -211,8 +211,10 @@ Ergebnis in `BmsDocumentJson` mit den Eigenschaften `source` (Wert `bms`),
 Damit kann ein verspätetes BMS-Ergebnis eine neue Anforderung nicht
 überschreiben.
 
-Die App ergänzt die separate Angebots-XML sowie zwei `mailto:`-Links an den
-Außendienst. Der MailService erhält je Angebotsnummer genau einen Empfänger.
+Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
+Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“
+und „Angebot nicht interessant“. Der MailService erhält je Angebotsnummer
+genau einen Empfänger.
 Die stabil aus `messageKey` abgeleitete `ClientMessageId` hält Wiederholungen
 derselben Anfrage zusammen. Erst bestätigter Status `Sent` erzeugt in einer
 Transaktion die Sanduhr und die Zeile in `BMSApp.tbl_Temp_Aktivitaet`.
