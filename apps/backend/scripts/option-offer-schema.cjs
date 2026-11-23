@@ -89,4 +89,15 @@ module.exports = function addOptionOfferSchema(schema) {
     Status: "[Status] IN (N'pending', N'importing', N'imported', N'failed')",
     Imported: "[Status] <> N'imported' OR ([BmsActivityId] IS NOT NULL AND [ImportedAt] IS NOT NULL)",
   }, ['OptionOfferMailId', 'OptionOfferMailOutbox', 'Id']);
+
+  addTable(schema, 'OptionOfferDocument', [
+    ['OptionOfferMailId', 'bigint'],
+    ['OfferJson', 'nvarchar'],
+    ['BmsDocumentJson', 'nvarchar', optional],
+  ], [
+    ['PK_OptionOfferDocument', ['OptionOfferMailId'], { primary: true }],
+  ], {
+    Offer: 'ISJSON([OfferJson]) = 1',
+    Document: '[BmsDocumentJson] IS NULL OR ISJSON([BmsDocumentJson]) = 1',
+  }, ['OptionOfferMailId', 'OptionOfferMailOutbox', 'Id']);
 };

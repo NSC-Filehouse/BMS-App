@@ -2,23 +2,8 @@ export function isFcaIncoterm(value) {
   return /^FCA(?:$|[^A-Z])/i.test(String(value || '').trim());
 }
 
-function findIncotermByText(value, options) {
-  const normalize = text => String(text || '').trim().toUpperCase();
-  const label = normalize(value);
-  if (!label) return null;
-  const exact = options.filter(option => normalize(option.text) === label);
-  if (exact.length) return exact.length === 1 ? exact[0] : null;
-  const codeOf = text => normalize(text).match(/^([A-Z]{3})(?:$|[\s/\-])/)?.[1];
-  const code = codeOf(label);
-  if (!code) return null;
-  const codesInLabel = label.match(/\b[A-Z]{3}\b/g) ?? [];
-  if (options.some(option => codeOf(option.text) !== code && codesInLabel.includes(codeOf(option.text)))) return null;
-  const matches = options.filter(option => codeOf(option.text) === code);
-  return matches.length === 1 ? matches[0] : null;
-}
-
-export function findOptionOfferIncoterm(optionIncoterm, lastPurchaseIncoterm, options) {
-  return findIncotermByText(optionIncoterm, options) ?? findIncotermByText(lastPurchaseIncoterm, options);
+export function findOptionOfferIncoterm(options) {
+  return options.find(option => /^CFR(?![A-Z])/i.test(String(option.text || '').trim())) ?? null;
 }
 
 const emptyAddress = () => ({ deliveryAddress: '', deliveryAddressId: '', deliveryAddressManual: false, deliveryAddressNewlyCreated: false });

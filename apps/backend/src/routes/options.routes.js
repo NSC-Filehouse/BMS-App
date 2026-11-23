@@ -8,6 +8,11 @@ const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { loadOptionOfferCustomers } = require('../options/customer-offers');
+const { buildOfferSubmissions } = require('../options/offer-submission');
+const { sampleOfferEml } = require('../options/offer-documents');
+const { optionOfferMailEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
+const { loadOptionPosition, supplierCandidates } = require('../options/purchase-source');
+const { loadPurchaseLocations } = require('../db/purchase-order-values');
 const { resolveVlDatabase } = require('../vl-source');
 const { candidatesFor, articleByIndex, storedCandidate, requestRecalculation } = require('../options/matching-service');
 const { articleHash, queueSql } = require('../options/matching-contract');
@@ -39,14 +44,45 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const detail=await enrichOptionContactPhone(req.database,offer);
  sendEnvelope(res,{data:{...detail,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
-router.get('/options/:id/positions/:positionId/offer-customers', requireMandant, requirePilotFeature('options'), asyncHandler(async (req, res) => {
+async function loadOfferPositionForCustomers(req) {
  const optionId = positiveId(req.params.id);
  const positionId = positiveId(req.params.positionId);
  const [offer] = await loadOffers(null, { optionId, includeMatchInputs: true });
  const position = offer?.positions.find(row => row.id === positionId);
  if (!position) throw createHttpError(404, 'Optionsposition nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
+ return { offer, position };
+}
+const offerCustomerPath = '/options/:id/positions/:positionId/offer-customers';
+const offerCustomerGuard = [requireMandant, requirePilotFeature('options')];
+router.get(offerCustomerPath, ...offerCustomerGuard, asyncHandler(async (req, res) => {
+ const { offer, position } = await loadOfferPositionForCustomers(req);
  res.set('Cache-Control', 'private, no-store');
- sendEnvelope(res, { data: await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position), meta: { mandant: req.mandant } });
+ const audience = await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position);
+ sendEnvelope(res, { data: { ...audience, sendEnabled: optionOfferMailEnabled() }, meta: { mandant: req.mandant } });
+}));
+router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
+ const position = await loadOptionPosition(positiveId(req.params.id), positiveId(req.params.positionId));
+ const suppliers = await supplierCandidates(req.database, position);
+ const supplier = suppliers.find(item => item.preferred);
+ const locations = supplier ? await loadPurchaseLocations(req.database, supplier.id, [], { supplierWide: true }) : [];
+ res.set('Cache-Control', 'private, no-store');
+ sendEnvelope(res, { data: locations.map(location => location.text), meta: { mandant: req.mandant } });
+}));
+router.post(`${offerCustomerPath}/preview`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
+ const { offer, position } = await loadOfferPositionForCustomers(req);
+ const [sample] = await buildOfferSubmissions(req, offer, position, { sample: true });
+ const message = await sampleOfferEml(sample);
+ res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': 'message/rfc822',
+   'Content-Disposition': 'attachment; filename="Muster-Optionsangebot.eml"' });
+ res.send(Buffer.from(message, 'utf8'));
+}));
+router.post(`${offerCustomerPath}/send`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
+ if (!optionOfferMailEnabled()) throw createHttpError(503, 'Der Versand von Optionsangeboten ist noch nicht freigegeben.', { code: 'OPTION_OFFER_SEND_DISABLED' });
+ const { offer, position } = await loadOfferPositionForCustomers(req);
+ const submissions = await buildOfferSubmissions(req, offer, position);
+ await queueOptionOffers(submissions);
+ res.set('Cache-Control', 'private, no-store');
+ sendEnvelope(res, { status: 202, data: { customers: submissions.map(item => item.customerId) } });
 }));
 router.get('/options/:id/source/mail',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  const source=await loadOptionSource(positiveId(req.params.id),'mail');

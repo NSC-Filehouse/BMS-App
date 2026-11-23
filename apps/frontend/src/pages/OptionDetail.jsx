@@ -48,7 +48,9 @@ export default function OptionDetail() {
       position.articleIndex, position.suggestedArticleIndex, validityRefresh])
     : '';
   const [audienceResult, setAudienceResult] = React.useState(null);
+  const [audienceRevision, setAudienceRevision] = React.useState(0);
   const audience = audienceResult?.key === audienceKey ? audienceResult : null;
+  const audienceEndpoint = `${endpoint}/offer-customers`;
 
   React.useEffect(() => {
     let active = true;
@@ -68,7 +70,7 @@ export default function OptionDetail() {
   React.useEffect(() => {
     if (!audienceKey) return undefined;
     const controller = new AbortController();
-    apiRequest(`${endpoint}/offer-customers`, { signal: controller.signal })
+    apiRequest(audienceEndpoint, { signal: controller.signal })
       .then(response => {
         if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, ...response.data });
       })
@@ -76,7 +78,22 @@ export default function OptionDetail() {
         if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, error: cause.message || t('loading_error') });
       });
     return () => controller.abort();
-  }, [audienceKey, endpoint, t]);
+  }, [audienceKey, audienceEndpoint, audienceRevision, t]);
+
+  React.useEffect(() => {
+    if (!audience?.customers?.some(customer => customer.queued)) return undefined;
+    const timer = window.setTimeout(() => setAudienceRevision(value => value + 1), 15000);
+    return () => window.clearTimeout(timer);
+  }, [audience]);
+
+  function offersQueued(ids) {
+    const queued = new Set(ids);
+    setAudienceResult(previous => previous?.key === audienceKey && previous.customers ? {
+      ...previous, customers: previous.customers.map(customer => queued.has(customer.id)
+        ? { ...customer, queued: true, failed: false } : customer),
+    } : previous);
+    setAudienceRevision(value => value + 1);
+  }
 
   React.useEffect(() => {
     if (!offer || !location.hash) return;
@@ -155,8 +172,9 @@ export default function OptionDetail() {
     </CardContent></Card>}
     {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
       <OptionOfferCustomers key={`${mandant}:${position.id}:${audience?.article?.index ?? ''}`}
-        customers={audience?.customers ?? []} position={position} optionIncoterm={offer.incoterm}
-        loading={!audience} error={audience?.error}
+        customers={audience?.customers ?? []} position={position} loadingLocation={offer.loadingLocation}
+        loading={!audience} error={audience?.error} endpoint={audienceEndpoint}
+        sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
     )}
     <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>

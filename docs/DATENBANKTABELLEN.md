@@ -15,6 +15,7 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 | `DailyVlMailOutbox` | Versandaufträge für die tägliche Verfügbarkeitsliste. |
 | `DeliveryAddressOperation` | Vorgangsstatus und Wiederholungssicherung der Lieferadressanlage. |
 | `OrderMailOutbox` | Versandaufträge und Wiederholungen für Auftragsmails. |
+| `OptionOfferDocument` | Angebotsdaten und BMS-Originalausgabe für den persönlichen Versand. |
 | `OptionOfferMailOutbox` | Versandstatus je Mandant, Optionsposition und Kunde für persönliche Optionsangebote. |
 | `OrderReminderState` | Erinnerungszustände für noch nicht übergebene App-Aufträge. |
 | `PurchaseOrderCsMailOutbox` | Bestellmails an den Customer Service. |
@@ -56,6 +57,9 @@ Auf `DB04 / BMS` waren am **20.11.2026** alle 44 App-Tabellen vorhanden.
 `OptionOfferMailOutbox` und `tbl_Temp_Aktivitaet` wurden mit Windows-Anmeldung
 angelegt und anhand des Installationsskripts geprüft. Beide Tabellen waren
 nach der Installation leer.
+
+`OptionOfferDocument` ist im aktuellen Installationsskript enthalten. Der
+Stand vom 20.11.2026 umfasst diese spätere Ergänzung noch nicht.
 
 `ContactCreationOperation` wurde bereits am **17.11.2026** angelegt und mit
 dem Installationsskript abgeglichen.

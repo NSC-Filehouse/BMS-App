@@ -34,6 +34,7 @@ const { startTempOrderReworkPushWorker } = require('./db/temp-order-rework-push'
 const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
 const { startDailyVlMailWorker } = require('./db/daily-vl-mail');
 const { startPurchaseOrderMailWorker } = require('./db/purchase-order-mail-outbox');
+const { startOptionOfferMailWorker } = require('./db/option-offer-outbox');
 
 const { notFound } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
@@ -162,4 +163,5 @@ app.listen(config.port, config.host, () => {
   startVlCompletionMailWorker();
   startDailyVlMailWorker();
   startPurchaseOrderMailWorker();
+  startOptionOfferMailWorker();
 });

@@ -175,3 +175,52 @@ Die [Schema-Installation](INSTALLATION.md) legt keine Demo-Angebote an und
 sind in der Git-Historie verfügbar.
 
 Forecast ist ein geschützter Platzhalter ohne eigenes Datenschema.
+## Kundenangebote aus einer Option
+
+Die Kundenkarte nutzt Käufer aus der Verkaufshistorie des im aktiven Mandanten
+zugeordneten Artikels. Normale Benutzer sehen ihre Kunden anhand
+`kd_Aussendienst`. Explizite mandantenbezogene AD-Vollrechte oder die
+bestehende App-Vollzugriffsregel gestatten die Auswahl weiterer sichtbarer AD.
+Diese Einschränkung gilt nur für die Käuferliste der Optionen.
+
+Im Angebotsdialog ist CFR anhand des Kürzels vorausgewählt. Der angezeigte
+Text stammt aus den BMS-Lieferbedingungen. Bei FCA ist der benannte Abholort
+Pflicht. Die Menge startet mit 24.750 kg und die bekannte Restmenge begrenzt
+die Eingabe. Vorschau und Versand verwenden serverseitig geprüfte Daten.
+
+### Muster und produktiver Versand
+
+Die Mustermail ist eine herunterladbare EML mit Beispiel-PDF,
+Angebots-XML und Antwortentwürfen. Sie verwendet Adressen unter
+`example.invalid` und schreibt keinen Eintrag in die Versandwarteschlange.
+
+Der produktive Versand wird mit `BMS_OPTION_OFFER_MAIL_ENABLED=true`
+freigegeben, sobald der folgende BMS-Ausgabeweg und „Senden als“ für den
+Außendienst mit dem MailService verifiziert sind. Ein Datensatz in
+`BMSApp.OptionOfferMailOutbox` entspricht genau einem Kunden je Option und
+Mandant. Die zugehörige Zeile in `BMSApp.OptionOfferDocument` enthält die
+unveränderlichen Angebotsdaten in `OfferJson`. `nonBinding=true` beschreibt
+das freibleibende Angebot. Die separate Angebots-XML folgt dem
+[XML-Schema für Kundenangebote](option-offer-v1.xsd).
+
+Der externe BMS-Prozess liest offene Versandaufträge mit leerem
+`BmsDocumentJson` und erzeugt daraus das freigegebene Kundenangebots-PDF
+sowie den originalen Mailbetreff und -text. Der Freibleibend-Hinweis muss in
+der verwendeten Originalvorlage enthalten sein. Der Prozess übergibt das
+Ergebnis in `BmsDocumentJson` mit den Eigenschaften `source` (Wert `bms`),
+`messageKey` (aus `OfferJson`), `number`, `subject`, `body`, `isBodyHtml`,
+`pdfBase64` und optional `attachments` (je `fileName`, `contentType`,
+`contentBase64`). Beim Schreiben muss der Prozess sicherstellen, dass
+`BmsDocumentJson` weiterhin leer und `OfferJson.messageKey` identisch ist.
+Damit kann ein verspätetes BMS-Ergebnis eine neue Anforderung nicht
+überschreiben.
+
+Die App ergänzt die separate Angebots-XML sowie zwei `mailto:`-Links an den
+Außendienst. Der MailService erhält je Angebotsnummer genau einen Empfänger.
+Die stabil aus `messageKey` abgeleitete `ClientMessageId` hält Wiederholungen
+derselben Anfrage zusammen. Erst bestätigter Status `Sent` erzeugt in einer
+Transaktion die Sanduhr und die Zeile in `BMSApp.tbl_Temp_Aktivitaet`.
+Unbestätigte Versandfälle ohne MailService-ID bleiben zur Klärung gesperrt.
+Der externe BMS-Import übernimmt die Aktivität anhand ihrer eindeutigen ID
+in die Kundenhistorie und meldet Aktivitäts-ID und Übernahmezeit zurück.
+`ActivityDate` ist in UTC gespeichert.

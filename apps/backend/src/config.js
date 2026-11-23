@@ -70,6 +70,10 @@ const config = {
     timeoutMs: toInt(process.env.FILEHOUSE_MAIL_SERVICE_TIMEOUT_MS, 100000),
   },
 
+  optionOfferMail: {
+    enabled: toBool(process.env.BMS_OPTION_OFFER_MAIL_ENABLED, false),
+  },
+
   orderMail: {
     enabled: toBool(process.env.BMS_ORDER_MAIL_ENABLED, true),
     ewsFallback: toBool(process.env.BMS_ORDER_MAIL_EWS_FALLBACK, true),

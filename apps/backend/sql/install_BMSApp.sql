@@ -1105,6 +1105,16 @@ BEGIN TRY
 );');
  END;
 
+ IF OBJECT_ID(N'BMSApp.OptionOfferDocument',N'U') IS NULL
+ BEGIN
+  EXEC(N'CREATE TABLE [BMSApp].[OptionOfferDocument] (
+    [OptionOfferMailId] [bigint] NOT NULL,
+    [OfferJson] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NOT NULL,
+    [BmsDocumentJson] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
+    CONSTRAINT [PK_OptionOfferDocument] PRIMARY KEY CLUSTERED ([OptionOfferMailId] ASC)
+);');
+ END;
+
  IF OBJECT_ID(N'BMSApp.ContactCreationOperation',N'U') IS NULL
  BEGIN
   EXEC(N'CREATE TABLE [BMSApp].[ContactCreationOperation] (
@@ -1885,6 +1895,9 @@ BEGIN TRY
 {"table":"tbl_Temp_Aktivitaet","column":"LastError","type":"nvarchar","length":4000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Aktivitaet","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Aktivitaet","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferDocument","column":"OptionOfferMailId","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferDocument","column":"OfferJson","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferDocument","column":"BmsDocumentJson","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"ContactCreationOperation","column":"OperationId","type":"uniqueidentifier","length":16,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"UserId","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"ContactCreationOperation","column":"Mandant","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
@@ -2103,6 +2116,10 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [CK_tbl_Temp_Aktivitaet_Status] CHECK ([Status] IN (N''pending'', N''importing'', N''imported'', N''failed''));');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'CK_tbl_Temp_Aktivitaet_Imported')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [CK_tbl_Temp_Aktivitaet_Imported] CHECK ([Status] <> N''imported'' OR ([BmsActivityId] IS NOT NULL AND [ImportedAt] IS NOT NULL));');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferDocument') AND name=N'CK_OptionOfferDocument_Offer')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferDocument] WITH CHECK ADD CONSTRAINT [CK_OptionOfferDocument_Offer] CHECK (ISJSON([OfferJson]) = 1);');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferDocument') AND name=N'CK_OptionOfferDocument_Document')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferDocument] WITH CHECK ADD CONSTRAINT [CK_OptionOfferDocument_Document] CHECK ([BmsDocumentJson] IS NULL OR ISJSON([BmsDocumentJson]) = 1);');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_InputJson')
   EXEC(N'ALTER TABLE [BMSApp].[ContactCreationOperation] WITH CHECK ADD CONSTRAINT [CK_ContactCreationOperation_InputJson] CHECK (ISJSON([InputJson])=1);');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_RequestJson')
@@ -2159,9 +2176,11 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [FK_OptionOfferMailOutbox_OptionPositionId] FOREIGN KEY ([OptionPositionId]) REFERENCES [BMSApp].[tblOptionenPositionen] ([opp_id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Aktivitaet') AND name=N'FK_tbl_Temp_Aktivitaet_OptionOfferMailId')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Aktivitaet_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferDocument') AND name=N'FK_OptionOfferDocument_OptionOfferMailId')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferDocument] WITH CHECK ADD CONSTRAINT [FK_OptionOfferDocument_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
 
  COMMIT TRANSACTION;
- SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,44 AS expectedTables,N'installed' AS result;
+ SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,45 AS expectedTables,N'installed' AS result;
 END TRY
 BEGIN CATCH
  IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;

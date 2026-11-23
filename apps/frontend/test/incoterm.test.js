@@ -10,21 +10,13 @@ test('FCA detection accepts the configured label and rejects partial matches', (
   assert.equal(isFcaIncoterm('FCAfoo'), false);
 });
 
-test('option offers prefer an unambiguous option Incoterm, then use the last purchase', () => {
+test('option offers default to CFR regardless of the BMS description', () => {
   const dap = { id: 24, text: 'DAP / Geliefert Benannter Ort' };
-  const ddp = { id: 26, text: 'DDP / Geliefert Verzollt' };
-  const terms = [fca, dap, ddp];
-  assert.equal(findOptionOfferIncoterm('DAP', 'FCA / Free Carrier', terms), dap);
-  assert.equal(findOptionOfferIncoterm('', 'FCA / Frei Frachtführer', terms), fca);
-  assert.equal(findOptionOfferIncoterm('FCA / DDP (Incoterms 2020)', 'DAP', terms), dap);
-  assert.equal(findOptionOfferIncoterm('FCA / DDP (Incoterms 2020)', null, terms), null);
-  assert.equal(findOptionOfferIncoterm('custom transport', null, terms), null);
-});
-
-test('option offer Incoterm accepts the exact label when a code has multiple dropdown entries', () => {
-  const alternatives = [fca, { id: 100, text: 'FCA / Pickup' }];
-  assert.equal(findOptionOfferIncoterm(' fca / free carrier ', null, alternatives), fca);
-  assert.equal(findOptionOfferIncoterm(null, 'FCA / Frei Frachtführer', alternatives), null);
+  const germanCfr = { id: 20, text: 'CFR / Kosten Und Fracht' };
+  const englishCfr = { id: 31, text: 'cfr - Cost And Freight' };
+  assert.equal(findOptionOfferIncoterm([fca, dap, germanCfr]), germanCfr);
+  assert.equal(findOptionOfferIncoterm([fca, englishCfr]), englishCfr);
+  assert.equal(findOptionOfferIncoterm([fca, { id: 100, text: 'CFRX' }]), null);
 });
 
 test('switching to FCA clears the customer FK and switching back restores the selected delivery address', () => {

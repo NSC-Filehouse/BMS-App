@@ -4,7 +4,7 @@
 
 Die vollständige aktuelle Tabellenstruktur steht ausschließlich in
 [`apps/backend/sql/install_BMSApp.sql`](../apps/backend/sql/install_BMSApp.sql).
-Das Skript legt 44 Tabellen mit Schlüsseln, Standardwerten, Prüfbedingungen,
+Das Skript legt 45 Tabellen mit Schlüsseln, Standardwerten, Prüfbedingungen,
 Indizes und Fremdschlüsseln an. Enthalten sind Angebote, Aufträge, Bestellungen,
 Anhänge, Kunden-/Kontakt-/Adressvorgänge, Mail-/Push-Zustände und alle Options-
 und OptionReader-Tabellen. Auch die zuvor fehlenden CREATE-Definitionen für
