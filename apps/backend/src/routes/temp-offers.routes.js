@@ -37,6 +37,7 @@ const {
   read,
 } = require('../offers/storage');
 const { synchronizeReservations } = require('../offers/reservations');
+const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable } = require('../offers/order-conversion');
 const { hasExecutiveAccess } = require('../executive-access');
 
 const router = express.Router();
@@ -318,6 +319,17 @@ router.get(
   }),
 );
 router.get(
+  '/temp-offers/:id/order-draft',
+  ...gate,
+  requirePilotFeature('offerToOrder'),
+  asyncHandler(async (req, res) => {
+    const offer = await readOfferForOrder(query, req, offerId(req), offerOwnerFilter(req));
+    await customer(req, offer.customerId);
+    sendEnvelope(res, { data: await prepareOfferOrder(req, offer) });
+  }),
+);
+
+router.get(
   '/temp-offers/:id',
   ...gate,
   asyncHandler(async (req, res) => {
@@ -438,6 +450,7 @@ async function save(req) {
       if (!old) notFound();
       editable(old);
       requireVersion(old, req.body.version);
+      await assertOfferPositionsEditable(tx, id);
     } else {
       if (!uuid(req.body.clientRequestId))
         throw createHttpError(400, 'Ungültige Vorgangskennung.', {
@@ -555,6 +568,7 @@ router.delete(
       if (!row) notFound();
       editable(row);
       requireVersion(row, req.body?.version);
+      await assertOfferPositionsEditable(tx, row.id);
       await synchronizeReservations(tx, req, row.id, row.positions, [], row.createdBy);
       await tx(`DELETE FROM ${P} WHERE tagp_offer_id=?`, [row.id]);
       await tx(`DELETE FROM ${H} WHERE tag_id=?`, [row.id]);

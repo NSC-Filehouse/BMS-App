@@ -127,7 +127,7 @@ function loadWithMocks(filename, mocks) {
   return module.exports;
 }
 async function fixture(t) {
-  const state = { headers: [], positions: [], calls: [], transactionCount: 0 };
+  const state = { headers: [], positions: [], calls: [], transactionCount: 0, schemaReady: false, stock: [] };
   let nextId = 1;
   function project(row, fields) {
     return Object.fromEntries(
@@ -137,6 +137,11 @@ async function fixture(t) {
   const query = async (sql, params = []) => {
     assert.equal((sql.match(/\?/g) || []).length, params.length, sql);
     state.calls.push({ sql, params });
+    if (sql.includes('COL_LENGTH')) return { rows: [{ ready: Number(state.schemaReady) }] };
+    if (sql.includes('tagp_order_position_id IS NOT NULL')) {
+      return { rows: state.positions.filter((p) => p.tagp_offer_id === params[0] && p.tagp_order_position_id)
+        .map((p) => ({ id: p.tagp_id })) };
+    }
     if (/INSERT INTO/.test(sql)) {
       const columns = sql
         .slice(sql.indexOf('(') + 1, sql.indexOf(')'))
@@ -234,6 +239,13 @@ async function fixture(t) {
     }
     throw new Error(`Unexpected SQL: ${sql}`);
   };
+  const conversion = loadWithMocks(path.resolve(__dirname, '../src/offers/order-conversion.js'), {
+    '../db/access': { runSQLQueryAccess: async () => state.stock },
+    '../db/temp-order-planning': {
+      ...require('../src/db/temp-order-planning'),
+      loadTempOrderPlanning: async () => new Map(),
+    },
+  });
   const route = loadWithMocks(
     path.resolve(__dirname, '../src/routes/temp-offers.routes.js'),
     {
@@ -254,6 +266,8 @@ async function fixture(t) {
                 }
               : who === 'OBA'
               ? { shortCode: 'OBA', personNumber: 276, userId: 'Bader', active: true }
+              : who === 'MFR'
+              ? { shortCode: 'MFR', personNumber: 130, userId: 'm.frank', active: true }
               : {
                   shortCode: who,
                   personNumber: 999,
@@ -294,6 +308,7 @@ async function fixture(t) {
           incoterms: [{ id: 1, text: 'FCA' }],
         }),
       },
+      '../offers/order-conversion': conversion,
       '../db/customer-access': {
         getCustomerAccessScope: async () => ({ isFullAccess: true }),
         loadVisibleCustomer: async (_db, id) =>
@@ -322,8 +337,67 @@ async function fixture(t) {
     });
     return { status: res.status, json: await res.json() };
   }
-  return { state, call };
+  return { state, call, query, conversion };
 }
+test('only NSC can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {
+  const { state, call } = await fixture(t);
+  const body = input();
+  body.customerReference = 'K-422';
+  body.positions[0] = { ...body.positions[0], quantity: 11, unit: 't', priceBasis: 1 };
+  const created = await call('/temp-offers', 'POST', body);
+  assert.equal(created.status, 201);
+  const url = `/temp-offers/${created.json.data.id}/order-draft`;
+  for (const other of ['OBA', 'MFR', 'OTHER']) {
+    const before = state.calls.length;
+    const denied = await call(url, 'GET', null, { 'x-test-user': other });
+    assert.equal(denied.status, 403);
+    assert.equal(state.calls.length, before);
+  }
+  assert.equal((await call(url)).status, 503);
+  state.schemaReady = true;
+  assert.equal((await call(url, 'GET', null, { 'x-test-company': '13' })).status, 404);
+  state.stock = [
+    { articleIndex: 'A', beNumber: '0-02-26-001-01', warehouseId: 'A1', amount: 12000, costPrice: 1975 },
+    { articleIndex: 'A', beNumber: '13-02-26-001-01', warehouseId: 'A1', amount: 25000, costPrice: 1975 },
+  ];
+  const result = await call(url);
+  assert.equal(result.status, 200);
+  assert.equal(result.json.data.clientReferenceId, '100');
+  assert.equal(result.json.data.customerOrderNumber, 'K-422');
+  const [stocked, shortage] = result.json.data.positions;
+  assert.equal(stocked.offerPositionId, created.json.data.positions[0].id);
+  assert.equal(stocked.amountInKg, 11000);
+  assert.equal(stocked.price, 2650);
+  assert.equal(stocked.beNumber, state.stock[0].beNumber);
+  assert.equal(shortage.beNumber, undefined);
+  assert.deepEqual(shortage.candidates.map((candidate) => candidate.beNumber), [state.stock[0].beNumber]);
+  assert.equal(state.positions.some((position) => position.tagp_order_position_id), false);
+});
+
+test('creating an order revalidates the offer version, selected lines, and customer before linking', async (t) => {
+  const { state, call, query, conversion } = await fixture(t);
+  state.schemaReady = true;
+  const { json: { data: offer } } = await call('/temp-offers', 'POST', input());
+  const req = {
+    userIdentity: { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true },
+    database: { firmaId: 0 },
+  };
+  const positions = [{ articleIndex: 'A', offerPositionId: offer.positions[0].id }, { articleIndex: 'B' }];
+  const body = { offerSourceId: offer.id, offerSourceVersion: offer.version };
+  assert.throws(() => conversion.orderConversionInput({ ...req, userIdentity: null }, {}, positions), { status: 403 });
+  assert.throws(() => conversion.orderConversionInput(req, body, [positions[0], positions[0]]), { status: 400 });
+  const source = conversion.orderConversionInput(req, body, positions);
+  assert.deepEqual([...source.positionIds], [offer.positions[0].id, null]);
+  await conversion.assertOrderConversion(query, req, source, offer.customerId, positions);
+  await assert.rejects(conversion.assertOrderConversion(query, req, source, '101', positions), { status: 400 });
+  await assert.rejects(conversion.assertOrderConversion(query, req, { ...source, version: '0x0000000000000002' }, '100', positions), { status: 409 });
+  await assert.rejects(conversion.assertOrderConversion(query, req, source, '100', [{ articleIndex: 'B' }]), { status: 409 });
+  state.positions[0].tagp_order_position_id = 22;
+  await assert.rejects(conversion.assertOrderConversion(query, req, source, '100', positions), { status: 409 });
+  const removed = await call(`/temp-offers/${offer.id}`, 'DELETE', { version: offer.version });
+  assert.equal(removed.status, 409);
+  assert.equal(removed.json.code, 'OFFER_POSITIONS_LINKED');
+});
 test('offer pilot gate and owner/tenant predicates protect list, details and every mutation, even for full-access users', async (t) => {
   const { state, call } = await fixture(t);
   const body = input();

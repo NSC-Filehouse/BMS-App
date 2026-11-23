@@ -18,8 +18,9 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { money, offerStatus } from '../utils/offers.js';
-import { navigateToReturn } from '../utils/navigation.js';
+import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
+import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 function InfoRow({ label, value }) {
   return (
     <Box
@@ -54,6 +55,7 @@ export default function TempOfferDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, lang } = useI18n();
+  const { features } = useFeatureAccess();
   const en = lang === 'en';
   const [offer, setOffer] = React.useState(null);
   const [error, setError] = React.useState('');
@@ -271,6 +273,17 @@ export default function TempOfferDetail() {
                   onClick={() => navigate(`/temp-offers/${id}/edit`, { state })}
                 >
                   {t('edit_label')}
+                </Button>
+              )}
+              {features.offerToOrder && (
+                <Button
+                  variant="outlined"
+                  disabled={busy}
+                  onClick={() => navigate(`/temp-offers/${encodeURIComponent(offer.id)}/order/new`, {
+                    state: { returnTo: createReturnTo(location, state) },
+                  })}
+                >
+                  {t('offer_create_order')}
                 </Button>
               )}
               <Button

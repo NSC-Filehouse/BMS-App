@@ -9,6 +9,9 @@ let nextId = 42;
 let pickupReads;
 let sourcePackagingType;
 let sourcePackagingError;
+let sourceOffer;
+let sourceOfferPositions;
+let rejectBacklink;
 const positionColumns = ['tap_id', 'tap_ta_id', 'tap_line_no', 'tap_be_number', 'tap_Artikelindex', 'tap_article', 'tap_Artikelname_Original',
   'tap_Artikelname_Gewechselt', 'tap_amount_in_kg', 'tap_warehouse', 'tap_price', 'tap_ep', 'tap_delivery_date', 'tap_ValutaDatum',
   'tap_about', 'tap_mfi', 'tap_wpz_id', 'tap_wpz_original', 'tap_wpz_comment', 'tap_Verpackungsart', 'tap_Verpackungsart_id',
@@ -21,6 +24,7 @@ const orderColumns = ['ta_id', 'ta_company_id', 'ta_ClientReferenceId', 'ta_Kund
 function reset() {
   order = null; savedPositions = []; writes = []; pickupReads = 0;
   sourcePackagingType = 'Sackware'; sourcePackagingError = false;
+  sourceOffer = null; sourceOfferPositions = []; rejectBacklink = false;
 }
 function insertFields(sql, params) {
   const columns = sql.match(/INSERT INTO[^\n]+\(([\s\S]*?)\)\s*(?:OUTPUT|VALUES)/i)[1];
@@ -37,11 +41,35 @@ function mappedPosition(row) {
     warehouse: row.tap_warehouse, warehouseId: row.tap_warehouse, deliveryDate: row.tap_delivery_date, valutaDate: row.tap_ValutaDatum,
     originalPackagingType: row.tap_Verpackungsart, originalPackagingTypeId: row.tap_Verpackungsart_id,
     about: row.tap_about, mfi: row.tap_mfi, createdBy: row.tap_CreatedBy, createdAt: row.tap_CreateDate,
+    offerPositionId: row.tap_offer_position_id, orderCustomerId: order?.ta_ClientReferenceId,
   };
 }
 async function sqlQuery(database, sql, params = []) {
+  if (sql.includes('COL_LENGTH')) return [{ ready: Number(Boolean(sourceOffer)) }];
+  if (sql.includes('FROM [BMSApp].[tbl_Temp_Angebot]')) {
+    return sourceOffer?.id === params[0] && params[1] === 3 && params[2] === 'NSC' ? [sourceOffer] : [];
+  }
+  if (sql.includes('FROM [BMSApp].[tbl_Temp_Ang_Position]')) {
+    if (sql.includes('UPDATE p SET')) {
+      const removeIds = savedPositions.filter((row) => row.tap_ta_id === params[0] && !params.slice(1).includes(row.tap_id))
+        .map((row) => row.tap_id);
+      for (const row of sourceOfferPositions) {
+        if (removeIds.includes(row.orderPositionId)) row.orderPositionId = null;
+      }
+      return [];
+    }
+    if (sql.includes('IS NOT NULL')) return sourceOfferPositions.filter((row) => row.orderPositionId);
+    return sourceOfferPositions;
+  }
+  if (sql.includes('UPDATE [BMSApp].[tbl_Temp_Ang_Position]')) {
+    const row = sourceOfferPositions.find((position) => position.id === params[1]);
+    if (rejectBacklink || !row || row.orderPositionId) return [];
+    row.orderPositionId = params[0];
+    return [{ id: row.id }];
+  }
   if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
-  if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) return (params[1] === 'tbl_Temp_Auftrag' ? orderColumns : positionColumns).map(col => ({ col }));
+  if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) return (params[1] === 'tbl_Temp_Auftrag'
+    ? orderColumns : [...positionColumns, ...(sourceOffer ? ['tap_offer_position_id'] : [])]).map(col => ({ col }));
   if (sql.includes('[spT_ID]')) return params.length === 5 && params[0] === 'big bags'
     ? [{ id: 2, text: 'Big Bags' }] : [{ id: 1, text: 'Sackware' }];
   if (sql.includes('[tblZahltext_Sprachen]')) return [{ id: 1, text: '30 Tage' }];
@@ -49,11 +77,18 @@ async function sqlQuery(database, sql, params = []) {
     writes.push(sql); order = { ...insertFields(sql, params), ta_id: nextId++ }; return [order];
   }
   if (sql.includes('INSERT INTO') && sql.includes('[tbl_Temp_Auf_Position]')) {
-    writes.push(sql); savedPositions.push({ ...insertFields(sql, params), tap_id: savedPositions.length + 1 }); return [];
+    writes.push(sql);
+    const row = { ...insertFields(sql, params), tap_id: savedPositions.length + 1 };
+    savedPositions.push(row);
+    return sql.includes('OUTPUT INSERTED.tap_id') ? [{ id: row.tap_id }] : [];
   }
   if (sql.includes('UPDATE') && sql.includes('[tbl_Temp_Auftrag]')) { writes.push(sql); Object.assign(order, updateFields(sql, params)); return []; }
   if (sql.includes('UPDATE') && sql.includes('[tbl_Temp_Auf_Position]')) { writes.push(sql); Object.assign(savedPositions[0], updateFields(sql, params)); return []; }
-  if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auf_Position]')) return [];
+  if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auf_Position]')) {
+    savedPositions = savedPositions.filter((row) => row.tap_ta_id !== params[0] || params.slice(1).includes(row.tap_id));
+    return [];
+  }
+  if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auftrag]')) { order = null; return []; }
   if (sql.includes('FROM') && sql.includes('[tbl_Temp_Auf_Position]')) return savedPositions.filter(row => row.tap_ta_id === params[0]).map(mappedPosition);
   if (sql.includes('FROM') && sql.includes('[tbl_Temp_Auftrag]') && !sql.includes('[tbl_Temp_Auftrag_Anhang]')) {
     return order ? [{ ...order, id: order.ta_id, completed: false, orderStatus: 0 }] : [];
@@ -79,7 +114,15 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     if (sql.includes('AS mfiBase')) return [{ articleIndex: 'A1', article: 'Product', warehouse: 'Strecke/Feluy', amount: 1000, reserved: 0, mfiBase: 2 }];
     return [];
   },
-  withSqlTransaction: async (database, work) => work({ query: async (sql, params) => ({ rows: await sqlQuery(database, sql, params), rowsAffected: [1] }) }),
+  withSqlTransaction: async (database, work) => {
+    const prior = structuredClone({ order, savedPositions, sourceOfferPositions });
+    try {
+      return await work({ query: async (sql, params) => ({ rows: await sqlQuery(database, sql, params), rowsAffected: [1] }) });
+    } catch (error) {
+      ({ order, savedPositions, sourceOfferPositions } = prior);
+      throw error;
+    }
+  },
 } };
 require.cache[require.resolve('../src/db/customer-access')] = { exports: {
   getCustomerAccessScope: async () => ({ isFullAccess: true }), loadVisibleCustomer: async () => ({ kd_KdNR: 'C1' }),
@@ -97,14 +140,46 @@ function payload(overrides = {}) {
     positions: [{ beNumber: '3-02-26-001-01', warehouseId: 'L1', article: 'Product', amountInKg: 100, salePricePerKg: 2000, costPricePerKg: 1000, deliveryDate: '2026-11-02' }],
     ...overrides };
 }
-function request(method, body) {
+function request(method, body, userIdentity = { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true }) {
   const route = router.stack.find(layer => layer.route?.path === (method === 'post' ? '/temp-orders' : '/temp-orders/:id') && layer.route.methods[method]).route;
   return new Promise((resolve, reject) => {
-    const req = { body, params: { id: String(order?.ta_id || 42) }, query: {}, files: [], userIdentity: { shortCode: 'NSC' }, mandant: 'Frupack', database: { firmaId: 3, databaseName: 'BMS.FRU' } };
+    const req = { body, params: { id: String(order?.ta_id || 42) }, query: {}, files: [], userIdentity, mandant: 'Frupack', database: { firmaId: 3, databaseName: 'BMS.FRU' } };
     const res = { status: () => res, json: resolve };
     route.stack.at(-1).handle(req, res, reject);
   });
 }
+
+test('the order route links only retained offer lines and frees them on removal or draft deletion', async () => {
+  reset();
+  sourceOffer = { id: 29, customerId: 'C1', version: '0x0000000000000001' };
+  sourceOfferPositions = [13, 14].map((id) => ({ id, articleIndex: 'A1', unit: 'KG', quantity: 100, price: 2000, priceBasis: 1000 }));
+  const ordinaryLine = payload().positions[0];
+  const conversion = payload({
+    incotermId: 2, offerSourceId: sourceOffer.id, offerSourceVersion: sourceOffer.version,
+    positions: [{ ...ordinaryLine, offerPositionId: 13 }, ordinaryLine],
+  });
+  await assert.rejects(request('post', conversion, { shortCode: 'NSC' }), { status: 403 });
+  rejectBacklink = true;
+  await assert.rejects(request('post', conversion), { status: 409 });
+  assert.equal(order, null);
+  assert.equal(savedPositions.length, 0);
+  rejectBacklink = false;
+
+  const created = await request('post', conversion);
+  assert.equal(created.data.positions[0].offerPositionId, 13);
+  assert.equal(created.data.positions[1].offerPositionId, undefined);
+  assert.equal(sourceOfferPositions[0].orderPositionId, created.data.positions[0].id);
+  assert.equal(sourceOfferPositions[1].orderPositionId, undefined);
+  const retained = created.data.positions[1].id;
+  await request('put', payload({ incotermId: 2, positions: [{ ...ordinaryLine, id: retained }] }));
+  assert.equal(sourceOfferPositions[0].orderPositionId, null);
+  assert.equal(savedPositions[0].tap_id, retained);
+
+  await request('post', { ...conversion, positions: [{ ...ordinaryLine, offerPositionId: 14 }] });
+  await request('delete');
+  assert.equal(sourceOfferPositions[1].orderPositionId, null);
+  assert.equal(order, null);
+});
 
 test('create, edit and copy persist FCA pickup text in the existing fields without the sales customer FK', async () => {
   reset();

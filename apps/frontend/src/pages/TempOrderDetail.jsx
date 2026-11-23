@@ -482,6 +482,9 @@ export default function TempOrderDetail() {
                   <Typography variant="body2" sx={{ minWidth: 0, fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {pos.article || '-'}
                   </Typography>
+                  {pos.offerPositionId && (
+                    <Typography variant="caption" color="text.secondary">{t('offer_order_position_copied')}</Typography>
+                  )}
                   <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                     {t('product_article_index')}: {pos.articleIndex || '-'}
                   </Typography>

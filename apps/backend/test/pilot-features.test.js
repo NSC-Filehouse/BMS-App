@@ -7,7 +7,7 @@ test('pilot features belong to the three verified employee identities', () => {
     ['AKI', 1, 'Kimaz'], ['MFR', 130, 'M.Frank'], ['NSC', 227, 'n.schroeder'],
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity({ shortCode, personNumber, userId, active: true }), {
-      offers: true, purchaseOrders: true, options: true, optionsVlPreview: true, forecast: true, frupackGroupVl: true,
+      offers: true, offerToOrder: shortCode === 'NSC', purchaseOrders: true, options: true, optionsVlPreview: true, forecast: true, frupackGroupVl: true,
     });
   }
 });
@@ -16,11 +16,13 @@ test('a matching short code alone never opens pilot features', () => {
   for (const identity of [
     { shortCode: 'AKI', personNumber: 999, userId: 'other', active: true },
     { shortCode: 'MFR', personNumber: 130, userId: 'other', active: true },
+    { shortCode: 'NSC', personNumber: 228, userId: 'n.schroeder', active: true },
+    { shortCode: 'NSC', personNumber: 227, userId: 'other', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: false },
     null,
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity(identity), {
-      offers: false, purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
+      offers: false, offerToOrder: false, purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
     });
   }
 });
@@ -28,7 +30,7 @@ test('a matching short code alone never opens pilot features', () => {
 test('active employees of every Frupack company receive group VL without other pilot features', () => {
   for (const mainCompanyId of [3, 10, 11, 12, 19]) {
     assert.deepEqual(pilotFeaturesForIdentity({ mainCompanyId, shortCode: 'TST', active: true }), {
-      offers: false, purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: true,
+      offers: false, offerToOrder: false, purchaseOrders: false, options: false, optionsVlPreview: false, forecast: false, frupackGroupVl: true,
     });
     assert.equal(pilotFeaturesForIdentity({ mainCompanyId, active: false }).frupackGroupVl, false);
   }

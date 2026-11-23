@@ -36,8 +36,10 @@ const {
   calculateTempOrderAvailableAmount,
   assertTempOrderPositionsAvailable,
   loadCurrentOrderPositions,
+  lockTempOrderAvailability,
   withTempOrderAvailabilityLock,
 } = require('../db/temp-order-availability');
+const { orderConversionInput, assertOrderConversion, linkOfferPosition, unlinkOfferPositions } = require('../offers/order-conversion');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { isFcaIncoterm } = require('../incoterm');
 const { loadPickupAddresses, assertSinglePickupAddress, normalizePickupAddressInput } = require('../db/pickup-addresses');
@@ -1145,6 +1147,7 @@ async function loadOrderPositions(orderId) {
     const cOriginalPackagingType = resolveColumn(cols, ['tap_Verpackungsart']);
     const cOriginalPackagingTypeId = resolveColumn(cols, ['tap_Verpackungsart_id']);
     const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
+    const cOfferPositionId = resolveColumn(cols, ['tap_offer_position_id']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const effectiveValutaDate = cValutaDate && cDeliveryDate
@@ -1175,7 +1178,8 @@ async function loadOrderPositions(orderId) {
         ${pick(cWpzId, 'wpzId')},
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')},
-        ${pick(cPackagingTypeChanged, 'packagingTypeChanged')}
+        ${pick(cPackagingTypeChanged, 'packagingTypeChanged')},
+        ${pick(cOfferPositionId, 'offerPositionId')}
       FROM ${TEMP_ORDER_POSITION_TABLE}
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -1755,6 +1759,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
+  const conversion = orderConversionInput(req, body, positionsInput);
   assertPositionsBelongToActiveMandant(req, positionsInput);
 
   const clientReferenceId = asText(body?.clientReferenceId);
@@ -1828,6 +1833,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     const valutaDateState = normalizeTempOrderValutaDate(raw?.valutaDate, deliveryDate);
     if (!valutaDateState.valid) {
       throw createHttpError(400, 'Invalid valuta date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    if (conversion && raw?.offerPositionId && !Number.isInteger(Number(raw.amountInKg))) {
+      throw createHttpError(400, 'Angebotspositionen benötigen eine Menge in ganzen Kilogramm.', { code: 'OFFER_ORDER_WHOLE_KG_REQUIRED' });
     }
     if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -1961,6 +1969,15 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     VALUES (${orderInsertValues.join(', ')})
   `;
   const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    if (conversion) {
+      await assertOrderConversion(query, req, conversion, clientReferenceId, normalizedPositions);
+      await lockTempOrderAvailability(query, companyId);
+      await assertTempOrderPositionsAvailable({
+        companyId,
+        positions: await loadCurrentOrderPositions(req.database, normalizedPositions, userShortCode, { allowAnyReservation: accessScope.isFullAccess }),
+        query,
+      });
+    }
     const createdResult = await query(sql, orderInsertParams);
     const createdRow = createdResult.rows[0] || null;
     if (!createdRow) {
@@ -1977,6 +1994,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     for (let i = 0; i < normalizedPositions.length; i += 1) {
       const pos = normalizedPositions[i];
       const posCtx = pos.productContext;
+      const offerPositionId = conversion?.positionIds[i];
       const posInsertColumns = [
         '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
@@ -1985,14 +2003,16 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         '[tap_about]', '[tap_mfi]',
         '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
+        ...(offerPositionId ? ['[tap_offer_position_id]'] : []),
       ];
       const posSql = `
         INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
           ${posInsertColumns.join(', ')}
         )
+        ${offerPositionId ? 'OUTPUT INSERTED.tap_id AS id' : ''}
         VALUES (${posInsertColumns.map(() => '?').join(', ')})
       `;
-      await query(posSql, [
+      const inserted = await query(posSql, [
         createdRow.ta_id,
         i + 1,
         pos.beNumber,
@@ -2020,7 +2040,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         nowIso,
         userShortCode,
         nowIso,
+        ...(offerPositionId ? [offerPositionId] : []),
       ]);
+      if (offerPositionId) await linkOfferPosition(query, offerPositionId, inserted.rows[0].id);
     }
 
     return createdRow;
@@ -2734,7 +2756,9 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       p.[tap_Verpackungsart] AS originalPackagingType,
       p.[tap_Verpackungsart_id] AS originalPackagingTypeId,
       p.[tap_CreatedBy] AS createdBy,
-      p.[tap_CreateDate] AS createdAt
+      p.[tap_CreateDate] AS createdAt,
+      ${hasColumn(positionCols, 'tap_offer_position_id') ? 'p.[tap_offer_position_id]' : 'NULL'} AS offerPositionId,
+      o.[ta_ClientReferenceId] AS orderCustomerId
     FROM ${TEMP_ORDER_POSITION_TABLE} AS p
     INNER JOIN ${TEMP_ORDER_TABLE} AS o
       ON o.[ta_id] = p.[tap_ta_id]
@@ -2772,6 +2796,12 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     });
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
     const storedPositionCandidate = storedPositionsById.get(Number(raw?.id));
+    if (storedPositionCandidate?.offerPositionId && (asText(storedPositionCandidate.orderCustomerId) !== clientReferenceId
+      || asText(storedPositionCandidate.articleIndex).toLowerCase() !== asText(productContext.articleIndex).toLowerCase())) {
+      throw createHttpError(409, 'Kunde und Artikel einer verknüpften Angebotsposition müssen erhalten bleiben.', {
+        code: 'OFFER_ORDER_POSITION_CONFLICT',
+      });
+    }
     const storedPosition = storedPositionCandidate
       && asText(storedPositionCandidate.beNumber) === beNumber
       && asText(storedPositionCandidate.warehouseId) === warehouseId
@@ -3001,6 +3031,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     const retainedIds = normalizedPositions
       .map((position) => Number(position.id))
       .filter((positionId) => Number.isFinite(positionId) && positionId > 0);
+    if (hasColumn(positionCols, 'tap_offer_position_id')) await unlinkOfferPositions(query, id, retainedIds);
     if (retainedIds.length) {
       const placeholders = retainedIds.map(() => '?').join(', ');
       await query(`
@@ -3166,49 +3197,26 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
 
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
 
-  const existsSql = `
-    SELECT TOP 1
-      [ta_completed] AS completed,
-      [ta_Status] AS orderStatus
-    FROM ${TEMP_ORDER_TABLE}
-    WHERE [ta_id] = ? AND [ta_company_id] = ?
-      ${ownerFilter.whereSql}
-  `;
-  const existsRows = await runSQLQuerySqlServer(config.sql.database, existsSql, [id, companyId, ...ownerFilter.params]);
-  if (!Array.isArray(existsRows) || !existsRows.length) {
-    throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
-  }
-  const existingStatus = normalizeStoredTempOrderStatus(existsRows[0].orderStatus, existsRows[0].completed);
-  if (!isTempOrderEditableStatus(existingStatus)) {
-    throw createHttpError(409, 'Finalized temp order cannot be deleted.', { code: 'TEMP_ORDER_FINALIZED', id });
-  }
+  const positionCols = await getTableColumns(config.sql.database, TEMP_ORDER_POSITION_TABLE_NAME);
+  await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const { rows } = await query(`
+      SELECT [ta_completed] AS completed, [ta_Status] AS orderStatus
+      FROM ${TEMP_ORDER_TABLE} WITH (UPDLOCK, HOLDLOCK)
+      WHERE [ta_id] = ? AND [ta_company_id] = ? ${ownerFilter.whereSql}
+    `, [id, companyId, ...ownerFilter.params]);
+    if (!rows.length) {
+      throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
+    }
+    if (!isTempOrderEditableStatus(normalizeStoredTempOrderStatus(rows[0].orderStatus, rows[0].completed))) {
+      throw createHttpError(409, 'Finalized temp order cannot be deleted.', { code: 'TEMP_ORDER_FINALIZED', id });
+    }
 
-  await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM ${TEMP_ORDER_POSITION_TABLE}
-    WHERE [tap_ta_id] = ?
-      AND EXISTS (
-        SELECT 1 FROM ${TEMP_ORDER_TABLE}
-        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
-      )
-    `, [id, id]);
-  await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM ${ORDER_MAIL_OUTBOX_TABLE}
-    WHERE [om_OrderID] = ?
-  `, [id]);
-  await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM ${TEMP_ORDER_ATTACHMENT_TABLE}
-    WHERE [tfa_ta_id] = ?
-      AND EXISTS (
-        SELECT 1 FROM ${TEMP_ORDER_TABLE}
-        WHERE [ta_id] = ? AND [ta_Status] IN (0, 3)
-      )
-  `, [id, id]);
-  await runSQLQuerySqlServer(config.sql.database, `
-    DELETE FROM ${TEMP_ORDER_TABLE}
-    WHERE [ta_id] = ? AND [ta_company_id] = ?
-      ${ownerFilter.whereSql}
-      AND [ta_Status] IN (0, 3)
-  `, [id, companyId, ...ownerFilter.params]);
+    if (hasColumn(positionCols, 'tap_offer_position_id')) await unlinkOfferPositions(query, id);
+    await query(`DELETE FROM ${TEMP_ORDER_POSITION_TABLE} WHERE [tap_ta_id] = ?`, [id]);
+    await query(`DELETE FROM ${ORDER_MAIL_OUTBOX_TABLE} WHERE [om_OrderID] = ?`, [id]);
+    await query(`DELETE FROM ${TEMP_ORDER_ATTACHMENT_TABLE} WHERE [tfa_ta_id] = ?`, [id]);
+    await query(`DELETE FROM ${TEMP_ORDER_TABLE} WHERE [ta_id] = ?`, [id]);
+  });
 
   sendEnvelope(res, {
     status: 200,

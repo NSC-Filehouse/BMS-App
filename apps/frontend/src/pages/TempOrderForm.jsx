@@ -248,7 +248,7 @@ function normalizePackagingType(value) {
 }
 
 export default function TempOrderForm() {
-  const { id } = useParams();
+  const { id, offerSourceId } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const location = useLocation();
@@ -260,11 +260,14 @@ export default function TempOrderForm() {
   const copyOrder = location.state?.copyOrder || null;
   const copyPositions = Array.isArray(copyOrder?.positions) ? copyOrder.positions : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
-  const isCopyCreate = !isEdit && Array.isArray(copyPositions) && copyPositions.length > 0;
+  const isCopyCreate = !isEdit && (Boolean(offerSourceId) || copyPositions?.length > 0);
   const isManualCreate = !isEdit && !isCartCreate && !isCopyCreate;
   const isPositionsMode = isEdit || isCartCreate || isCopyCreate || isManualCreate;
 
   const [loading, setLoading] = React.useState(false);
+  const [offerSourceVersion, setOfferSourceVersion] = React.useState('');
+  const [offerStockByPosition, setOfferStockByPosition] = React.useState({});
+  const loadedOfferRef = React.useRef('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
@@ -424,8 +427,8 @@ export default function TempOrderForm() {
   const draftContext = React.useMemo(() => ({
     userId: draftUserId,
     mandant: activeMandant,
-    orderId: isEdit ? `edit:${id}` : 'new',
-  }), [activeMandant, draftUserId, id, isEdit]);
+    orderId: isEdit ? `edit:${id}` : (offerSourceId ? `offer:${offerSourceId}:${offerSourceVersion}` : 'new'),
+  }), [activeMandant, draftUserId, id, isEdit, offerSourceId, offerSourceVersion]);
   const draftScopeKey = `${draftUserId}\u001f${activeMandant}\u001f${draftContext.orderId}`;
   const [packagingOptions, setPackagingOptions] = React.useState([]);
   const packagingTouchedRef = React.useRef(false);
@@ -943,6 +946,8 @@ export default function TempOrderForm() {
   }, []);
 
   React.useEffect(() => {
+    const offerScope = offerSourceId ? `${activeMandant}:${offerSourceId}` : '';
+    if (offerScope && loadedOfferRef.current === offerScope) return undefined;
     let alive = true;
     let loadFailed = false;
     setInitialDataReady(false);
@@ -1004,6 +1009,7 @@ export default function TempOrderForm() {
           const loadedPositions = Array.isArray(d.positions) ? d.positions : [];
           setPositions(loadedPositions.map((p) => ({
             id: p.id,
+            offerPositionId: p.offerPositionId,
             clientKey: `stored-${p.id}`,
             beNumber: p.beNumber,
             warehouseId: p.warehouse || p.warehouseId,
@@ -1037,46 +1043,63 @@ export default function TempOrderForm() {
         return;
       }
 
-      if (isCopyCreate && Array.isArray(copyPositions) && copyPositions.length > 0) {
+      if (isCopyCreate) {
+        let sourceOrder = copyOrder;
+        if (offerSourceId) {
+          setLoading(true);
+          setError('');
+          setOfferSourceVersion('');
+          const response = await apiRequest(`/temp-offers/${encodeURIComponent(offerSourceId)}/order-draft`);
+          if (!alive) return;
+          sourceOrder = response.data;
+          setOfferSourceVersion(sourceOrder.version);
+          setOfferStockByPosition(Object.fromEntries(sourceOrder.positions.map((p) => [p.offerPositionId, p.candidates])));
+        }
         setForm((prev) => ({
           ...prev,
-          clientReferenceId: copyOrder?.clientReferenceId || '',
-          customerOrderNumber: '',
-          clientName: copyOrder?.clientName || '',
-          clientAddress: copyOrder?.clientAddress || '',
-          clientRepresentative: copyOrder?.clientRepresentative || '',
-          clientRepresentativeId: copyOrder?.clientRepresentativeId ?? '',
-          comment: copyOrder?.comment || '',
-          specialPaymentCondition: Boolean(copyOrder?.specialPaymentCondition),
-          specialPaymentText: copyOrder?.specialPaymentText || '',
-          specialPaymentId: copyOrder?.specialPaymentId ?? '',
-          incotermText: copyOrder?.deliveryType || '',
-          incotermId: copyOrder?.deliveryTypeId ?? '',
-          packagingType: copyOrder?.packagingType || '',
-          packagingTypeId: copyOrder?.packagingTypeId ?? '',
-          deliveryAddress: copyOrder?.deliveryAddress || '',
-          deliveryAddressId: copyOrder?.deliveryAddressId === null || copyOrder?.deliveryAddressId === undefined
-            ? ''
-            : String(copyOrder.deliveryAddressId),
-          deliveryAddressManual: Boolean(copyOrder?.deliveryAddressChanged && (copyOrder?.deliveryAddressId === null || copyOrder?.deliveryAddressId === undefined || String(copyOrder.deliveryAddressId) === '')),
-          deliveryAddressNewlyCreated: Boolean(copyOrder?.deliveryAddressChanged && copyOrder?.deliveryAddressId !== null && copyOrder?.deliveryAddressId !== undefined && String(copyOrder.deliveryAddressId) !== ''),
+          clientReferenceId: sourceOrder.clientReferenceId || '',
+          customerOrderNumber: offerSourceId ? sourceOrder.customerOrderNumber || '' : '',
+          clientName: sourceOrder.clientName || '',
+          clientAddress: sourceOrder.clientAddress || '',
+          clientRepresentative: sourceOrder.clientRepresentative || '',
+          clientRepresentativeId: sourceOrder.clientRepresentativeId ?? '',
+          comment: sourceOrder.comment || '',
+          specialPaymentCondition: Boolean(sourceOrder.specialPaymentCondition),
+          specialPaymentText: sourceOrder.specialPaymentText || '',
+          specialPaymentId: sourceOrder.specialPaymentId ?? '',
+          incotermText: sourceOrder.deliveryType || '',
+          incotermId: sourceOrder.deliveryTypeId ?? '',
+          packagingType: sourceOrder.packagingType || '',
+          packagingTypeId: sourceOrder.packagingTypeId ?? '',
+          deliveryAddress: sourceOrder.deliveryAddress || '',
+          deliveryAddressId: String(sourceOrder.deliveryAddressId ?? ''),
+          deliveryAddressManual: Boolean(sourceOrder.deliveryAddressChanged && !String(sourceOrder.deliveryAddressId ?? '')),
+          deliveryAddressNewlyCreated: Boolean(sourceOrder.deliveryAddressChanged && String(sourceOrder.deliveryAddressId ?? '')),
         }));
         await loadCustomerPaymentDefault(
-          copyOrder?.clientReferenceId || '',
+          sourceOrder.clientReferenceId || '',
           null,
-          copyOrder?.specialPaymentCondition
+          sourceOrder.specialPaymentCondition
             ? null
-            : { id: copyOrder?.specialPaymentId, text: copyOrder?.specialPaymentText },
+            : { id: sourceOrder.specialPaymentId, text: sourceOrder.specialPaymentText },
         );
-        await loadDeliveryAddresses(copyOrder?.clientReferenceId || '');
+        await loadDeliveryAddresses(sourceOrder.clientReferenceId || '');
         await loadCustomerRepresentatives(
-          copyOrder?.clientReferenceId || '',
-          copyOrder?.clientRepresentative || '',
-          copyOrder?.clientRepresentativeId ?? '',
+          sourceOrder.clientReferenceId || '',
+          sourceOrder.clientRepresentative || '',
+          sourceOrder.clientRepresentativeId ?? '',
         );
-        setPositions(copyPositions.map((x, idx) => ({
+        if (!alive) return;
+        setPositions(sourceOrder.positions.map((x, idx) => ({
           id: null,
           clientKey: createClientPositionKey(x.beNumber || `copy-${idx}`),
+          ...(offerSourceId ? {
+            offerPositionId: x.offerPositionId,
+            offerQuantity: x.offerQuantity,
+            offerUnit: x.offerUnit,
+            selectedStockKey: x.selectedStockKey,
+            hasOfferCostPrice: x.hasOfferCostPrice,
+          } : {}),
           productId: x.productId || null,
           beNumber: x.beNumber,
           warehouseId: x.warehouseId || x.warehouse,
@@ -1085,7 +1108,7 @@ export default function TempOrderForm() {
           articleOriginal: x.articleOriginal || '',
           articleChanged: Boolean(x.articleChanged),
           amountInKg: x.amountInKg,
-          price: x.salePrice ?? x.price,
+          price: x.salePrice ?? x.price ?? '',
           costPrice: x.costPrice ?? x.ep ?? null,
           originalPackagingType: '',
           originalPackagingTypeId: x.originalPackagingTypeId ?? null,
@@ -1093,11 +1116,11 @@ export default function TempOrderForm() {
           reservationInKg: x.reservationInKg ?? null,
           reservationDate: x.reservationDate ?? null,
           ...createPositionDefaults({
-            deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (copyOrder?.deliveryDate ? String(copyOrder.deliveryDate).slice(0, 10) : tomorrow()),
-            ...getValutaDateState(x.valutaDate, x.deliveryDate || copyOrder?.deliveryDate || tomorrow()),
+            deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (sourceOrder.deliveryDate ? String(sourceOrder.deliveryDate).slice(0, 10) : tomorrow()),
+            ...getValutaDateState(x.valutaDate, x.deliveryDate || sourceOrder.deliveryDate || tomorrow()),
             deliveryDateAuto: x.deliveryDateAuto !== undefined
               ? Boolean(x.deliveryDateAuto)
-              : !(x.deliveryDate || copyOrder?.deliveryDate),
+              : !(x.deliveryDate || sourceOrder.deliveryDate),
             wpzId: x.wpzId ?? null,
             wpzOriginal: x.wpzOriginal ?? true,
             wpzComment: x.wpzComment || 'Original verwenden',
@@ -1157,10 +1180,14 @@ export default function TempOrderForm() {
       loadFailed = true;
       if (alive) setError(e?.message || t('loading_error'));
     }).finally(() => {
-      if (alive && !loadFailed) setInitialDataReady(true);
+      if (alive && offerSourceId) setLoading(false);
+      if (alive && !loadFailed) {
+        loadedOfferRef.current = offerScope;
+        setInitialDataReady(true);
+      }
     });
     return () => { alive = false; };
-  }, [id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyPositions, copyOrder]);
+  }, [activeMandant, id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyOrder, offerSourceId]);
 
   React.useEffect(() => {
     if (!initialDataReady || !draftUserId) return;
@@ -1183,7 +1210,9 @@ export default function TempOrderForm() {
   const restoreDraft = React.useCallback(() => {
     if (!pendingDraft) return;
     const sources = [...positions, ...getOrderCartItems()];
-    const restoredPositions = pendingDraft.positions.map((position) => recoverOrderPositionSource(position, sources));
+    const restoredPositions = pendingDraft.positions
+      .filter((position) => !offerSourceId || !position.offerPositionId || Object.hasOwn(offerStockByPosition, position.offerPositionId))
+      .map((position) => recoverOrderPositionSource(position, sources));
     packagingTouchedRef.current = true;
     setForm((previous) => ({ ...previous, ...pendingDraft.form }));
     setPositions(restoredPositions);
@@ -1248,7 +1277,7 @@ export default function TempOrderForm() {
     draftTouchedRef.current = true;
     draftReadyKeyRef.current = draftScopeKey;
     setDraftDecisionReady(true);
-  }, [draftScopeKey, isEdit, loadCustomerPaymentDefault, loadCustomerRepresentatives, loadDeliveryAddresses, pendingDraft, positions, serverModifiedAt, t]);
+  }, [draftScopeKey, isEdit, loadCustomerPaymentDefault, loadCustomerRepresentatives, loadDeliveryAddresses, offerSourceId, offerStockByPosition, pendingDraft, positions, serverModifiedAt, t]);
 
   const discardDraft = React.useCallback(() => {
     clearTempOrderDraft(draftContext);
@@ -1709,7 +1738,11 @@ export default function TempOrderForm() {
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
       if (!String(pos.beNumber || '').trim() || !String(pos.warehouseId || '').trim()) {
-        messages.push(`${pos.article || '-'}: ${t('validation_position_source_required')}`);
+        const message = pos.offerPositionId
+          ? t(offerStockByPosition[pos.offerPositionId]?.length ? 'offer_order_select_stock' : 'offer_order_position_stock_required')
+          : t('validation_position_source_required');
+        messages.push(`${pos.article || '-'}: ${message}`);
+        if (pos.offerPositionId) continue;
       }
       const foreignMandant = findForeignMandantName(pos.beNumber, mandants, activeMandant);
       if (foreignMandant) {
@@ -1719,6 +1752,9 @@ export default function TempOrderForm() {
         messages.push(`${pos.beNumber}: ${t('validation_article_name_required')}`);
       }
       const amount = Number(pos.amountInKg);
+      if (pos.offerPositionId && !Number.isInteger(amount)) {
+        messages.push(`${pos.article}: ${t('offer_order_whole_kg')}`);
+      }
       const costPrice = Number(pos.costPrice);
       if (!String(pos.deliveryDate || '').trim()) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_delivery_date_required')}`);
@@ -1749,6 +1785,7 @@ export default function TempOrderForm() {
       setError('');
       setSuccess('');
       const payload = {
+        ...(offerSourceId ? { offerSourceId, offerSourceVersion } : {}),
         clientReferenceId: form.clientReferenceId,
         customerOrderNumber: String(form.customerOrderNumber || '').trim() || null,
         clientName: form.clientName,
@@ -1777,6 +1814,7 @@ export default function TempOrderForm() {
       if (isPositionsMode && Array.isArray(positions) && positions.length > 0) {
         payload.positions = positions.map((x) => ({
           id: x.id,
+          ...(offerSourceId && x.offerPositionId ? { offerPositionId: x.offerPositionId } : {}),
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           articleIndex: x.articleIndex || null,
@@ -1887,13 +1925,13 @@ export default function TempOrderForm() {
           onClick={() => navigateToReturn(
             navigate,
             location.state?.returnTo,
-            isEdit ? `/temp-orders/${encodeURIComponent(id)}` : '/temp-orders',
+            isEdit ? `/temp-orders/${encodeURIComponent(id)}` : (offerSourceId ? `/temp-offers/${encodeURIComponent(offerSourceId)}` : '/temp-orders'),
           )}
         >
           <ArrowBackIcon />
         </DisclosureBackButton>
         <Typography variant="h5" sx={{ flex: 1, minWidth: 0 }}>
-          {isEdit ? t('temp_order_edit_title') : t('temp_order_create_title')}
+          {t(isEdit ? 'temp_order_edit_title' : (offerSourceId ? 'offer_create_order' : 'temp_order_create_title'))}
         </Typography>
         <IconButton
           aria-label={t('temp_order_attachment_add')}
@@ -1910,7 +1948,7 @@ export default function TempOrderForm() {
       {restoredFilesMissing && <Alert severity="info" sx={{ mb: 2 }}>{t('temp_order_draft_attachment_hint')}</Alert>}
       {restoredServerChanged && <Alert severity="warning" sx={{ mb: 2 }}>{t('temp_order_draft_server_changed')}</Alert>}
 
-      {!loading && (
+      {!loading && (!offerSourceId || initialDataReady) && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
@@ -1981,15 +2019,18 @@ export default function TempOrderForm() {
               )}
             </Box>
 
-            <Autocomplete
-              options={customerOptions}
-              value={selectedCustomer}
-              getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
-              onChange={(e, value) => onChooseCustomer(value)}
-              inputValue={customerQuery}
-              onInputChange={(e, value) => setCustomerQuery(value)}
-              renderInput={(params) => <TextField {...params} label={t('customer_select')} fullWidth />}
-            />
+            {!offerSourceId && (
+              <Autocomplete
+                disabled={positions.some((position) => position.offerPositionId)}
+                options={customerOptions}
+                value={selectedCustomer}
+                getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
+                onChange={(e, value) => onChooseCustomer(value)}
+                inputValue={customerQuery}
+                onInputChange={(e, value) => setCustomerQuery(value)}
+                renderInput={(params) => <TextField {...params} label={t('customer_select')} fullWidth />}
+              />
+            )}
 
             {customerOrderRequirements.customerId === String(form.clientReferenceId || '').trim()
               && customerOrderRequirements.status === 'checking' && (
@@ -2296,6 +2337,7 @@ export default function TempOrderForm() {
                     const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
                     const positionKey = getPositionKey(x, idx);
                     const isEditingArticle = editingArticleKey === positionKey;
+                    const offerStock = offerSourceId ? offerStockByPosition[x.offerPositionId] : null;
                     return (
                       <Accordion key={positionKey} disableGutters>
                       <AccordionSummary
@@ -2375,6 +2417,11 @@ export default function TempOrderForm() {
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('original_packaging_type_label')}: {x.originalPackagingType || '-'}
                             </Typography>
+                            {x.offerPositionId && (
+                              <Typography variant="caption" color={x.beNumber ? 'text.secondary' : 'warning.main'}>
+                                {t(x.beNumber ? 'offer_order_position_copied' : (offerStock?.length ? 'offer_order_select_stock' : 'offer_order_position_stock_required'))}
+                              </Typography>
+                            )}
                             {foreignMandant && (
                               <Typography variant="caption" sx={{ color: '#C56A00', overflowWrap: 'anywhere' }}>
                                 {t('article_from_mandant', { name: foreignMandant })}
@@ -2383,6 +2430,43 @@ export default function TempOrderForm() {
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
+                          {offerStock?.length > 0 && (
+                            <TextField
+                              select
+                              fullWidth
+                              label={t('offer_order_select_stock')}
+                              value={offerStock.some((lot) => lot.key === x.selectedStockKey) ? x.selectedStockKey : ''}
+                              onChange={(event) => {
+                                const lot = offerStock.find((option) => option.key === event.target.value);
+                                if (!lot) return;
+                                setPositions((previous) => previous.map((position, index) => index === idx ? {
+                                  ...position,
+                                  selectedStockKey: lot.key,
+                                  beNumber: lot.beNumber,
+                                  warehouseId: lot.warehouseId,
+                                  reservationInKg: lot.reservationInKg,
+                                  reservationDate: lot.reservationDate,
+                                  costPrice: position.hasOfferCostPrice ? position.costPrice : lot.costPrice,
+                                  wpzId: lot.wpzId,
+                                  originalPackagingType: '',
+                                  originalPackagingTypeId: null,
+                                } : position));
+                              }}
+                            >
+                              {offerStock.map((lot) => (
+                                <MenuItem key={lot.key} value={lot.key}>
+                                  {lot.beNumber} · {lot.warehouse || lot.warehouseId} · {Number(lot.available).toLocaleString(lang)} kg
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          )}
+                          {offerStock?.length === 0 && (
+                            <Alert severity="warning">
+                              {x.amountInKg === null
+                                ? t('offer_order_unsupported_unit', { unit: x.offerUnit, quantity: x.offerQuantity })
+                                : t('offer_order_no_stock')}
+                            </Alert>
+                          )}
                           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
                             <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
                               <TextField
@@ -2451,7 +2535,7 @@ export default function TempOrderForm() {
                             helperText={t('validation_wpz_individual_required')}
                           />
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <IconButton size="small" color="error" onClick={() => onRemovePosition(idx)}>
+                            <IconButton size="small" color="error" aria-label={t('delete_label')} onClick={() => onRemovePosition(idx)}>
                               <DeleteOutlineIcon fontSize="small" />
                             </IconButton>
                           </Box>

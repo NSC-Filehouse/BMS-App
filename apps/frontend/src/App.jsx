@@ -194,6 +194,7 @@ function AppRoutes() {
         <Route path="/temp-offers/new" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
         <Route path="/temp-offers/:id" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferDetail /></FeatureGuard></MandantGuard>} />
         <Route path="/temp-offers/:id/edit" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
+        <Route path="/temp-offers/:offerSourceId/order/new" element={<MandantGuard><FeatureGuard feature="offerToOrder"><TempOrderForm /></FeatureGuard></MandantGuard>} />
         <Route
           path="/temp-orders"
           element={
