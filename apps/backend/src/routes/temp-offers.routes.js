@@ -39,6 +39,8 @@ const {
 const { synchronizeReservations } = require('../offers/reservations');
 const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable } = require('../offers/order-conversion');
 const { hasExecutiveAccess } = require('../executive-access');
+const { manualOfferMail } = require('../offers/erp-mail');
+const { queueManualOffer, discardManualOfferMail, offerMailSchemaReady, readyPdfSql } = require('../db/option-offer-outbox');
 
 const router = express.Router();
 const gate = [requireMandant, requirePilotFeature('offers')];
@@ -330,6 +332,27 @@ router.get(
 );
 
 router.get(
+  '/temp-offers/:id/pdf',
+  ...gate,
+  asyncHandler(async (req, res) => {
+    const id = offerId(req);
+    if (!await offerMailSchemaReady()) notFound();
+    const ownerFilter = offerOwnerFilter(req);
+    const [row] = (await query(`
+      SELECT h.tag_offer_pdf AS pdf, h.tag_bms_offer_number AS number
+      FROM ${H} h WHERE h.tag_id=? AND h.tag_company_id=?
+        ${ownerFilter === null ? '' : 'AND h.tag_created_by=?'} AND ${readyPdfSql}
+    `, [id, req.database.firmaId, ...(ownerFilter === null ? [] : [ownerFilter])])).rows;
+    if (!row) throw createHttpError(404, 'Die Angebots-PDF liegt noch nicht vor.', { code: 'OFFER_PDF_NOT_READY' });
+    const name = String(row.number).trim().replace(/[^a-z0-9._-]/gi, '_');
+    res.set({
+      'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="Angebot-${name}.pdf"`,
+      'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+    }).send(row.pdf);
+  }),
+);
+
+router.get(
   '/temp-offers/:id',
   ...gate,
   asyncHandler(async (req, res) => {
@@ -340,6 +363,17 @@ router.get(
       offerOwnerFilter(req),
     );
     if (!row) notFound();
+    if (Number(row.status) !== 0 && await offerMailSchemaReady()) {
+      const [state] = (await query(`
+        SELECT CASE WHEN ${readyPdfSql} THEN 1 ELSE 0 END AS pdfReady,
+          q.Status AS mailStatus, CASE WHEN q.OptionPositionId IS NOT NULL OR q.StockPositionKey IS NOT NULL THEN 1 ELSE 0 END AS generated
+        FROM ${H} h LEFT JOIN BMSApp.OptionOfferMailOutbox q ON q.TempOfferId=h.tag_id AND q.CompanyId=h.tag_company_id
+        WHERE h.tag_id=? AND h.tag_company_id=?
+      `, [row.id, req.database.firmaId])).rows;
+      row.pdfReady = Number(state?.pdfReady) === 1;
+      row.mailStatus = state?.mailStatus ?? null;
+      row.generated = Number(state?.generated) === 1;
+    }
     sendEnvelope(res, { data: row });
   }),
 );
@@ -543,11 +577,14 @@ router.post(
             'Mindestens ein Artikel ist inzwischen inaktiv. Bitte das Angebot bearbeiten.',
             { code: 'OFFER_ARTICLE_INACTIVE' },
           );
+        const mail = await manualOfferMail(req, current, language(req));
+        await queueManualOffer(tx, mail, current.id);
         await tx(
-          `UPDATE ${H} SET tag_status=1,tag_released_at=SYSUTCDATETIME(),tag_modified_at=SYSUTCDATETIME(),tag_modified_by=? WHERE tag_id=?`,
-          [owner(req), current.id],
+          `UPDATE ${H} SET tag_status=1,tag_offer_pdf=NULL,tag_bms_offer_number=NULL,tag_language=?,
+            tag_released_at=SYSUTCDATETIME(),tag_modified_at=SYSUTCDATETIME(),tag_modified_by=? WHERE tag_id=?`,
+          [mail.language, owner(req), current.id],
         );
-        return read(tx, current.id, req.database.firmaId, offerOwnerFilter(req));
+        return { ...await read(tx, current.id, req.database.firmaId, offerOwnerFilter(req)), mailStatus: 'pending', pdfReady: false };
       },
     );
     sendEnvelope(res, { data: row });
@@ -569,6 +606,7 @@ router.delete(
       editable(row);
       requireVersion(row, req.body?.version);
       await assertOfferPositionsEditable(tx, row.id);
+      await discardManualOfferMail(tx, row.id);
       await synchronizeReservations(tx, req, row.id, row.positions, [], row.createdBy);
       await tx(`DELETE FROM ${P} WHERE tagp_offer_id=?`, [row.id]);
       await tx(`DELETE FROM ${H} WHERE tag_id=?`, [row.id]);

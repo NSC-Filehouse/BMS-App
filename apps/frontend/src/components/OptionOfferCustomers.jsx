@@ -225,6 +225,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
     <DialogContent dividers>
       <Stack spacing={2} divider={<Divider />}>
         {error && <Alert severity="error">{error}</Alert>}
+        <Typography variant="body2" color="text.secondary">{t('offer_release_customer_pdf')}</Typography>
         {customers.map((customer, index) => (
           <OfferCustomerFields key={customer.id} customer={customer} draft={drafts[customer.id] ?? emptyDraft}
             values={values[index]} incoterms={incoterms} loadingLocation={loadingLocation} updateDraft={updateDraft}
@@ -295,6 +296,7 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
               {customer.sent && <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
                 <HourglassEmptyIcon fontSize="small" />
               </Box>}
+              {customer.queued && <Typography variant="caption" color="text.secondary">{t('option_offer_queued')}</Typography>}
               {customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
             </Box>
           ))}

@@ -412,6 +412,7 @@ BEGIN TRY
     [tag_delivery_address_id] [int] NULL,
     [tag_delivery_address] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
     [tag_delivery_address_manual] [bit] NOT NULL CONSTRAINT [DF_Temp_Angebot_manual_address] DEFAULT ((0)),
+    [tag_offer_pdf] [varbinary](MAX) NULL,
     CONSTRAINT [PK_Temp_Angebot] PRIMARY KEY CLUSTERED ([tag_id] ASC),
     CONSTRAINT [UQ_Temp_Angebot_request] UNIQUE NONCLUSTERED ([tag_company_id] ASC, [tag_created_by] ASC, [tag_client_request_id] ASC)
 );');
@@ -1062,7 +1063,7 @@ BEGIN TRY
   EXEC(N'CREATE TABLE [BMSApp].[OptionOfferMailOutbox] (
     [Id] [bigint] IDENTITY(1,1) NOT NULL,
     [CompanyId] [int] NOT NULL,
-    [OptionPositionId] [int] NOT NULL,
+    [OptionPositionId] [int] NULL,
     [CustomerNumber] [nvarchar](10) COLLATE Latin1_General_CI_AS NOT NULL,
     [ArticleIndex] [nvarchar](50) COLLATE Latin1_General_CI_AS NOT NULL,
     [ContactId] [int] NOT NULL,
@@ -1084,8 +1085,9 @@ BEGIN TRY
     [LastError] [nvarchar](2000) COLLATE Latin1_General_CI_AS NULL,
     [CreatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_CreatedAt] DEFAULT (sysutcdatetime()),
     [UpdatedAt] [datetime2](7) NOT NULL CONSTRAINT [DF_OptionOfferMailOutbox_UpdatedAt] DEFAULT (sysutcdatetime()),
-    CONSTRAINT [PK_OptionOfferMailOutbox] PRIMARY KEY CLUSTERED ([Id] ASC),
-    CONSTRAINT [UQ_OptionOfferMailOutbox_Customer] UNIQUE NONCLUSTERED ([CompanyId] ASC, [OptionPositionId] ASC, [CustomerNumber] ASC)
+    [StockPositionKey] [nvarchar](64) COLLATE Latin1_General_CI_AS NULL,
+    [TempOfferId] [int] NULL,
+    CONSTRAINT [PK_OptionOfferMailOutbox] PRIMARY KEY CLUSTERED ([Id] ASC)
 );');
  END;
 
@@ -1154,6 +1156,24 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] ADD [tap_option_position_id] [int] NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_order_position_id') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_order_position_id] [int] NULL;');
+
+ -- Use one ERP offer and PDF for every new customer-mail job.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'tag_offer_pdf') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] ADD [tag_offer_pdf] VARBINARY(MAX) NULL;');
+ IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox',N'StockPositionKey') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ADD [StockPositionKey] NVARCHAR(64) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox',N'TempOfferId') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ADD [TempOfferId] INT NULL;');
+ IF OBJECT_ID(N'BMSApp.CK_OptionOfferMailOutbox_Source',N'C') IS NOT NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [CK_OptionOfferMailOutbox_Source];');
+ IF OBJECT_ID(N'BMSApp.UQ_OptionOfferMailOutbox_Customer',N'UQ') IS NOT NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [UQ_OptionOfferMailOutbox_Customer];');
+ IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'OptionPositionId' AND is_nullable=0)
+ BEGIN
+  IF OBJECT_ID(N'BMSApp.FK_OptionOfferMailOutbox_OptionPositionId',N'F') IS NOT NULL
+   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [FK_OptionOfferMailOutbox_OptionPositionId];');
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;');
+ END;
 
  -- Fail before adding constraints/indexes to incompatible existing tables.
  DECLARE @expectedColumns NVARCHAR(MAX)=N'[
@@ -1877,7 +1897,7 @@ BEGIN TRY
 {"table":"VlSalePushState","column":"vps_UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"OptionOfferMailOutbox","column":"Id","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
 {"table":"OptionOfferMailOutbox","column":"CompanyId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
-{"table":"OptionOfferMailOutbox","column":"OptionPositionId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"OptionPositionId","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"OptionOfferMailOutbox","column":"CustomerNumber","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"OptionOfferMailOutbox","column":"ArticleIndex","type":"nvarchar","length":100,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"OptionOfferMailOutbox","column":"ContactId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
@@ -1935,7 +1955,10 @@ BEGIN TRY
 {"table":"tbl_Temp_Auf_Position","column":"tap_purchase_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Auf_Position","column":"tap_offer_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Auf_Position","column":"tap_option_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
-{"table":"tbl_Temp_Best_Position","column":"tbp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null}
+{"table":"tbl_Temp_Best_Position","column":"tbp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Angebot","column":"tag_offer_pdf","type":"varbinary","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"OptionOfferMailOutbox","column":"StockPositionKey","type":"nvarchar","length":128,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionOfferMailOutbox","column":"TempOfferId","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null}
 ]';
  IF EXISTS (
   SELECT e.tableName,e.columnName,e.typeName,e.maxLength,e.precisionValue,e.scaleValue,e.nullableValue,e.identityValue,e.computedValue,e.collationName
@@ -2056,6 +2079,12 @@ BEGIN TRY
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Auf_Position_tap_option_position_id] ON [BMSApp].[tbl_Temp_Auf_Position] ([tap_option_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'IX_tbl_Temp_Best_Position_tbp_order_position_id')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Best_Position_tbp_order_position_id] ON [BMSApp].[tbl_Temp_Best_Position] ([tbp_order_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'UX_OptionOfferMailOutbox_OptionCustomer')
+  EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UX_OptionOfferMailOutbox_OptionCustomer] ON [BMSApp].[OptionOfferMailOutbox] ([CompanyId] ASC, [OptionPositionId] ASC, [CustomerNumber] ASC) WHERE ([OptionPositionId] IS NOT NULL) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'UX_OptionOfferMailOutbox_StockCustomer')
+  EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UX_OptionOfferMailOutbox_StockCustomer] ON [BMSApp].[OptionOfferMailOutbox] ([CompanyId] ASC, [StockPositionKey] ASC, [CustomerNumber] ASC) WHERE ([StockPositionKey] IS NOT NULL) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'UX_OptionOfferMailOutbox_TempOffer')
+  EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UX_OptionOfferMailOutbox_TempOffer] ON [BMSApp].[OptionOfferMailOutbox] ([TempOfferId] ASC) WHERE ([TempOfferId] IS NOT NULL) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
 
  -- Check constraints.
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.CreditLimitMailOutbox') AND name=N'CK_CreditLimitMailOutbox_Status')
@@ -2160,6 +2189,8 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[ContactCreationOperation] WITH CHECK ADD CONSTRAINT [CK_ContactCreationOperation_ResponseJson] CHECK (ISJSON([ResponseJson])=1);');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'CK_ContactCreationOperation_Status')
   EXEC(N'ALTER TABLE [BMSApp].[ContactCreationOperation] WITH CHECK ADD CONSTRAINT [CK_ContactCreationOperation_Status] CHECK ([Status] IN (N''sending'',N''unknown'',N''failed'',N''created''));');
+ IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'CK_OptionOfferMailOutbox_OfferSource')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [CK_OptionOfferMailOutbox_OfferSource] CHECK (([OptionPositionId] IS NOT NULL AND [StockPositionKey] IS NULL) OR ([OptionPositionId] IS NULL AND [StockPositionKey] IS NOT NULL) OR ([OptionPositionId] IS NULL AND [StockPositionKey] IS NULL AND [TempOfferId] IS NOT NULL));');
 
  -- Foreign keys, including the reciprocal position links.
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.CustomerCreationMandant') AND name=N'FK_CustomerCreationMandant_Operation')
@@ -2220,6 +2251,8 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auf_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Auf_Position_tap_option_position_id] FOREIGN KEY ([tap_option_position_id]) REFERENCES [BMSApp].[tblOptionenPositionen] ([opp_id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'FK_tbl_Temp_Best_Position_tbp_order_position_id')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Best_Position_tbp_order_position_id] FOREIGN KEY ([tbp_order_position_id]) REFERENCES [BMSApp].[tbl_Temp_Auf_Position] ([tap_id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'FK_OptionOfferMailOutbox_TempOffer')
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [FK_OptionOfferMailOutbox_TempOffer] FOREIGN KEY ([TempOfferId]) REFERENCES [BMSApp].[tbl_Temp_Angebot] ([tag_id]);');
 
  COMMIT TRANSACTION;
  SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,45 AS expectedTables,N'installed' AS result;

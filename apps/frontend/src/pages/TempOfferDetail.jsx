@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { money, offerStatus } from '../utils/offers.js';
 import { createReturnTo, navigateToReturn } from '../utils/navigation.js';
@@ -60,23 +60,45 @@ export default function TempOfferDetail() {
   const [offer, setOffer] = React.useState(null);
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [pdfLoading, setPdfLoading] = React.useState(false);
   const [action, setAction] = React.useState('');
+  const waiting = offer?.status === 1 || ['pending', 'sending', 'submitted'].includes(offer?.mailStatus);
   React.useEffect(() => {
     let active = true;
-    apiRequest(`/temp-offers/${id}`)
+    const refresh = () => apiRequest(`/temp-offers/${id}`)
       .then((r) => {
         if (active) setOffer(r.data);
       })
       .catch((e) => {
         if (active) setError(e.message);
       });
+    void refresh();
+    const timer = waiting ? window.setInterval(refresh, 10000) : null;
     return () => {
       active = false;
+      if (timer !== null) window.clearInterval(timer);
     };
-  }, [id]);
+  }, [id, waiting]);
   const state = { returnTo: location.state?.returnTo };
   const editable = offer && [0, 3].includes(offer.status);
   const date = (v) => (v ? new Date(v).toLocaleDateString('de-DE') : '-');
+  async function downloadPdf() {
+    setPdfLoading(true);
+    setError('');
+    try {
+      const pdf = await apiRequestBlob(`/temp-offers/${encodeURIComponent(id)}/pdf`);
+      const url = URL.createObjectURL(pdf);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Angebot-${String(offer.bmsOfferNumber || id).replace(/[^a-z0-9._-]/gi, '_')}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
   async function execute() {
     setBusy(true);
     setError('');
@@ -158,6 +180,13 @@ export default function TempOfferDetail() {
               label={t('temp_order_status')}
               value={offerStatus(offer.status, en)}
             />
+            {offer.mailStatus && (
+              <InfoRow label={t('offer_mail_status')} value={t(
+                ['sent', 'failed', 'unknown'].includes(offer.mailStatus)
+                  ? `offer_mail_${offer.mailStatus}`
+                  : offer.pdfReady || offer.mailStatus === 'submitted' ? 'offer_mail_sending' : 'offer_mail_waiting_pdf',
+              )} />
+            )}
             {offer.returnComment && (
               <InfoRow
                 label={t('temp_order_return_comment')}
@@ -258,7 +287,12 @@ export default function TempOfferDetail() {
                 minWidth: 0,
               }}
             >
-              {editable && (
+              {offer.pdfReady && (
+                <Button variant="outlined" disabled={pdfLoading} onClick={downloadPdf}>
+                  {t('offer_download_pdf')}
+                </Button>
+              )}
+              {editable && !offer.generated && (
                 <Button
                   variant="contained"
                   disabled={busy}
@@ -267,7 +301,7 @@ export default function TempOfferDetail() {
                   {en ? 'Release for BMS' : 'Für BMS freigeben'}
                 </Button>
               )}
-              {editable && (
+              {editable && !offer.generated && (
                 <Button
                   variant="outlined"
                   onClick={() => navigate(`/temp-offers/${id}/edit`, { state })}
@@ -296,7 +330,7 @@ export default function TempOfferDetail() {
               >
                 {t('copy_label')}
               </Button>
-              {editable && (
+              {editable && !offer.generated && (
                 <Button
                   variant="outlined"
                   color="error"
@@ -322,9 +356,7 @@ export default function TempOfferDetail() {
         </DialogTitle>
         <DialogContent>
           {action === 'release'
-            ? en
-              ? 'The offer becomes read-only. The external BMS process imports it. No message is sent.'
-              : 'Das Angebot wird schreibgeschützt. Die Übernahme erfolgt durch den externen BMS-Prozess. Es wird keine Nachricht versendet.'
+            ? t('offer_release_customer_pdf')
             : en
               ? 'The draft and its own reservations will be deleted.'
               : 'Der Entwurf und seine eigenen Reservierungen werden gelöscht.'}

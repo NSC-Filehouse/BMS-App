@@ -5,7 +5,8 @@ const input=argument('--input');
 if(!input){console.error('Usage: node generate-schema-installer.cjs --input schema.json [--output install_BMSApp.sql]');process.exit(1);}
 const output=argument('--output') || path.resolve(__dirname,'../sql/install_BMSApp.sql');
 const schema=JSON.parse(fs.readFileSync(input,'utf8').replace(/^\uFEFF/,''));
-require('./option-offer-schema.cjs')(schema);
+const addOptionOfferSchema=require('./option-offer-schema.cjs');
+addOptionOfferSchema(schema);
 const missingContact=!schema.tables.some(t=>t.name==='ContactCreationOperation');
 const quote=value=>'['+String(value).replaceAll(']',']]')+']';
 const literal=value=>"N'"+String(value).replaceAll("'","''")+"'";
@@ -104,6 +105,7 @@ sql+='\n -- Add optional position links to existing installations before checkin
 for(const [tableName,name] of positionReferences){
  sql+=` IF COL_LENGTH(${literal('BMSApp.'+tableName)},${literal(name)}) IS NULL\n  ${execute(`ALTER TABLE ${full(tableName)} ADD ${quote(name)} [int] NULL;`)}\n`;
 }
+sql+=addOptionOfferSchema.offerMailUpgrade;
 // Keep the compatibility manifest inside the one executable SQL file. It
 // contains schema metadata only; no environment names, accounts or row data.
 const expected=[...schema.columns,...(missingContact?contactSchema:[])].map(c=>({table:c.tableName,column:c.name,type:c.typeName,length:c.max_length,precision:c.precision,scale:c.scale,nullable:c.is_nullable,identity:c.is_identity,computed:c.is_computed,collation:c.collation_name}));

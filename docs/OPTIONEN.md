@@ -199,26 +199,27 @@ die Eingabe. Der Versand verwendet serverseitig geprüfte Daten.
 
 ### Produktiver Versand
 
-Der produktive Versand wird mit `BMS_OPTION_OFFER_MAIL_ENABLED=true`
-freigegeben, sobald der folgende BMS-Ausgabeweg und „Senden als“ für den
-Außendienst mit dem MailService verifiziert sind. Ein Datensatz in
-`BMSApp.OptionOfferMailOutbox` entspricht genau einem Kunden je Option und
-Mandant. Die zugehörige Zeile in `BMSApp.OptionOfferDocument` enthält die
-unveränderlichen Angebotsdaten in `OfferJson`. `nonBinding=true` beschreibt
-das freibleibende Angebot. Die separate Angebots-XML folgt dem
-[XML-Schema für Kundenangebote](option-offer-v1.xsd).
+Der produktive Versand verwendet `BMS_OPTION_OFFER_MAIL_ENABLED=true` und
+„Senden als“ für den Außendienst im MailService. Pro ausgewähltem Kunden
+legt die App ein reguläres Angebot mit einer Position und Status 1 in
+`BMSApp.tbl_Temp_Angebot` an. `OptionOfferMailOutbox.TempOfferId` verweist
+auf `tag_id`. Optionsposition beziehungsweise VL-Position und Kundennummer
+bleiben in der Warteschlange nachvollziehbar.
 
-Der externe BMS-Prozess liest offene Versandaufträge mit leerem
-`BmsDocumentJson` und erzeugt daraus das freigegebene Kundenangebots-PDF
-sowie den originalen Mailbetreff und -text. Der Freibleibend-Hinweis muss in
-der verwendeten Originalvorlage enthalten sein. Der Prozess übergibt das
-Ergebnis in `BmsDocumentJson` mit den Eigenschaften `source` (Wert `bms`),
-`messageKey` (aus `OfferJson`), `number`, `subject`, `body`, `isBodyHtml`,
-`pdfBase64` und optional `attachments` (je `fileName`, `contentType`,
-`contentBase64`). Beim Schreiben muss der Prozess sicherstellen, dass
-`BmsDocumentJson` weiterhin leer und `OfferJson.messageKey` identisch ist.
-Damit kann ein verspätetes BMS-Ergebnis eine neue Anforderung nicht
-überschreiben.
+Der externe BMS-Prozess verarbeitet dasselbe [Angebotsschema](ANGEBOTE.md)
+wie bei manuell erstellten App-Angeboten. Er schreibt Angebotsnummer, PDF-Bytes
+und Status 2 in den Angebotskopf. Der Mail-Worker verwendet die PDF erst ab
+Status 2. Die unveränderlichen Zusatzdaten in `OptionOfferDocument.OfferJson`
+enthalten unter anderem `nonBinding=true` für die freibleibende Vorlage.
+Die separate Angebots-XML folgt dem [XML-Schema](option-offer-v1.xsd).
+
+BMS kann in `BmsDocumentJson` optional den originalen Mailbetreff, -text und
+weitere Anhänge bereitstellen. Die Eigenschaften sind `source` (Wert `bms`),
+`messageKey`, `number`, `subject`, `body`, `isBodyHtml` und optional
+`attachments` mit `fileName`, `contentType` und `contentBase64`. Dazu
+müssen `TempOfferId`, `OfferJson.messageKey` und die BMS-Angebotsnummer zur
+Anforderung passen. Ohne diese Begleitdaten verwendet die App einen kurzen
+Mailtext in der Kontaktsprache.
 
 Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
 Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“

@@ -92,19 +92,21 @@ function assembleOfferMail(offer, document) {
     subject: document.subject, body, isBodyHtml: true,
     attachments: [
       { fileName: `Angebot-${fileLabel(document.number)}.pdf`, contentType: 'application/pdf', content: document.pdf },
-      { fileName: `Angebot-${fileLabel(document.number)}.xml`, contentType: 'application/xml', content: Buffer.from(offerXml(offer, document.number)) },
+      ...(offer.kind === 'app' ? [] : [
+        { fileName: `Angebot-${fileLabel(document.number)}.xml`, contentType: 'application/xml', content: Buffer.from(offerXml(offer, document.number)) },
+      ]),
       ...(document.attachments || []),
     ],
   };
 }
 
-function readBmsOfferDocument(json, messageKey) {
+function readBmsOfferDocument(json, messageKey, erpPdf) {
   const data = JSON.parse(json);
   if (data?.source !== 'bms' || data.messageKey !== messageKey || typeof data.number !== 'string' || !/^[\w./-]{1,80}$/.test(data.number)
     || typeof data.subject !== 'string' || !data.subject.trim() || /[\r\n]/.test(data.subject)
     || typeof data.body !== 'string' || !data.body.trim() || typeof data.isBodyHtml !== 'boolean'
-    || typeof data.pdfBase64 !== 'string') throw new Error('Ungültige BMS-Angebotsausgabe.');
-  const pdf = Buffer.from(data.pdfBase64, 'base64');
+    || (!erpPdf && typeof data.pdfBase64 !== 'string')) throw new Error('Ungültige BMS-Angebotsausgabe.');
+  const pdf = erpPdf || Buffer.from(data.pdfBase64, 'base64');
   if (pdf.subarray(0, 5).toString() !== '%PDF-') throw new Error('BMS-Angebots-PDF fehlt.');
   const attachments = (data.attachments || []).map(item => {
     if (!item || typeof item.contentBase64 !== 'string' || !item.contentBase64.length || typeof item.fileName !== 'string'
@@ -113,6 +115,26 @@ function readBmsOfferDocument(json, messageKey) {
     return { fileName: item.fileName, contentType: item.contentType, content: Buffer.from(item.contentBase64, 'base64') };
   });
   return { ...data, pdf, attachments };
+}
+
+function readTempOfferDocument(row, offer) {
+  const number = String(row.offerNumber ?? '').trim();
+  const pdf = row.pdf;
+  if (Number(row.erpStatus) !== 2 || !/^[\w./-]{1,80}$/.test(number) || !Buffer.isBuffer(pdf)
+    || pdf.length <= 5 || pdf.subarray(0, 5).toString() !== '%PDF-') {
+    throw new Error('Das BMS-Angebot mit PDF ist nicht fertig.');
+  }
+  if (row.documentJson) {
+    const document = readBmsOfferDocument(row.documentJson, offer.messageKey, pdf);
+    if (document.number !== number) throw new Error('Die BMS-Ausgaben haben unterschiedliche Angebotsnummern.');
+    return document;
+  }
+  const en = offer.language === 'en';
+  return {
+    number, pdf, isBodyHtml: false,
+    subject: en ? `Your offer ${number}` : `Ihr Angebot ${number}`,
+    body: en ? 'Please find our offer attached.' : 'Anbei erhalten Sie unser Angebot.',
+  };
 }
 
 async function createSampleOfferPdf(offer) {
@@ -165,4 +187,4 @@ async function sampleOfferEml(offer) {
   return parts.concat(`--${boundary}--`, '').join('\r\n');
 }
 
-module.exports = { assembleOfferMail, offerXml, readBmsOfferDocument, sampleOfferEml, singleEmail };
+module.exports = { assembleOfferMail, offerXml, readBmsOfferDocument, readTempOfferDocument, sampleOfferEml, singleEmail };

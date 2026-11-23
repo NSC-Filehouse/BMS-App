@@ -36,6 +36,7 @@ test('offer code search includes supplier and former names and grouping uses the
 
 const input = () => ({
   customerId: '100',
+  contactId: 71,
   packagingId: 1,
   deliveryTermsId: 1,
   clientRequestId: crypto.randomUUID(),
@@ -127,7 +128,8 @@ function loadWithMocks(filename, mocks) {
   return module.exports;
 }
 async function fixture(t) {
-  const state = { headers: [], positions: [], calls: [], transactionCount: 0, schemaReady: false, stock: [] };
+  const state = { headers: [], positions: [], calls: [], transactionCount: 0, schemaReady: false, stock: [],
+    drafts: [], mail: [], recipientEmail: 'kunde@example.invalid' };
   let nextId = 1;
   function project(row, fields) {
     return Object.fromEntries(
@@ -137,7 +139,27 @@ async function fixture(t) {
   const query = async (sql, params = []) => {
     assert.equal((sql.match(/\?/g) || []).length, params.length, sql);
     state.calls.push({ sql, params });
-    if (sql.includes('COL_LENGTH')) return { rows: [{ ready: Number(state.schemaReady) }] };
+    if (sql.includes('COL_LENGTH')) return { rows: [{ ready: Number(sql.includes('tag_offer_pdf') || state.schemaReady) }] };
+    if (sql.includes('OUTPUT inserted.Id AS id') && sql.includes('OptionOfferMailOutbox')) {
+      const row = { id: state.mail.length + 1, tempOfferId: params[3], status: 'pending' };
+      state.mail.push(row);
+      return { rows: [row] };
+    }
+    if (sql.includes('WHERE TempOfferId=?')) return { rows: state.mail.filter(row => row.tempOfferId === params[0]) };
+    if (sql.includes('INSERT INTO BMSApp.OptionOfferDocument')) {
+      state.drafts.push(JSON.parse(params[1]));
+      return { rows: [] };
+    }
+    if (sql.includes('AS pdfReady')) {
+      const offer = state.headers.find(row => row.tag_id === params[0] && row.tag_company_id === params[1]);
+      return { rows: [{ pdfReady: offer?.tag_status === 2 && offer.pdf ? 1 : 0,
+        mailStatus: state.mail.find(row => row.tempOfferId === params[0])?.status }] };
+    }
+    if (sql.includes('h.tag_offer_pdf AS pdf')) {
+      return { rows: state.headers.filter(row => row.tag_id === params[0] && row.tag_company_id === params[1]
+        && (params.length < 3 || row.tag_created_by === params[2]) && row.tag_status === 2 && row.pdf)
+        .map(row => ({ number: 'AN-42', pdf: row.pdf })) };
+    }
     if (sql.includes('tagp_order_position_id IS NOT NULL')) {
       return { rows: state.positions.filter((p) => p.tagp_offer_id === params[0] && p.tagp_order_position_id)
         .map((p) => ({ id: p.tagp_id })) };
@@ -246,6 +268,17 @@ async function fixture(t) {
       loadTempOrderPlanning: async () => new Map(),
     },
   });
+  const mail = loadWithMocks(path.resolve(__dirname, '../src/offers/erp-mail.js'), {
+    '../options/customer-offers': {
+      loadOfferContacts: async (_database, [customerId]) => [{
+        customerId, id: 71, name: 'Testkontakt', email: state.recipientEmail, language: 'de',
+      }],
+    },
+  });
+  const outbox = loadWithMocks(path.resolve(__dirname, '../src/db/option-offer-outbox.js'), {
+    './access': { runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows },
+    '../offers/erp-mail': mail,
+  });
   const route = loadWithMocks(
     path.resolve(__dirname, '../src/routes/temp-offers.routes.js'),
     {
@@ -274,6 +307,8 @@ async function fixture(t) {
                   userId: 'other',
                   active: true,
                 };
+          req.userIdentity.email = 'vertrieb@example.invalid';
+          req.userIdentity.fullName = 'Test Vertrieb';
           next();
         },
       },
@@ -283,7 +318,9 @@ async function fixture(t) {
         runSQLQueryAccess: async (_db, sql) =>
           sql.includes('agA_Artikelindex AS')
             ? [{ articleIndex: 'A', article: 'Artikel Ä' }]
-            : sql.includes('SELECT agA_Artikelindex')
+            : sql.includes('dbo.tblKun_Ansprech')
+              ? [{ name: 'Testkontakt' }]
+              : sql.includes('SELECT agA_Artikelindex')
               ? [{ agA_Artikelindex: 'A' }]
               : [],
         withSqlTransaction: async (_db, work) => {
@@ -291,12 +328,16 @@ async function fixture(t) {
           const before = structuredClone({
             headers: state.headers,
             positions: state.positions,
+            mail: state.mail,
+            drafts: state.drafts,
           });
           try {
             return await work({ query });
           } catch (e) {
             state.headers = before.headers;
             state.positions = before.positions;
+            state.mail = before.mail;
+            state.drafts = before.drafts;
             throw e;
           }
         },
@@ -309,6 +350,8 @@ async function fixture(t) {
         }),
       },
       '../offers/order-conversion': conversion,
+      '../offers/erp-mail': mail,
+      '../db/option-offer-outbox': outbox,
       '../db/customer-access': {
         getCustomerAccessScope: async () => ({ isFullAccess: true }),
         loadVisibleCustomer: async (_db, id) =>
@@ -335,10 +378,35 @@ async function fixture(t) {
       headers: { 'content-type': 'application/json', ...headers },
       body: body ? JSON.stringify(body) : undefined,
     });
-    return { status: res.status, json: await res.json() };
+    return res.headers.get('content-type')?.startsWith('application/pdf')
+      ? { status: res.status, pdf: Buffer.from(await res.arrayBuffer()) }
+      : { status: res.status, json: await res.json() };
   }
   return { state, call, query, conversion };
 }
+test('manual release enqueues a verified recipient and the detail serves only the completed ERP file', async (t) => {
+  const { state, call } = await fixture(t);
+  const { json: { data: offer } } = await call('/temp-offers', 'POST', input());
+  const url = `/temp-offers/${offer.id}`;
+  const body = { version: offer.version };
+  state.recipientEmail = '';
+  assert.equal((await call(`${url}/release`, 'POST', body)).status, 422);
+  assert.equal(state.headers[0].tag_status, 0);
+  assert.equal(state.mail.length, 0);
+  state.recipientEmail = 'kunde@example.invalid';
+  const released = await call(`${url}/release`, 'POST', body);
+  assert.equal(released.status, 200);
+  assert.equal(released.json.data.status, 1);
+  assert.equal(released.json.data.mailStatus, 'pending');
+  assert.equal(state.drafts[0].recipientEmail, state.recipientEmail);
+  const pdf = Buffer.from('%PDF-1.7\nERP');
+  state.headers[0].pdf = pdf;
+  assert.equal((await call(`${url}/pdf`)).status, 404);
+  state.headers[0].tag_status = 2;
+  assert.equal((await call(`${url}/pdf`, 'GET', null, { 'x-test-company': '3' })).status, 404);
+  assert.equal((await call(url)).json.data.pdfReady, true);
+  assert.deepEqual((await call(`${url}/pdf`)).pdf, pdf);
+});
 test('only NSC can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {
   const { state, call } = await fixture(t);
   const body = input();

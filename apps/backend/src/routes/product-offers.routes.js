@@ -58,8 +58,9 @@ module.exports = function registerProductOffers(router, loadProductDetail) {
     if (readOnly || !(remainingKg > 0)) throw createHttpError(422, 'Für diese VL-Position steht keine Angebotsmenge zur Verfügung.');
     const submissions = await buildCustomerOfferSubmissions(req, {
       stockPositionKey, remainingKg, stockOrderPosition: item.beNumber, stockStorageId: item.storageId,
+      pricePerTonne: item.stockCostPerTonne,
     }, loadAudience);
-    await queueOptionOffers(submissions);
+    await queueOptionOffers(req.database, submissions);
     sendEnvelope(res, { status: 202, data: { customers: submissions.map(item => item.customerId) } });
   }));
 };

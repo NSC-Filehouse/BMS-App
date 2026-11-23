@@ -6,6 +6,7 @@ const sqlTypes = {
   decimal: [9, 19, 4],
   char: [3, 0, 0],
   nvarchar: [-1, 0, 0],
+  varbinary: [-1, 0, 0],
 };
 
 function addTable(schema, name, columns, indexes, checks, foreignKey) {
@@ -46,6 +47,58 @@ function addTable(schema, name, columns, indexes, checks, foreignKey) {
     deleteAction: 'NO_ACTION', updateAction: 'NO_ACTION',
   });
   schema.foreignKeyColumns.push({ name: fkName, constraint_column_id: 1, columnName: field, referencedColumn });
+}
+
+function addOfferPdfSchema(schema) {
+  const outbox = 'OptionOfferMailOutbox';
+  const legacyUnique = schema.indexes.find(index => index.tableName === outbox && index.name === 'UQ_OptionOfferMailOutbox_Customer');
+  schema.indexes = schema.indexes.filter(index => index !== legacyUnique);
+  if (legacyUnique) schema.indexColumns = schema.indexColumns.filter(column =>
+    column.tableName !== outbox || column.index_id !== legacyUnique.index_id);
+  schema.checks = schema.checks.filter(check => check.name !== 'CK_OptionOfferMailOutbox_Source');
+  schema.columns.find(column => column.tableName === outbox && column.name === 'OptionPositionId').is_nullable = true;
+
+  for (const [tableName, name, typeName, maxLength] of [
+    ['tbl_Temp_Angebot', 'tag_offer_pdf', 'varbinary', -1],
+    [outbox, 'StockPositionKey', 'nvarchar', 128],
+    [outbox, 'TempOfferId', 'int', 4],
+  ]) {
+    if (schema.columns.some(column => column.tableName === tableName && column.name === name)) continue;
+    const [, precision, scale] = sqlTypes[typeName];
+    schema.columns.push({
+      tableName, name, typeName, max_length: maxLength, precision, scale,
+      is_nullable: true, is_identity: false, is_computed: false, collation_name: typeName === 'nvarchar' ? collation : null,
+    });
+  }
+  for (const [name, keys, filterColumn] of [
+    ['UX_OptionOfferMailOutbox_OptionCustomer', ['CompanyId', 'OptionPositionId', 'CustomerNumber'], 'OptionPositionId'],
+    ['UX_OptionOfferMailOutbox_StockCustomer', ['CompanyId', 'StockPositionKey', 'CustomerNumber'], 'StockPositionKey'],
+    ['UX_OptionOfferMailOutbox_TempOffer', ['TempOfferId'], 'TempOfferId'],
+  ]) {
+    const indexes = schema.indexes.filter(index => index.tableName === outbox);
+    if (indexes.some(index => index.name === name)) continue;
+    const indexId = Math.max(0, ...indexes.map(index => index.index_id)) + 1;
+    schema.indexes.push({
+      tableName: outbox, name, index_id: indexId, is_unique: true, type_desc: 'NONCLUSTERED',
+      filter_definition: `([${filterColumn}] IS NOT NULL)`, allow_row_locks: true, allow_page_locks: true,
+    });
+    keys.forEach((columnName, index) => schema.indexColumns.push({
+      tableName: outbox, index_id: indexId, columnName, key_ordinal: index + 1,
+    }));
+  }
+  const checkName = 'CK_OptionOfferMailOutbox_OfferSource';
+  if (!schema.checks.some(check => check.name === checkName)) schema.checks.push({
+    tableName: outbox, name: checkName,
+    definition: '(([OptionPositionId] IS NOT NULL AND [StockPositionKey] IS NULL) OR ([OptionPositionId] IS NULL AND [StockPositionKey] IS NOT NULL) OR ([OptionPositionId] IS NULL AND [StockPositionKey] IS NULL AND [TempOfferId] IS NOT NULL))',
+  });
+  const fkName = 'FK_OptionOfferMailOutbox_TempOffer';
+  if (!schema.foreignKeys.some(fk => fk.name === fkName)) {
+    schema.foreignKeys.push({
+      tableName: outbox, name: fkName, referencedSchema: 'BMSApp', referencedTable: 'tbl_Temp_Angebot',
+      deleteAction: 'NO_ACTION', updateAction: 'NO_ACTION',
+    });
+    schema.foreignKeyColumns.push({ name: fkName, constraint_column_id: 1, columnName: 'TempOfferId', referencedColumn: 'tag_id' });
+  }
 }
 
 module.exports = function addOptionOfferSchema(schema) {
@@ -100,4 +153,25 @@ module.exports = function addOptionOfferSchema(schema) {
     Offer: 'ISJSON([OfferJson]) = 1',
     Document: '[BmsDocumentJson] IS NULL OR ISJSON([BmsDocumentJson]) = 1',
   }, ['OptionOfferMailId', 'OptionOfferMailOutbox', 'Id']);
+  addOfferPdfSchema(schema);
 };
+
+module.exports.offerMailUpgrade = `
+ -- Use one ERP offer and PDF for every new customer-mail job.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'tag_offer_pdf') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] ADD [tag_offer_pdf] VARBINARY(MAX) NULL;');
+ IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox',N'StockPositionKey') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ADD [StockPositionKey] NVARCHAR(64) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox',N'TempOfferId') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ADD [TempOfferId] INT NULL;');
+ IF OBJECT_ID(N'BMSApp.CK_OptionOfferMailOutbox_Source',N'C') IS NOT NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [CK_OptionOfferMailOutbox_Source];');
+ IF OBJECT_ID(N'BMSApp.UQ_OptionOfferMailOutbox_Customer',N'UQ') IS NOT NULL
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [UQ_OptionOfferMailOutbox_Customer];');
+ IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'BMSApp.OptionOfferMailOutbox') AND name=N'OptionPositionId' AND is_nullable=0)
+ BEGIN
+  IF OBJECT_ID(N'BMSApp.FK_OptionOfferMailOutbox_OptionPositionId',N'F') IS NOT NULL
+   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] DROP CONSTRAINT [FK_OptionOfferMailOutbox_OptionPositionId];');
+  EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;');
+ END;
+`;

@@ -48,9 +48,14 @@ test('position references are nullable, upgradeable and checked against the targ
 });
 test('incompatible installations abort atomically instead of altering or deleting existing columns',()=>{
  assert.match(sql,/SET XACT_ABORT ON/);assert.match(sql,/BEGIN TRANSACTION/);assert.match(sql,/IF @@TRANCOUNT>0 ROLLBACK TRANSACTION/);
- assert.match(sql,/THROW 51001/);assert.doesNotMatch(sql,/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
+ assert.match(sql,/THROW 51001/);
+ const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
+ assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,779);
+ assert.equal(manifest.length,782);
  assert.equal(new Set(manifest.map(c=>c.table)).size,45);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
+ const pdf=manifest.find(c=>c.table==='tbl_Temp_Angebot' && c.column==='tag_offer_pdf');
+ assert.deepEqual([pdf.type,pdf.length,pdf.nullable],['varbinary',-1,true]);
+ assert.match(sql,/FOREIGN KEY \(\[TempOfferId\]\) REFERENCES \[BMSApp\]\.\[tbl_Temp_Angebot\] \(\[tag_id\]\)/);
 });

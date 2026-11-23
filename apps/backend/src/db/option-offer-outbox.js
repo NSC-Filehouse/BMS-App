@@ -3,7 +3,9 @@ const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { berlinDate } = require('../options/read');
-const { readBmsOfferDocument, assembleOfferMail } = require('../options/offer-documents');
+const { readTempOfferDocument, assembleOfferMail } = require('../options/offer-documents');
+const { loadGeneratedOfferHeaders, createGeneratedTempOffer } = require('../offers/erp-mail');
+const { H } = require('../offers/storage');
 const { createHttpError } = require('../utils');
 
 const outbox = 'BMSApp.OptionOfferMailOutbox';
@@ -15,17 +17,96 @@ function optionOfferMailEnabled() {
   return Boolean(config.optionOfferMail.enabled && config.mailService.enabled && config.mailService.baseAddress && config.mailService.apiKey);
 }
 
-async function stockOfferMailEnabled() {
-  if (!config.optionOfferMail.stockEnabled || !optionOfferMailEnabled()) return false;
-  const [row] = await run(`
-    SELECT CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
-      AND OBJECT_ID(N'BMSApp.OptionOfferDocument', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
-  `);
-  return Boolean(row?.ready);
+const readySql = `
+  SELECT CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'TempOfferId') IS NOT NULL
+    AND COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
+    AND COL_LENGTH(?, N'tag_offer_pdf') IS NOT NULL
+    AND OBJECT_ID(N'BMSApp.OptionOfferDocument', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
+`;
+const readyParams = [H];
+
+async function offerMailSchemaReady() {
+  const [row] = await run(readySql, readyParams);
+  return Number(row?.ready) === 1;
 }
 
-async function queueOptionOffers(offers) {
+async function requireOfferMailSchema(query) {
+  if (Number((await query(readySql, readyParams)).rows[0]?.ready) !== 1) {
+    throw createHttpError(503, 'Das Datenbankschema für den Angebotsversand muss aktualisiert werden.', { code: 'OFFER_MAIL_SCHEMA_MISSING' });
+  }
+}
+
+async function offerMailSendEnabled() {
+  return optionOfferMailEnabled() && await offerMailSchemaReady();
+}
+
+async function stockOfferMailEnabled() {
+  return config.optionOfferMail.stockEnabled && await offerMailSendEnabled();
+}
+
+async function writeOfferMail(query, offer, tempOfferId, existing) {
+  const fields = [offer.articleIndex || '', offer.contactId, offer.contactName, offer.recipientEmail,
+    offer.senderCode, offer.senderName, offer.senderEmail, offer.salePrice ?? 0, offer.incotermId, offer.incotermText];
+  if (existing) {
+    await query(`
+      UPDATE ${outbox} SET ArticleIndex=?, ContactId=?, ContactName=?, RecipientEmail=?,
+        SenderCode=?, SenderName=?, SenderEmail=?, SalePricePerTonne=CAST(? AS decimal(19,4)),
+        Currency=N'EUR', IncotermId=?, IncotermText=?, TempOfferId=?, Status=N'pending', MailServiceId=NULL,
+        SentAt=NULL, AttemptCount=0, NextAttemptAt=NULL, LockedAt=NULL, LastError=NULL,
+        UpdatedAt=SYSUTCDATETIME() WHERE Id=?
+    `, [...fields, tempOfferId, existing.id]);
+    await query(`DELETE FROM ${documents} WHERE OptionOfferMailId=?`, [existing.id]);
+  }
+  const id = existing?.id ?? (await query(`
+    INSERT INTO ${outbox}
+      (CompanyId, OptionPositionId, StockPositionKey, TempOfferId, CustomerNumber, ArticleIndex,
+       ContactId, ContactName, RecipientEmail, SenderCode, SenderName, SenderEmail, SalePricePerTonne, Currency, IncotermId, IncotermText)
+    OUTPUT inserted.Id AS id
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS decimal(19,4)), N'EUR', ?, ?)
+  `, [offer.companyId, offer.positionId ?? null, offer.stockPositionKey ?? null, tempOfferId, offer.customerId, ...fields])).rows[0].id;
+  await query(`INSERT INTO ${documents} (OptionOfferMailId, OfferJson) VALUES (?, ?)`, [id, JSON.stringify(offer)]);
+}
+
+function assertOfferMailReplaceable(existing, offer) {
+  if (existing && existing.status !== 'failed'
+    && !(offer.kind === 'app' && existing.status === 'pending' && Number(existing.attempt) === 0)) {
+    throw createHttpError(409, `Für ${offer.customerName} besteht bereits ein Versandvorgang.`, { code: 'OPTION_OFFER_ALREADY_QUEUED' });
+  }
+}
+
+async function queueManualOffer(query, offer, id) {
+  await requireOfferMailSchema(query);
+  const existing = (await query(`
+    SELECT Id AS id, Status AS status, AttemptCount AS attempt, OptionPositionId AS optionId, StockPositionKey AS stockKey
+    FROM ${outbox} WITH (UPDLOCK,HOLDLOCK) WHERE TempOfferId=?
+  `, [id])).rows[0];
+  if (existing?.optionId || existing?.stockKey) {
+    throw createHttpError(409, 'Bitte das Angebot erneut aus der Option oder der VL einreichen.', { code: 'OFFER_RETRY_AT_SOURCE' });
+  }
+  assertOfferMailReplaceable(existing, offer);
+  await writeOfferMail(query, offer, id, existing);
+}
+
+async function discardManualOfferMail(query, id) {
+  if (Number((await query(readySql, readyParams)).rows[0]?.ready) !== 1) return;
+  const existing = (await query(`
+    SELECT Id AS id, Status AS status, AttemptCount AS attempt, OptionPositionId AS optionId, StockPositionKey AS stockKey
+    FROM ${outbox} WITH (UPDLOCK,HOLDLOCK)
+    WHERE TempOfferId=?
+  `, [id])).rows[0];
+  if (!existing) return;
+  if (existing.optionId || existing.stockKey) {
+    throw createHttpError(409, 'Das Angebot ist mit einem Versandvorgang aus der Option oder der VL verknüpft.', { code: 'OFFER_RETRY_AT_SOURCE' });
+  }
+  assertOfferMailReplaceable(existing, { kind: 'app', customerName: 'den Kunden' });
+  await query(`DELETE FROM ${documents} WHERE OptionOfferMailId=?`, [existing.id]);
+  await query(`DELETE FROM ${outbox} WHERE Id=?`, [existing.id]);
+}
+
+async function queueOptionOffers(database, offers) {
+  const headers = await loadGeneratedOfferHeaders(database, offers);
   return withSqlTransaction(config.sql.database, async ({ query }) => {
+    await requireOfferMailSchema(query);
     for (const offer of [...offers].sort((left, right) => left.customerId.localeCompare(right.customerId))) {
       const sourceColumn = offer.stockPositionKey ? 'StockPositionKey' : 'OptionPositionId';
       const sourceId = offer.stockPositionKey ?? offer.positionId;
@@ -35,29 +116,9 @@ async function queueOptionOffers(offers) {
           ${offer.stockPositionKey ? 'AND OptionPositionId IS NULL' : ''}
       `, [offer.companyId, sourceId, offer.customerId]);
       const existing = idQuery.rows[0];
-      const fields = [offer.articleIndex, offer.contactId, offer.contactName, offer.recipientEmail,
-        offer.senderCode, offer.senderName, offer.senderEmail, offer.salePrice, offer.incotermId, offer.incotermText];
-      if (existing && existing.status !== 'failed') {
-        throw createHttpError(409, `Für ${offer.customerName} besteht bereits ein Versandvorgang.`, { code: 'OPTION_OFFER_ALREADY_QUEUED' });
-      }
-      if (existing) {
-        await query(`
-          UPDATE ${outbox} SET ArticleIndex = ?, ContactId = ?, ContactName = ?, RecipientEmail = ?,
-            SenderCode = ?, SenderName = ?, SenderEmail = ?, SalePricePerTonne = CAST(? AS decimal(19,4)),
-            Currency = N'EUR', IncotermId = ?, IncotermText = ?, Status = N'pending', MailServiceId = NULL,
-            SentAt = NULL, AttemptCount = 0, NextAttemptAt = NULL, LockedAt = NULL, LastError = NULL,
-            UpdatedAt = SYSUTCDATETIME() WHERE Id = ?
-        `, [...fields, existing.id]);
-        await query(`DELETE FROM ${documents} WHERE OptionOfferMailId = ?`, [existing.id]);
-      }
-      const id = existing?.id ?? (await query(`
-        INSERT INTO ${outbox}
-          (CompanyId, ${sourceColumn}, CustomerNumber, ArticleIndex, ContactId, ContactName, RecipientEmail,
-           SenderCode, SenderName, SenderEmail, SalePricePerTonne, Currency, IncotermId, IncotermText)
-        OUTPUT inserted.Id AS id
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS decimal(19,4)), N'EUR', ?, ?)
-      `, [offer.companyId, sourceId, offer.customerId, ...fields])).rows[0].id;
-      await query(`INSERT INTO ${documents} (OptionOfferMailId, OfferJson) VALUES (?, ?)`, [id, JSON.stringify(offer)]);
+      assertOfferMailReplaceable(existing, offer);
+      const id = await createGeneratedTempOffer(query, offer, headers.get(offer.customerId));
+      await writeOfferMail(query, offer, id, existing);
     }
   });
 }
@@ -68,18 +129,23 @@ async function claimOffer() {
       SELECT TOP (1) o.Id
       FROM ${outbox} o WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
       JOIN ${documents} d ON d.OptionOfferMailId = o.Id
+      LEFT JOIN ${H} h ON h.tag_id=o.TempOfferId AND h.tag_company_id=o.CompanyId
       WHERE (o.NextAttemptAt IS NULL OR o.NextAttemptAt <= SYSUTCDATETIME())
         AND (o.Status = N'submitted' OR (o.Status = N'unknown' AND o.MailServiceId IS NOT NULL)
-          OR (o.Status IN (N'pending', N'sending') AND
-            (d.BmsDocumentJson IS NOT NULL OR JSON_VALUE(d.OfferJson, '$.validUntil') < ?)))
+          OR (o.Status IN (N'pending', N'sending') AND h.tag_id IS NOT NULL AND
+            ((${readyPdfSql}) OR h.tag_status=3 OR JSON_VALUE(d.OfferJson, '$.validUntil') < ?))
+          OR (o.TempOfferId IS NULL AND o.Status=N'pending' AND o.AttemptCount=0 AND o.MailServiceId IS NULL))
       ORDER BY COALESCE(o.NextAttemptAt, o.CreatedAt), o.Id
     )
     UPDATE o SET Status = CASE WHEN o.Status IN (N'submitted', N'unknown') THEN N'submitted' ELSE N'sending' END,
       AttemptCount = o.AttemptCount + 1, LockedAt = SYSUTCDATETIME(),
       NextAttemptAt = DATEADD(MINUTE, 5, SYSUTCDATETIME()), UpdatedAt = SYSUTCDATETIME()
     OUTPUT inserted.Id AS id, inserted.Status AS status, inserted.MailServiceId AS mailServiceId,
-      inserted.AttemptCount AS attempt, d.OfferJson AS offerJson, d.BmsDocumentJson AS documentJson
+      inserted.AttemptCount AS attempt, inserted.TempOfferId AS tempOfferId,
+      d.OfferJson AS offerJson, d.BmsDocumentJson AS documentJson,
+      h.tag_status AS erpStatus, h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf
     FROM ${outbox} o JOIN nextMail n ON n.Id = o.Id JOIN ${documents} d ON d.OptionOfferMailId = o.Id
+    LEFT JOIN ${H} h ON h.tag_id=o.TempOfferId AND h.tag_company_id=o.CompanyId
   `, [berlinDate()]);
   return row;
 }
@@ -94,7 +160,8 @@ async function updateOffer(row, status, message = null, mailServiceId = null) {
 
 async function confirmSent(row, offer, reference, mailServiceId, sentAt) {
   const price = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(offer.salePrice);
-  const description = `${offer.stockPositionKey ? 'Artikel' : 'Option'} ${offer.article} per E-Mail an ${offer.contactName} angeboten (${reference}). VK ${price}/t, Incoterm ${offer.incotermCode}.`;
+  const description = offer.kind === 'app' ? `Angebot ${reference} per E-Mail an ${offer.contactName} gesendet.`
+    : `${offer.stockPositionKey ? 'Artikel' : 'Option'} ${offer.article} per E-Mail an ${offer.contactName} angeboten (${reference}). VK ${price}/t, Incoterm ${offer.incotermCode}.`;
   const sentDate = new Date(sentAt);
   const date = typeof sentAt === 'string' && Number.isFinite(sentDate.getTime()) ? sentDate.toISOString().slice(0, -1) : null;
   await withSqlTransaction(config.sql.database, async ({ query }) => {
@@ -129,8 +196,18 @@ async function deliverOffer(client, row) {
       await updateOffer(row, row.attempt === 1 ? 'failed' : 'unknown', 'Die Option ist abgelaufen.');
       return;
     }
-    document = readBmsOfferDocument(row.documentJson, offer.messageKey);
-    if (row.status !== 'submitted') request = assembleOfferMail(offer, document);
+    if (row.status === 'sending' && (!row.tempOfferId || Number(row.erpStatus) === 3)) {
+      const reason = row.tempOfferId ? 'BMS hat das Angebot zur Nacharbeit zurückgegeben.' : 'Das Angebot muss erneut an BMS übergeben werden.';
+      await updateOffer(row, row.attempt === 1 ? 'failed' : 'unknown', reason);
+      return;
+    }
+    if (row.status === 'submitted') {
+      const number = String(row.offerNumber || JSON.parse(row.documentJson || 'null')?.number || '').trim();
+      document = { number };
+    } else {
+      document = readTempOfferDocument(row, offer);
+      request = assembleOfferMail(offer, document);
+    }
   } catch {
     // A local problem cannot turn a previously accepted or uncertain mail into a retryable send.
     await updateOffer(row, row.status === 'submitted' || row.attempt > 1 ? 'unknown' : 'failed', 'BMS-Angebotsausgabe fehlt oder ist ungültig.');
@@ -164,6 +241,7 @@ function startOptionOfferMailWorker() {
     if (busy) return;
     busy = true;
     try {
+      if (!await offerMailSchemaReady()) return;
       for (let count = 0; count < 10; count++) {
         const row = await claimOffer();
         if (!row) break;
@@ -179,4 +257,10 @@ function startOptionOfferMailWorker() {
   void process();
 }
 
-module.exports = { optionOfferMailEnabled, stockOfferMailEnabled, queueOptionOffers, startOptionOfferMailWorker, classifyServiceStatus, deliverOffer };
+const readyPdfSql = `h.tag_status=2 AND NULLIF(LTRIM(RTRIM(h.tag_bms_offer_number)), N'') IS NOT NULL
+  AND DATALENGTH(h.tag_offer_pdf)>5 AND SUBSTRING(h.tag_offer_pdf,1,5)=0x255044462D`;
+
+module.exports = {
+  offerMailSendEnabled, stockOfferMailEnabled, queueOptionOffers, queueManualOffer, discardManualOfferMail,
+  startOptionOfferMailWorker, classifyServiceStatus, deliverOffer, claimOffer, readyPdfSql, offerMailSchemaReady,
+};

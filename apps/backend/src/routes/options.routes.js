@@ -9,7 +9,7 @@ const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { loadOptionOfferCustomers } = require('../options/customer-offers');
 const { buildOfferSubmissions } = require('../options/offer-submission');
-const { optionOfferMailEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
+const { offerMailSendEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
 const { loadOptionPosition, supplierCandidates } = require('../options/purchase-source');
 const { loadPurchaseLocations } = require('../db/purchase-order-values');
 const { resolveVlDatabase } = require('../vl-source');
@@ -58,7 +58,7 @@ router.get(offerCustomerPath, ...offerCustomerGuard, asyncHandler(async (req, re
  const { offer, position } = await loadOfferPositionForCustomers(req);
  res.set('Cache-Control', 'private, no-store');
  const audience = await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position);
- sendEnvelope(res, { data: { ...audience, sendEnabled: optionOfferMailEnabled() }, meta: { mandant: req.mandant } });
+ sendEnvelope(res, { data: { ...audience, sendEnabled: await offerMailSendEnabled() }, meta: { mandant: req.mandant } });
 }));
 router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
  const position = await loadOptionPosition(positiveId(req.params.id), positiveId(req.params.positionId), null, { identity: req.userIdentity });
@@ -69,10 +69,10 @@ router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, async
  sendEnvelope(res, { data: locations.map(location => location.text), meta: { mandant: req.mandant } });
 }));
 router.post(`${offerCustomerPath}/send`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
- if (!optionOfferMailEnabled()) throw createHttpError(503, 'Der Versand von Optionsangeboten ist noch nicht freigegeben.', { code: 'OPTION_OFFER_SEND_DISABLED' });
+ if (!await offerMailSendEnabled()) throw createHttpError(503, 'Der Versand von Optionsangeboten ist noch nicht freigegeben.', { code: 'OPTION_OFFER_SEND_DISABLED' });
  const { offer, position } = await loadOfferPositionForCustomers(req);
  const submissions = await buildOfferSubmissions(req, offer, position);
- await queueOptionOffers(submissions);
+ await queueOptionOffers(req.database, submissions);
  res.set('Cache-Control', 'private, no-store');
  sendEnvelope(res, { status: 202, data: { customers: submissions.map(item => item.customerId) } });
 }));

@@ -1,11 +1,11 @@
 import { createCustomerOperationId as createId } from './customerCreation.js';
 export const offerStatus = (status, en = false) =>
   (en
-    ? ['Draft', 'Released for BMS import', 'Imported into BMS', 'Rework']
+    ? ['Created', 'Sent to BMS', 'Completed', 'Rework']
     : [
-        'Entwurf',
-        'Zur BMS-Übernahme freigegeben',
-        'In BMS übernommen',
+        'Erstellt',
+        'An BMS gesendet',
+        'Erledigt',
         'Nacharbeit',
       ])[Number(status)] || '-';
 export const today = () =>

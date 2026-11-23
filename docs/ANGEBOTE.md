@@ -77,10 +77,14 @@ Auftragsübergaben. Offene Temp-Aufträge werden bei der Reservierung abgezogen.
 Kopieren legt keine Reservierung an. Es entstehen keine Verkaufsereignisse,
 Mails, Pushs oder Kreditlimit-Anfragen.
 
-Der externe BMS-Importer liegt außerhalb dieses Repositories. Die Freigabe
-setzt tag_status=1; Status 0 ist Entwurf, 2 erfolgreich übernommen und
-3 Nacharbeit. Bei Erfolg muss der Importer tag_bms_offer_number setzen, bei
-Nacharbeit tag_return_comment. Der Import muss über tag_id idempotent sein.
+Der externe BMS-Importer liest in `BMSApp.tbl_Temp_Angebot` nur Status 1.
+Status 0 bedeutet erstellt, Status 1 an BMS gesendet, Status 2 erledigt und
+Status 3 Nacharbeit. Bei Erfolg schreibt BMS die Angebotsnummer in
+`tag_bms_offer_number` und die unveränderten PDF-Bytes in die neue Spalte
+`tag_offer_pdf VARBINARY(MAX)`. Nummer, PDF und Status 2 sollen gemeinsam
+für dieselbe `tag_id` und `tag_company_id` gespeichert werden. Bei Nacharbeit
+schreibt BMS die Rückmeldung in `tag_return_comment`.
+Der Import muss über `tag_id` idempotent sein.
 Die Zielmandanten-ID ist tag_company_id; Kunde und Artikel sind technische
 Schlüssel des Zielmandanten. Die Nummernvergabe muss den bestehenden ERP-
 Mechanismus verwenden, niemals MAX+1. Angebotsdatum wird aus tag_created_at
@@ -90,6 +94,14 @@ Positionsdaten umfassen Menge, Einheit, Preisbasis, VK, EP, Liefer-/Valutadatum
 und WPZ-Anweisung. BMS-Muster-/Auftrag-/Abgelehnt-Flags bleiben bei Neuanlage aus.
 Preisstaffeln dürfen nicht zusammengeführt werden. Die Übernahme erzeugt keinen
 Verkauf und keine zweite Reservierung.
+
+Bei der Freigabe prüft die App die Mailadresse des gewählten Ansprechpartners
+und legt einen Versandauftrag zum Angebot an. Sobald Status 2, die BMS-Nummer
+und eine PDF vorliegen, erscheint die Datei im Angebotsdetail. Der gemeinsame
+Mail-Worker übernimmt exakt diese PDF als Anhang. Er benötigt die Freigabe
+`BMS_OPTION_OFFER_MAIL_ENABLED=true` und einen eingerichteten MailService.
+Bei bestehenden Angeboten ohne Versandauftrag entsteht keine nachträgliche
+Kundenmail.
 
 ## Prüfungen
 
