@@ -41,13 +41,15 @@ function responseLinks(offer, number, sender) {
 function offerXml(offer, number) {
   const tag = (name, value) => `<${name}>${xmlText(value)}</${name}>`;
   const { article, articleIndex, batch, quantityKg, availableQuantityKg, salePrice, incotermCode, pickup, customerId, validUntil } = offer;
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<Offer xmlns="urn:filehouse:bms:customer-offer:1" version="1.0">',
-    `  ${tag('OfferNumber', number)}`,
-    `  ${tag('CustomerNumber', customerId)}`,
-    '  <NonBinding>true</NonBinding>',
-    ...(validUntil ? [`  ${tag('ValidUntil', validUntil)}`] : []),
+  if (offer.kind === 'app' && !offer.positions?.length) throw new Error('Angebotspositionen fehlen.');
+  const positions = offer.kind === 'app' ? offer.positions.flatMap(position => [
+    '  <Position>',
+    `    ${tag('ArticleNumber', position.articleIndex)}`,
+    `    ${tag('ArticleName', position.article)}`,
+    `    <Quantity unit="${xmlText(/^kg$/i.test(position.unit) ? 'KGM' : position.unit)}">${Number(position.quantity).toFixed(3)}</Quantity>`,
+    `    <Price currency="EUR" basis="${xmlText(position.priceBasis)}">${Number(position.price).toFixed(4)}</Price>`,
+    '  </Position>',
+  ]) : [
     '  <Position>',
     `    ${tag('ArticleNumber', articleIndex)}`,
     `    ${tag('ArticleName', article)}`,
@@ -57,15 +59,24 @@ function offerXml(offer, number) {
     ...(batch && availableQuantityKg > quantityKg
       ? [`    <AvailableBatchQuantity unit="KGM">${availableQuantityKg.toFixed(3)}</AvailableBatchQuantity>`] : []),
     '  </Position>',
+  ];
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Offer xmlns="urn:filehouse:bms:customer-offer:1" version="1.0">',
+    `  ${tag('OfferNumber', number)}`,
+    `  ${tag('CustomerNumber', customerId)}`,
+    '  <NonBinding>true</NonBinding>',
+    ...(validUntil ? [`  ${tag('ValidUntil', validUntil)}`] : []),
+    ...positions,
     '  <Delivery>',
-    `    ${tag('Incoterm', incotermCode)}`,
+    ...(incotermCode ? [`    ${tag('Incoterm', incotermCode)}`] : []),
     ...(pickup ? [`    ${tag('PickupLocation', pickup)}`] : []),
     '  </Delivery>',
     '</Offer>',
   ].join('\n');
 }
 
-function assembleOfferMail(offer, document) {
+function assembleOfferMail(offer, document, delivery) {
   const fromAddress = singleEmail(offer.senderEmail);
   const recipient = singleEmail(offer.recipientEmail);
   if (!fromAddress || !recipient) throw new Error('Ungültiger Absender oder Empfänger.');
@@ -86,15 +97,13 @@ function assembleOfferMail(offer, document) {
     ? (/<\/body\s*>/i.test(document.body) ? document.body.replace(/<\/body\s*>/i, match => controls + match) : document.body + controls)
     : `<div style="white-space:pre-wrap">${escapeMarkup(document.body).replace(/\r\n|\r|\n/g, '<br>')}</div>${controls}`;
   return {
-    clientMessageId: `bms-app:option-offer:${offer.messageKey}`,
+    clientMessageId: delivery?.clientMessageId ?? `bms-app:option-offer:${offer.messageKey}`,
     fromAddress, fromDisplayName: offer.senderName,
-    to: [{ address: recipient, displayName: offer.contactName }],
+    to: delivery?.to ?? [{ address: recipient, displayName: offer.contactName }],
     subject: document.subject, body, isBodyHtml: true,
     attachments: [
       { fileName: `Angebot-${fileLabel(document.number)}.pdf`, contentType: 'application/pdf', content: document.pdf },
-      ...(offer.kind === 'app' ? [] : [
-        { fileName: `Angebot-${fileLabel(document.number)}.xml`, contentType: 'application/xml', content: Buffer.from(offerXml(offer, document.number)) },
-      ]),
+      { fileName: `Angebot-${fileLabel(document.number)}.xml`, contentType: 'application/xml', content: Buffer.from(offerXml(offer, document.number)) },
       ...(document.attachments || []),
     ],
   };

@@ -5,13 +5,14 @@ const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { berlinDate } = require('../options/read');
 const { readTempOfferDocument, assembleOfferMail } = require('../options/offer-documents');
 const { loadGeneratedOfferHeaders, createGeneratedTempOffer } = require('../offers/erp-mail');
-const { H } = require('../offers/storage');
+const { H, P, positionFields, select } = require('../offers/storage');
+const { getEmailsForUserCodes } = require('../config/geschaeftsfuehrer');
 const { createHttpError } = require('../utils');
 
 const outbox = 'BMSApp.OptionOfferMailOutbox';
 const documents = 'BMSApp.OptionOfferDocument';
-const activities = 'BMSApp.tbl_Temp_Aktivitaet';
 const run = (query, params) => runSQLQuerySqlServer(config.sql.database, query, params);
+const previewRecipients = getEmailsForUserCodes(['AKI', 'NSC']);
 
 function optionOfferMailEnabled() {
   return Boolean(config.optionOfferMail.enabled && config.mailService.enabled && config.mailService.baseAddress && config.mailService.apiKey);
@@ -158,26 +159,14 @@ async function updateOffer(row, status, message = null, mailServiceId = null) {
   `, [status, mailServiceId, message, row.id, row.attempt]);
 }
 
-async function confirmSent(row, offer, reference, mailServiceId, sentAt) {
-  const price = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(offer.salePrice);
-  const description = offer.kind === 'app' ? `Angebot ${reference} per E-Mail an ${offer.contactName} gesendet.`
-    : `${offer.stockPositionKey ? 'Artikel' : 'Option'} ${offer.article} per E-Mail an ${offer.contactName} angeboten (${reference}). VK ${price}/t, Incoterm ${offer.incotermCode}.`;
+async function confirmSent(row, mailServiceId, sentAt) {
   const sentDate = new Date(sentAt);
   const date = typeof sentAt === 'string' && Number.isFinite(sentDate.getTime()) ? sentDate.toISOString().slice(0, -1) : null;
-  await withSqlTransaction(config.sql.database, async ({ query }) => {
-    const { rows } = await query(`
+  await run(`
       UPDATE ${outbox} SET Status = N'sent', MailServiceId = ?, SentAt = COALESCE(CAST(? AS datetime2(7)), SYSUTCDATETIME()),
         LastError = NULL, LockedAt = NULL, NextAttemptAt = NULL, UpdatedAt = SYSUTCDATETIME()
-      OUTPUT inserted.Id
       WHERE Id = ? AND AttemptCount = ? AND Status IN (N'sending', N'submitted')
-    `, [mailServiceId, date, row.id, row.attempt]);
-    if (rows.length) {
-      await query(`
-        INSERT INTO ${activities} (OptionOfferMailId, CompanyId, CustomerNumber, ActivityDate, EmployeeCode, Description)
-        SELECT Id, CompanyId, CustomerNumber, SentAt, SenderCode, ? FROM ${outbox} WHERE Id = ?
-      `, [description, row.id]);
-    }
-  });
+  `, [mailServiceId, date, row.id, row.attempt]);
 }
 
 function classifyServiceStatus(result) {
@@ -189,9 +178,9 @@ function classifyServiceStatus(result) {
 }
 
 async function deliverOffer(client, row) {
-  let offer, document, request;
+  let request;
   try {
-    offer = JSON.parse(row.offerJson);
+    const offer = JSON.parse(row.offerJson);
     if (row.status === 'sending' && offer.validUntil && offer.validUntil < berlinDate()) {
       await updateOffer(row, row.attempt === 1 ? 'failed' : 'unknown', 'Die Option ist abgelaufen.');
       return;
@@ -201,12 +190,21 @@ async function deliverOffer(client, row) {
       await updateOffer(row, row.attempt === 1 ? 'failed' : 'unknown', reason);
       return;
     }
-    if (row.status === 'submitted') {
-      const number = String(row.offerNumber || JSON.parse(row.documentJson || 'null')?.number || '').trim();
-      document = { number };
-    } else {
-      document = readTempOfferDocument(row, offer);
-      request = assembleOfferMail(offer, document);
+    if (row.status !== 'submitted') {
+      const document = readTempOfferDocument(row, offer);
+      if (offer.kind === 'app') {
+        offer.positions = await run(`
+          SELECT ${select(positionFields, 'p.')}
+          FROM ${P} p JOIN ${H} h ON h.tag_id=p.tagp_offer_id
+          WHERE h.tag_id=? AND h.tag_company_id=? AND h.tag_status=2
+          ORDER BY p.tagp_line_no
+        `, [row.tempOfferId, offer.companyId]);
+      }
+      if (previewRecipients.length !== 2) throw new Error('Testempfänger fehlen.');
+      request = assembleOfferMail(offer, document, {
+        clientMessageId: `bms-app:offer-preview:${offer.messageKey}`,
+        to: previewRecipients.map(address => ({ address })),
+      });
     }
   } catch {
     // A local problem cannot turn a previously accepted or uncertain mail into a retryable send.
@@ -229,7 +227,7 @@ async function deliverOffer(client, row) {
     await updateOffer(row, 'unknown', 'MailService hat keine gültige Versand-ID geliefert.');
     return;
   }
-  if (status === 'sent') await confirmSent(row, offer, document.number, id, response.sentAt ?? response.SentAt);
+  if (status === 'sent') await confirmSent(row, id, response.sentAt ?? response.SentAt);
   else await updateOffer(row, status, ['failed', 'unknown'].includes(status) ? 'MailService meldet einen Versandfehler.' : null, id);
 }
 

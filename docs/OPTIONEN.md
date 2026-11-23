@@ -197,9 +197,9 @@ Text stammt aus den BMS-Lieferbedingungen. Bei FCA ist der benannte Abholort
 Pflicht. Die Menge startet mit 24.750 kg und die bekannte Restmenge begrenzt
 die Eingabe. Der Versand verwendet serverseitig geprüfte Daten.
 
-### Produktiver Versand
+### Interner Testversand
 
-Der produktive Versand verwendet `BMS_OPTION_OFFER_MAIL_ENABLED=true` und
+Der Testversand verwendet `BMS_OPTION_OFFER_MAIL_ENABLED=true` und
 „Senden als“ für den Außendienst im MailService. Pro ausgewähltem Kunden
 legt die App ein reguläres Angebot mit einer Position und Status 1 in
 `BMSApp.tbl_Temp_Angebot` an. `OptionOfferMailOutbox.TempOfferId` verweist
@@ -223,12 +223,9 @@ Mailtext in der Kontaktsprache.
 
 Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
 Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“
-und „Angebot nicht interessant“. Der MailService erhält je Angebotsnummer
-genau einen Empfänger.
+und „Angebot nicht interessant“. Die Testmail mit ERP-PDF und XML geht
+ausschließlich an AKI und NSC.
 Die stabil aus `messageKey` abgeleitete `ClientMessageId` hält Wiederholungen
-derselben Anfrage zusammen. Erst bestätigter Status `Sent` erzeugt in einer
-Transaktion die Sanduhr und die Zeile in `BMSApp.tbl_Temp_Aktivitaet`.
+derselben Anfrage zusammen. Der bestätigte Status `Sent` markiert die interne
+Zustellung in der Warteschlange. In der Kundenhistorie entsteht kein Eintrag.
 Unbestätigte Versandfälle ohne MailService-ID bleiben zur Klärung gesperrt.
-Der externe BMS-Import übernimmt die Aktivität anhand ihrer eindeutigen ID
-in die Kundenhistorie und meldet Aktivitäts-ID und Übernahmezeit zurück.
-`ActivityDate` ist in UTC gespeichert.

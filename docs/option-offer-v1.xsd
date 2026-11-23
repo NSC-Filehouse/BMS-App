@@ -10,6 +10,21 @@
       </xs:extension>
     </xs:simpleContent>
   </xs:complexType>
+  <xs:complexType name="QuantityWithUnit">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="unit" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="PriceWithBasis">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="xs:string" use="required" fixed="EUR"/>
+        <xs:attribute name="basis" type="xs:decimal" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
   <xs:complexType name="PriceInEur">
     <xs:simpleContent>
       <xs:extension base="xs:decimal">
@@ -24,14 +39,17 @@
         <xs:element name="CustomerNumber" type="xs:string"/>
         <xs:element name="NonBinding" type="xs:boolean" fixed="true"/>
         <xs:element name="ValidUntil" type="xs:date" minOccurs="0"/>
-        <xs:element name="Position">
+        <xs:element name="Position" maxOccurs="unbounded">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="ArticleNumber" type="xs:string"/>
               <xs:element name="ArticleName" type="xs:string"/>
               <xs:element name="Batch" type="xs:string" minOccurs="0"/>
-              <xs:element name="Quantity" type="o:QuantityInKg"/>
-              <xs:element name="PricePerTonne" type="o:PriceInEur"/>
+              <xs:element name="Quantity" type="o:QuantityWithUnit"/>
+              <xs:choice>
+                <xs:element name="PricePerTonne" type="o:PriceInEur"/>
+                <xs:element name="Price" type="o:PriceWithBasis"/>
+              </xs:choice>
               <xs:element name="AvailableBatchQuantity" type="o:QuantityInKg" minOccurs="0"/>
             </xs:sequence>
           </xs:complexType>
@@ -39,7 +57,7 @@
         <xs:element name="Delivery">
           <xs:complexType>
             <xs:sequence>
-              <xs:element name="Incoterm">
+              <xs:element name="Incoterm" minOccurs="0">
                 <xs:simpleType><xs:restriction base="xs:string"><xs:pattern value="[A-Z]{3}"/></xs:restriction></xs:simpleType>
               </xs:element>
               <xs:element name="PickupLocation" type="xs:string" minOccurs="0"/>

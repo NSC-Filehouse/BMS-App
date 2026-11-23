@@ -11,6 +11,10 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     calls.push({ sql, params, transaction: false });
     if (sql.includes('tblSprachenTexte')) return [{ id: 34, de: 'Sackware', en: 'Bags' }];
     if (sql.includes('tblZahltext_Sprachen')) return [{ id: 8, language: 'de', text: '30 Tage netto' }];
+    if (sql.includes('tbl_Temp_Ang_Position')) return [
+      { articleIndex: 'A', article: 'A & B', quantity: 1000, unit: 'KG', price: 1320, priceBasis: 1000 },
+      { articleIndex: 'B', article: 'B', quantity: 2, unit: 'ST', price: 20, priceBasis: 1 },
+    ];
     return [];
   },
   withSqlTransaction: async (database, work) => work({
@@ -44,9 +48,10 @@ test.beforeEach(() => { calls.length = 0; });
 test('accepted mail keeps its MailService ID and creates no ERP activity yet', async () => {
   await deliverOffer({
     submitMail: async request => {
-      assert.equal(request.clientMessageId, 'bms-app:option-offer:42-key');
-      assert.equal(request.to.length, 1);
+      assert.equal(request.clientMessageId, 'bms-app:offer-preview:42-key');
+      assert.deepEqual(request.to, [{ address: 'Kimaz@mlplastics.de' }, { address: 'n.schroeder@filehouse.net' }]);
       assert.deepEqual(request.attachments[0].content, pdf);
+      assert.equal(request.attachments[1].contentType, 'application/xml');
       return { id: 'mail-123', status: 'Pending' };
     },
   }, { ...row, status: 'sending' });
@@ -71,14 +76,16 @@ test('the worker never submits a customer mail without the linked status-2 offer
   assert.doesNotMatch(calls.at(-1).sql, /BmsDocumentJson IS NOT NULL/);
 });
 
-test('an App offer can be mailed using just the numbered ERP PDF and sends no single-position XML', async () => {
+test('a manual offer preview includes the ERP PDF and XML for every linked position', async () => {
   await deliverOffer({ submitMail: async request => {
     assert.equal(request.subject, 'Ihr Angebot AN-42');
-    assert.equal(request.attachments.length, 1);
+    assert.equal(request.attachments.length, 2);
     assert.deepEqual(request.attachments[0].content, pdf);
+    assert.match(request.attachments[1].content.toString(), /A &amp; B[\s\S]*<ArticleNumber>B<\/ArticleNumber>[\s\S]*<Quantity unit="ST">2\.000<\/Quantity>[\s\S]*<Price currency="EUR" basis="1">20\.0000<\/Price>/);
     return { id: 'mail-123', status: 'Pending' };
-  } }, { ...row, status: 'sending', documentJson: null, offerJson: JSON.stringify({ ...offer, kind: 'app' }) });
-  assert.equal(calls[0].params[0], 'submitted');
+  } }, { ...row, status: 'sending', documentJson: null, offerJson: JSON.stringify({ ...offer, kind: 'app', companyId: 3 }) });
+  assert.deepEqual(calls[0].params, [81, 3]);
+  assert.equal(calls[1].params[0], 'submitted');
 });
 
 test('submitting an option or a VL position creates a temp offer, one line and one linked mail job together', async () => {
@@ -99,7 +106,7 @@ test('submitting an option or a VL position creates a temp offer, one line and o
   }
 });
 
-test('confirmation marks the outbox and records the customer activity atomically', async () => {
+test('confirmation marks only the outbox for an internal preview', async () => {
   await deliverOffer({
     submitMail: async () => assert.fail('Already submitted'),
     getMail: async id => {
@@ -107,11 +114,8 @@ test('confirmation marks the outbox and records the customer activity atomically
       return { Status: 'Sent', SentAt: '2026-11-23T13:40:00Z' };
     },
   }, { ...row, status: 'submitted', mailServiceId: 'mail-123' });
-  assert.equal(calls.length, 2);
-  assert.ok(calls.every(call => call.transaction));
+  assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /Status = N'sent'/);
-  assert.match(calls[1].sql, /INSERT INTO BMSApp\.tbl_Temp_Aktivitaet/);
-  assert.match(calls[1].params[0], /AN-42.*VK 1\.320,00\s€\/t, Incoterm CFR/);
 });
 
 test('an ambiguous final failure only tracks the old provider ID', async () => {

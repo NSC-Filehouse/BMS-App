@@ -98,10 +98,11 @@ Verkauf und keine zweite Reservierung.
 Bei der Freigabe prüft die App die Mailadresse des gewählten Ansprechpartners
 und legt einen Versandauftrag zum Angebot an. Sobald Status 2, die BMS-Nummer
 und eine PDF vorliegen, erscheint die Datei im Angebotsdetail. Der gemeinsame
-Mail-Worker übernimmt exakt diese PDF als Anhang. Er benötigt die Freigabe
-`BMS_OPTION_OFFER_MAIL_ENABLED=true` und einen eingerichteten MailService.
-Bei bestehenden Angeboten ohne Versandauftrag entsteht keine nachträgliche
-Kundenmail.
+Mail-Worker sendet die Testmail ausschließlich an AKI und NSC. Sie enthält
+die unveränderte ERP-PDF und die Angebots-XML mit allen Positionen. Der Worker
+benötigt `BMS_OPTION_OFFER_MAIL_ENABLED=true` und einen eingerichteten MailService.
+Die Testmail erzeugt keinen Eintrag in der Kundenhistorie. Bestehende Angebote
+ohne Versandauftrag bleiben ohne Mail.
 
 ## Prüfungen
 
