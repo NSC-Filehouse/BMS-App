@@ -49,6 +49,11 @@ const query = async (sql, params = []) => ({
 });
 const owner = (req) => req.userIdentity.shortCode;
 const offerOwnerFilter = (req) => hasExecutiveAccess(req.userIdentity) ? null : owner(req);
+const canViewAllOffers = ({ userIdentity }) => hasExecutiveAccess(userIdentity) || (
+  userIdentity?.active === true && userIdentity.shortCode?.trim().toUpperCase() === 'AKI'
+  && Number(userIdentity.personNumber) === 1 && userIdentity.userId?.trim().toLowerCase() === 'kimaz'
+);
+const offerReadOwnerFilter = (req) => canViewAllOffers(req) ? null : owner(req);
 function notFound() {
   throw createHttpError(404, 'Angebot nicht gefunden.', {
     code: 'OFFER_NOT_FOUND',
@@ -244,7 +249,9 @@ router.get(
     const { page, pageSize } = pageParams(req);
     const params = [req.database.firmaId];
     const clauses = ['h.tag_company_id=?'];
-    const requestedOwner = offerOwnerFilter(req);
+    const canViewAll = canViewAllOffers(req);
+    const ownerScope = canViewAll && req.query.ownerScope !== 'mine' ? 'all' : 'mine';
+    const requestedOwner = ownerScope === 'mine' ? owner(req) : null;
     if (requestedOwner !== null) {
       clauses.push('h.tag_created_by=?');
       params.push(requestedOwner);
@@ -317,7 +324,7 @@ router.get(
         r.currency = 'EUR';
       });
     }
-    sendEnvelope(res, { data: rows, meta: { page, pageSize, total: count } });
+    sendEnvelope(res, { data: rows, meta: { page, pageSize, total: count, canViewAll, ownerScope } });
   }),
 );
 router.get(
@@ -337,7 +344,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const id = offerId(req);
     if (!await offerMailSchemaReady()) notFound();
-    const ownerFilter = offerOwnerFilter(req);
+    const ownerFilter = offerReadOwnerFilter(req);
     const [row] = (await query(`
       SELECT h.tag_offer_pdf AS pdf, h.tag_bms_offer_number AS number
       FROM ${H} h WHERE h.tag_id=? AND h.tag_company_id=?
@@ -360,9 +367,10 @@ router.get(
       query,
       offerId(req),
       req.database.firmaId,
-      offerOwnerFilter(req),
+      offerReadOwnerFilter(req),
     );
     if (!row) notFound();
+    if (offerOwnerFilter(req) !== null && text(row.createdBy).toUpperCase() !== owner(req).toUpperCase()) row.readOnly = true;
     if (Number(row.status) !== 0 && await offerMailSchemaReady()) {
       const [state] = (await query(`
         SELECT CASE WHEN ${readyPdfSql} THEN 1 ELSE 0 END AS pdfReady,

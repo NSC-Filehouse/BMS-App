@@ -80,7 +80,7 @@ export default function TempOfferDetail() {
     };
   }, [id, waiting]);
   const state = { returnTo: location.state?.returnTo };
-  const editable = offer && [0, 3].includes(offer.status);
+  const editable = offer && !offer.readOnly && [0, 3].includes(offer.status);
   const date = (v) => (v ? new Date(v).toLocaleDateString('de-DE') : '-');
   async function downloadPdf() {
     setPdfLoading(true);
@@ -320,7 +320,7 @@ export default function TempOfferDetail() {
                   {t('offer_create_order')}
                 </Button>
               )}
-              <Button
+              {!offer.readOnly && <Button
                 variant="outlined"
                 onClick={() =>
                   navigate('/temp-offers/new', {
@@ -329,7 +329,7 @@ export default function TempOfferDetail() {
                 }
               >
                 {t('copy_label')}
-              </Button>
+              </Button>}
               {editable && !offer.generated && (
                 <Button
                   variant="outlined"

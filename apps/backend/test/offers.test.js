@@ -301,6 +301,8 @@ async function fixture(t) {
               ? { shortCode: 'OBA', personNumber: 276, userId: 'Bader', active: true }
               : who === 'MFR'
               ? { shortCode: 'MFR', personNumber: 130, userId: 'm.frank', active: true }
+              : who === 'AKI'
+              ? { shortCode: 'AKI', personNumber: 1, userId: 'kimaz', active: true }
               : {
                   shortCode: who,
                   personNumber: 999,
@@ -502,6 +504,20 @@ test('offer pilot gate and owner/tenant predicates protect list, details and eve
   assert.equal((await call('/temp-offers')).json.meta.total, 0);
   assert.equal((await call('/temp-offers/not-an-id', 'PUT', body)).status, 404);
 });
+test('AKI can switch between own and all offers in the active mandant', async (t) => {
+  const { call } = await fixture(t);
+  const mandant = { 'x-test-company': '3' };
+  const aki = { ...mandant, 'x-test-user': 'AKI' };
+  const body = input();
+  const { json } = await call('/temp-offers', 'POST', body, mandant);
+  const { id, version } = json.data;
+  assert.equal((await call('/temp-offers?ownerScope=all', 'GET', undefined, aki)).json.meta.total, 1);
+  assert.equal((await call('/temp-offers?ownerScope=mine', 'GET', undefined, aki)).json.meta.total, 0);
+  assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, aki)).json.data.readOnly, true);
+  assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, { ...aki, 'x-test-company': '2' })).status, 404);
+  assert.equal((await call(`/temp-offers/${id}`, 'PUT', { ...body, version }, aki)).status, 404);
+});
+
 test('executives can list and manage other authors’ offers within the active mandant', async (t) => {
   const { state, call } = await fixture(t);
   const mandant = { 'x-test-company': '3' };

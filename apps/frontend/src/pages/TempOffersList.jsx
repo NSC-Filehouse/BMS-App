@@ -37,6 +37,7 @@ export default function TempOffersList() {
   const [search, setSearch] = React.useState(initial.q || '');
   const [status, setStatus] = React.useState(initial.status || 'all');
   const [period, setPeriod] = React.useState(initial.period || 'all');
+  const [ownerScope, setOwnerScope] = React.useState(initial.ownerScope || 'all');
   const [page, setPage] = React.useState(initial.page || 1);
   const [customerId, setCustomerId] = React.useState(initial.customerId || '');
   const [result, setResult] = React.useState(null);
@@ -56,7 +57,7 @@ export default function TempOffersList() {
     setLoading(true);
     setError('');
     apiRequest(
-      `/temp-offers?${new URLSearchParams({ q, status, period, customerId, page: String(page), pageSize: '12' })}`,
+      `/temp-offers?${new URLSearchParams({ q, status, period, ownerScope, customerId, page: String(page), pageSize: '12' })}`,
     )
       .then((r) => {
         if (active) setResult(r);
@@ -70,9 +71,9 @@ export default function TempOffersList() {
     return () => {
       active = false;
     };
-  }, [q, status, period, page, customerId]);
+  }, [q, status, period, ownerScope, page, customerId]);
   const returnTo = createReturnTo(location, {
-    listState: { q, status, period, page, customerId },
+    listState: { q, status, period, ownerScope, page, customerId },
   });
   const pages = Math.max(1, Math.ceil((result?.meta?.total || 0) / 12));
   return (
@@ -235,6 +236,11 @@ export default function TempOffersList() {
               />
             </RadioGroup>
           </Box>
+          {result?.meta?.canViewAll && <RadioGroup row value={ownerScope} aria-label={en ? 'Offer owner' : 'Angebotsersteller'}
+            onChange={event => { setOwnerScope(event.target.value); setPage(1); }}>
+            <FormControlLabel value="mine" control={<Radio size="small" />} label={t('temp_orders_scope_mine')} />
+            <FormControlLabel value="all" control={<Radio size="small" />} label={en ? 'All' : 'Alle'} />
+          </RadioGroup>}
           {customerId && (
             <Typography variant="caption">
               {en ? 'Customer' : 'Kunde'} {customerId}{' '}
