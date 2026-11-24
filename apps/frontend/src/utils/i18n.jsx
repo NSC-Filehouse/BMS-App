@@ -38,7 +38,7 @@ const translations = {
     purchase_one_article_type: "Pro Bestellung ist nur eine Artikelart möglich.",
     purchase_missing_fields: "Pflichtfelder fehlen.",
     purchase_retry_save: "Speichern erneut prüfen",
-    purchase_save_draft: "Bestellentwurf speichern",
+    purchase_save_draft: "Bestellen",
     purchase_total_quantity: "Gesamtmenge",
     purchase_total_sum: "Gesamtsumme",
     purchase_select_supplier: "Anbieter: {name}. Bitte das passende BMS-Lieferantenkonto wählen.",
