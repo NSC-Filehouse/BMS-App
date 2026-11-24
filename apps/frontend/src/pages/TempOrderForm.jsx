@@ -2370,7 +2370,6 @@ export default function TempOrderForm() {
                                     flex: 1,
                                     minWidth: 0,
                                     '& .MuiInputBase-input': {
-                                      fontSize: '0.875rem',
                                       fontWeight: 700,
                                     },
                                   }}

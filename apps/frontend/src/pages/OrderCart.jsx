@@ -318,9 +318,6 @@ export default function OrderCart() {
                           sx={{
                             flex: 1,
                             minWidth: 0,
-                            '& .MuiInputBase-input': {
-                              fontSize: '1rem',
-                            },
                           }}
                         />
                         <IconButton

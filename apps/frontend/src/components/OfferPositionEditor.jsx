@@ -200,7 +200,6 @@ export default function OfferPositionEditor({
                     flex: 1,
                     minWidth: 0,
                     '& .MuiInputBase-input': {
-                      fontSize: '.875rem',
                       fontWeight: 700,
                     },
                   }}
