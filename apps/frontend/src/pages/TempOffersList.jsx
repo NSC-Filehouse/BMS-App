@@ -207,7 +207,7 @@ export default function TempOffersList() {
             <Typography variant="caption" color="text.secondary">
               {t('temp_orders_period_label')}
             </Typography>
-            <RadioGroup
+            <RadioGroup className="filter-radio-group"
               row
               value={period}
               aria-label={t('temp_orders_period_label')}
@@ -236,7 +236,7 @@ export default function TempOffersList() {
               />
             </RadioGroup>
           </Box>
-          {result?.meta?.canViewAll && <RadioGroup row value={ownerScope} aria-label={en ? 'Offer owner' : 'Angebotsersteller'}
+          {result?.meta?.canViewAll && <RadioGroup className="filter-radio-group" row value={ownerScope} aria-label={en ? 'Offer owner' : 'Angebotsersteller'}
             onChange={event => { setOwnerScope(event.target.value); setPage(1); }}>
             <FormControlLabel value="mine" control={<Radio size="small" />} label={t('temp_orders_scope_mine')} />
             <FormControlLabel value="all" control={<Radio size="small" />} label={en ? 'All' : 'Alle'} />

@@ -87,7 +87,7 @@ export default function TempPurchaseOrdersList() {
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary">{t('temp_orders_period_label')}</Typography>
-        <RadioGroup row value={createdPeriod} aria-label={t('temp_orders_period_label')} onChange={(e) => { setCreatedPeriod(e.target.value); void load({ page: 1, createdPeriod: e.target.value }); }}>
+        <RadioGroup className="filter-radio-group" row value={createdPeriod} aria-label={t('temp_orders_period_label')} onChange={(e) => { setCreatedPeriod(e.target.value); void load({ page: 1, createdPeriod: e.target.value }); }}>
           <FormControlLabel value="today" control={<Radio size="small" />} label={t('temp_orders_period_today')} sx={{ mr: 1 }} /><FormControlLabel value="week" control={<Radio size="small" />} label={t('temp_orders_period_week')} sx={{ mr: 1 }} /><FormControlLabel value="all" control={<Radio size="small" />} label={t('temp_orders_period_all')} sx={{ mr: 0 }} />
         </RadioGroup>
       </Box>

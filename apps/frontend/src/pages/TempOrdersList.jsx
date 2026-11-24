@@ -294,7 +294,7 @@ export default function TempOrdersList() {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Typography variant="caption" color="text.secondary">{t('temp_orders_period_label')}</Typography>
-            <RadioGroup
+            <RadioGroup className="filter-radio-group"
               row
               value={createdPeriod}
               aria-label={t('temp_orders_period_label')}

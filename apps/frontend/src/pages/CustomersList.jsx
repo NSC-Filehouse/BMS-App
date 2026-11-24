@@ -637,7 +637,7 @@ export default function CustomersList({ supplierOnly = false }) {
               ),
             }}
           />
-          <RadioGroup
+          <RadioGroup className="filter-radio-group"
             row
             value={searchField}
             onChange={(e) => {
@@ -666,7 +666,6 @@ export default function CustomersList({ supplierOnly = false }) {
                 minWidth: 0,
               },
               '& .MuiFormControlLabel-label': {
-                fontSize: '0.72rem',
                 letterSpacing: '-0.01em',
               },
             }}
@@ -729,7 +728,6 @@ export default function CustomersList({ supplierOnly = false }) {
                   m: 0,
                   justifySelf: 'start',
                   minWidth: 0,
-                  '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />
               <FormControlLabel
@@ -745,7 +743,6 @@ export default function CustomersList({ supplierOnly = false }) {
                   m: 0,
                   justifySelf: 'start',
                   minWidth: 0,
-                  '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
                 }}
               />
             </Box>
@@ -766,7 +763,6 @@ export default function CustomersList({ supplierOnly = false }) {
               sx={{
                 m: 0,
                 width: '100%',
-                '& .MuiFormControlLabel-label': { fontSize: '0.8rem' },
               }}
             />
           )}

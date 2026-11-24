@@ -57,11 +57,11 @@ export default function OptionsList() {
         placeholder={t('options_search')} sx={{ mb: 0.25 }}
         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
       />
-      <RadioGroup
+      <RadioGroup className="filter-radio-group"
         row aria-label={t('options_list_view')} value={listView}
         onChange={(event) => setListView(event.target.value)}
         sx={{ mb: 0.5, columnGap: 1.5, '& .MuiFormControlLabel-root': { m: 0 },
-          '& .MuiRadio-root': { p: 0.5 }, '& .MuiFormControlLabel-label': { typography: 'caption' } }}
+          '& .MuiRadio-root': { p: 0.5 } }}
       >
         <FormControlLabel value="grouped" control={<Radio size="small" />} label={t('options_list_grouped')} />
         <FormControlLabel value="received" control={<Radio size="small" />} label={t('options_list_received')} />

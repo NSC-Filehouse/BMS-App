@@ -8,9 +8,24 @@ import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import { APP_BASE_PATH } from './config.js';
 
 const fieldValueFontSize = '13px';
+const filterLabelFontSize = '12px';
 
 const theme = createTheme({
   components: {
+    MuiFormControlLabel: {
+      styleOverrides: {
+        root: {
+          '.filter-radio-group & > .MuiFormControlLabel-label, &:has(> .MuiSwitch-root) > .MuiFormControlLabel-label': {
+            fontSize: filterLabelFontSize
+          }
+        }
+      }
+    },
+    MuiToggleButton: {
+      styleOverrides: {
+        root: { fontSize: filterLabelFontSize }
+      }
+    },
     MuiInputBase: {
       styleOverrides: {
         input: { '&:is(input, textarea)': { fontSize: fieldValueFontSize } }

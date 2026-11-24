@@ -211,7 +211,7 @@ function DocumentScopeControls({
   includeOpen = false,
 }) {
   return (
-    <RadioGroup
+    <RadioGroup className="filter-radio-group"
       row
       value={scope}
       onChange={onScopeChange}
@@ -222,9 +222,6 @@ function DocumentScopeControls({
         '& .MuiFormControlLabel-root': {
           margin: 0,
           minWidth: 0,
-        },
-        '& .MuiFormControlLabel-label': {
-          fontSize: '0.72rem',
         },
       }}
     >
