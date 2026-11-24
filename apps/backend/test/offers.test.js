@@ -500,8 +500,9 @@ test('offer pilot gate and owner/tenant predicates protect list, details and eve
     assert.equal(foreign.status, 404);
   }
   state.headers[0].tag_created_by = 'AKI';
-  assert.equal((await call(`/temp-offers/${id}`)).status, 404);
-  assert.equal((await call('/temp-offers')).json.meta.total, 0);
+  const mfr = { 'x-test-user': 'MFR' };
+  assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, mfr)).status, 404);
+  assert.equal((await call('/temp-offers?ownerScope=all', 'GET', undefined, mfr)).json.meta.total, 0);
   assert.equal((await call('/temp-offers/not-an-id', 'PUT', body)).status, 404);
 });
 test('AKI can switch between own and all offers in the active mandant', async (t) => {
@@ -516,6 +517,17 @@ test('AKI can switch between own and all offers in the active mandant', async (t
   assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, aki)).json.data.readOnly, true);
   assert.equal((await call(`/temp-offers/${id}`, 'GET', undefined, { ...aki, 'x-test-company': '2' })).status, 404);
   assert.equal((await call(`/temp-offers/${id}`, 'PUT', { ...body, version }, aki)).status, 404);
+});
+
+test('NSC can view an AKI offer and switch back to own offers', async (t) => {
+  const { call } = await fixture(t);
+  const { json } = await call('/temp-offers', 'POST', input(), { 'x-test-user': 'AKI' });
+  const { id } = json.data;
+  assert.equal((await call('/temp-offers')).json.meta.total, 1);
+  assert.equal((await call('/temp-offers?ownerScope=mine')).json.meta.total, 0);
+  const detail = await call(`/temp-offers/${id}`);
+  assert.equal(detail.json.data.createdBy, 'AKI');
+  assert.equal(detail.json.data.readOnly, true);
 });
 
 test('executives can list and manage other authors’ offers within the active mandant', async (t) => {
