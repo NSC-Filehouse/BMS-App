@@ -173,7 +173,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   const [busy, setBusy] = React.useState(false);
   const [drafts, setDrafts] = React.useState({});
   const costPrice = !position.priceNeedsReview && Number.isFinite(position.pricePerTonne) ? position.pricePerTonne : null;
-  const maxQuantity = Number.isFinite(position.remainingKg) ? position.remainingKg : null;
+  const maxQuantity = stock && Number.isFinite(position.remainingKg) ? position.remainingKg : null;
   const defaultTerm = findOptionOfferIncoterm(incoterms);
   const values = customers.map(customer => offerValues(customer.id, {
     quantityKg: stock && maxQuantity > 0 ? String(Math.min(Number(defaultQuantityKg), maxQuantity)) : undefined,

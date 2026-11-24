@@ -42,7 +42,7 @@ require.cache[require.resolve('../src/db/customer-access')] = { exports: {
   buildCustomerScopeFilter: () => ({ whereSql: '', params: [] }),
 } };
 const { loadOptionOfferCustomers, loadCustomerOfferAudience } = require('../src/options/customer-offers');
-const { buildOfferSubmissions } = require('../src/options/offer-submission');
+const { buildOfferSubmissions, buildCustomerOfferSubmissions } = require('../src/options/offer-submission');
 
 const owner = { sourceMandantId: 3 };
 const sameDatabase = { firmaId: 3 };
@@ -214,7 +214,7 @@ test('a shared option uses an unambiguous compatible article from the active cat
   assert.equal(calls.findLast(call => call.sql.includes('dbo.tblRechnung')).database, foreignDatabase);
 });
 
-test('server validates the actual buyer, contact, remaining quantity and FCA location before preparing mail', async () => {
+test('option offers validate the buyer, contact and FCA location independently of ordered quantities', async () => {
   accepted = [];
   const draft = { customerId: 'B', contactId: 71, incotermId: 29, quantityKg: 24750, salePrice: 1320, pickup: 'Hamburg' };
   const userIdentity = { email: 'ad@example.invalid', fullName: 'Vertrieb', shortCode: 'ADM' };
@@ -225,7 +225,13 @@ test('server validates the actual buyer, contact, remaining quantity and FCA loc
   assert.equal(offer.incotermText, 'FCA / Frei Frachtführer');
   assert.equal(offer.incotermCode, 'FCA');
   assert.equal(offer.quantityKg, 24750);
-  await assert.rejects(() => buildOfferSubmissions(req, owner, { ...position, remainingKg: 20000 }), /Angebotsmenge/);
+  for (const remainingKg of [20000, 0]) {
+    const [unrestricted] = await buildOfferSubmissions(req, owner, { ...position, remainingKg });
+    assert.equal(unrestricted.quantityKg, 24750);
+    assert.equal(unrestricted.availableQuantityKg, undefined);
+  }
+  await assert.rejects(() => buildCustomerOfferSubmissions(req, { stockPositionKey: 'stock', remainingKg: 20000 },
+    () => loadCustomerOfferAudience(sameDatabase, userIdentity, catalogArticle, 'stock')), /Angebotsmenge/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, pickup: '' }] } }, owner, position), /Abholort/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, customerId: 'X' }] } }, owner, position), /nicht verfügbar/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, contactId: 72 }] } }, owner, position), /Ansprechpartner/);

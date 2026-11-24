@@ -54,7 +54,7 @@ async function buildCustomerOfferSubmissions(req, position, loadAudience) {
   ]);
   const contactsById = new Map(contacts.map(contact => [`${customerKey(contact.customerId)}:${contact.id}`, contact]));
   const termsById = new Map(terms.map(term => [Number(term.id), text(term.text)]));
-  const availableQuantityKg = position.remainingKg;
+  const availableQuantityKg = position.stockPositionKey ? position.remainingKg : undefined;
   return rows.map((row, index) => {
     const customer = buyers.get(customerIds[index]);
     const incotermId = termIds[index];
