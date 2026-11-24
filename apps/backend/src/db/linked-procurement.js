@@ -48,6 +48,13 @@ function procurementStatus(lines) {
   return 'ready';
 }
 
+const linksFromSql = `
+  FROM ${positions} p
+  JOIN ${purchasePositions} pp ON pp.tbp_id=p.tap_purchase_position_id AND pp.tbp_order_position_id=p.tap_id
+  JOIN ${purchases} b WITH (HOLDLOCK) ON b.tb_id=pp.tbp_tb_id
+  JOIN ${orders} o ON o.ta_id=p.tap_ta_id AND o.ta_company_id=b.tb_company_id
+`;
+
 const linkRowsSql = `
   SELECT p.tap_id AS id, p.tap_be_number AS beNumber, p.tap_warehouse AS warehouseId,
          p.tap_Artikelindex AS articleIndex, p.tap_amount_in_kg AS amountInKg,
@@ -55,12 +62,30 @@ const linkRowsSql = `
          pp.tbp_article_index AS purchaseArticleIndex, b.tb_id AS purchaseId,
          b.tb_status AS purchaseStatus, b.tb_bestellindex AS bmsPurchaseIndex, b.tb_supplier_id AS supplierId,
          (SELECT COUNT(*) FROM ${purchasePositions} sibling WHERE sibling.tbp_tb_id=b.tb_id) AS purchaseLineCount
-  FROM ${positions} p
-  JOIN ${purchasePositions} pp ON pp.tbp_id=p.tap_purchase_position_id AND pp.tbp_order_position_id=p.tap_id
-  JOIN ${purchases} b WITH (HOLDLOCK) ON b.tb_id=pp.tbp_tb_id
-  JOIN ${orders} o ON o.ta_id=p.tap_ta_id AND o.ta_company_id=b.tb_company_id
+  ${linksFromSql}
   WHERE p.tap_ta_id=? AND o.ta_company_id=?
 `;
+
+async function loadOrderProcurementStatuses(orderIds, companyId) {
+  if (!orderIds.length) return new Map();
+  const rows = await run(`
+    SELECT p.tap_ta_id AS orderId, p.tap_be_number AS beNumber, p.tap_warehouse AS warehouseId,
+           b.tb_status AS purchaseStatus
+    ${linksFromSql}
+    WHERE p.tap_ta_id IN (${orderIds.map(() => '?').join(',')}) AND o.ta_company_id=?
+  `, [...orderIds, companyId]);
+  const grouped = new Map();
+  for (const row of rows) {
+    const id = Number(row.orderId);
+    if (!grouped.has(id)) grouped.set(id, []);
+    grouped.get(id).push(row);
+  }
+  return new Map([...grouped].map(([id, lines]) => [id, procurementStatus(lines)]));
+}
+
+async function loadOrderProcurementLines(query, orderId, companyId) {
+  return (await query(linkRowsSql, [orderId, companyId])).rows;
+}
 
 async function loadOrderProcurement(orderId, companyId) {
   const lines = await run(linkRowsSql, [orderId, companyId]);
@@ -121,11 +146,11 @@ async function reconcileOrder(database, orderId, userShortCode) {
   const companyId = Number(database.firmaId);
   return withTempOrderAvailabilityLock(companyId, async ({ query }) => {
     const [order] = (await query(`
-      SELECT ta_packaging_type AS packaging FROM ${orders} WITH (UPDLOCK,HOLDLOCK)
-      WHERE ta_id=? AND ta_company_id=? AND ta_CreatedBy=? AND ta_Status IN (0,3)
+      SELECT ta_packaging_type AS packaging,ta_Status AS orderStatus FROM ${orders} WITH (UPDLOCK,HOLDLOCK)
+      WHERE ta_id=? AND ta_company_id=? AND ta_CreatedBy=? AND ta_Status IN (0,1,3)
     `, [orderId, companyId, userShortCode])).rows;
     if (!order) return null;
-    const linked = (await query(linkRowsSql, [orderId, companyId])).rows;
+    const linked = await loadOrderProcurementLines(query, orderId, companyId);
     const stockRows = (await query(`
       SELECT tap_id AS id,tap_be_number AS beNumber,tap_warehouse AS warehouseId,
         tap_amount_in_kg AS amountInKg,tap_reservation_in_kg AS reservationInKg
@@ -159,7 +184,7 @@ async function reconcileOrder(database, orderId, userShortCode) {
         break;
       }
     }
-    if (procurementStatus(linked) !== 'ready') return null;
+    if (Number(order.orderStatus) === 1 || procurementStatus(linked) !== 'ready') return null;
     const currentStock = await loadCurrentOrderPositions(database, stockRows, userShortCode, { allowAnyReservation: true });
     try {
       await assertTempOrderPositionsAvailable({ companyId, excludeOrderId: orderId, query, positions: currentStock });
@@ -173,14 +198,6 @@ async function reconcileOrder(database, orderId, userShortCode) {
       WHERE ta_id=? AND ta_procurement_notified_at IS NULL
     `, [orderId])).rows[0] || null;
   });
-}
-
-async function assertLinkedOrderReady(query, orderId, companyId) {
-  const links = (await query(linkRowsSql, [orderId, companyId])).rows;
-  const status = procurementStatus(links);
-  if (status && status !== 'ready') {
-    throw createHttpError(409, 'Die verknüpfte Bestellung ist noch nicht auf der VL verfügbar.', { code: 'PROCUREMENT_PENDING' });
-  }
 }
 
 async function notifyReady(identity, companyId, orderId) {
@@ -209,12 +226,14 @@ async function runLinkedProcurement(finalizePurchase) {
   try {
     if (!await procurementSchemaReady()) return;
     const pending = await run(`
-      SELECT o.ta_id AS id,o.ta_company_id AS companyId,o.ta_CreatedBy AS owner
+      SELECT o.ta_id AS id,o.ta_company_id AS companyId,o.ta_CreatedBy AS owner,o.ta_Status AS orderStatus
       FROM ${orders} o
-      WHERE o.ta_Status IN (0,3) AND o.ta_procurement_notified_at IS NULL
+      WHERE o.ta_Status IN (0,1,3) AND o.ta_procurement_notified_at IS NULL
         AND EXISTS (SELECT 1 FROM ${positions} p JOIN ${purchasePositions} pp ON pp.tbp_id=p.tap_purchase_position_id
           JOIN ${purchases} b ON b.tb_id=pp.tbp_tb_id AND b.tb_company_id=o.ta_company_id
-          WHERE p.tap_ta_id=o.ta_id AND b.tb_status IN (0,2))
+          WHERE p.tap_ta_id=o.ta_id AND (
+            (o.ta_Status IN (0,3) AND b.tb_status IN (0,2))
+            OR (o.ta_Status=1 AND b.tb_status=2 AND NULLIF(p.tap_be_number,'') IS NULL)))
       ORDER BY o.ta_id
     `, []);
     for (const row of pending) {
@@ -223,7 +242,7 @@ async function runLinkedProcurement(finalizePurchase) {
         if (!pilotFeaturesForIdentity(identity).linkedProcurement) continue;
         const database = await getDatabaseConnectionForCompanyId(row.companyId);
         if (!database) continue;
-        if (finalizePurchase) {
+        if (finalizePurchase && Number(row.orderStatus) !== 1) {
           const current = await loadOrderProcurement(row.id, row.companyId);
           for (const id of current?.draftPurchaseIds || []) {
             try {
@@ -262,5 +281,6 @@ function startLinkedProcurementWorker(finalizePurchase) {
 
 module.exports = {
   assertProcurementAccess, procurementSchemaReady, loadOrderProcurement, loadPurchaseOrderLinks,
-  assertLinkedOrderReady, runLinkedProcurement, startLinkedProcurementWorker, procurementStatus, selectBmsPosition,
+  loadOrderProcurementLines, loadOrderProcurementStatuses,
+  runLinkedProcurement, startLinkedProcurementWorker, procurementStatus, selectBmsPosition,
 };

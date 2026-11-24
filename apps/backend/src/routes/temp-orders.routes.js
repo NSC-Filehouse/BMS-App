@@ -40,7 +40,8 @@ const {
   withTempOrderAvailabilityLock,
 } = require('../db/temp-order-availability');
 const { preparePurchaseDraft, savePurchaseDraft, finalizePurchase } = require('./temp-purchase-orders.routes');
-const { assertProcurementAccess, procurementSchemaReady, loadOrderProcurement, assertLinkedOrderReady } = require('../db/linked-procurement');
+const { assertProcurementAccess, procurementSchemaReady, loadOrderProcurement,
+  loadOrderProcurementLines, loadOrderProcurementStatuses } = require('../db/linked-procurement');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
 const PROCUREMENT_PURCHASE_POSITIONS = appTableSql('tempPurchaseOrderPosition');
 const PROCUREMENT_PURCHASES = appTableSql('tempPurchaseOrder');
@@ -755,8 +756,7 @@ function validateFinalOrder(order, positions) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
   const invalidPosition = positions.find((position) => (
-    !asText(position?.beNumber)
-    || !asText(position?.warehouse)
+    (!position?.pendingPurchaseId && (!asText(position?.beNumber) || !asText(position?.warehouse)))
     || !position?.deliveryDate
     || Number(position?.amountInKg) <= 0
     || asSalePrice(position?.price) === null
@@ -1446,7 +1446,12 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     offset,
     pageSize,
   ]);
-  const summariesByOrderId = await loadPositionSummariesForOrders((rows || []).map((x) => x.id));
+  const orderIds = (rows || []).map((row) => row.id);
+  const [summariesByOrderId, procurementByOrderId] = await Promise.all([
+    loadPositionSummariesForOrders(orderIds),
+    orderIds.length && pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await procurementSchemaReady()
+      ? loadOrderProcurementStatuses(orderIds, companyId) : new Map(),
+  ]);
 
   const data = (rows || []).map((row) => ({
     id: row.id,
@@ -1463,6 +1468,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     orderStatus: normalizeStoredTempOrderStatus(row.orderStatus, row.completed),
     editable: isTempOrderEditableStatus(row.orderStatus, row.completed),
     isConfirmed: Boolean(row.isConfirmed),
+    procurementStatus: procurementByOrderId.get(Number(row.id)) || null,
     positions: summariesByOrderId.get(Number(row.id)) || [],
   }));
 
@@ -2427,6 +2433,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
   const resolvedMissingPackaging = new Map();
   for (const position of (missingPackagingRows || [])) {
     const beNumber = asText(position.beNumber);
+    if (!beNumber) continue;
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
     const originalPackagingTypeInfo = await loadOptionalOriginalPackagingTypeInfo(sourceDatabase, beNumber);
     if (originalPackagingTypeInfo.packagingType) {
@@ -2521,8 +2528,18 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         WHERE [tap_ta_id] = ?
         ORDER BY [tap_line_no] ASC
       `, [id]);
-      const positions = positionsResult.rows || [];
-      if (checkProcurement) await assertLinkedOrderReady(query, id, companyId);
+      const purchaseLinks = checkProcurement ? await loadOrderProcurementLines(query, id, companyId) : [];
+      const purchaseByPositionId = new Map(purchaseLinks.map((link) => [Number(link.id), link]));
+      const positions = (positionsResult.rows || []).map((position) => {
+        const link = purchaseByPositionId.get(Number(position.id));
+        const articleIndex = asText(position.articleIndex).toLowerCase();
+        if (!asText(position.beNumber) && !asText(position.warehouse)
+          && link?.purchaseId && articleIndex && articleIndex === asText(link.purchaseArticleIndex).toLowerCase()) {
+          return { ...position, pendingPurchaseId: Number(link.purchaseId) };
+        }
+        return position;
+      });
+      const stockedPositions = positions.filter((position) => !position.pendingPurchaseId);
       const mappedOrder = mapTempOrderRow(orderRow);
       const attachmentResult = await query(`
         SELECT
@@ -2570,7 +2587,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         }
       }
       if (isFcaIncoterm(mappedOrder.deliveryType)) {
-        const summary = await loadTempOrderPickupAddresses(req, positions);
+        const summary = await loadTempOrderPickupAddresses(req, stockedPositions);
         assertSinglePickupAddress(summary);
         if (mappedOrder.deliveryAddressId !== null || !mappedOrder.deliveryAddressChanged) {
           throw createHttpError(409, 'Bitte den FCA-Auftrag bearbeiten und den Ladeort prüfen und speichern.', {
@@ -2582,7 +2599,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       await assertTempOrderPositionsAvailable({
         companyId,
         excludeOrderId: id,
-        positions: await loadCurrentOrderPositions(req.database, positions, orderRow.ta_CreatedBy, { allowAnyReservation: true }),
+        positions: await loadCurrentOrderPositions(req.database, stockedPositions, orderRow.ta_CreatedBy, { allowAnyReservation: true }),
         query,
       });
 

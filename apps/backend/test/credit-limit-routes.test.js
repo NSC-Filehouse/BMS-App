@@ -15,6 +15,7 @@ let plannedOrders;
 let creditSqlFailure;
 let creditProcessingFailure;
 let activeTransaction;
+let purchaseLinks;
 const transactions = [];
 const pickupQueries = [];
 const position = {
@@ -38,8 +39,12 @@ function reset(customerId = '14104', interCompany = true, companyId = 3, orderSt
   creditSqlFailure = '';
   creditProcessingFailure = false;
   activeTransaction = null;
+  purchaseLinks = [];
   transactions.length = 0;
   position.amountInKg = 100000;
+  position.beNumber = '3-02-26-001-01';
+  position.warehouse = 'L1';
+  position.articleIndex = 'A1';
   position.originalPackagingType = 'Sackware';
   position.price = 2000;
   position.originalPackagingTypeId = 1;
@@ -61,6 +66,8 @@ async function sqlQuery(database, sql, params = []) {
     throw new Error(`Invalid object name ${creditSqlFailure}`);
   }
   if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
+  if (sql.includes('ta_procurement_notified_at') && sql.includes('COL_LENGTH')) return [{ ready: 1 }];
+  if (sql.includes('purchaseLineCount')) return purchaseLinks;
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) {
     return (params[1] === 'tbl_Temp_Auftrag' ? Object.keys(order) : positionColumns).map((col) => ({ col }));
   }
@@ -244,6 +251,30 @@ test('finalization rejects missing, negative and invalid sales prices without qu
     assert.equal(calls.some(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]')), false);
     assert.equal(orderMailCalls.length, 0);
   }
+});
+
+test('a linked order can be sent before VL assignment, with the purchase reference in the CS mail', async () => {
+  reset();
+  position.beNumber = '';
+  position.warehouse = '';
+  order.ta_delivery_type = 'FCA';
+  order.ta_delivery_address_id = null;
+  order.ta_delivery_address_changed = 1;
+  order.ta_delivery_address = 'Customer pickup site';
+  purchaseLinks = [{ id: position.id, purchaseId: 22, purchaseStatus: 0, purchaseArticleIndex: position.articleIndex }];
+  const response = await request('post', '/temp-orders/:id/finalize');
+  assert.equal(response.data.orderStatus, 1);
+  assert.equal(pickupQueries.length, 0);
+  const insert = calls.find(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]'));
+  assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('BE-/VL-Zuordnung offen, verknüpfte App-Bestellung #22')));
+});
+
+test('finalization still requires a VL source for positions without a matching purchase link', async () => {
+  reset();
+  position.beNumber = '';
+  position.warehouse = '';
+  await assert.rejects(request('post', '/temp-orders/:id/finalize'), error => error.details.code === 'INVALID_TEMP_ORDER_PAYLOAD');
+  assert.deepEqual(orderMailCalls, []);
 });
 
 test('finalization sends the selected order packaging even without an original packaging value', async () => {

@@ -223,6 +223,9 @@ function formatOrderMailBody({
       line('WPZ-ID', position?.wpzId),
       line('WPZ-Original verwenden', yesNo(position?.wpzOriginal)),
       line('WPZ-Bemerkung', position?.wpzComment),
+      ...(position?.pendingPurchaseId ? [
+        line('Beschaffung', `BE-/VL-Zuordnung offen, verknüpfte App-Bestellung #${position.pendingPurchaseId}`),
+      ] : []),
     );
   });
 

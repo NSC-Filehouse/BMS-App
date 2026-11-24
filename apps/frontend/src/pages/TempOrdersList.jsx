@@ -388,15 +388,19 @@ export default function TempOrdersList() {
                       </Typography>
                     )}
                     {!row.orderIndex && (
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: getTempOrderStatusColor(row.orderStatus, row.completed),
-                          fontWeight: 600,
-                        }}
-                      >
-                        {getTempOrderStatusLabel(t, row.orderStatus, row.completed)}
-                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 1 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: getTempOrderStatusColor(row.orderStatus, row.completed), fontWeight: 600 }}
+                        >
+                          {getTempOrderStatusLabel(t, row.orderStatus, row.completed)}
+                        </Typography>
+                        {row.procurementStatus === 'purchase' && (
+                          <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 700 }}>
+                            {t('procurement_status_purchase')}
+                          </Typography>
+                        )}
+                      </Box>
                     )}
                     {(Array.isArray(row.positions) && row.positions.length > 0
                       ? row.positions

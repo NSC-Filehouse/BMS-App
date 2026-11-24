@@ -39,6 +39,7 @@ test('the background check binds the exact returned lot and sends a single ready
   let stockKg = 8000;
   let notified = false;
   let pushes = 0;
+  let orderStatus = 0;
   const identity = { active: true, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', email: 'nsc@example.test' };
   const database = { firmaId: 3 };
   const dependencies = {
@@ -53,7 +54,8 @@ test('the background check binds the exact returned lot and sends a single ready
       async runSQLQuerySqlServer(_database, sql) {
         if (sql.includes('COL_LENGTH')) return [{ ready: 1 }];
         if (sql.includes('SELECT o.ta_id AS id')) {
-          return purchase.purchaseStatus === 2 && !notified ? [{ id: 10, companyId: 3, owner: 'NSC' }] : [];
+          assert.match(sql, /o.ta_Status=1 AND b.tb_status=2/);
+          return purchase.purchaseStatus === 2 && !notified ? [{ id: 10, companyId: 3, owner: 'NSC', orderStatus }] : [];
         }
         throw new Error('Unexpected SQL outside transaction');
       },
@@ -67,7 +69,10 @@ test('the background check binds the exact returned lot and sends a single ready
       },
       withTempOrderAvailabilityLock: async (_company, task) => task({
         async query(sql, params) {
-          if (sql.includes('SELECT ta_packaging_type')) return { rows: [{ packaging: 'Sackware' }] };
+          if (sql.includes('SELECT ta_packaging_type')) {
+            assert.match(sql, /ta_Status IN \(0,1,3\)/);
+            return { rows: [{ packaging: 'Sackware', orderStatus }] };
+          }
           if (sql.includes('purchaseLineCount')) return { rows: [{ ...purchase }] };
           if (sql.includes('SELECT tap_id AS id')) return { rows: purchase.beNumber ? [{ ...purchase }] : [] };
           if (sql.includes('SET tap_be_number=')) {
@@ -107,5 +112,13 @@ test('the background check binds the exact returned lot and sends a single ready
   assert.equal(purchase.warehouseId, 'L1');
   assert.equal(pushes, 1);
   await fixture.exports.runLinkedProcurement();
+  assert.equal(pushes, 1);
+  orderStatus = 1;
+  notified = false;
+  purchase.beNumber = '';
+  purchase.warehouseId = '';
+  await fixture.exports.runLinkedProcurement(async () => assert.fail('Do not send a purchase for an already submitted order'));
+  assert.equal(purchase.beNumber, 'BE-2');
+  assert.equal(purchase.warehouseId, 'L1');
   assert.equal(pushes, 1);
 });

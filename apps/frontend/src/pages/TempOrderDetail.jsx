@@ -378,7 +378,7 @@ export default function TempOrderDetail() {
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
             {procurement && <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1 }}>
-              {orderIsEditable && (
+              {(orderIsEditable || awaitingProcurement) && (
                 <Typography variant="body2" sx={procurement.status === 'purchase' ? { color: 'success.main', fontWeight: 700 } : undefined}>
                   {t('procurement_status_' + procurement.status)}
                 </Typography>
@@ -572,7 +572,7 @@ export default function TempOrderDetail() {
                   variant="contained"
                   sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
                   onClick={openFinalizeDialog}
-                  disabled={Boolean(awaitingProcurement) || !customerRequirementsComplete || checkingCreditLimit || finalizing}
+                  disabled={!customerRequirementsComplete || checkingCreditLimit || finalizing}
                 >
                   {checkingCreditLimit ? t('credit_limit_checking') : t('temp_order_send_to_bms')}
                 </Button>
