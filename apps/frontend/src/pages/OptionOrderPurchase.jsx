@@ -134,6 +134,7 @@ function PurchaseForOrder({ state }) {
     } catch (cause) {
       if ([400, 413, 422].includes(cause.status)) { pendingSave.current = null; setLocked(false); }
       setSaveError(cause.message || t('loading_error'));
+      return cause;
     } finally {
       setSaving(false);
     }

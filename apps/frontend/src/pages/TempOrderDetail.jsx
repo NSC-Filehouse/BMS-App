@@ -378,7 +378,11 @@ export default function TempOrderDetail() {
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
             {procurement && <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1 }}>
-              {orderIsEditable && <Typography variant="body2">{t('procurement_status_' + procurement.status)}</Typography>}
+              {orderIsEditable && (
+                <Typography variant="body2" sx={procurement.status === 'purchase' ? { color: 'success.main', fontWeight: 700 } : undefined}>
+                  {t('procurement_status_' + procurement.status)}
+                </Typography>
+              )}
               {procurement.purchaseIds.map((purchaseId) => <Button key={purchaseId} size="small"
                 onClick={() => navigate('/temp-purchase-orders/' + purchaseId, { state: { returnTo: createReturnTo(location) } })}>
                 {t('procurement_purchase_link', { id: purchaseId })}

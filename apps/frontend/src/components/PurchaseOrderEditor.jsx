@@ -35,6 +35,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const [paymentTextsError, setPaymentTextsError] = React.useState('');
   const selectPayment = !order.paymentConditionText || order.paymentConditionChanged === true;
   const [attempted, setAttempted] = React.useState(false);
+  const [rejectedDeliveryDate, setRejectedDeliveryDate] = React.useState(null);
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
   const manualLocation=order.loadingLocationSource==='manual';
@@ -147,14 +148,18 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     if (order.positions.length === 1 && onDelete) { void onDelete(); return; }
     update((previous) => ({ ...previous, positions: previous.positions.filter((p) => p.lineId !== lineId) }));
   };
-  const submit = () => {
-    if (locked) { onSave(order); return; }
+  const submit = async () => {
     setAttempted(true);
-    if (missing.length) {
+    if (!locked && missing.length) {
       requestAnimationFrame(() => editorRef.current?.querySelector('[aria-invalid="true"]')?.focus());
       return;
     }
-    onSave(order);
+    setRejectedDeliveryDate(null);
+    const saveFailure = await onSave(order);
+    const date = saveFailure?.payload?.error?.details?.date;
+    if (saveFailure?.code === 'PURCHASE_DELIVERY_DATE_NON_WORKING' && date) {
+      setRejectedDeliveryDate({ date, loadingLocationText: order.loadingLocationText });
+    }
   };
   const copy = (lineId) => update((previous) => {
     const positions = [...previous.positions];
@@ -252,6 +257,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     {order.positions.map((p, index) => {
       const last = history[p.articleIndex] || p;
       const errors = fieldErrors.positions[index];
+      const deliveryDate = String(p.requestedDeliveryDate || '').slice(0, 10);
+      const isRejectedDate = rejectedDeliveryDate?.date === deliveryDate
+        && rejectedDeliveryDate.loadingLocationText === order.loadingLocationText;
       return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && fieldErrors.articleType ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{p.article}</Typography>
@@ -267,7 +275,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
             <TextField fullWidth label={t('purchase_price_input')} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>
-            <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={attempted && errors.requestedDeliveryDate} value={String(p.requestedDeliveryDate || '').slice(0, 10)} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
+            <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={isRejectedDate || (attempted && errors.requestedDeliveryDate)} value={deliveryDate} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
         </Box>
         <TextField label={t('purchase_reserved_for')} size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
         <TextField label={t('purchase_position_note')} size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />

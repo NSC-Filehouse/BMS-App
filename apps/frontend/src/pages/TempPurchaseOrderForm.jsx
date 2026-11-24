@@ -41,7 +41,7 @@ export default function TempPurchaseOrderForm() {
         returnTo: location.state?.afterSaveReturnTo || location.state?.returnTo,
         shoppingReturnTo: location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId),
       } });
-    } catch (e) { setError(e.message); } finally { setSaving(false); }
+    } catch (e) { setError(e.message); return e; } finally { setSaving(false); }
   };
   const remove = async () => {
     if (saving) return;

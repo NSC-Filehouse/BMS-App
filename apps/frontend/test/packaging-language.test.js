@@ -474,6 +474,37 @@ test('a missing loading location opens an editable form prefilled from the suppl
   assert.equal(dialog.field('Country').props.value, 'B');
 });
 
+test('a server-rejected non-working delivery date marks the matching field until corrected', async () => {
+  const initialOrder = {
+    supplierId: 'LF', packagingTypeId: 78, packagingType: 'Sackware', deliveryTermId: 1,
+    loadingLocationText: 'Warehouse', loadingLocationSource: 'manual', paymentConditionText: '30 Tage',
+    positions: ['2026-11-28', '2026-11-30'].map((requestedDeliveryDate, index) => ({
+      lineId: String(index), optionId: 1, articleIndex: 'A', article: 'Grade', amount: 1000, purchasePrice: 50,
+      requestedDeliveryDate,
+    })),
+  };
+  const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
+    initialOrder,
+    onSave: async () => ({
+      code: 'PURCHASE_DELIVERY_DATE_NON_WORKING',
+      payload: { error: { details: { date: '2026-11-28' } } },
+    }),
+  }, async (path) => {
+    if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices('de'), incoterms: [{ id: 1, text: 'FCA' }], defaults: {} } };
+    if (path.startsWith('/purchase-order-loading-locations')) return { data: [] };
+    throw new Error(path);
+  });
+  const dateField = (date) => view.find((node) => node.props.type === 'date' && node.props.value === date);
+  await view.flush();
+  await view.find((node) => node.type === 'Button' && node.props.children.includes('Speichern')).props.onClick();
+  await view.flush();
+  assert.equal(dateField('2026-11-28').props.error, true);
+  assert.equal(dateField('2026-11-30').props.error, false);
+  dateField('2026-11-28').props.onChange({ target: { value: '2026-12-01' } });
+  await view.flush();
+  assert.equal(dateField('2026-12-01').props.error, false);
+});
+
 test('the purchase editor offers standard payment terms if no supplier default is available', async () => {
   const initialOrder = { supplierId: 'LF', positions: [{ lineId: 'one', optionId: 1, articleIndex: 'A' }] };
   let updated;

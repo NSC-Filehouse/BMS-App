@@ -57,6 +57,7 @@ export default function PurchaseCart() {
     } catch (e) {
       if ([400, 413, 422].includes(e.status)) { savePurchaseCartContext({ pendingPayload: null }); setLocked(false); }
       setError(e?.message || 'Speichern fehlgeschlagen. Bitte erneut prüfen.');
+      return e;
     } finally { setSaving(false); }
   };
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>

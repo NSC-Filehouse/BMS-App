@@ -549,8 +549,10 @@ router.get('/temp-purchase-orders', requirePurchaseOrders, requireMandant, async
 }));
 
 router.get('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const companyId = Number(req.database?.firmaId || 0);
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
-  const row = await loadOrderForUser(Number(req.params.id), Number(req.database?.firmaId || 0), asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
+  const row = await loadOrderForUser(id, companyId, asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
   if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   const data = await withPurchaseOrderAttachments(mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))));
   if (pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await procurementSchemaReady()) {

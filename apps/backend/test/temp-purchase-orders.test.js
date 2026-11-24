@@ -143,8 +143,13 @@ function fixture(options = {}) {
   };
   dependencies['../pilot-features'] = require('../src/pilot-features');
   dependencies['../db/linked-procurement'] = {
-    procurementSchemaReady: async () => false,
+    procurementSchemaReady: async () => Boolean(options.procurementEnabled),
     assertProcurementAccess: require('../src/db/linked-procurement').assertProcurementAccess,
+    loadPurchaseOrderLinks: async (id, companyId) => {
+      assert.equal(id, 1);
+      assert.equal(companyId, 0);
+      return [22];
+    },
   };
   const attachmentModule = { exports: {} };
   const optionPdf = require('../src/options/purchase-order-pdf');
@@ -169,7 +174,7 @@ function fixture(options = {}) {
     assert.ok(name in dependencies, name); return dependencies[name];
   }, mod);
   const request = (body, method = 'post', route = '/temp-purchase-orders', context = {}) => new Promise((resolve, reject) => {
-    const req = { body, files: context.files || [], query: context.query || {}, params: { id: '1', ...context.params }, header: () => 'de', database: { firmaId: context.companyId ?? 1 }, userIdentity: { shortCode: context.user || 'AD' }, mandant: 'Test' };
+    const req = { body, files: context.files || [], query: context.query || {}, params: { id: '1', ...context.params }, header: () => 'de', database: { firmaId: context.companyId ?? 1 }, userIdentity: context.userIdentity || { shortCode: context.user || 'AD' }, mandant: 'Test' };
     const res = { headers: {}, setHeader(key, value) { this.headers[key] = value; }, send(buffer) { resolve({ buffer, headers: this.headers }); }, status(status) { this.statusCode = status; return this; }, json(payload) { resolve({ status: this.statusCode, ...payload }); }, end() { resolve({ status: this.statusCode }); } };
     routes.find((r) => r.path === route && r.method === method).handlers.at(-1)(req, res, reject);
   });
@@ -254,6 +259,15 @@ test('a missing supplier payment term can be filled from the validated catalog o
 });
 
 const file = (name = 'Prüfung.pdf', content = '%PDF-example') => ({ originalname: name, mimetype: 'application/pdf', buffer: Buffer.from(content), size: Buffer.byteLength(content) });
+
+test('purchase detail loads linked orders with the requested purchase ID and test mandant', async () => {
+  const f = fixture({ procurementEnabled: true });
+  const context = { companyId: 0, userIdentity: { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true } };
+  await f.request(body(), 'post', '/temp-purchase-orders', context);
+  const detail = await f.request({}, 'get', '/temp-purchase-orders/:id', context);
+  assert.equal(detail.status, 200);
+  assert.deepEqual(detail.data.linkedOrderIds, [22]);
+});
 
 test('attachments survive create, committed retry, detail, position copy, edit and finalize', async () => {
   const f = fixture();
