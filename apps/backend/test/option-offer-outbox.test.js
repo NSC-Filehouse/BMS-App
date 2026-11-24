@@ -29,9 +29,16 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   }),
 } };
 
+require.cache[require.resolve('../src/db/users')] = { exports: {
+  getUserIdentityByShortCode: async (code, companyId) => {
+    assert.equal(companyId, 3);
+    return code === 'ERI' ? { email: 'eris@example.invalid' } : null;
+  },
+} };
+
 const { deliverOffer, claimOffer, queueOptionOffers } = require('../src/db/option-offer-outbox');
 const offer = {
-  messageKey: '42-key', senderEmail: 'ad@example.invalid', senderName: 'Vertrieb',
+  messageKey: '42-key', senderCode: 'AD', senderEmail: 'ad@example.invalid', senderName: 'Vertrieb',
   recipientEmail: 'customer@example.invalid', contactName: 'Muster', language: 'de',
   article: 'PPC 7600 OG', validUntil: '2099-12-31', quantityKg: 24750, salePrice: 1320,
   availableQuantityKg: 49500, incotermCode: 'CFR',
@@ -41,7 +48,7 @@ const bmsDocument = {
   body: 'BMS-Originaltext', isBodyHtml: false, pdfBase64: Buffer.from('%PDF-1.6\nTest-only').toString('base64'),
 };
 const pdf = Buffer.from('%PDF-1.7\nExact ERP bytes');
-const row = { id: 42, tempOfferId: 81, attempt: 1, erpStatus: 2, offerNumber: 'AN-42', pdf,
+const row = { id: 42, tempOfferId: 81, attempt: 1, erpStatus: 2, createdBy: 'AD', offerNumber: 'AN-42', pdf,
   offerJson: JSON.stringify(offer), documentJson: JSON.stringify(bmsDocument) };
 test.beforeEach(() => { calls.length = 0; });
 
@@ -49,7 +56,7 @@ test('accepted mail keeps its MailService ID and creates no ERP activity yet', a
   await deliverOffer({
     submitMail: async request => {
       assert.equal(request.clientMessageId, 'bms-app:offer-preview:42-key');
-      assert.deepEqual(request.to, [{ address: 'Kimaz@mlplastics.de' }, { address: 'n.schroeder@filehouse.net' }, { address: 'Musah@frupack.de' }]);
+      assert.deepEqual(request.to, [{ address: offer.senderEmail }]);
       assert.deepEqual(request.attachments[0].content, pdf);
       assert.equal(request.attachments[1].contentType, 'application/xml');
       assert.equal(request.attachments.length, 2);
@@ -61,6 +68,20 @@ test('accepted mail keeps its MailService ID and creates no ERP activity yet', a
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, ['submitted', 'mail-123', null, 42, 1]);
   assert.equal(calls[0].transaction, false);
+});
+
+test('when another user releases a draft, only the original creator receives the mail', async () => {
+  const draft = { ...row, status: 'sending', createdBy: 'eri ', offerJson: JSON.stringify({ ...offer, kind: 'app', companyId: 3 }) };
+  await deliverOffer({ submitMail: async request => {
+    assert.deepEqual(request.to, [{ address: 'eris@example.invalid' }]);
+    assert.equal(request.fromAddress, offer.senderEmail);
+    return { id: 'mail-123', status: 'Pending' };
+  } }, draft);
+  assert.equal(calls.at(-1).params[0], 'submitted');
+
+  await deliverOffer({ submitMail: async () => assert.fail('No recipient fallback') }, { ...draft, createdBy: 'XXX' });
+  assert.equal(calls.at(-1).params[0], 'failed');
+  assert.match(calls.at(-1).params[2], /Angebotsersteller/);
 });
 
 test('the worker never submits a customer mail without the linked status-2 offer and a PDF', async () => {

@@ -220,7 +220,7 @@ Angebotsreferenz und Grußformel in der Kontaktsprache.
 Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
 Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“
 und „Angebot nicht interessant“. Die Testmail mit ERP-PDF und XML geht
-ausschließlich an AKI, NSC und KMU.
+ausschließlich an den Angebotsersteller.
 Die stabil aus `messageKey` abgeleitete `ClientMessageId` hält Wiederholungen
 derselben Anfrage zusammen. Der bestätigte Status `Sent` oder `2` markiert die interne
 Zustellung in der Warteschlange. In der Kundenhistorie entsteht kein Eintrag.

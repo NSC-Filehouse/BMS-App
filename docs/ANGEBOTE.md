@@ -98,7 +98,7 @@ Verkauf und keine zweite Reservierung.
 Bei der Freigabe prüft die App die Mailadresse des gewählten Ansprechpartners
 und legt einen Versandauftrag zum Angebot an. Sobald Status 2, die BMS-Nummer
 und eine PDF vorliegen, erscheint die Datei im Angebotsdetail. Der gemeinsame
-Mail-Worker sendet die Testmail ausschließlich an AKI, NSC und KMU. Sie enthält
+Mail-Worker sendet die Testmail ausschließlich an den Angebotsersteller. Sie enthält
 die unveränderte ERP-PDF und die Angebots-XML mit allen Positionen. Der Worker
 benötigt einen eingerichteten MailService und ist standardmäßig aktiv.
 Mit `BMS_OPTION_OFFER_MAIL_ENABLED=false` lässt sich der Versand abschalten.
