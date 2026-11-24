@@ -58,7 +58,9 @@ function PickupFields({ draft, loadingLocation, pickupLocations, pickup, update 
     <Stack direction="row" spacing={1} alignItems="center">
       <TextField select size="small" fullWidth label={t('pickup_address_label')} value={address}
         InputLabelProps={{ shrink: true }}
-        SelectProps={{ displayEmpty: true, renderValue: value => value
+        SelectProps={{ displayEmpty: true, classes: { select: 'address-select' },
+          MenuProps: { MenuListProps: { className: 'address-select-list' } },
+          renderValue: value => value
           ? <CompactAddressOption {...loadingLocationParts(value)} /> : t('option_offer_enter_pickup') }}
         onChange={event => update({ pickup: event.target.value, manualPickup: !event.target.value })}
       >
@@ -265,9 +267,9 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
       </Stack>
       {salesFilter?.enabled && <TextField select size="small" label={t('option_offer_sales_filter')} value={filter}
         InputLabelProps={{ shrink: true }}
-        SelectProps={{ displayEmpty: true, MenuProps: { sx: { '& .MuiMenuItem-root': { fontSize: '0.8rem' } } } }}
+        SelectProps={{ displayEmpty: true }}
         onChange={event => { setSalesCode(event.target.value); setSelection([]); }}
-        sx={{ mb: 1, minWidth: 130, '& .MuiSelect-select': { fontSize: '0.8rem' } }}>
+        sx={{ mb: 1, minWidth: 130 }}>
         <MenuItem value="">{t('option_offer_all_sales')}</MenuItem>
         {salesCodes.map(code => <MenuItem key={code} value={code}>{code}</MenuItem>)}
       </TextField>}

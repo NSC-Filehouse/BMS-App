@@ -6,9 +6,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { optionArticleBlocked } from '../utils/optionDisplay.js';
 import OptionPurchaseDialog from './OptionPurchaseDialog.jsx';
 
-const fieldFontSize = '0.8125rem';
-const fieldSx = { '& .MuiInputBase-root': { fontSize: fieldFontSize } };
-const listboxProps = { sx: { fontSize: fieldFontSize, '& .MuiAutocomplete-option': { overflowWrap: 'anywhere' } } };
+const listboxProps = { sx: { '& .MuiAutocomplete-option': { overflowWrap: 'anywhere' } } };
 
 export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails }) {
   const { t } = useI18n();
@@ -101,7 +99,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
         getOptionLabel={row => `${row.name}${row.city ? ` · ${row.city}` : ''}`}
         noOptionsText={t('supplier_options_unidentified')}
         onChange={(_event, value) => setSelectedSupplier(value)}
-        renderInput={params => <TextField {...params} sx={fieldSx}
+        renderInput={params => <TextField {...params}
           inputProps={{ ...params.inputProps, title: supplier ? params.inputProps.value : undefined }}
           label={t('supplier_label')} required size="small" />} />}
       {suppliers?.length === 0 && <Typography variant="body2" color="text.secondary">{t('supplier_options_unidentified')}</Typography>}
@@ -118,7 +116,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
           loading={!articles && !articleError}
           noOptionsText={t('purchase_no_article_search')}
           onChange={(_event, value) => setArticle(value)}
-          renderInput={params => <TextField {...params} sx={fieldSx}
+          renderInput={params => <TextField {...params}
             inputProps={{ ...params.inputProps, title: article?.articleName }}
             label={t('product_article')} placeholder={t('purchase_select_article')} required size="small" />} />
         <IconButton aria-label={t('purchase_search_article')} title={t('purchase_search_article')}
@@ -146,7 +144,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
             setArticle(value);
             closeSearch();
           }}
-          renderInput={params => <TextField {...params} sx={fieldSx} autoFocus size="small"
+          renderInput={params => <TextField {...params} autoFocus size="small"
             label={t('purchase_article_search')} placeholder={t('purchase_article_query')} />} />
       </Box>}
     </Box>}

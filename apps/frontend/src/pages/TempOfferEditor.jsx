@@ -557,6 +557,10 @@ export default function TempOfferEditor() {
             <TextField
               select
               label={t('delivery_address_label')}
+              SelectProps={{
+                classes: { select: 'address-select' },
+                MenuProps: { MenuListProps: { className: 'address-select-list' } },
+              }}
               value={form.deliveryAddressId || ''}
               onChange={(e) => {
                 const a = defaults.deliveryAddresses.find(

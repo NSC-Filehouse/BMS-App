@@ -7,7 +7,31 @@ import App from './App.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import { APP_BASE_PATH } from './config.js';
 
+const dropdownFontSize = '13px';
+
 const theme = createTheme({
+  components: {
+    MuiSelect: {
+      styleOverrides: {
+        select: { '&:not(.address-select)': { fontSize: dropdownFontSize } }
+      }
+    },
+    MuiMenu: {
+      styleOverrides: {
+        list: {
+          '&[role="listbox"]:not(.address-select-list) > .MuiMenuItem-root': {
+            fontSize: dropdownFontSize
+          }
+        }
+      }
+    },
+    MuiAutocomplete: {
+      styleOverrides: {
+        inputRoot: { fontSize: dropdownFontSize },
+        listbox: { fontSize: dropdownFontSize }
+      }
+    }
+  },
   palette: {
     primary: { main: '#5788C2' },
     secondary: { main: '#00ADEF' },

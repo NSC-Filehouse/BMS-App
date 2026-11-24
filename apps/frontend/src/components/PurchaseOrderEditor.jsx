@@ -189,7 +189,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           {options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
         <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label={t('purchase_loading_location')} required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
           sx={{flex:1,minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
-          SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,MenuProps:{PaperProps:{sx:{maxHeight:320}}}}}
+          SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,classes:{select:'address-select'},MenuProps:{MenuListProps:{className:'address-select-list'},PaperProps:{sx:{maxHeight:320}}}}}
           onChange={(e) => {
           setShowLocationDetails(false);
           const selected=locationOptions.find(item=>same(item.text,e.target.value));

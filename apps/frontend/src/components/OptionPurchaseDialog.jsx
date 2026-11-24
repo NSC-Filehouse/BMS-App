@@ -141,7 +141,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}
             getOptionLabel={row=>row.name} getOptionKey={row=>row.id} isOptionEqualToValue={(a,b)=>a.id===b.id}
             onChange={(_e,value)=>setContact(value)} noOptionsText={t('purchase_no_contact')}
-            renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{fontSize:fieldFontSize,overflowWrap:'anywhere'}}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
+            renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{overflowWrap:'anywhere'}}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
             renderInput={params=><TextField {...params} label={t('contact_label')} size="small" InputLabelProps={{shrink:true}} />} />
           <IconButton aria-label={t('contact_create')} title={t('contact_create')} disabled={busy || contactsLoading || Boolean(contactError)} onClick={()=>setContactCreateOpen(true)}><AddIcon /></IconButton>
         </Box>
@@ -156,7 +156,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           setPackagingTypeId(e.target.value);setQuantityConfirmed(false);setOrderAmount(null);
           if(!automaticTruck && availability.confirmedQuantityKg!=null && availability.quantityConfirmationEditable!==false
             && Number(e.target.value)!==Number(availability.confirmedPackagingTypeId))setQuantityEditing(true);
-        }}><MenuItem value="" disabled sx={{fontSize:fieldFontSize}}>{t('purchase_packaging_unresolved')}</MenuItem>{packagingTypes.map(row=><MenuItem key={row.id} value={row.id} sx={{fontSize:fieldFontSize}}>{row.text}</MenuItem>)}</TextField>
+        }}><MenuItem value="" disabled>{t('purchase_packaging_unresolved')}</MenuItem>{packagingTypes.map(row=><MenuItem key={row.id} value={row.id}>{row.text}</MenuItem>)}</TextField>
         {packagingError && <Alert severity="error">{packagingError}</Alert>}
       </Box>}
       <TextField label={t('purchase_order_quantity')} type="number" required size="small" value={requestedAmount} disabled={busy || unavailable}
@@ -171,7 +171,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
           <TextField label={availability.truckOffer?t('purchase_offered_trucks'):t('purchase_offered_quantity')} required type="number" size="small" value={totalAmount} disabled={busy}
             inputProps={{min:totalUnit==='t'?0.000001:0.001,step:totalUnit==='t'?0.000001:0.001}} onChange={e=>{setTotalAmount(e.target.value);setQuantityConfirmed(false);}} />
           {availability.truckOffer?<TextField label={t('purchase_offered_quantity_kg')} size="small" value={totalKg??''} InputProps={{readOnly:true}} />:<TextField label={t('product_unit')} required select size="small" value={totalUnit} disabled={busy} onChange={e=>{setTotalUnit(e.target.value);setQuantityConfirmed(false);}}>
-            <MenuItem value="" disabled sx={{fontSize:fieldFontSize}}>{t('packaging_type_select')}</MenuItem><MenuItem value="kg" sx={{fontSize:fieldFontSize}}>kg</MenuItem><MenuItem value="t" sx={{fontSize:fieldFontSize}}>{t('purchase_tonnes')}</MenuItem>
+            <MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem><MenuItem value="kg">kg</MenuItem><MenuItem value="t">{t('purchase_tonnes')}</MenuItem>
           </TextField>}
         </Box>
         <Typography variant="caption" color="text.secondary">{t('purchase_quantity_scope')}</Typography>

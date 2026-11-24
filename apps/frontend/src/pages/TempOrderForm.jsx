@@ -2198,6 +2198,8 @@ export default function TempOrderForm() {
                     },
                   }}
                   SelectProps={{
+                    classes: { select: 'address-select' },
+                    MenuProps: { MenuListProps: { className: 'address-select-list' } },
                     renderValue: (selected) => {
                       if (!String(selected || '').trim()) {
                         return String(form.deliveryAddress || '').trim()
