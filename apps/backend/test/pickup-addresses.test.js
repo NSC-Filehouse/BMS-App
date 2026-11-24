@@ -79,7 +79,7 @@ test('invalid position keys fail before a SQL read', async () => {
 test('the finalization mail labels the persisted FCA address as pickup and retains ordinary delivery labels for CPT', () => {
   const order = { deliveryType: 'FCA / Free Carrier', deliveryAddress: 'Factory, Plant road 1', deliveryAddressId: null, comment: 'Existing order note' };
   const fca = formatOrderMailBody({ order, positions: [] });
-  assert.match(fca, /Abholadresse: Factory, Plant road 1/);
+  assert.match(fca, /Ladeort: Factory, Plant road 1/);
   assert.match(fca, /Bemerkung: Existing order note/);
   assert.doesNotMatch(fca, /Lieferadress-ID|Lieferadresse:/);
   assert.match(formatOrderMailBody({ order: { ...order, deliveryType: 'CPT' }, positions: [] }), /Lieferadresse: Factory, Plant road 1/);

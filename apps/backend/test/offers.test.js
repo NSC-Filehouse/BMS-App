@@ -39,6 +39,7 @@ const input = () => ({
   contactId: 71,
   packagingId: 1,
   deliveryTermsId: 1,
+  deliveryAddress: 'Werkstraße 1, 12345 Musterstadt',
   clientRequestId: crypto.randomUUID(),
   positions: [
     {
@@ -348,7 +349,7 @@ async function fixture(t) {
         loadOfferOptions: async () => ({
           payments: [],
           packagingTypes: [{ id: 1, text: 'Sackware' }],
-          incoterms: [{ id: 1, text: 'FCA' }],
+          incoterms: [{ id: 1, text: 'FCA' }, { id: 2, text: 'DAP' }],
         }),
       },
       '../offers/order-conversion': conversion,
@@ -386,6 +387,22 @@ async function fixture(t) {
   }
   return { state, call, query, conversion };
 }
+test('manual offers require a loading location only for FCA', async (t) => {
+  const { state, call } = await fixture(t);
+  const missing = { ...input(), deliveryAddress: '   ' };
+  const rejected = await call('/temp-offers', 'POST', missing);
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.json.message, /Ladeort/);
+  const created = await call('/temp-offers', 'POST', input());
+  assert.equal(created.status, 201);
+  const { id, version } = created.json.data;
+  assert.equal((await call(`/temp-offers/${id}`, 'PUT', { ...missing, version })).status, 400);
+  assert.equal((await call('/temp-offers', 'POST', { ...missing, deliveryTermsId: 2 })).status, 201);
+  state.headers[0][headerFields.deliveryAddress] = '';
+  assert.equal((await call(`/temp-offers/${id}/release`, 'POST', { version })).status, 400);
+  assert.equal(state.mail.length, 0);
+});
+
 test('manual release enqueues a verified recipient and the detail serves only the completed ERP file', async (t) => {
   const { state, call } = await fixture(t);
   const { json: { data: offer } } = await call('/temp-offers', 'POST', input());

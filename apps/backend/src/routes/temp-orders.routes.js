@@ -1253,7 +1253,7 @@ async function loadPositionSummariesForOrders(orderIds) {
 router.post('/temp-orders/pickup-addresses', requireMandant, asyncHandler(async (req, res) => {
   const positions = req.body?.positions;
   if (!Array.isArray(positions) || !positions.length || positions.length > 500) {
-    throw createHttpError(400, 'Bitte 1 bis 500 Positionen für die Abholadresse angeben.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    throw createHttpError(400, 'Bitte 1 bis 500 Positionen für den Ladeort angeben.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
   }
   const data = await loadTempOrderPickupAddresses(req, positions);
   sendEnvelope(res, { data, meta: { mandant: req.mandant } });
@@ -2389,7 +2389,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         const summary = await loadTempOrderPickupAddresses(req, positions);
         assertSinglePickupAddress(summary);
         if (mappedOrder.deliveryAddressId !== null || !mappedOrder.deliveryAddressChanged) {
-          throw createHttpError(409, 'Bitte den FCA-Auftrag bearbeiten und die Abholadresse prüfen und speichern.', {
+          throw createHttpError(409, 'Bitte den FCA-Auftrag bearbeiten und den Ladeort prüfen und speichern.', {
             code: 'TEMP_ORDER_PICKUP_ADDRESS_REVIEW_REQUIRED',
           });
         }

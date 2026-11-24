@@ -182,7 +182,7 @@ function formatOrderMailBody({
     line('Bemerkung', order?.comment),
     line('Incoterm', order?.deliveryType),
     line('Verpackungsart', order?.packagingType),
-    line(isFcaIncoterm(order?.deliveryType) ? 'Abholadresse' : 'Lieferadresse', order?.deliveryAddress),
+    line(isFcaIncoterm(order?.deliveryType) ? 'Ladeort' : 'Lieferadresse', order?.deliveryAddress),
     ...(!isFcaIncoterm(order?.deliveryType) ? [
       line('Lieferadress-ID', order?.deliveryAddressId),
       line('Abweichende Lieferadresse', yesNo(order?.deliveryAddressChanged)),

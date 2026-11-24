@@ -232,7 +232,7 @@ test('option offers validate the buyer, contact and FCA location independently o
   }
   await assert.rejects(() => buildCustomerOfferSubmissions(req, { stockPositionKey: 'stock', remainingKg: 20000 },
     () => loadCustomerOfferAudience(sameDatabase, userIdentity, catalogArticle, 'stock')), /Angebotsmenge/);
-  await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, pickup: '' }] } }, owner, position), /Abholort/);
+  await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, pickup: '' }] } }, owner, position), /Ladeort/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, customerId: 'X' }] } }, owner, position), /nicht verfügbar/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, contactId: 72 }] } }, owner, position), /Ansprechpartner/);
 });

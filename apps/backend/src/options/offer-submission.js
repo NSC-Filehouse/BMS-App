@@ -69,7 +69,7 @@ async function buildCustomerOfferSubmissions(req, position, loadAudience) {
     if (!contact || contact.name.length > 200 || !recipientEmail) {
       throw invalid(`Bitte für ${customer.name} einen Ansprechpartner mit Mailadresse auswählen.`);
     }
-    if (!code || (code === 'FCA' && (!pickup || pickup.length > 1000))) throw invalid(`Bitte Incoterm und bei FCA den Abholort für ${customer.name} prüfen.`);
+    if (!code || (code === 'FCA' && (!pickup || pickup.length > 1000))) throw invalid(`Bitte Incoterm und bei FCA den Ladeort für ${customer.name} prüfen.`);
     if (quantityKg === null || quantityKg <= 0 || (availableQuantityKg != null && quantityKg > availableQuantityKg)) {
       throw invalid(`Bitte die Angebotsmenge für ${customer.name} prüfen.`);
     }

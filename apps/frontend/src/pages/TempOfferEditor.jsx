@@ -253,6 +253,10 @@ export default function TempOfferEditor() {
     );
   async function save(e) {
     e.preventDefault();
+    if (isFca && !String(form.deliveryAddress || '').trim()) {
+      setError(t('validation_pickup_address_required'));
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -538,6 +542,7 @@ export default function TempOfferEditor() {
               label={t(
                 isFca ? 'pickup_address_label' : 'delivery_address_label',
               )}
+              required={isFca}
               value={form.deliveryAddress}
               onChange={(e) =>
                 patch({

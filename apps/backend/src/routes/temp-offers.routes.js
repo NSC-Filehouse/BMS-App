@@ -39,6 +39,7 @@ const {
 const { synchronizeReservations } = require('../offers/reservations');
 const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable } = require('../offers/order-conversion');
 const { hasExecutiveAccess } = require('../executive-access');
+const { isFcaIncoterm } = require('../incoterm');
 const { manualOfferMail } = require('../offers/erp-mail');
 const { queueManualOffer, discardManualOfferMail, offerMailSchemaReady, readyPdfSql } = require('../db/option-offer-outbox');
 
@@ -458,7 +459,8 @@ async function save(req) {
     });
   header.deliveryTermsId = incoterm.id;
   header.deliveryTerms = incoterm.text;
-  if (header.deliveryAddressManual || /^FCA\b/i.test(header.deliveryTerms))
+  requireFcaLoadingLocation(header);
+  if (header.deliveryAddressManual || isFcaIncoterm(header.deliveryTerms))
     header.deliveryAddressId = null;
   else if (header.deliveryAddressId) {
     const addresses = await loadCustomerDeliveryAddresses(
@@ -560,6 +562,14 @@ router.put(
     sendEnvelope(res, { data: await save(req) }),
   ),
 );
+function requireFcaLoadingLocation(offer) {
+  if (isFcaIncoterm(offer.deliveryTerms) && !offer.deliveryAddress?.trim()) {
+    throw createHttpError(400, 'Bitte die vollständige Adresse des Ladeorts eingeben.', {
+      code: 'INVALID_OFFER',
+    });
+  }
+}
+
 router.post(
   '/temp-offers/:id/release',
   ...gate,
@@ -577,6 +587,7 @@ router.post(
         if (!current) notFound();
         requireVersion(current, req.body?.version);
         editable(current);
+        requireFcaLoadingLocation(current);
         await customer(req, current.customerId);
         const indexes = [
           ...new Set(current.positions.map((p) => p.articleIndex)),

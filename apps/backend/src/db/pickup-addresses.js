@@ -72,7 +72,7 @@ async function loadPickupAddresses({ positions, resolveDatabase, query = runSQLQ
     const beNumber = text(position?.beNumber);
     const warehouseId = text(position?.warehouseId || position?.warehouse);
     if (!beNumber || !warehouseId) {
-      throw createHttpError(400, 'BE-Position und Lager fehlen für die Abholadresse.', { code: 'MISSING_RESERVATION_KEYS' });
+      throw createHttpError(400, 'BE-Position und Lager fehlen für den Ladeort.', { code: 'MISSING_RESERVATION_KEYS' });
     }
     const positionKey = `${beNumber}\u001f${warehouseId}`;
     if (seen.has(positionKey)) continue;
@@ -92,7 +92,7 @@ async function loadPickupAddresses({ positions, resolveDatabase, query = runSQLQ
 
 function assertSinglePickupAddress(summary) {
   if (summary.conflict) {
-    throw createHttpError(400, 'Die Positionen haben unterschiedliche Abholadressen. Bitte separate FCA-Aufträge je Abholort erstellen.', {
+    throw createHttpError(400, 'Die Positionen haben unterschiedliche Ladeorte. Bitte separate FCA-Aufträge je Ladeort erstellen.', {
       code: 'TEMP_ORDER_PICKUP_ADDRESS_CONFLICT', addresses: summary.addresses,
     });
   }
@@ -106,12 +106,12 @@ function normalizePickupAddressInput(body, summary) {
   const submitted = manual && !hasCustomerAddressId ? text(body.deliveryAddress) : '';
   const address = submitted || (summary.unresolved.length ? '' : summary.addresses[0]?.text);
   if (!address) {
-    throw createHttpError(400, 'Bitte eine vollständige Abholadresse eingeben. Für mindestens eine Position fehlt eine eindeutige Adresse.', {
+    throw createHttpError(400, 'Bitte die vollständige Adresse des Ladeorts eingeben. Für mindestens eine Position fehlt eine eindeutige Adresse.', {
       code: 'TEMP_ORDER_PICKUP_ADDRESS_REQUIRED', unresolved: summary.unresolved,
     });
   }
   if (address.length > 500) {
-    throw createHttpError(400, 'Die Abholadresse darf höchstens 500 Zeichen enthalten. Bitte den Adresstext kürzen.', {
+    throw createHttpError(400, 'Die Adresse des Ladeorts darf höchstens 500 Zeichen enthalten. Bitte den Adresstext kürzen.', {
       code: 'TEMP_ORDER_PICKUP_ADDRESS_TOO_LONG', maxLength: 500,
     });
   }

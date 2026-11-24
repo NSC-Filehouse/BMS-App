@@ -389,7 +389,7 @@ test('FCA finalization queues the persisted corrected pickup address in the mail
   assert.equal(response.data.orderStatus, 1);
   assert.equal(pickupQueries.length, 1);
   const insert = calls.find(call => call.sql.includes('INSERT INTO') && call.sql.includes('[OrderMailOutbox]'));
-  assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('Abholadresse: Corrected factory pickup address')));
+  assert.ok(insert.params.some(value => typeof value === 'string' && value.includes('Ladeort: Corrected factory pickup address')));
   assert.deepEqual(orderMailCalls, [100]);
 });
 
