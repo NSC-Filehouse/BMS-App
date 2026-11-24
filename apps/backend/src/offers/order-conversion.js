@@ -6,7 +6,7 @@ const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
 const { hasExecutiveAccess } = require('../executive-access');
 const { createHttpError } = require('../utils');
-const { P, read } = require('./storage');
+const { H, P, read } = require('./storage');
 
 const orderPositions = appTableSql('tempOrderPosition');
 const text = (value) => String(value ?? '').trim();
@@ -35,6 +35,11 @@ async function readOfferForOrder(query, req, offerId, owner, locked = false) {
   const offer = await read(query, offerId, req.database.firmaId, owner, locked);
   if (!offer) {
     throw createHttpError(404, 'Angebot nicht gefunden.', { code: 'OFFER_NOT_FOUND' });
+  }
+  if (offer.status === 1) {
+    throw createHttpError(409, 'Bitte zuerst die BMS-Übernahme des Angebots abwarten.', {
+      code: 'OFFER_ORDER_WAITING_FOR_BMS',
+    });
   }
   const linked = await linkedOfferPositions(query, offer.id);
   return { ...offer, positions: offer.positions.filter((position) => !linked.has(Number(position.id))) };
@@ -96,6 +101,13 @@ async function linkOfferPosition(query, offerPositionId, orderPositionId) {
   if (!result.rows.length) {
     throw createHttpError(409, 'Die Angebotsposition wurde bereits übernommen.', { code: 'OFFER_ORDER_POSITION_CONFLICT' });
   }
+}
+
+async function markOfferConverted(query, offerId, companyId, userShortCode) {
+  await query(`
+    UPDATE ${H} SET tag_status=4,tag_modified_at=SYSUTCDATETIME(),tag_modified_by=?
+    WHERE tag_id=? AND tag_company_id=? AND tag_status<>4
+  `, [userShortCode, offerId, companyId]);
 }
 
 async function unlinkOfferPositions(query, orderId, retainedIds = []) {
@@ -197,5 +209,5 @@ async function prepareOfferOrder(req, offer) {
 
 module.exports = {
   readOfferForOrder, assertOfferPositionsEditable, orderConversionInput, assertOrderConversion,
-  linkOfferPosition, unlinkOfferPositions, prepareOfferOrder,
+  linkOfferPosition, markOfferConverted, unlinkOfferPositions, prepareOfferOrder,
 };

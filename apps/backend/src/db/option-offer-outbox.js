@@ -135,7 +135,7 @@ async function claimOffer() {
       WHERE (o.NextAttemptAt IS NULL OR o.NextAttemptAt <= SYSUTCDATETIME())
         AND (o.Status = N'submitted' OR (o.Status = N'unknown' AND o.MailServiceId IS NOT NULL)
           OR (o.Status IN (N'pending', N'sending') AND h.tag_id IS NOT NULL AND
-            ((${readyPdfSql}) OR h.tag_status=3 OR JSON_VALUE(d.OfferJson, '$.validUntil') < ?))
+            (h.tag_status IN (3,4,5) OR (${readyPdfSql}) OR JSON_VALUE(d.OfferJson, '$.validUntil') < ?))
           OR (o.TempOfferId IS NULL AND o.Status=N'pending' AND o.AttemptCount=0 AND o.MailServiceId IS NULL))
       ORDER BY COALESCE(o.NextAttemptAt, o.CreatedAt), o.Id
     )
@@ -145,7 +145,9 @@ async function claimOffer() {
     OUTPUT inserted.Id AS id, inserted.Status AS status, inserted.MailServiceId AS mailServiceId,
       inserted.AttemptCount AS attempt, inserted.TempOfferId AS tempOfferId,
       d.OfferJson AS offerJson,
-      h.tag_created_by AS createdBy, h.tag_status AS erpStatus, h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf,
+      h.tag_created_by AS createdBy,
+      CASE WHEN h.tag_status IN (4,5) THEN CASE WHEN ${storedPdfSql} THEN 2 ELSE 3 END ELSE h.tag_status END AS erpStatus,
+      h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf,
       COALESCE(h.tag_offer_date, CONVERT(date, h.tag_created_at)) AS issueDate, h.tag_valid_until AS validUntil,
       h.tag_currency AS currency, h.tag_customer_id AS customerId, h.tag_customer_name AS customerName,
       h.tag_customer_address AS customerAddress, h.tag_contact AS contact,
@@ -212,7 +214,7 @@ async function deliverOffer(client, row) {
           p.tagp_total AS total, p.tagp_description AS description, p.tagp_alternative_text AS alternativeText,
           p.tagp_delivery_date AS deliveryDate, p.tagp_delivery_text AS deliveryText, p.tagp_valuta_date AS valutaDate
         FROM ${P} p JOIN ${H} h ON h.tag_id=p.tagp_offer_id
-        WHERE h.tag_id=? AND h.tag_company_id=? AND h.tag_status=2
+        WHERE h.tag_id=? AND h.tag_company_id=? AND (${readyPdfSql} OR (h.tag_status IN (4,5) AND ${storedPdfSql}))
         ORDER BY p.tagp_line_no
       `, [row.tempOfferId, offer.companyId]);
       const seller = {
@@ -285,10 +287,11 @@ function startOptionOfferMailWorker() {
   void process();
 }
 
-const readyPdfSql = `h.tag_status=2 AND NULLIF(LTRIM(RTRIM(h.tag_bms_offer_number)), N'') IS NOT NULL
+const storedPdfSql = `NULLIF(LTRIM(RTRIM(h.tag_bms_offer_number)), N'') IS NOT NULL
   AND DATALENGTH(h.tag_offer_pdf)>5 AND SUBSTRING(h.tag_offer_pdf,1,5)=0x255044462D`;
+const readyPdfSql = `h.tag_status=2 AND ${storedPdfSql}`;
 
 module.exports = {
   offerMailSendEnabled, stockOfferMailEnabled, queueOptionOffers, queueManualOffer, discardManualOfferMail,
-  startOptionOfferMailWorker, classifyServiceStatus, deliverOffer, claimOffer, readyPdfSql, offerMailSchemaReady,
+  startOptionOfferMailWorker, classifyServiceStatus, deliverOffer, claimOffer, storedPdfSql, readyPdfSql, offerMailSchemaReady,
 };

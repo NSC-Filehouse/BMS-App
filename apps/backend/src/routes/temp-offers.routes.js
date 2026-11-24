@@ -41,7 +41,9 @@ const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable } = r
 const { hasExecutiveAccess } = require('../executive-access');
 const { isFcaIncoterm } = require('../incoterm');
 const { manualOfferMail } = require('../offers/erp-mail');
-const { queueManualOffer, discardManualOfferMail, offerMailSchemaReady, readyPdfSql } = require('../db/option-offer-outbox');
+const { queueManualOffer, discardManualOfferMail, offerMailSchemaReady, storedPdfSql } = require('../db/option-offer-outbox');
+const offerDownloadPdfSql = `h.tag_status IN (2,4,5) AND ${storedPdfSql}`;
+const notInterestedSourceStatuses = [2, 3, 4];
 
 const router = express.Router();
 const gate = [requireMandant, requirePilotFeature('offers')];
@@ -289,7 +291,7 @@ router.get(
     else if (Object.hasOwn(namedStatus, req.query.status)) {
       clauses.push('h.tag_status=?');
       params.push(namedStatus[req.query.status]);
-    } else if (/^[0-3]$/.test(req.query.status)) {
+    } else if (/^[0-5]$/.test(req.query.status)) {
       clauses.push('h.tag_status=?');
       params.push(Number(req.query.status));
     }
@@ -356,7 +358,7 @@ router.get(
     const [row] = (await query(`
       SELECT h.tag_offer_pdf AS pdf, h.tag_bms_offer_number AS number
       FROM ${H} h WHERE h.tag_id=? AND h.tag_company_id=?
-        ${ownerFilter === null ? '' : 'AND h.tag_created_by=?'} AND ${readyPdfSql}
+        ${ownerFilter === null ? '' : 'AND h.tag_created_by=?'} AND ${offerDownloadPdfSql}
     `, [id, req.database.firmaId, ...(ownerFilter === null ? [] : [ownerFilter])])).rows;
     if (!row) throw createHttpError(404, 'Die Angebots-PDF liegt noch nicht vor.', { code: 'OFFER_PDF_NOT_READY' });
     const name = String(row.number).trim().replace(/[^a-z0-9._-]/gi, '_');
@@ -378,10 +380,11 @@ router.get(
       offerReadOwnerFilter(req),
     );
     if (!row) notFound();
-    if (offerOwnerFilter(req) !== null && text(row.createdBy).toUpperCase() !== owner(req).toUpperCase()) row.readOnly = true;
+    const ownOffer = text(row.createdBy).toUpperCase() === owner(req).toUpperCase();
+    if (offerOwnerFilter(req) !== null && !ownOffer) row.readOnly = true;
     if (Number(row.status) !== 0 && await offerMailSchemaReady()) {
       const [state] = (await query(`
-        SELECT CASE WHEN ${readyPdfSql} THEN 1 ELSE 0 END AS pdfReady,
+        SELECT CASE WHEN ${offerDownloadPdfSql} THEN 1 ELSE 0 END AS pdfReady,
           q.Status AS mailStatus, CASE WHEN q.OptionPositionId IS NOT NULL OR q.StockPositionKey IS NOT NULL THEN 1 ELSE 0 END AS generated
         FROM ${H} h LEFT JOIN BMSApp.OptionOfferMailOutbox q ON q.TempOfferId=h.tag_id AND q.CompanyId=h.tag_company_id
         WHERE h.tag_id=? AND h.tag_company_id=?
@@ -390,6 +393,42 @@ router.get(
       row.mailStatus = state?.mailStatus ?? null;
       row.generated = Number(state?.generated) === 1;
     }
+    row.canMarkNotInterested = ownOffer && !row.generated && notInterestedSourceStatuses.includes(row.status);
+    sendEnvelope(res, { data: row });
+  }),
+);
+
+router.post(
+  '/temp-offers/:id/not-interested',
+  ...gate,
+  asyncHandler(async (req, res) => {
+    const id = offerId(req);
+    const companyId = req.database.firmaId;
+    const createdBy = owner(req);
+    const mailSchemaReady = await offerMailSchemaReady();
+    const row = await withSqlTransaction(config.sql.database, async ({ query: tx }) => {
+      const current = await read(tx, id, companyId, createdBy, true);
+      if (!current) notFound();
+      requireVersion(current, req.body?.version);
+      if (mailSchemaReady) {
+        const generated = (await tx(`
+          SELECT 1 AS generated FROM BMSApp.OptionOfferMailOutbox
+          WHERE TempOfferId=? AND CompanyId=? AND (OptionPositionId IS NOT NULL OR StockPositionKey IS NOT NULL)
+        `, [id, companyId])).rows.length > 0;
+        if (generated) notFound();
+      }
+      if (!notInterestedSourceStatuses.includes(current.status)) {
+        throw createHttpError(409, 'Der Angebotsstatus kann nicht auf „Kunde hat kein Interesse“ geändert werden.', {
+          code: 'OFFER_NOT_ELIGIBLE',
+        });
+      }
+      const [updated] = (await tx(`
+        UPDATE ${H} SET tag_status=5,tag_modified_at=SYSUTCDATETIME(),tag_modified_by=?
+        OUTPUT inserted.tag_status AS status, CONVERT(varchar(18),inserted.tag_version,1) AS version
+        WHERE tag_id=? AND tag_company_id=?
+      `, [createdBy, id, companyId])).rows;
+      return updated;
+    });
     sendEnvelope(res, { data: row });
   }),
 );

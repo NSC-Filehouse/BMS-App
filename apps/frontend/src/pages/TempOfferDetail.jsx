@@ -64,6 +64,7 @@ export default function TempOfferDetail() {
   const [action, setAction] = React.useState('');
   const waiting = offer?.status === 1 || ['pending', 'sending', 'submitted'].includes(offer?.mailStatus);
   React.useEffect(() => {
+    if (busy) return;
     let active = true;
     const refresh = () => apiRequest(`/temp-offers/${id}`)
       .then((r) => {
@@ -78,7 +79,7 @@ export default function TempOfferDetail() {
       active = false;
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [id, waiting]);
+  }, [id, waiting, busy]);
   const state = { returnTo: location.state?.returnTo };
   const editable = offer && !offer.readOnly && [0, 3].includes(offer.status);
   const date = (v) => (v ? new Date(v).toLocaleDateString('de-DE') : '-');
@@ -103,16 +104,19 @@ export default function TempOfferDetail() {
     setBusy(true);
     setError('');
     try {
+      const suffix = action === 'delete' ? '' : `/${action}`;
       const result = await apiRequest(
-        `/temp-offers/${id}${action === 'release' ? '/release' : ''}`,
+        `/temp-offers/${id}${suffix}`,
         {
-          method: action === 'release' ? 'POST' : 'DELETE',
+          method: action === 'delete' ? 'DELETE' : 'POST',
           body: JSON.stringify({ version: offer.version }),
         },
       );
       setAction('');
       if (action === 'delete')
         navigateToReturn(navigate, state.returnTo, '/temp-offers');
+      else if (action === 'not-interested')
+        setOffer((current) => ({ ...current, ...result.data, canMarkNotInterested: false }));
       else setOffer(result.data);
     } catch (e) {
       setError(e.message);
@@ -309,17 +313,6 @@ export default function TempOfferDetail() {
                   {t('edit_label')}
                 </Button>
               )}
-              {features.offerToOrder && (
-                <Button
-                  variant="outlined"
-                  disabled={busy}
-                  onClick={() => navigate(`/temp-offers/${encodeURIComponent(offer.id)}/order/new`, {
-                    state: { returnTo: createReturnTo(location, state) },
-                  })}
-                >
-                  {t('offer_create_order')}
-                </Button>
-              )}
               {!offer.readOnly && <Button
                 variant="outlined"
                 onClick={() =>
@@ -341,6 +334,27 @@ export default function TempOfferDetail() {
                 </Button>
               )}
             </Box>
+            {(offer.canMarkNotInterested || features.offerToOrder) && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+                {offer.canMarkNotInterested && (
+                  <Button variant="outlined" disabled={busy} onClick={() => setAction('not-interested')}>
+                    {t('offer_not_interested')}
+                  </Button>
+                )}
+                {features.offerToOrder && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={busy || offer.status === 1}
+                    onClick={() => navigate(`/temp-offers/${encodeURIComponent(offer.id)}/order/new`, {
+                      state: { returnTo: createReturnTo(location, state) },
+                    })}
+                  >
+                    {t('offer_convert_to_order')}
+                  </Button>
+                )}
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
@@ -350,7 +364,9 @@ export default function TempOfferDetail() {
             ? en
               ? 'Release offer for BMS import?'
               : 'Angebot zur BMS-Übernahme freigeben?'
-            : en
+            : action === 'not-interested'
+              ? t('offer_confirm_not_interested')
+              : en
               ? 'Delete offer?'
               : 'Angebot löschen?'}
         </DialogTitle>

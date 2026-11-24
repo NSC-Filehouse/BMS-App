@@ -46,6 +46,11 @@ function mappedPosition(row) {
 }
 async function sqlQuery(database, sql, params = []) {
   if (sql.includes('COL_LENGTH')) return [{ ready: Number(Boolean(sourceOffer)) }];
+  if (sql.includes('UPDATE [BMSApp].[tbl_Temp_Angebot]')) {
+    assert.deepEqual(params, ['NSC', sourceOffer.id, 3]);
+    sourceOffer.status = 4;
+    return [];
+  }
   if (sql.includes('FROM [BMSApp].[tbl_Temp_Angebot]')) {
     return sourceOffer?.id === params[0] && params[1] === 3 && params[2] === 'NSC' ? [sourceOffer] : [];
   }
@@ -151,7 +156,7 @@ function request(method, body, userIdentity = { shortCode: 'NSC', personNumber: 
 
 test('the order route links only retained offer lines and frees them on removal or draft deletion', async () => {
   reset();
-  sourceOffer = { id: 29, customerId: 'C1', version: '0x0000000000000001' };
+  sourceOffer = { id: 29, customerId: 'C1', version: '0x0000000000000001', status: 2 };
   sourceOfferPositions = [13, 14].map((id) => ({ id, articleIndex: 'A1', unit: 'KG', quantity: 100, price: 2000, priceBasis: 1000 }));
   const ordinaryLine = payload().positions[0];
   const conversion = payload({
@@ -163,9 +168,11 @@ test('the order route links only retained offer lines and frees them on removal 
   await assert.rejects(request('post', conversion), { status: 409 });
   assert.equal(order, null);
   assert.equal(savedPositions.length, 0);
+  assert.equal(sourceOffer.status, 2);
   rejectBacklink = false;
 
   const created = await request('post', conversion);
+  assert.equal(sourceOffer.status, 4);
   assert.equal(created.data.positions[0].offerPositionId, 13);
   assert.equal(created.data.positions[1].offerPositionId, undefined);
   assert.equal(sourceOfferPositions[0].orderPositionId, created.data.positions[0].id);

@@ -39,7 +39,7 @@ const {
   lockTempOrderAvailability,
   withTempOrderAvailabilityLock,
 } = require('../db/temp-order-availability');
-const { orderConversionInput, assertOrderConversion, linkOfferPosition, unlinkOfferPositions } = require('../offers/order-conversion');
+const { orderConversionInput, assertOrderConversion, linkOfferPosition, markOfferConverted, unlinkOfferPositions } = require('../offers/order-conversion');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { isFcaIncoterm } = require('../incoterm');
 const { loadPickupAddresses, assertSinglePickupAddress, normalizePickupAddressInput } = require('../db/pickup-addresses');
@@ -2043,6 +2043,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         ...(offerPositionId ? [offerPositionId] : []),
       ]);
       if (offerPositionId) await linkOfferPosition(query, offerPositionId, inserted.rows[0].id);
+    }
+    if (conversion?.positionIds.some(Boolean)) {
+      await markOfferConverted(query, conversion.offerId, req.database.firmaId, userShortCode);
     }
 
     return createdRow;

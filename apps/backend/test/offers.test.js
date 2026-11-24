@@ -146,6 +146,9 @@ async function fixture(t) {
       state.mail.push(row);
       return { rows: [row] };
     }
+    if (sql.includes('SELECT 1 AS generated')) {
+      return { rows: state.mail.filter(row => row.tempOfferId === params[0] && row.generated) };
+    }
     if (sql.includes('WHERE TempOfferId=?')) return { rows: state.mail.filter(row => row.tempOfferId === params[0]) };
     if (sql.includes('INSERT INTO BMSApp.OptionOfferDocument')) {
       state.drafts.push(JSON.parse(params[1]));
@@ -153,13 +156,14 @@ async function fixture(t) {
     }
     if (sql.includes('AS pdfReady')) {
       const offer = state.headers.find(row => row.tag_id === params[0] && row.tag_company_id === params[1]);
-      return { rows: [{ pdfReady: offer?.tag_status === 2 && offer.pdf ? 1 : 0,
-        mailStatus: state.mail.find(row => row.tempOfferId === params[0])?.status }] };
+      const mail = state.mail.find(row => row.tempOfferId === params[0]);
+      return { rows: [{ pdfReady: [2, 4, 5].includes(offer?.tag_status) && offer.pdf ? 1 : 0,
+        mailStatus: mail?.status, generated: Number(Boolean(mail?.generated)) }] };
     }
     if (sql.includes('h.tag_offer_pdf AS pdf')) {
       return { rows: state.headers.filter(row => row.tag_id === params[0] && row.tag_company_id === params[1]
-        && (params.length < 3 || row.tag_created_by === params[2]) && row.tag_status === 2 && row.pdf)
-        .map(row => ({ number: 'AN-42', pdf: row.pdf })) };
+        && (params.length < 3 || row.tag_created_by === params[2]) && [2, 4, 5].includes(row.tag_status) && row.pdf)
+        .map(row => ({ number: 'AN-42', pdf: Buffer.from(row.pdf) })) };
     }
     if (sql.includes('tagp_order_position_id IS NOT NULL')) {
       return { rows: state.positions.filter((p) => p.tagp_offer_id === params[0] && p.tagp_order_position_id)
@@ -239,6 +243,12 @@ async function fixture(t) {
           createdBy: h.tag_created_by,
         })),
       };
+    }
+    if (sql.includes('SET tag_status=5')) {
+      const h = state.headers.find((h) => h.tag_id === params[1] && h.tag_company_id === params[2]);
+      h.tag_status = 5;
+      h.version = '0x0000000000000003';
+      return { rows: [{ status: h.tag_status, version: h.version }] };
     }
     if (sql.startsWith('UPDATE')) {
       const h = state.headers.find((h) => h.tag_id === params.at(-1));
@@ -408,6 +418,7 @@ test('manual release enqueues a verified recipient and the detail serves only th
   const { json: { data: offer } } = await call('/temp-offers', 'POST', input());
   const url = `/temp-offers/${offer.id}`;
   const body = { version: offer.version };
+  assert.equal((await call(`${url}/not-interested`, 'POST', body)).status, 409);
   state.recipientEmail = '';
   assert.equal((await call(`${url}/release`, 'POST', body)).status, 422);
   assert.equal(state.headers[0].tag_status, 0);
@@ -421,9 +432,22 @@ test('manual release enqueues a verified recipient and the detail serves only th
   const pdf = Buffer.from('%PDF-1.7\nERP');
   state.headers[0].pdf = pdf;
   assert.equal((await call(`${url}/pdf`)).status, 404);
+  const current = { version: released.json.data.version };
+  assert.equal((await call(`${url}/not-interested`, 'POST', current)).status, 409);
   state.headers[0].tag_status = 2;
   assert.equal((await call(`${url}/pdf`, 'GET', null, { 'x-test-company': '3' })).status, 404);
   assert.equal((await call(url)).json.data.pdfReady, true);
+  assert.deepEqual((await call(`${url}/pdf`)).pdf, pdf);
+  assert.equal((await call(url)).json.data.canMarkNotInterested, true);
+  assert.equal((await call(`${url}/not-interested`, 'POST', current, { 'x-test-user': 'OBA' })).status, 404);
+  assert.equal((await call(`${url}/not-interested`, 'POST', body)).status, 409);
+  state.mail[0].generated = true;
+  assert.equal((await call(url)).json.data.canMarkNotInterested, false);
+  assert.equal((await call(`${url}/not-interested`, 'POST', current)).status, 404);
+  state.mail[0].generated = false;
+  const declined = await call(`${url}/not-interested`, 'POST', current);
+  assert.equal(declined.json.data.status, 5);
+  assert.equal((await call(url)).json.data.canMarkNotInterested, false);
   assert.deepEqual((await call(`${url}/pdf`)).pdf, pdf);
 });
 test('only NSC can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {

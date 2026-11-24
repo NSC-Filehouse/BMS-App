@@ -2132,7 +2132,7 @@ BEGIN TRY
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'CK_Temp_Ang_Position_values')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] WITH CHECK ADD CONSTRAINT [CK_Temp_Ang_Position_values] CHECK ([tagp_quantity]>(0) AND [tagp_price]>=(0) AND [tagp_price_basis]>(0));');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Angebot') AND name=N'CK_Temp_Angebot_status')
-  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] WITH CHECK ADD CONSTRAINT [CK_Temp_Angebot_status] CHECK ([tag_status]=(3) OR [tag_status]=(2) OR [tag_status]=(1) OR [tag_status]=(0));');
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] WITH CHECK ADD CONSTRAINT [CK_Temp_Angebot_status] CHECK ([tag_status] IN (0,1,2,3,4,5));');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'CK_tbl_Temp_Best_Position_amount')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] WITH CHECK ADD CONSTRAINT [CK_tbl_Temp_Best_Position_amount] CHECK ([tbp_amount]>(0));');
  IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Best_Position') AND name=N'CK_tbl_Temp_Best_Position_price')

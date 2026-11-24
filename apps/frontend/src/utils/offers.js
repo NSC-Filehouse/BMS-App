@@ -1,13 +1,16 @@
 import { createCustomerOperationId as createId } from './customerCreation.js';
-export const offerStatus = (status, en = false) =>
-  (en
-    ? ['Created', 'Sent to BMS', 'Completed', 'Rework']
+export const offerStatus = (status, en = false) => {
+  return (en
+    ? ['Created', 'Sent to BMS', 'Completed', 'Rework', 'Offer converted to order', 'Customer is not interested']
     : [
         'Erstellt',
         'An BMS gesendet',
         'Erledigt',
         'Nacharbeit',
+        'Angebot zu Auftrag gemacht',
+        'Kunde hat kein Interesse',
       ])[Number(status)] || '-';
+};
 export const today = () =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(
     new Date(),
