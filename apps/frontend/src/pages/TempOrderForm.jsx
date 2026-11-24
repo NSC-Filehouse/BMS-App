@@ -310,6 +310,13 @@ export default function TempOrderForm() {
   const linkedOrder = isEdit && positions.some((position) => position.purchasePositionId);
   const needsPurchase = !isEdit && positions.some((position) => position.procurement);
   const procurementLine = procurementKey ? positions.find((position) => position.clientKey === procurementKey) : null;
+  const nextOptionPurchase = !isEdit && features.linkedProcurement && positions.find((position) => {
+    if (!position.procurementArticle || !position.optionPositionId || position.procurement) return false;
+    const amount = Number(position.amountInKg);
+    const lots = procurementStock[activeMandant + ':' + position.articleIndex];
+    return Number.isSafeInteger(amount) && amount > 0 && Array.isArray(lots)
+      && !lots.some((lot) => lot.available >= amount);
+  });
   const directArticleKeys = [...new Set(positions.filter((position) => position.procurementArticle).map((position) => position.articleIndex))].join('\u001f');
   React.useEffect(() => {
     if (!features.linkedProcurement || !directArticleKeys) return;
@@ -1772,12 +1779,15 @@ export default function TempOrderForm() {
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
       const onPurchase = pos.procurement || pos.purchasePositionId;
-      const fromOption = !isEdit && Boolean(pos.procurementArticle && pos.optionPositionId);
+      const fromOption = !isEdit && features.linkedProcurement && Boolean(pos.procurementArticle && pos.optionPositionId);
       const amount = Number(pos.amountInKg);
       if (fromOption && !onPurchase && Number.isSafeInteger(amount) && amount > 0) {
-        const lots = procurementStock[activeMandant + ':' + pos.articleIndex] || [];
-        if (!lots.some((lot) => lot.key === pos.selectedStockKey && lot.available >= amount)) {
-          messages.push(`${pos.article}: ${t('procurement_option_source_required')}`);
+        const lots = procurementStock[activeMandant + ':' + pos.articleIndex];
+        if (!lots) {
+          messages.push(`${pos.article}: ${t('procurement_option_stock_pending')}`);
+        } else if (lots.some((lot) => lot.available >= amount)
+          && !lots.some((lot) => lot.key === pos.selectedStockKey && lot.available >= amount)) {
+          messages.push(`${pos.article}: ${t('offer_order_select_stock')}`);
         }
       }
       if (!fromOption && !onPurchase && (!String(pos.beNumber || '').trim() || !String(pos.warehouseId || '').trim())) {
@@ -1819,6 +1829,11 @@ export default function TempOrderForm() {
     if (messages.length) {
       setValidationMessages(messages);
       setValidationOpen(true);
+      return;
+    }
+
+    if (nextOptionPurchase) {
+      setProcurementKey(nextOptionPurchase.clientKey);
       return;
     }
 
@@ -2392,12 +2407,12 @@ export default function TempOrderForm() {
                     const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
                     const positionKey = getPositionKey(x, idx);
                     const isEditingArticle = editingArticleKey === positionKey;
-                    const fromOption = !isEdit && Boolean(x.procurementArticle && x.optionPositionId);
+                    const fromOption = !isEdit && features.linkedProcurement && Boolean(x.procurementArticle && x.optionPositionId);
                     const offerStock = x.offerPositionId ? offerStockByPosition[x.offerPositionId] : procurementStock[activeMandant + ':' + x.articleIndex];
                     const stockCoversPosition = offerStock?.some((lot) => lot.available >= Number(x.amountInKg));
                     const showProcurement = features.linkedProcurement && !isEdit && (x.procurementArticle || x.offerPositionId)
                       && Number.isSafeInteger(Number(x.amountInKg)) && Number(x.amountInKg) > 0
-                      && (fromOption || Boolean(x.procurement) || (Array.isArray(offerStock) && !stockCoversPosition));
+                      && (Boolean(x.procurement) || (!fromOption && Array.isArray(offerStock) && !stockCoversPosition));
                     return (
                       <Accordion key={positionKey} disableGutters defaultExpanded={fromOption}>
                       <AccordionSummary
@@ -2522,7 +2537,7 @@ export default function TempOrderForm() {
                               ))}
                             </TextField>
                           )}
-                          {offerStock?.length === 0 && !showProcurement && !x.procurement && (
+                          {!fromOption && offerStock?.length === 0 && !showProcurement && !x.procurement && (
                             <Alert severity="warning">
                               {x.amountInKg === null
                                 ? t('offer_order_unsupported_unit', { unit: x.offerUnit, quantity: x.offerQuantity })
@@ -2612,7 +2627,7 @@ export default function TempOrderForm() {
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={submit} disabled={saving || deletingOrder}>
-                {t(needsPurchase ? 'procurement_save_and_order' : 'save_label')}
+                {t(nextOptionPurchase ? 'procurement_continue_to_purchase' : needsPurchase ? 'procurement_save_and_order' : 'save_label')}
               </Button>
             </Box>
           </CardContent>
