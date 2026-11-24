@@ -170,7 +170,7 @@ test('an ambiguous option requires inline supplier and compatible article choice
   assert.equal(articleField().props.getOptionDisabled(blocked), true);
 
   supplierField().props.onChange(null, suppliers[1]);
-  view.find(node => node.type === 'IconButton' && node.props['aria-expanded'] === false).props.onClick();
+  view.find(node => node.type === 'IconButton' && node.props['aria-label'] === 'Artikel suchen').props.onClick();
   await view.flush();
   const searchField = () => view.find(node => node.type === 'Autocomplete' && node.props.openOnFocus);
   searchField().props.onInputChange(null, 'Article', 'input');
@@ -193,6 +193,38 @@ test('an ambiguous option requires inline supplier and compatible article choice
   assert.equal(supplierField().props.value, suppliers[1]);
   assert.equal(articleField().props.value, article);
   assert.equal(view.find(node => node.type === 'Details').props.article, article);
+});
+
+test('supplier search fills an empty proposal list and passes the chosen supplier to ordering', async () => {
+  const supplier = { id: 'LF1', name: 'Longfield Chemicals', selectable: true };
+  const article = { articleIndex: 'A', articleName: 'Article A' };
+  const view = await mount('../src/components/OptionPurchaseControls.jsx', {
+    enabled: true, offer: { id: 1 }, position: { id: 10 }, renderDetails: renderPurchaseDetails,
+  }, async path => {
+    if (path.endsWith('/suppliers?q=&supplierId=')) return { data: [] };
+    if (path.endsWith('/suppliers?q=Longfield')) return { data: [supplier] };
+    if (path.endsWith('/articles?q=')) return { data: [article] };
+    throw new Error(path);
+  });
+  await view.flush();
+  const order = () => view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen'));
+  assert.equal(order().props.disabled, true);
+  view.find(node => node.type === 'IconButton' && node.props['aria-label'] === 'Lieferanten durchsuchen').props.onClick();
+  await view.flush();
+  const searchField = () => view.find(node => node.type === 'Autocomplete' && node.props.openOnFocus);
+  searchField().props.onInputChange(null, 'Longfield', 'input');
+  await view.flush();
+  await new Promise(resolve => setTimeout(resolve, 275));
+  await view.flush();
+  assert.deepEqual(searchField().props.options, [supplier]);
+  searchField().props.onChange(null, supplier);
+  await view.flush();
+  assert.equal(order().props.disabled, false);
+  order().props.onClick();
+  await view.flush();
+  const dialog = view.find(node => node.props?.supplier && node.props?.onClose);
+  assert.equal(dialog.props.supplier, supplier);
+  assert.equal(dialog.props.supplierEditable, false);
 });
 
 test('the first selectable article is preselected and a resolved supplier appears in the order dialog', async () => {

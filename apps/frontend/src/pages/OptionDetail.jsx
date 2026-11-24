@@ -160,12 +160,12 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
     <Card sx={{ mb: 1.5 }}><CardContent>
         <InfoRow label={t('option_from')} value={<>
           <Box component="span" sx={{display:'inline-flex',alignItems:'center',maxWidth:'100%'}}><Box component="span" sx={{minWidth:0}}>{offer.supplierName}</Box><OptionSourceDocuments key={offer.id} offer={offer} /></Box>
-          {supplierField}
           {offer.contact?.name && <Box sx={{display:'flex',alignItems:'center',gap:0.5}}>
             <span>{offer.contact.name}</span>
             {offer.contact.phone && <Tooltip title={offer.contact.phone}><IconButton component="a" href={`tel:${offer.contact.phone.replace(/[^+\d*#]/g,'')}`} size="small" color="primary" aria-label={`${t('phone_label')}: ${offer.contact.name}`}><PhoneIcon fontSize="small" /></IconButton></Tooltip>}
           </Box>}
         </>} />
+        {supplierField}
         {offer.isDemo && <Alert severity="warning" sx={{ mb: 1 }}>{t('option_demo_notice')}</Alert>}
         <InfoRow label={t('option_valid_until')} value={optionDate(offer.validUntil)} />
         {offer.isDemo && <InfoRow label={t('option_source_valid_until')} value={optionDate(offer.sourceValidUntil)} />}

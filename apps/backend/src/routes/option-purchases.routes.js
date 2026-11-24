@@ -3,7 +3,7 @@ const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
 const { findIncotermByCode } = require('../incoterm');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
-const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle } = require('../options/purchase-source');
+const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle, validateOptionSupplier } = require('../options/purchase-source');
 const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purchaseTruckLoadKg } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
 const { createPackagingDisplay } = require('../options/packaging-display');
@@ -12,15 +12,9 @@ const {resolveSupplierContact}=require('../options/supplier-contacts');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
-async function offeredSupplier(req,source,id){
- const suppliers=await supplierCandidates(req.database,source,{q:String(id || '').trim()});
- const supplier=suppliers.find(row=>row.id.toLowerCase()===String(id || '').trim().toLowerCase());
- if(!supplier || supplier.plausible!==true)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
- return supplier;
-}
 router.get(`${base}/contacts`,...guard,asyncHandler(async(req,res)=>{
  const source=await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
- const supplier=await offeredSupplier(req,source,req.query.supplierId);
+ const supplier=await validateOptionSupplier(req.database,source,req.query.supplierId);
  const terms=await loadSupplierTerms(req.database,supplier.id,req.header('x-lang')==='en'?'en':'de');
  const contacts=terms.contacts || [];
  sendEnvelope(res,{data:contacts,meta:resolveSupplierContact(source.sourceContactsJson,contacts)});
@@ -56,7 +50,7 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     throw createHttpError(422,'Bitte Lieferant und Artikel ausdrücklich bestätigen.',{code:'OPTION_SELECTION_REQUIRED'});
   const source = await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
   // A manually changed supplier must still be a real, selectable ERP supplier.
-  const supplier=await offeredSupplier(req,source,req.body.supplierId);
+  const supplier=await validateOptionSupplier(req.database,source,req.body.supplierId);
   const article = await validateOptionArticle(req.database,source,req.body);
   let availability = await loadOptionAvailability(source);
   if (availability.remainingKg == null) throw createHttpError(422,'Die angebotene Gesamtmenge ist nicht eindeutig in kg belegt.',{code:'OPTION_QUANTITY_UNCONFIRMED'});

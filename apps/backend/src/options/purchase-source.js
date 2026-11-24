@@ -122,23 +122,28 @@ async function supplierCandidates(database, position, { q = '', preferredSupplie
     ORDER BY k.kd_Name1,k.kd_KdNR`, [JSON.stringify(accounts.map(a => a.supplierId))]);
   const key = supplierKey(position.supplierName, position.supplierReplyTo || position.supplierKey);
   const search = text(q).toLocaleLowerCase('de-DE');
-  const candidates=rows.flatMap(row => {
+  const suppliers=rows.map(row => {
     const mapped = accounts.some(a => text(a.supplierId).toLowerCase() === text(row.id).toLowerCase()
       && (knownSupplier(a.supplierKey)?.key || a.supplierKey) === key);
     const identified = [row.name, row.name2, row.website, row.email].filter(Boolean)
       .some(name => supplierKey(name) === key || companyKey(name) === companyKey(position.supplierName));
     const plausible = key !== 'unknown' && (mapped || identified);
-    if (search ? !`${row.id} ${row.name} ${row.name2 || ''} ${row.city || ''}`.toLocaleLowerCase('de-DE').includes(search) : !plausible) return [];
-    return [{ id: text(row.id), name: text(row.name), name2: text(row.name2), city: text(row.city), plausible,mapped,
+    return { id: text(row.id), name: text(row.name), name2: text(row.name2), city: text(row.city), plausible,mapped,
       preferred: plausible && text(row.id).toLowerCase() === text(preferredSupplierId).toLowerCase(),
-      reason: mapped ? 'Gespeicherte Lieferantenzuordnung' : identified ? 'Lieferantenidentität passt zur Option' : 'Manuelle Lieferantenauswahl' }];
-  }).sort((a,b) => Number(b.preferred)-Number(a.preferred) || Number(b.plausible)-Number(a.plausible) || a.name.localeCompare(b.name,'de'));
+      reason: mapped ? 'Gespeicherte Lieferantenzuordnung' : identified ? 'Lieferantenidentität passt zur Option' : 'Manuelle Lieferantenauswahl' };
+  });
+  const hasPlausibleSupplier = suppliers.some(row => row.plausible);
+  const candidates = suppliers.filter(row => search
+    ? `${row.id} ${row.name} ${row.name2} ${row.city}`.toLocaleLowerCase('de-DE').includes(search)
+    : row.plausible
+  ).sort((a,b) => Number(b.preferred)-Number(a.preferred) || Number(b.plausible)-Number(a.plausible) || a.name.localeCompare(b.name,'de'));
   const same=(a,b)=>text(a).toLowerCase()===text(b).toLowerCase();
   const source=candidates.find(row=>row.plausible && Number(database.firmaId)===Number(position.sourceMandantId) && same(row.id,position.sourceSupplierId));
   const mapped=candidates.filter(row=>row.plausible && row.mapped);
   const exact=candidates.filter(row=>row.plausible && companyKey(row.name)===companyKey(position.supplierName));
   const selected=source || (mapped.length===1?mapped[0]:null) || (exact.length===1?exact[0]:null);
-  return candidates.map(row=>({...row,preferred:selected?same(row.id,selected.id):row.preferred}));
+  return candidates.map(row=>({...row,preferred:selected?same(row.id,selected.id):row.preferred,
+    selectable: row.plausible || !hasPlausibleSupplier}));
 }
 
 async function exactNameCandidates(database, position, names, { page = 1, pageSize = 30, all = false } = {}) {
@@ -182,7 +187,7 @@ async function validateOptionArticle(database, position, line) {
 
 async function validateOptionSupplier(database,position,supplierId) {
   const candidates=await supplierCandidates(database,position,{q:text(supplierId)});
-  const match=candidates.find(row=>text(row.id).toLowerCase()===text(supplierId).toLowerCase() && row.plausible);
+  const match=candidates.find(row=>text(row.id).toLowerCase()===text(supplierId).toLowerCase() && row.selectable);
   if(!match)throw createHttpError(422,'Der Lieferant gehört nicht zum Anbieter dieser Option.',{code:'OPTION_SUPPLIER_MISMATCH'});
   return match;
 }

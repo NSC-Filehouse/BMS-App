@@ -186,6 +186,17 @@ test('supplier selection prefers the proven account and rejects unrelated suppli
   await assert.rejects(f.validateOptionSupplier({firmaId:3},f.source,'OTHER'),error=>error.details.code==='OPTION_SUPPLIER_MISMATCH');
 });
 
+test('supplier search allows a catalog supplier when the option has no supplier proposals',async()=>{
+  const f=fixture({sourceOverride:{supplierName:'Longfield Chemicals',supplierKey:'longfield'}});
+  const database={firmaId:3};
+  assert.deepEqual(await f.supplierCandidates(database,f.source),[]);
+  const [result]=await f.supplierCandidates(database,f.source,{q:'Berlin'});
+  assert.equal(result.id,'OTHER');
+  assert.equal(result.selectable,true);
+  assert.equal((await f.validateOptionSupplier(database,f.source,result.id)).id,result.id);
+  await assert.rejects(f.validateOptionSupplier(database,f.source,'MISSING'),error=>error.details.code==='OPTION_SUPPLIER_MISMATCH');
+});
+
 test('material conflicts cannot be acknowledged away during purchase validation',async()=>{
   const f=fixture();
   await assert.rejects(f.validateOptionArticle({}, {...f.source,articleName:'LDPE NTP ex SABIC',quality:'NTP'},

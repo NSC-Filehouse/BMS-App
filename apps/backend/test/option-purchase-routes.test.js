@@ -27,6 +27,11 @@ const deps={
     loadOptionPosition:async()=>{if(expired)throw createHttpError(422,'Expired',{code:'OPTION_NOT_AVAILABLE'});return {...source,opp_PreisProTonne:price,...(truckOffer?{opp_Mengenart:'truckloads',truckMax:2,confirmedPackagingTypeId:79}: {})};},
     loadOptionAvailability:async()=>({offeredKg:truckOffer?50000:25000,orderedKg:(truckOffer?50000:25000)-remainingKg,remainingKg}),
     supplierCandidates:async(database)=>{assert.equal(database.firmaId,10);return [{id:'LF0124',name:'Borealis Polymers N.V.',plausible:true}];},
+    validateOptionSupplier:async(database,_source,id)=>{
+      assert.equal(database.firmaId,10);
+      if(id!=='LF0124')throw createHttpError(422,'Supplier mismatch',{code:'OPTION_SUPPLIER_MISMATCH'});
+      return {id,name:'Borealis Polymers N.V.'};
+    },
     purchaseCandidates:async(_db,_source,options)=>{assert.equal(options.all,true);return {data:[{articleIndex:'TARGET',articleName:'Target article'}],total:1};},
     validateOptionArticle:async(database,_source,line)=>{assert.equal(database.firmaId,10);assert.equal(line.articleIndex,'TARGET');return {articleIndex:'TARGET',articleName:'Target article'};},
   },

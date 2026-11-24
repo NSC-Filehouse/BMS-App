@@ -16,6 +16,12 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const automaticSupplier = suppliers?.find(row => row.preferred) || (suppliers?.length === 1 ? suppliers[0] : null);
   const supplier = automaticSupplier || selectedSupplier;
   const [supplierError, setSupplierError] = React.useState('');
+  const [supplierSearchOpen, setSupplierSearchOpen] = React.useState(false);
+  const supplierSearchId = React.useId();
+  const [supplierInput, setSupplierInput] = React.useState('');
+  const supplierQuery = supplierInput.trim();
+  const [supplierResults, setSupplierResults] = React.useState(null);
+  const [supplierSearchError, setSupplierSearchError] = React.useState('');
   const [articles, setArticles] = React.useState(null);
   const [article, setArticle] = React.useState(null);
   const [articleError, setArticleError] = React.useState('');
@@ -39,6 +45,23 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     });
     return () => controller.abort();
   }, [base, enabled, preferredSupplierId]);
+
+  React.useEffect(() => {
+    if (!enabled || !supplierSearchOpen || supplierQuery.length < 2) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      apiRequest(`${base}/suppliers?${new URLSearchParams({ q: supplierQuery })}`, { signal: controller.signal })
+        .then(({ data = [] }) => {
+          if (!controller.signal.aborted) setSupplierResults(data.filter(row => row.selectable));
+        }).catch(cause => {
+          if (!controller.signal.aborted) setSupplierSearchError(cause.message);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [base, enabled, supplierQuery, supplierSearchOpen]);
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -77,6 +100,20 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     setSearchError('');
   }
 
+  function closeSupplierSearch() {
+    setSupplierSearchOpen(false);
+    setSupplierInput('');
+    setSupplierResults(null);
+    setSupplierSearchError('');
+  }
+
+  const supplierOptions = {
+    isOptionEqualToValue: (a, b) => a.id === b.id,
+    getOptionKey: row => row.id,
+    getOptionLabel: row => `${row.name}${row.city ? ` · ${row.city}` : ''}`,
+    ListboxProps: listboxProps,
+  };
+
   const articleOptions = {
     isOptionEqualToValue: (a, b) => a.articleIndex === b.articleIndex,
     getOptionKey: row => row.articleIndex,
@@ -94,15 +131,44 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const supplierField = enabled && !automaticSupplier && (suppliers || supplierError) ?
     <Box sx={{ display: 'grid', gap: 0.5, my: 0.75, minWidth: 0, whiteSpace: 'normal' }}>
       {supplierError && <Alert severity="error">{supplierError}</Alert>}
-      {suppliers && <Autocomplete options={suppliers} value={supplier} ListboxProps={listboxProps}
-        isOptionEqualToValue={(a, b) => a.id === b.id} getOptionKey={row => row.id}
-        getOptionLabel={row => `${row.name}${row.city ? ` · ${row.city}` : ''}`}
-        noOptionsText={t('supplier_options_unidentified')}
-        onChange={(_event, value) => setSelectedSupplier(value)}
-        renderInput={params => <TextField {...params}
-          inputProps={{ ...params.inputProps, title: supplier ? params.inputProps.value : undefined }}
-          label={t('supplier_label')} required size="small" />} />}
-      {suppliers?.length === 0 && <Typography variant="body2" color="text.secondary">{t('supplier_options_unidentified')}</Typography>}
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+        <Autocomplete {...supplierOptions} options={supplier && !suppliers?.some(row => row.id === supplier.id)
+          ? [...(suppliers ?? []), supplier] : suppliers ?? []}
+          value={supplier} sx={{ flex: 1, minWidth: 0 }}
+          noOptionsText={t('purchase_no_supplier_search')}
+          onChange={(_event, value) => setSelectedSupplier(value)}
+          renderInput={params => <TextField {...params}
+            inputProps={{ ...params.inputProps, title: supplier ? params.inputProps.value : undefined }}
+            label={t('supplier_label')} required size="small" />} />
+        <IconButton aria-label={t('suppliers_search')} title={t('suppliers_search')}
+          aria-expanded={supplierSearchOpen} aria-controls={supplierSearchOpen ? supplierSearchId : undefined}
+          onClick={() => supplierSearchOpen ? closeSupplierSearch() : setSupplierSearchOpen(true)}><SearchIcon /></IconButton>
+      </Box>
+      {!supplier && !supplierSearchOpen && suppliers?.length === 0 &&
+        <Typography variant="body2" color="text.secondary">{t('purchase_no_supplier_search')}</Typography>}
+      {supplierSearchOpen && <Box id={supplierSearchId}>
+        {supplierSearchError && <Alert severity="error">{supplierSearchError}</Alert>}
+        <Autocomplete {...supplierOptions} options={supplierResults ?? []} value={null} inputValue={supplierInput}
+          openOnFocus filterOptions={rows => rows}
+          getOptionLabel={row => [row.name, row.name2, row.city, row.id].filter(Boolean).join(' · ')}
+          loading={supplierQuery.length >= 2 && !supplierResults && !supplierSearchError}
+          noOptionsText={t(supplierQuery.length < 2 ? 'purchase_article_search_minimum' : 'suppliers_search_empty')}
+          onInputChange={(_event, value, reason) => {
+            if (reason !== 'input' && reason !== 'clear') return;
+            if (value.trim() !== supplierQuery) {
+              setSupplierResults(null);
+              setSupplierSearchError('');
+            }
+            setSupplierInput(value);
+          }}
+          onChange={(_event, value) => {
+            if (!value) return;
+            setSelectedSupplier(value);
+            closeSupplierSearch();
+          }}
+          renderInput={params => <TextField {...params} autoFocus size="small"
+            label={t('suppliers_search')} placeholder={t('purchase_supplier_query')} />} />
+      </Box>}
     </Box> : null;
 
   const purchaseControls = <>
