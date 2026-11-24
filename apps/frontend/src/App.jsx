@@ -22,6 +22,7 @@ import ProductDetail from './pages/ProductDetail.jsx';
 import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
 import PurchaseCart from './pages/PurchaseCart.jsx';
+import OptionOrderPurchase from './pages/OptionOrderPurchase.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
@@ -264,6 +265,7 @@ function AppRoutes() {
         <Route path="/options" element={<MandantGuard><FeatureGuard feature="options"><OptionsList /></FeatureGuard></MandantGuard>} />
         <Route path="/options/:id" element={<MandantGuard><FeatureGuard feature="options"><OptionDetail /></FeatureGuard></MandantGuard>} />
         <Route path="/options/:id/positions/:positionId" element={<MandantGuard><FeatureGuard feature="options"><OptionDetail /></FeatureGuard></MandantGuard>} />
+        <Route path="/options/:id/positions/:positionId/order-purchase" element={<MandantGuard><FeatureGuard feature="linkedProcurement"><OptionOrderPurchase /></FeatureGuard></MandantGuard>} />
 
         <Route path="/forecast" element={<MandantGuard><FeatureGuard feature="forecast"><ForecastList /></FeatureGuard></MandantGuard>} />
 

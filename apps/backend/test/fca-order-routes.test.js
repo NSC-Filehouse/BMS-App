@@ -61,6 +61,27 @@ async function sqlQuery(database, sql, params = []) {
     purchases.find((purchase) => purchase.positionId === params[1]).orderPositionId = params[0];
     return [];
   }
+  if (sql.includes('linkedOrderPositionId') && sql.includes('b.tb_client_request_id=?')) {
+    return purchases.filter((purchase) => purchase.positionId === params[0] && purchase.companyId === params[1]
+      && purchase.owner === params[2] && purchase.requestId === params[3]).map((purchase) => ({
+      ...purchase, id: purchase.positionId, linkedOrderPositionId: purchase.orderPositionId,
+    }));
+  }
+  if (sql.includes('AS savedSeparately')) {
+    return purchases.filter((purchase) => savedPositions.some((position) => position.tap_id === purchase.orderPositionId
+      && position.tap_ta_id === params[0])).map((purchase) => ({
+      id: purchase.id, status: purchase.status,
+      savedSeparately: sql.includes('TRY_CONVERT') && purchase.requestId === order.ta_procurement_request_id,
+    }));
+  }
+  if (sql.includes('UPDATE pp SET tbp_order_position_id=NULL')) {
+    for (const purchase of purchases) purchase.orderPositionId = null;
+    return [];
+  }
+  if (sql.includes('DELETE FROM') && sql.includes('tb_status=0')) {
+    purchases = purchases.filter((purchase) => purchase.id !== params[0]);
+    return [];
+  }
   if (sql.includes('tbp_bms_position_id AS bmsPositionId')) {
     return purchases.filter((purchase) => savedPositions.some((position) => position.tap_id === purchase.orderPositionId
       && position.tap_ta_id === params[0])).map((purchase) => ({
@@ -95,7 +116,9 @@ async function sqlQuery(database, sql, params = []) {
   }
   if (sql.includes('sp_getapplock')) return [{ lockResult: 0 }];
   if (sql.includes('[INFORMATION_SCHEMA].[COLUMNS]')) return (params[1] === 'tbl_Temp_Auftrag'
-    ? orderColumns : [...positionColumns, ...(sourceOffer ? ['tap_offer_position_id'] : [])]).map(col => ({ col }));
+    ? [...orderColumns, ...(procurementEnabled ? ['ta_procurement_request_id'] : [])]
+    : [...positionColumns, ...(sourceOffer ? ['tap_offer_position_id'] : []),
+      ...(procurementEnabled ? ['tap_purchase_position_id'] : [])]).map(col => ({ col }));
   if (sql.includes('[spT_ID]')) return params.length === 5 && params[0] === 'big bags'
     ? [{ id: 2, text: 'Big Bags' }] : [{ id: 1, text: 'Sackware' }];
   if (sql.includes('[tblZahltext_Sprachen]')) return [{ id: 1, text: '30 Tage' }];
@@ -262,6 +285,35 @@ test('coupled creation stores an explicit VL remainder, both references and one 
   assert.equal(retry.data.id, result.data.id);
   assert.equal(purchases.length, 1);
   assert.equal(savedPositions.length, 2);
+});
+
+test('an already saved option purchase links once without sending it or inheriting supplier terms', async () => {
+  reset();
+  procurementEnabled = true;
+  const requestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
+  purchases.push({ id: 100, positionId: 200, companyId: 3, owner: 'NSC', requestId, status: 0,
+    amount: 100, unit: 'kg', articleIndex: 'A1', optionPositionId: 9, packagingType: 'Sackware', packagingTypeId: 1 });
+  const position = { ...payload().positions[0], articleIndex: 'A1', beNumber: '', warehouseId: '', savedPurchasePositionId: 200 };
+  const input = payload({ incotermId: 2, procurementRequestId: requestId, positions: [position] });
+  await assert.rejects(request('post', { ...input, positions: [{ ...position, amountInKg: 101 }] }), { status: 409 });
+  assert.equal(order, null);
+  await assert.rejects(request('post', input, { shortCode: 'AD' }), { status: 403 });
+  const result = await request('post', input);
+  assert.equal(order.ta_ClientReferenceId, 'C1');
+  assert.equal(order.ta_delivery_type_id, 2);
+  assert.equal(order.ta_delivery_address_id, 51);
+  assert.equal(savedPositions[0].tap_purchase_position_id, 200);
+  assert.equal(savedPositions[0].tap_option_position_id, 9);
+  assert.equal(savedPositions[0].tap_be_number, '');
+  assert.equal(purchases[0].orderPositionId, savedPositions[0].tap_id);
+  assert.equal(purchases[0].status, 0);
+  assert.equal((await request('post', input)).data.id, result.data.id);
+  assert.equal(purchases.length, 1);
+  assert.equal(savedPositions.length, 1);
+  assert.equal(purchases[0].status, 0);
+  await request('delete');
+  assert.equal(purchases.length, 1);
+  assert.equal(purchases[0].orderPositionId, null);
 });
 
 test('create, edit and copy persist FCA pickup text in the existing fields without the sales customer FK', async () => {

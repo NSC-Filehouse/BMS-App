@@ -261,6 +261,7 @@ export default function TempOrderForm() {
 
   const source = location.state?.source || null;
   const procurementOption = features.linkedProcurement ? location.state?.procurementOption : null;
+  const savedPurchaseId = procurementOption?.savedPurchaseId;
   const sourceItems = React.useMemo(() => procurementOption ? [procurementOption]
     : Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null,
   [location.state?.sourceItems, procurementOption]);
@@ -309,6 +310,7 @@ export default function TempOrderForm() {
   const [positions, setPositions] = React.useState([]);
   const linkedOrder = isEdit && positions.some((position) => position.purchasePositionId);
   const needsPurchase = !isEdit && positions.some((position) => position.procurement);
+  const hasSavedPurchase = !isEdit && positions.some((position) => position.savedPurchasePositionId);
   const procurementLine = procurementKey ? positions.find((position) => position.clientKey === procurementKey) : null;
   const nextOptionPurchase = !isEdit && features.linkedProcurement && positions.find((position) => {
     if (!position.procurementArticle || !position.optionPositionId || position.procurement) return false;
@@ -461,8 +463,8 @@ export default function TempOrderForm() {
     userId: draftUserId,
     mandant: activeMandant,
     orderId: isEdit ? `edit:${id}` : (offerSourceId ? `offer:${offerSourceId}:${offerSourceVersion}`
-      : (procurementOption ? `option:${procurementOption.optionPositionId}` : 'new')),
-  }), [activeMandant, draftUserId, id, isEdit, offerSourceId, offerSourceVersion, procurementOption]);
+      : (savedPurchaseId ? `purchase:${savedPurchaseId}` : procurementOption ? `option:${procurementOption.optionPositionId}` : 'new')),
+  }), [activeMandant, draftUserId, id, isEdit, offerSourceId, offerSourceVersion, procurementOption, savedPurchaseId]);
   const draftScopeKey = `${draftUserId}\u001f${activeMandant}\u001f${draftContext.orderId}`;
   const [packagingOptions, setPackagingOptions] = React.useState([]);
   const packagingTouchedRef = React.useRef(false);
@@ -1176,7 +1178,8 @@ export default function TempOrderForm() {
             clientKey: x.clientKey || createClientPositionKey(x.beNumber || `cart-${idx}`),
             productId: x.productId || x.id || null,
             optionId: x.optionId, optionPositionId: x.optionPositionId,
-            procurementArticle: Boolean(x.optionPositionId),
+            procurementArticle: Boolean(x.optionPositionId && !x.savedPurchasePositionId),
+            savedPurchasePositionId: x.savedPurchasePositionId,
             optionSupplier: x.optionSupplier,
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
@@ -1778,7 +1781,7 @@ export default function TempOrderForm() {
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
-      const onPurchase = pos.procurement || pos.purchasePositionId;
+      const onPurchase = pos.procurement || pos.purchasePositionId || pos.savedPurchasePositionId;
       const fromOption = !isEdit && features.linkedProcurement && Boolean(pos.procurementArticle && pos.optionPositionId);
       const amount = Number(pos.amountInKg);
       if (fromOption && !onPurchase && Number.isSafeInteger(amount) && amount > 0) {
@@ -1818,7 +1821,7 @@ export default function TempOrderForm() {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_sale_price_nonnegative')}`);
       }
       if ((!fromOption || onPurchase || pos.selectedStockKey) && (!Number.isFinite(costPrice) || costPrice <= 0)) {
-        messages.push(`${pos.article || pos.beNumber}: ${t(fromOption ? 'procurement_option_cost_required' : 'validation_price_positive')}`);
+        messages.push(`${pos.article || pos.beNumber}: ${t(fromOption || pos.savedPurchasePositionId ? 'procurement_option_cost_required' : 'validation_price_positive')}`);
       }
       const wpz = getPositionWpzPayload(pos);
       if (wpz.wpzId && !String(wpz.wpzComment || '').trim()) {
@@ -1873,6 +1876,7 @@ export default function TempOrderForm() {
           id: x.id,
           ...(offerSourceId && x.offerPositionId ? { offerPositionId: x.offerPositionId } : {}),
           ...(!isEdit && x.procurement ? { procurement: x.procurement } : {}),
+          ...(!isEdit && x.savedPurchasePositionId ? { savedPurchasePositionId: x.savedPurchasePositionId } : {}),
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           articleIndex: x.articleIndex || null,
@@ -1892,8 +1896,8 @@ export default function TempOrderForm() {
         }));
       }
 
-      if (needsPurchase) {
-        procurementRequest.current ||= createCustomerOperationId();
+      if (needsPurchase || hasSavedPurchase) {
+        procurementRequest.current ||= hasSavedPurchase ? procurementOption.purchaseRequestId : createCustomerOperationId();
         payload.procurementRequestId = procurementRequest.current;
         saveTempOrderDraft(draftContext, { ...draftData, procurementRequestId: procurementRequest.current });
       }
@@ -2372,7 +2376,7 @@ export default function TempOrderForm() {
                   <Typography variant="subtitle2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     {t('order_positions_count')}: {positions.length}
                   </Typography>
-                  {features.linkedProcurement && !isEdit && <Button size="small" onClick={() => setPickProcurementArticle(true)}>
+                  {features.linkedProcurement && !isEdit && !hasSavedPurchase && <Button size="small" onClick={() => setPickProcurementArticle(true)}>
                     {t('procurement_add_article')}
                   </Button>}
                   {isPositionsMode && !linkedOrder && (
@@ -2414,7 +2418,7 @@ export default function TempOrderForm() {
                       && Number.isSafeInteger(Number(x.amountInKg)) && Number(x.amountInKg) > 0
                       && (Boolean(x.procurement) || (!fromOption && Array.isArray(offerStock) && !stockCoversPosition));
                     return (
-                      <Accordion key={positionKey} disableGutters defaultExpanded={fromOption}>
+                      <Accordion key={positionKey} disableGutters defaultExpanded={fromOption || Boolean(x.savedPurchasePositionId)}>
                       <AccordionSummary
                         expandIcon={<ExpandCollapseIndicator accordion />}
                         sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
@@ -2485,7 +2489,10 @@ export default function TempOrderForm() {
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_article_index')}: {x.articleIndex || '-'}
                             </Typography>
-                            {(!fromOption || x.beNumber) && <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                            {x.savedPurchasePositionId && <Typography variant="caption" color="text.secondary">
+                              {t('procurement_option_linked_purchase', { id: savedPurchaseId })}
+                            </Typography>}
+                            {((!fromOption && !x.savedPurchasePositionId) || x.beNumber) && <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
                             </Typography>}
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -2580,7 +2587,7 @@ export default function TempOrderForm() {
                               type="number"
                               label={t('product_amount')}
                               value={x.amountInKg ?? ''}
-                              disabled={linkedOrder || Boolean(x.procurement)}
+                              disabled={linkedOrder || Boolean(x.procurement || x.savedPurchasePositionId)}
                               onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, amountInKg: e.target.value } : p)))}
                               inputProps={{ min: 1, step: fromOption ? 1 : 'any' }}
                               size="small"
@@ -2613,7 +2620,7 @@ export default function TempOrderForm() {
                             helperText={t('validation_wpz_individual_required')}
                           />
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <IconButton size="small" color="error" aria-label={t('delete_label')} disabled={linkedOrder} onClick={() => onRemovePosition(idx)}>
+                            <IconButton size="small" color="error" aria-label={t('delete_label')} disabled={linkedOrder || Boolean(x.savedPurchasePositionId)} onClick={() => onRemovePosition(idx)}>
                               <DeleteOutlineIcon fontSize="small" />
                             </IconButton>
                           </Box>

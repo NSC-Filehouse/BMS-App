@@ -14,6 +14,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 import { getMandant } from '../utils/mandant.js';
+import { createPurchaseLineId } from '../utils/purchaseCart.js';
 import { optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
@@ -39,10 +40,21 @@ export default function OptionDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleting, setDeleting] = React.useState(false);
+  const [checkingStock, setCheckingStock] = React.useState(false);
+  const [orderStartError, setOrderStartError] = React.useState('');
+  const stockRequest = React.useRef(null);
   const [deleteConfirm,setDeleteConfirm]=React.useState(false);
   const endpoint=`/options/${encodeURIComponent(id)}${positionId?`/positions/${encodeURIComponent(positionId)}`:''}`;
   const validityRefresh = useOptionValidityRefresh();
   const mandant = getMandant();
+  React.useEffect(() => {
+    setCheckingStock(false);
+    setOrderStartError('');
+    return () => {
+      stockRequest.current?.abort();
+      stockRequest.current = null;
+    };
+  }, [id, positionId, mandant]);
   const position = offer?.positions?.[0];
   const audienceKey = positionId && position && offer.id === Number(id) && position.id === Number(positionId)
     ? JSON.stringify([mandant, endpoint, position.snapshotId, position.matchProcessingStatus,
@@ -88,6 +100,43 @@ export default function OptionDetail() {
     finally { setDeleting(false); }
   }
 
+  async function startOrder(article, supplier) {
+    stockRequest.current?.abort();
+    const controller = new AbortController();
+    stockRequest.current = controller;
+    setCheckingStock(true);
+    setOrderStartError('');
+    const returnTo = createReturnTo(location);
+    const procurementOption = {
+      optionId: offer.id, optionPositionId: position.id, articleIndex: article.articleIndex,
+      article: article.articleName, amountInKg: '', price: '', costPrice: position.pricePerTonne ?? null,
+      optionSupplier: supplier,
+    };
+    try {
+      const { data } = await apiRequest('/temp-orders/procurement/stock?' + new URLSearchParams({
+        articleIndex: article.articleIndex, checkPurchaseLink: '1',
+      }),
+        { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if ((data || []).some((lot) => Number(lot.available) > 0)) {
+        navigate('/temp-orders/new', { state: { returnTo, procurementOption } });
+      } else {
+        navigate(`/options/${offer.id}/positions/${position.id}/order-purchase`, {
+          state: { returnTo, procurementOption, clientRequestId: createPurchaseLineId(), mandant,
+            supplierArticleName: position.articleName,
+            incoterm: offer.incoterm, loadingLocation: position.loadingLocation || offer.loadingLocation },
+        });
+      }
+    } catch (cause) {
+      if (!controller.signal.aborted) setOrderStartError(cause.message || t('loading_error'));
+    } finally {
+      if (stockRequest.current === controller) {
+        stockRequest.current = null;
+        setCheckingStock(false);
+      }
+    }
+  }
+
   return <Box sx={{ width: '100%', maxWidth: 900, minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
       <DisclosureBackButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
@@ -96,18 +145,12 @@ export default function OptionDetail() {
     </Box>
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
+    {orderStartError && <Alert severity="error">{orderStartError}</Alert>}
     {!loading && !error && offer && position && <OptionPurchaseControls
       key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
       enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
-      onCustomerOrder={features.linkedProcurement ? (article, supplier) => navigate('/temp-orders/new', { state: {
-        returnTo: createReturnTo(location),
-        procurementOption: {
-          optionId: offer.id, optionPositionId: position.id, articleIndex: article.articleIndex,
-          article: article.articleName, amountInKg: '', price: '', costPrice: position.pricePerTonne ?? null,
-          optionSupplier: supplier,
-        },
-      } }) : undefined}
+      onCustomerOrder={features.linkedProcurement ? startOrder : undefined} checkingStock={checkingStock}
       renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails
         offer={offer} position={position} supplierField={supplierField} purchaseControls={purchaseControls}
         audienceEndpoint={`${endpoint}/offer-customers`} audienceKey={articlePending ? '' : audienceKey}

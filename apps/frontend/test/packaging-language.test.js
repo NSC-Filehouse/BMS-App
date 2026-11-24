@@ -11,6 +11,7 @@ import * as contactRanking from '../src/utils/contactRanking.js';
 import * as incoterm from '../src/utils/incoterm.js';
 import * as loadingLocationDisplay from '../src/utils/loadingLocationDisplay.js';
 import * as salePrice from '../src/utils/salePrice.js';
+import * as purchaseOrderAttachments from '../src/utils/purchaseOrderAttachments.js';
 
 const i18nSource = readFileSync(new URL('../src/utils/i18n.jsx', import.meta.url), 'utf8');
 const dictionary = new Function(`${i18nSource.slice(i18nSource.indexOf('const translations ='), i18nSource.indexOf('function getInitialLang'))}; return translations;`)();
@@ -19,10 +20,10 @@ const choices = lang => [{ id: 78, text: lang === 'en' ? 'Bags' : 'Sackware', al
 
 // Execute the component's hooks and handlers without a browser or live API.
 // State and effect cleanup persist across renders, including language changes.
-async function mount(relativePath, props, request, params = {}, exportName = 'default') {
+async function mount(relativePath, props, request, params = {}, exportName = 'default', routeState) {
   let cursor = 0, dirty = true, tree;
-  const slots = [], effects = [], calls = [], location = { pathname: '/test', state: {} };
-  const navigate = () => {};
+  const slots = [], effects = [], calls = [], navigations = [], location = { pathname: '/test', state: routeState || {} };
+  const navigate = (path, options) => { navigations.push({ path, options }); };
   const env = { lang: 'de' };
   const state = initial => {
     const index = cursor++;
@@ -78,6 +79,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../utils/incoterm.js': incoterm,
     '../utils/loadingLocationDisplay.js': loadingLocationDisplay,
     '../utils/salePrice.js': salePrice,
+    '../utils/purchaseOrderAttachments.js': purchaseOrderAttachments,
     '../utils/optionPurchaseNavigation.js': { optionPurchaseReturnTo: () => ({ pathname: '/test' }) },
     '../utils/navigation.js': { createReturnTo: () => ({}), navigateToReturn: navigate },
   };
@@ -91,10 +93,11 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
   const render = () => {
     cursor = 0; dirty = false;
     tree = module.exports[exportName](props);
+    if (routeState && typeof tree.type === 'function') tree = tree.type(tree.props);
     effects.splice(0).forEach(fn => fn());
   };
   return {
-    calls, env,
+    calls, env, navigations,
     async flush() {
       // Allow promise chains and state updates from API responses to settle.
       for (let i = 0; i < 16; i++) {
@@ -229,6 +232,40 @@ test('supplier search fills an empty proposal list and passes the chosen supplie
   const dialog = view.find(node => node.props?.supplier && node.props?.onClose);
   assert.equal(dialog.props.supplier, supplier);
   assert.equal(dialog.props.supplierEditable, false);
+});
+
+test('the purchase-first editor saves the fixed option line and opens the customer order with only line data', async () => {
+  const clientRequestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
+  const supplier = { id: 'LF1', name: 'Supplier' };
+  const view = await mount('../src/pages/OptionOrderPurchase.jsx', {}, async (path, _lang, request) => {
+    if (path.endsWith('/suppliers?q=')) return { data: [supplier], meta: { packagingTypes: choices('de'), remainingKg: 24750 } };
+    assert.equal(path, '/temp-purchase-orders');
+    assert.equal(request.body.get('clientRequestId'), clientRequestId);
+    assert.equal(request.body.get('supplierId'), supplier.id);
+    assert.equal(JSON.parse(request.body.get('positions'))[0].articleIndex, 'A1');
+    return { data: { id: 27, clientRequestId, packagingType: 'Sackware', packagingTypeId: 78,
+      supplierId: supplier.id, deliveryTermId: 2, loadingLocationText: 'Supplier pickup', paymentConditionId: 10,
+      positions: [{ id: 38, optionId: 1, optionPositionId: 10, articleIndex: 'A1', amount: 12000, purchasePrice: 1755 }],
+    } };
+  }, { id: '1', positionId: '10' }, 'default', {
+    mandant: '10', clientRequestId, incoterm: 'FCA', loadingLocation: 'Supplier pickup',
+    procurementOption: { optionId: 1, optionPositionId: 10, articleIndex: 'A1', article: 'Grade', optionSupplier: supplier, costPrice: 1755 },
+  });
+  await view.flush();
+  assert.match(view.text(), /Artikel nicht auf VL/);
+  const editor = view.find((node) => node.props.fixedPosition && node.props.onSave);
+  const { initialOrder } = editor.props;
+  assert.equal(initialOrder.positions.length, 1);
+  assert.equal(initialOrder.positions[0].amount, 24750);
+  await editor.props.onSave({ ...initialOrder, positions: [{ ...initialOrder.positions[0], amount: 12000 }] });
+  await view.flush();
+  const [{ path, options }] = view.navigations;
+  assert.equal(path, '/temp-orders/new');
+  assert.deepEqual(options.state.procurementOption, {
+    optionId: 1, optionPositionId: 10, savedPurchaseId: 27, savedPurchasePositionId: 38, purchaseRequestId: clientRequestId,
+    articleIndex: 'A1', article: 'Grade', amountInKg: 12000, price: '', costPrice: 1755,
+    originalPackagingType: 'Sackware', originalPackagingTypeId: 78,
+  });
 });
 
 test('the first selectable article is preselected and a resolved supplier appears in the order dialog', async () => {

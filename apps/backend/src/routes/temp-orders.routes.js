@@ -1266,7 +1266,12 @@ router.get('/temp-orders/procurement/stock', requireMandant, asyncHandler(async 
   const articleIndex = asText(req.query.articleIndex).slice(0, 50);
   if (!articleIndex) throw createHttpError(400, 'Artikel fehlt.');
   const draft = await prepareOfferOrder(req, { positions: [{ articleIndex, quantity: 1, unit: 'kg' }] });
-  sendEnvelope(res, { data: draft.positions[0].candidates });
+  const candidates = draft.positions[0].candidates;
+  if (req.query.checkPurchaseLink === '1' && !candidates.some((lot) => Number(lot.available) > 0)
+    && !await procurementSchemaReady()) {
+    throw createHttpError(503, 'Die Datenbank muss für die Auftragsbeschaffung aktualisiert werden.', { code: 'PROCUREMENT_SCHEMA_MISSING' });
+  }
+  sendEnvelope(res, { data: candidates });
 }));
 
 router.post('/temp-orders/pickup-addresses', requireMandant, asyncHandler(async (req, res) => {
@@ -1761,9 +1766,9 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
   res.send(row.attachment);
 }));
 
-async function completeLinkedProcurement(req, order, companyId) {
+async function completeLinkedProcurement(req, order, companyId, { handoff = true } = {}) {
   const procurement = await loadOrderProcurement(order.ta_id, companyId);
-  const handoffs = await Promise.allSettled((procurement?.draftPurchaseIds || [])
+  const handoffs = await Promise.allSettled((handoff ? procurement?.draftPurchaseIds || [] : [])
     .map((id) => finalizePurchase(req, id, { draftOnly: true, linkedOnly: true })));
   for (const handoff of handoffs) {
     if (handoff.status === 'rejected') logger.warn('Bestellübergabe für Auftrag ' + order.ta_id + ': ' + handoff.reason?.message);
@@ -1773,6 +1778,28 @@ async function completeLinkedProcurement(req, order, companyId) {
     ...mapped, procurement,
     procurementHandoffOpen: handoffs.some((handoff) => handoff.status === 'rejected'),
   }, order.ta_id);
+}
+
+async function lockSavedOptionPurchase(query, position, companyId, user, requestId) {
+  // The original purchase request ID also identifies retries of the follow-up sales order.
+  const [purchase] = (await query(`
+    SELECT pp.tbp_id AS id, pp.tbp_order_position_id AS linkedOrderPositionId,
+      pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit,
+      pp.OptionPositionID AS optionPositionId, b.tb_packaging_type AS packagingType, b.tb_packaging_type_id AS packagingTypeId
+    FROM ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK)
+    JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp WITH (UPDLOCK,HOLDLOCK) ON pp.tbp_tb_id=b.tb_id
+    WHERE pp.tbp_id=? AND b.tb_company_id=? AND b.tb_created_by=? AND b.tb_client_request_id=?
+      AND pp.OptionID IS NOT NULL AND pp.OptionPositionID IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS} other WHERE other.tbp_tb_id=b.tb_id AND other.tbp_id<>pp.tbp_id)
+  `, [position.savedPurchasePositionId, companyId, user, requestId])).rows;
+  if (!purchase || purchase.linkedOrderPositionId != null
+    || asText(purchase.articleIndex).toLowerCase() !== position.articleIndex.toLowerCase()
+    || asText(purchase.unit).toLowerCase() !== 'kg' || Number(purchase.amount) !== position.amountInKg) {
+    throw createHttpError(409, 'Die gespeicherte Bestellposition ist nicht mehr verfügbar oder Artikel und Menge wurden geändert.', {
+      code: 'PROCUREMENT_SAVED_PURCHASE_CHANGED',
+    });
+  }
+  return purchase;
 }
 
 function expandProcurementPositions(positions) {
@@ -1813,7 +1840,14 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const body = getRequestBody(req);
   const attachment = normalizeAttachmentInput(req);
   const submittedPositions = normalizePositionsInput(body);
-  const hasProcurement = Array.isArray(submittedPositions) && submittedPositions.some((position) => position?.procurement);
+  const hasInlineProcurement = submittedPositions.some((position) => position?.procurement);
+  const savedPurchaseCount = submittedPositions.filter((position) => position?.savedPurchasePositionId != null).length;
+  if (savedPurchaseCount > 1 || (savedPurchaseCount && hasInlineProcurement)) {
+    throw createHttpError(400, 'Pro Auftrag kann hier eine bereits gespeicherte Bestellposition übernommen werden.', {
+      code: 'PROCUREMENT_SAVED_PURCHASE_INVALID',
+    });
+  }
+  const hasProcurement = hasInlineProcurement || savedPurchaseCount > 0;
   const procurementRequestId = hasProcurement ? asText(body.procurementRequestId).toLowerCase() : null;
   if (hasProcurement) {
     assertProcurementAccess(userIdentity);
@@ -1827,7 +1861,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       SELECT * FROM ${TEMP_ORDER_TABLE} WHERE ta_company_id=? AND ta_CreatedBy=? AND ta_procurement_request_id=?
     `, [companyId, userShortCode, procurementRequestId]);
     if (prior[0]) {
-      sendEnvelope(res, { data: await completeLinkedProcurement(req, prior[0], companyId) });
+      sendEnvelope(res, { data: await completeLinkedProcurement(req, prior[0], companyId, { handoff: hasInlineProcurement }) });
       return;
     }
   }
@@ -1900,7 +1934,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
-    if ((!beNumber || !warehouseId) && !raw?.procurement) {
+    const savedPurchasePositionId = raw?.savedPurchasePositionId == null ? null : Number(raw.savedPurchasePositionId);
+    if ((!beNumber || !warehouseId) && !raw?.procurement && savedPurchasePositionId === null) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
     }
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
@@ -1915,6 +1950,21 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     }
     if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    if (savedPurchasePositionId !== null) {
+      const articleIndex = asText(raw.articleIndex);
+      if (!Number.isSafeInteger(savedPurchasePositionId) || savedPurchasePositionId <= 0 || !articleIndex
+        || Number(raw.amountInKg) !== amountInKg || beNumber || warehouseId) {
+        throw createHttpError(400, 'Ungültige Übernahme der gespeicherten Bestellposition.', { code: 'PROCUREMENT_SAVED_PURCHASE_INVALID' });
+      }
+      normalizedPositions.push({
+        savedPurchasePositionId, beNumber: '', warehouseId: '', articleIndex,
+        deliveryDate: deliveryDate.toISOString(), valutaDate: valutaDateState.storedDate,
+        amountInKg, salePricePerKg, costPricePerKg, reservationInKg: null, reservationDate: null,
+        ...resolveArticleName({ requestedArticle: raw.article, canonicalArticle: raw.article }),
+        wpzId: null, wpzOriginal: null, wpzComment: asText(raw.wpzComment) || null, productContext: {},
+      });
+      continue;
     }
     if (raw?.procurement) {
       const purchaseRequest = Object.assign(Object.create(req), {
@@ -2109,7 +2159,16 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       const posCtx = pos.productContext;
       const offerPositionId = conversion?.positionIds[i];
       const purchase = pos.purchaseDraft ? await savePurchaseDraft(query, pos.purchaseRequest, pos.purchaseDraft) : null;
-      const purchasePositionId = purchase?.positions[0]?.id;
+      const savedPurchase = pos.savedPurchasePositionId
+        ? await lockSavedOptionPurchase(query, pos, companyId, userShortCode, procurementRequestId) : null;
+      const purchasePositionId = savedPurchase?.id ?? purchase?.positions[0]?.id;
+      if (savedPurchase) {
+        pos.optionPositionId = savedPurchase.optionPositionId;
+        pos.originalPackagingType = savedPurchase.packagingType;
+        pos.originalPackagingTypeId = savedPurchase.packagingTypeId;
+        pos.packagingTypeChanged = packagingTypesChanged(orderLevel.packagingType, orderLevel.packagingTypeId,
+          pos.originalPackagingType, pos.originalPackagingTypeId);
+      }
       if (pos.purchaseDraft && !purchasePositionId) throw createHttpError(500, 'Bestellposition konnte nicht angelegt werden.');
       const posInsertColumns = [
         '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
@@ -2174,7 +2233,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   sendEnvelope(res, {
     status: 201,
-    data: hasProcurement ? await completeLinkedProcurement(req, created, companyId) : await mapTempOrderWithAttachments(
+    data: hasProcurement ? await completeLinkedProcurement(req, created, companyId, { handoff: hasInlineProcurement }) : await mapTempOrderWithAttachments(
       mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)), created.ta_id,
     ),
     meta: { mandant: req.mandant },
@@ -3382,9 +3441,14 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
     }
 
     if (hasColumn(positionCols, 'tap_purchase_position_id')) {
+      const orderColumns = await getTableColumns(config.sql.database, TEMP_ORDER_TABLE_NAME);
+      const savedSeparately = hasColumn(orderColumns, 'ta_procurement_request_id')
+        ? 'CASE WHEN b.tb_client_request_id=TRY_CONVERT(uniqueidentifier,o.ta_procurement_request_id) THEN 1 ELSE 0 END'
+        : '0';
       const purchases = (await query(`
-        SELECT DISTINCT b.tb_id AS id,b.tb_status AS status
+        SELECT DISTINCT b.tb_id AS id,b.tb_status AS status,${savedSeparately} AS savedSeparately
         FROM ${TEMP_ORDER_POSITION_TABLE} p
+        JOIN ${TEMP_ORDER_TABLE} o ON o.ta_id=p.tap_ta_id
         JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp ON pp.tbp_id=p.tap_purchase_position_id
         JOIN ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK) ON b.tb_id=pp.tbp_tb_id
         WHERE p.tap_ta_id=? AND b.tb_company_id=?
@@ -3398,7 +3462,7 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
         `, [id]);
         await query(`UPDATE ${TEMP_ORDER_POSITION_TABLE} SET tap_purchase_position_id=NULL WHERE tap_ta_id=?`, [id]);
         for (const purchase of purchases) {
-          if (Number(purchase.status) === 0) {
+          if (Number(purchase.status) === 0 && !purchase.savedSeparately) {
             await query(`DELETE FROM ${PROCUREMENT_PURCHASES} WHERE tb_id=? AND tb_status=0
               AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS}
                 WHERE tbp_tb_id=? AND tbp_order_position_id IS NOT NULL)`, [purchase.id, purchase.id]);

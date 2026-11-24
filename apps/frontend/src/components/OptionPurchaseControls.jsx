@@ -8,7 +8,7 @@ import OptionPurchaseDialog from './OptionPurchaseDialog.jsx';
 
 const listboxProps = { sx: { '& .MuiAutocomplete-option': { overflowWrap: 'anywhere' } } };
 
-export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails, onCustomerOrder }) {
+export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails, onCustomerOrder, checkingStock }) {
   const { t } = useI18n();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers, setSuppliers] = React.useState(null);
@@ -217,7 +217,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
       <Button variant="contained" disabled sx={{ '&.Mui-disabled': { bgcolor: 'grey.100', color: 'text.secondary' } }}>{t('option_counter_option')}</Button>
       {onCustomerOrder && <Button variant="outlined" onClick={() => onCustomerOrder(article, supplier)}
-        disabled={!article || optionArticleBlocked(article)}>{t('procurement_customer_order')}</Button>}
+        disabled={checkingStock || !article || optionArticleBlocked(article)}>{t('procurement_customer_order')}</Button>}
       <Button variant="contained" onClick={() => setPurchaseOpen(true)}
         disabled={!enabled || !supplier || !article || optionArticleBlocked(article) || position.remainingKg === 0}>{t('purchase_order_action')}</Button>
     </Box>
