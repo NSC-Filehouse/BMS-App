@@ -1,6 +1,7 @@
 const config = require('../config');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { buildCustomerScopeFilter, getCustomerAccessScope } = require('../db/customer-access');
+const { loadOwnMandantNames } = require('../db/own-sales-mandants');
 const { createHttpError } = require('../utils');
 const { articleByIndex, storedCandidate } = require('./matching-service');
 const { exactNameCandidates, validateOptionArticle } = require('./purchase-source');
@@ -9,6 +10,7 @@ const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
 
 const text = value => String(value ?? '').trim();
+const nameKey = value => text(value).normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 async function resolveOfferArticle(database, offer, position) {
   if (Number(database.firmaId) !== Number(offer.sourceMandantId)) {
@@ -40,10 +42,10 @@ async function loadArticleCustomers(database, userIdentity, articleIndex) {
   const salesCode = text(scope.shortCode).toUpperCase();
   const salesFilter = { enabled: canFilterSales, defaultCode: salesCode };
   if (!canFilterSales && !salesCode) return { customers: [], salesFilter };
-  const rows = await runSQLQueryAccess(database, `
+  const [rows, mandants] = await Promise.all([runSQLQueryAccess(database, `
     SELECT k.kd_KdNR AS id, k.kd_Name1 AS name, k.kd_Name2 AS name2, k.kd_Aussendienst AS salesCode
     FROM dbo.tblKunden k
-    WHERE EXISTS (
+    WHERE COALESCE(k.kd_InterCompany, 0) = 0 AND EXISTS (
       SELECT 1 FROM dbo.tblRechnung r
       JOIN dbo.tblRech_Position p ON p.reP_RGnummer = r.re_RgNummer
       WHERE r.re_KdNr = k.kd_KdNR AND r.re_Auftragsstatus = N'Rechnung'
@@ -53,12 +55,17 @@ async function loadArticleCustomers(database, userIdentity, articleIndex) {
     ${whereSql ? `AND (${whereSql})` : ''}
     ${canFilterSales ? '' : "AND UPPER(LTRIM(RTRIM(k.kd_Aussendienst))) = ?"}
     ORDER BY k.kd_Name1, k.kd_Name2, k.kd_KdNR
-  `, [articleIndex, ...params, ...(canFilterSales ? [] : [salesCode])]);
-  const customers = rows.map(row => ({
-    id: text(row.id),
-    name: [text(row.name), text(row.name2)].filter(Boolean).join(' ') || text(row.id),
-    salesCode: text(row.salesCode).toUpperCase(),
-  }));
+  `, [articleIndex, ...params, ...(canFilterSales ? [] : [salesCode])]), loadOwnMandantNames()]);
+  const legalNames = new Set(mandants.map(row => nameKey(row.legalName)).filter(Boolean));
+  const displayNames = new Set(mandants.map(row => nameKey(row.name)).filter(Boolean));
+  const customers = [];
+  for (const row of rows) {
+    const name = [text(row.name), text(row.name2)].filter(Boolean).join(' ');
+    const fullNameKey = nameKey(name);
+    if (legalNames.has(nameKey(row.name)) || legalNames.has(fullNameKey) || displayNames.has(fullNameKey)) continue;
+    const id = text(row.id);
+    customers.push({ id, name: name || id, salesCode: text(row.salesCode).toUpperCase() });
+  }
   return { customers, salesFilter };
 }
 

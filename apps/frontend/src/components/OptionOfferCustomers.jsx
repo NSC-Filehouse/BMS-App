@@ -248,12 +248,10 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
-  const [salesCode, setSalesCode] = React.useState(null);
+  const [salesCode, setSalesCode] = React.useState('');
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const defaultSalesCode = salesFilter?.defaultCode ?? '';
-  const salesCodes = [...new Set([defaultSalesCode, ...customers.map(customer => customer.salesCode)].filter(Boolean))].sort();
-  const hasExplicitFilter = salesCode === '' || salesCodes.includes(salesCode);
-  const filter = salesFilter?.enabled ? (hasExplicitFilter ? salesCode : defaultSalesCode) : '';
+  const salesCodes = [...new Set(customers.map(customer => customer.salesCode).filter(Boolean))].sort();
+  const filter = salesFilter?.enabled && salesCodes.includes(salesCode) ? salesCode : '';
   const visible = filter ? customers.filter(customer => customer.salesCode === filter) : customers;
   const chosen = visible.filter(customer => !customer.sent && !customer.queued && selection.includes(customer.id));
 

@@ -10,12 +10,16 @@ let stored;
 let invoices;
 let accepted;
 let customerScope;
+let mandants;
 
 require.cache[require.resolve('../src/db/access')] = { exports: {
   withSqlTransaction: async () => assert.fail('Customer offer lookup must be read-only'),
   runSQLQueryAccess: async (database, sql, params) => {
     calls.push({ database, sql, params });
-    if (sql.includes('dbo.tblRechnung')) return invoices;
+    if (sql.includes('dbo.tblRechnung')) {
+      assert.match(sql, /COALESCE\(k\.kd_InterCompany, 0\) = 0/);
+      return invoices.filter(row => !row.interCompany);
+    }
     if (sql.includes('dbo.tblKun_Ansprech')) return [{ customerId: 'B', id: 71, name: 'Musterkontakt', email: 'b@example.invalid', language: 'de' }];
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
     if (sql.includes('OPENJSON')) return candidates;
@@ -24,6 +28,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   },
   runSQLQuerySqlServer: async (database, sql, params) => {
     calls.push({ database, sql, params });
+    if (sql.includes('[md_FirmaName]')) return mandants;
     if (sql.includes('tblOptionenArtikelKandidaten')) {
       return stored ? [{ oak_DatenJson: JSON.stringify(stored), oak_oab_id: 25 }] : [];
     }
@@ -54,6 +59,7 @@ test.beforeEach(() => {
   customerScope = { shortCode: 'ADM', isMainTenant: true, isFullAccess: true };
   invoices = [{ id: 'A', name: 'Kunde A', salesCode: 'ADM' }, { id: 'B', name: 'Kunde B', salesCode: 'ADM' }];
   accepted = [{ CustomerNumber: 'a', Status: 'sent' }, { CustomerNumber: 'b', Status: 'submitted' }];
+  mandants = [];
 });
 
 test('a stock offer uses the exact stock key and the same customer scope without option matching', async () => {
@@ -62,13 +68,40 @@ test('a stock offer uses the exact stock key and the same customer scope without
   assert.equal(result.article.index, 'A-PP');
   assert.equal(result.customers[0].sent, true);
   assert.equal(result.customers[1].queued, true);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   const buyerQuery = calls.find(call => call.sql.includes('dbo.tblRechnung'));
   const statusQuery = calls.find(call => call.sql.includes('CustomerNumber, Status'));
   assert.match(buyerQuery.sql, /k.kd_Aussendienst/);
   assert.deepEqual(buyerQuery.params, ['A-PP', 'ADM']);
   assert.match(statusQuery.sql, /OptionPositionId IS NULL AND StockPositionKey/);
   assert.deepEqual(statusQuery.params, [3, stockPositionKey]);
+});
+
+test('options and stock exclude intercompany customers and exact company names from the full mandant directory', async () => {
+  mandants = [
+    { name: 'Frupack', legalName: 'Frupack Plastic GmbH' },
+    { name: 'Nordpoly', legalName: 'Nordpoly GmbH' },
+    { name: 'Elbpolymer', legalName: 'Elbpolymer GmbH' },
+  ];
+  invoices.push(
+    { id: 'I', name: 'Anderer Name im Kundenstamm', interCompany: true },
+    { id: 'F', name: 'FRUPACK-Plastic', name2: 'GmbH' },
+    { id: 'N', name: 'Nordpoly GmbH', name2: 'Rechnungsabteilung' },
+    { id: 'E', name: 'Elbpolymer' },
+    { id: 'C', name: 'Kunde C', name2: 'Siehe Frupack', salesCode: 'ADM' },
+    { id: 'D', name: 'Frupack', name2: 'Trading Ltd', salesCode: 'ADM' },
+  );
+  const option = await loadOptionOfferCustomers(sameDatabase, {}, owner, position);
+  const stock = await loadCustomerOfferAudience(sameDatabase, {}, catalogArticle, 'a'.repeat(64));
+  assert.deepEqual(option.customers.map(customer => customer.id), ['A', 'B', 'C', 'D']);
+  assert.deepEqual(stock.customers.map(customer => customer.id), ['A', 'B', 'C', 'D']);
+
+  const req = {
+    database: sameDatabase,
+    userIdentity: { email: 'ad@example.invalid', fullName: 'Vertrieb', shortCode: 'ADM' },
+    body: { customers: [{ customerId: 'E' }] },
+  };
+  await assert.rejects(() => buildOfferSubmissions(req, owner, position), /nicht verfügbar/);
 });
 
 test('an eligible match returns scoped buyers and only the recorded sent status for this position', async () => {

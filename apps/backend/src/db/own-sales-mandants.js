@@ -20,6 +20,14 @@ function isOwnSalesMandantCustomer(customer) {
     && SALES_MANDANT_IDS.includes(customer?.ownSalesMandantId);
 }
 
+async function loadOwnMandantNames() {
+  return runSQLQuerySqlServer(config.sql.database, `
+    SELECT ${escapeIdentifier(config.sql.columns.firma)} AS name, [md_FirmaName] AS legalName
+    FROM [dbo].${escapeIdentifier(config.sql.tables.mandant)}
+    WHERE ${escapeIdentifier(config.sql.columns.firmaId)} > 0
+  `);
+}
+
 async function loadOwnSalesMandantId(customer) {
   const customerId = normalizeCustomerId(customer?.customerId);
   if (!customerId) return null;
@@ -47,4 +55,4 @@ async function loadOwnSalesMandantId(customer) {
   }
 }
 
-module.exports = { isOwnSalesMandantCustomer, loadOwnSalesMandantId };
+module.exports = { isOwnSalesMandantCustomer, loadOwnSalesMandantId, loadOwnMandantNames };

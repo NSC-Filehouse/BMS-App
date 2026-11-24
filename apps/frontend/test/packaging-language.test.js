@@ -10,6 +10,7 @@ import * as loadingLocations from '../src/utils/loadingLocationDraft.js';
 import * as contactRanking from '../src/utils/contactRanking.js';
 import * as incoterm from '../src/utils/incoterm.js';
 import * as loadingLocationDisplay from '../src/utils/loadingLocationDisplay.js';
+import * as salePrice from '../src/utils/salePrice.js';
 
 const i18nSource = readFileSync(new URL('../src/utils/i18n.jsx', import.meta.url), 'utf8');
 const dictionary = new Function(`${i18nSource.slice(i18nSource.indexOf('const translations ='), i18nSource.indexOf('function getInitialLang'))}; return translations;`)();
@@ -76,6 +77,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../utils/contactRanking.js': contactRanking,
     '../utils/incoterm.js': incoterm,
     '../utils/loadingLocationDisplay.js': loadingLocationDisplay,
+    '../utils/salePrice.js': salePrice,
     '../utils/optionPurchaseNavigation.js': { optionPurchaseReturnTo: () => ({ pathname: '/test' }) },
     '../utils/navigation.js': { createReturnTo: () => ({}), navigateToReturn: navigate },
   };
@@ -265,6 +267,30 @@ test('option details reload customers for the selected article and discard late 
   resolvePrevious(responseFor('B'));
   await view.flush();
   assert.deepEqual(audience().customers, [{ id: 'C+2' }]);
+});
+
+test('the customer suggestions start with all sales representatives and still support filtering', async () => {
+  const view = await mount('../src/components/OptionOfferCustomers.jsx', {
+    customers: [{ id: 'A', name: 'Kunde Eins', salesCode: 'ADM' }, { id: 'B', name: 'Kunde Zwei', salesCode: 'AD2' }],
+    salesFilter: { enabled: true, defaultCode: 'ADM' },
+  }, async path => { assert.fail(`Unexpected request: ${path}`); });
+  const filter = () => view.field('Außendienst').props;
+  await view.flush();
+  assert.equal(filter().value, '');
+  assert.match(view.text(), /Kunde Eins/);
+  assert.match(view.text(), /Kunde Zwei/);
+
+  filter().onChange({ target: { value: 'AD2' } });
+  await view.flush();
+  assert.equal(filter().value, 'AD2');
+  assert.doesNotMatch(view.text(), /Kunde Eins/);
+  assert.match(view.text(), /Kunde Zwei/);
+
+  filter().onChange({ target: { value: '' } });
+  await view.flush();
+  assert.equal(filter().value, '');
+  assert.match(view.text(), /Kunde Eins/);
+  assert.match(view.text(), /Kunde Zwei/);
 });
 
 test('option purchase waits for the matching menu item before displaying the default packaging', async () => {
