@@ -28,6 +28,18 @@ const positionReferences=[
  ['tbl_Temp_Auf_Position','tap_option_position_id','tblOptionenPositionen','opp_id'],
  ['tbl_Temp_Best_Position','tbp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
 ];
+const optionDeliveryColumns = [
+  { tableName: 'tblOptionen', name: 'op_QuellangebotHash', typeName: 'char', max_length: 64 },
+  { tableName: 'tblOptionenPositionen', name: 'opp_LieferdatenJson', typeName: 'nvarchar', max_length: -1 },
+].map(column => ({
+  ...column, precision: 0, scale: 0, is_nullable: true, is_identity: false, is_computed: false,
+  collation_name: 'Latin1_General_CI_AS',
+}));
+for (const column of optionDeliveryColumns) {
+  if (!schema.columns.some(existing => existing.tableName === column.tableName && existing.name === column.name)) {
+    schema.columns.push(column);
+  }
+}
 for(const [tableName,name,referencedTable,referencedColumn] of positionReferences){
  if(!schema.columns.some(column=>column.tableName===tableName && column.name===name)){
   schema.columns.push({
@@ -118,6 +130,13 @@ sql+=`\n -- Preserve the original option data with each generated purchase attac
  IF COL_LENGTH(${literal('BMSApp.'+optionSnapshotTable)},${literal(optionSnapshotColumn)}) IS NULL
   ${execute(`ALTER TABLE ${full(optionSnapshotTable)} ADD ${quote(optionSnapshotColumn)} ${type(optionSnapshot)} COLLATE ${optionSnapshot.collation_name} NULL;`)}
 `;
+for (const column of optionDeliveryColumns) {
+  const table = literal('BMSApp.' + column.tableName);
+  const name = literal(column.name);
+  const ddl = 'ALTER TABLE ' + full(column.tableName) + ' ADD ' + quote(column.name)
+    + ' ' + type(column) + ' COLLATE ' + column.collation_name + ' NULL;';
+  sql += ' IF COL_LENGTH(' + table + ',' + name + ') IS NULL\n  ' + execute(ddl) + '\n';
+}
 sql+=addOptionOfferSchema.offerMailUpgrade;
 // Keep the compatibility manifest inside the one executable SQL file. It
 // contains schema metadata only; no environment names, accounts or row data.

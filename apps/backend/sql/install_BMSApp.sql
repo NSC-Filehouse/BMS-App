@@ -636,6 +636,7 @@ BEGIN TRY
     [op_NachverhandelbarQuelle] [nvarchar](500) COLLATE Latin1_General_CI_AS NULL,
     [op_QuelleTyp] [nvarchar](30) COLLATE Latin1_General_CI_AS NOT NULL,
     [op_QuelleSchluessel] [nvarchar](255) COLLATE Latin1_General_CI_AS NOT NULL,
+    [op_QuellangebotHash] [char](64) COLLATE Latin1_General_CI_AS NULL,
     [op_QuelleDateiname] [nvarchar](255) COLLATE Latin1_General_CI_AS NULL,
     [op_QuelleMailtext] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
     [op_QuelleMailformat] [nvarchar](20) COLLATE Latin1_General_CI_AS NULL,
@@ -861,6 +862,7 @@ BEGIN TRY
     [opp_C2] [decimal](18,3) NULL,
     [opp_Eigenschaften] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
     [opp_Ladehinweis] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
+    [opp_LieferdatenJson] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
     [opp_Kommentar] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
     [opp_GueltigBis] [date] NULL,
     [opp_ErstelltVon] [nvarchar](100) COLLATE Latin1_General_CI_AS NOT NULL,
@@ -1161,6 +1163,10 @@ BEGIN TRY
  -- Preserve the original option data with each generated purchase attachment.
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung_Anhang',N'tba_OptionSnapshot') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung_Anhang] ADD [tba_OptionSnapshot] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tblOptionen',N'op_QuellangebotHash') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tblOptionen] ADD [op_QuellangebotHash] [char](64) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tblOptionenPositionen',N'opp_LieferdatenJson') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tblOptionenPositionen] ADD [opp_LieferdatenJson] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL;');
 
  -- Use one ERP offer and PDF for every new customer-mail job.
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'tag_offer_pdf') IS NULL
@@ -1616,6 +1622,7 @@ BEGIN TRY
 {"table":"tblOptionen","column":"op_NachverhandelbarQuelle","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_QuelleTyp","type":"nvarchar","length":60,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_QuelleSchluessel","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tblOptionen","column":"op_QuellangebotHash","type":"char","length":64,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_QuelleDateiname","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_QuelleMailtext","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionen","column":"op_QuelleMailformat","type":"nvarchar","length":40,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
@@ -1774,6 +1781,7 @@ BEGIN TRY
 {"table":"tblOptionenPositionen","column":"opp_C2","type":"decimal","length":9,"precision":18,"scale":3,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tblOptionenPositionen","column":"opp_Eigenschaften","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionenPositionen","column":"opp_Ladehinweis","type":"nvarchar","length":2000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tblOptionenPositionen","column":"opp_LieferdatenJson","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionenPositionen","column":"opp_Kommentar","type":"nvarchar","length":2000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tblOptionenPositionen","column":"opp_GueltigBis","type":"date","length":3,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tblOptionenPositionen","column":"opp_ErstelltVon","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},

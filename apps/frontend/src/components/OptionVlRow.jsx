@@ -19,7 +19,7 @@ export default function OptionVlRow({ item, onOpen, showSource, t, lang }) {
     <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('option_from')}: {p.supplierName}</Typography>
     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
       {[optionQuantity(p, t), optionPrice(p, t),
-        optionDeliveryTerm(p.incoterm, p.loadingLocation),
+        p.deliveryTermDisplay ?? optionDeliveryTerm(p.incoterm, p.loadingLocation),
         p.validUntil ? `${en ? 'Valid until' : 'Gültig bis'} ${optionDate(p.validUntil)}` : null].filter(Boolean).join(' · ')}
     </Typography>
     {optionPackaging(p, lang) && <Typography variant="caption" sx={{display:'block',color:'text.secondary'}}>{optionPackaging(p, lang)}</Typography>}

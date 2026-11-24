@@ -105,6 +105,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_Dichte ELSE p.opp_Dichte END AS density,
     CASE WHEN r.oab_MesswerteVorbereitet=1 THEN r.oab_DichteEinheit ELSE p.opp_DichteEinheit END AS densityUnit,
     p.opp_C2 AS c2,p.opp_Eigenschaften AS propertiesText,
+    JSON_VALUE(CASE WHEN ISJSON(p.opp_LieferdatenJson)=1 THEN p.opp_LieferdatenJson END, '$.displayText') AS deliveryTermDisplay,
     p.opp_Ladehinweis AS loadingText,p.opp_Kommentar AS comment,p.opp_Artikelindex AS articleIndex,
     r.oab_ArtikelindexVorschlag AS suggestedArticleIndex,r.oab_ArtikelnameVorschlag AS suggestedArticleName,
     p.opp_MatchStatus AS matchStatus,CASE WHEN p.opp_Artikelindex IS NOT NULL THEN p.opp_MatchGrund ELSE r.oab_VorschlagGrund END AS matchReason,

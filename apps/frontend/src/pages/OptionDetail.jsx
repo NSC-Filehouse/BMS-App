@@ -175,7 +175,7 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
           {matchedArticle?.name || position.singleCandidateName}
         </Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
-        <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
+        <InfoRow label={t('option_delivery_term')} value={position.deliveryTermDisplay ?? optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
         <InfoRow label={t('option_packaging')} value={packaging.positions[position.id] || packaging.common || (lang==='en'?'Unresolved':'ungeklärt')} />
         <InfoRow label={t('option_quantity')} value={position.confirmedQuantityKg!=null && !position.truckMax && !position.truckMin?`${optionNumber(position.confirmedQuantityKg)} kg`:optionQuantity(position, t)} />
         {position.orderedKg>0 && <InfoRow label="Noch verfügbar" value={`${optionNumber(position.remainingKg)} kg`} />}

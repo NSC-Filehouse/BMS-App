@@ -101,7 +101,7 @@ export default function OptionsList() {
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
                     {[optionQuantity(position, t), optionPrice(position, t), optionPackaging(position, lang),
                       position.mfiTestCondition?`${lang==='en'?'Test method':'Messmethode'}: ${position.mfiTestCondition}`:null,
-                      optionDeliveryTerm(offer.incoterm, offer.loadingLocation),
+                      position.deliveryTermDisplay ?? optionDeliveryTerm(offer.incoterm, offer.loadingLocation),
                       `${t('option_valid_until')} ${optionDate(position.validUntil || offer.validUntil)}`]
                       .filter(Boolean).join(' · ')}
                   </Typography>
