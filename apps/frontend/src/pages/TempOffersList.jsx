@@ -10,6 +10,7 @@ import {
   InputAdornment,
   Radio,
   RadioGroup,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -195,6 +196,22 @@ export default function TempOffersList() {
                 {en ? 'Released' : 'Freigegeben'}
               </ToggleButton>
             </ToggleButtonGroup>
+            {result?.meta?.canViewAll && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={ownerScope === 'mine'}
+                    onChange={(event) => {
+                      setOwnerScope(event.target.checked ? 'mine' : 'all');
+                      setPage(1);
+                    }}
+                    size="small"
+                  />
+                }
+                label={t('temp_orders_scope_mine')}
+                sx={{ ml: { xs: 0, md: 1 }, mr: 0, whiteSpace: 'nowrap' }}
+              />
+            )}
           </Box>
           <Box
             sx={{
@@ -236,11 +253,6 @@ export default function TempOffersList() {
               />
             </RadioGroup>
           </Box>
-          {result?.meta?.canViewAll && <RadioGroup className="filter-radio-group" row value={ownerScope} aria-label={en ? 'Offer owner' : 'Angebotsersteller'}
-            onChange={event => { setOwnerScope(event.target.value); setPage(1); }}>
-            <FormControlLabel value="mine" control={<Radio size="small" />} label={t('temp_orders_scope_mine')} />
-            <FormControlLabel value="all" control={<Radio size="small" />} label={en ? 'All' : 'Alle'} />
-          </RadioGroup>}
           {customerId && (
             <Typography variant="caption">
               {en ? 'Customer' : 'Kunde'} {customerId}{' '}
