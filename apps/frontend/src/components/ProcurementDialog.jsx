@@ -92,7 +92,8 @@ export default function ProcurementDialog({ line, onClose, onConfirm }) {
   if (option && article && stock && !draft && !error) {
     return <OptionPurchaseDialog
       offer={{ id: line.optionId }} position={{ id: line.optionPositionId, articleName: line.article }}
-      supplierEditable article={article} onClose={onClose} onPrepared={prepare} defaultAmount={total} stockHint={hint}
+      supplier={line.optionSupplier} supplierEditable={!line.optionSupplier}
+      article={article} onClose={onClose} onPrepared={prepare} defaultAmount={total} stockHint={hint}
     />;
   }
 

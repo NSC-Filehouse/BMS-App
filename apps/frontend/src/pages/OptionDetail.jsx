@@ -100,11 +100,12 @@ export default function OptionDetail() {
       key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
       enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
-      onCustomerOrder={features.linkedProcurement ? (article) => navigate('/temp-orders/new', { state: {
+      onCustomerOrder={features.linkedProcurement ? (article, supplier) => navigate('/temp-orders/new', { state: {
         returnTo: createReturnTo(location),
         procurementOption: {
           optionId: offer.id, optionPositionId: position.id, articleIndex: article.articleIndex,
-          article: article.articleName, amountInKg: '', price: '', costPrice: position.costPrice ?? null,
+          article: article.articleName, amountInKg: '', price: '', costPrice: position.pricePerTonne ?? null,
+          optionSupplier: supplier,
         },
       } }) : undefined}
       renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails

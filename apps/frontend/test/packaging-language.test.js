@@ -198,8 +198,10 @@ test('an ambiguous option requires inline supplier and compatible article choice
 test('supplier search fills an empty proposal list and passes the chosen supplier to ordering', async () => {
   const supplier = { id: 'LF1', name: 'Longfield Chemicals', selectable: true };
   const article = { articleIndex: 'A', articleName: 'Article A' };
+  let customerOrder;
   const view = await mount('../src/components/OptionPurchaseControls.jsx', {
     enabled: true, offer: { id: 1 }, position: { id: 10 }, renderDetails: renderPurchaseDetails,
+    onCustomerOrder: (...args) => { customerOrder = args; },
   }, async path => {
     if (path.endsWith('/suppliers?q=&supplierId=')) return { data: [] };
     if (path.endsWith('/suppliers?q=Longfield')) return { data: [supplier] };
@@ -220,6 +222,8 @@ test('supplier search fills an empty proposal list and passes the chosen supplie
   searchField().props.onChange(null, supplier);
   await view.flush();
   assert.equal(order().props.disabled, false);
+  view.find(node => node.type === 'Button' && node.props.children.includes('Auftrag')).props.onClick();
+  assert.deepEqual(customerOrder, [article, supplier]);
   order().props.onClick();
   await view.flush();
   const dialog = view.find(node => node.props?.supplier && node.props?.onClose);
