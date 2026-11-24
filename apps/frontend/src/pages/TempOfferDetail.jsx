@@ -354,13 +354,9 @@ export default function TempOfferDetail() {
               ? 'Delete offer?'
               : 'Angebot löschen?'}
         </DialogTitle>
-        <DialogContent>
-          {action === 'release'
-            ? t('offer_release_customer_pdf')
-            : en
-              ? 'The draft and its own reservations will be deleted.'
-              : 'Der Entwurf und seine eigenen Reservierungen werden gelöscht.'}
-        </DialogContent>
+        {action === 'delete' && <DialogContent>
+          {en ? 'The draft and its own reservations will be deleted.' : 'Der Entwurf und seine eigenen Reservierungen werden gelöscht.'}
+        </DialogContent>}
         <DialogActions>
           <Button disabled={busy} onClick={() => setAction('')}>
             {t('back_label')}

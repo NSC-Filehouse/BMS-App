@@ -225,7 +225,6 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
     <DialogContent dividers>
       <Stack spacing={2} divider={<Divider />}>
         {error && <Alert severity="error">{error}</Alert>}
-        <Typography variant="body2" color="text.secondary">{t('offer_release_customer_pdf')}</Typography>
         {customers.map((customer, index) => (
           <OfferCustomerFields key={customer.id} customer={customer} draft={drafts[customer.id] ?? emptyDraft}
             values={values[index]} incoterms={incoterms} loadingLocation={loadingLocation} updateDraft={updateDraft}
