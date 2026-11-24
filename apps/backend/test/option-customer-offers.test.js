@@ -11,6 +11,7 @@ let invoices;
 let accepted;
 let customerScope;
 let mandants;
+let foreignInvoices;
 
 require.cache[require.resolve('../src/db/access')] = { exports: {
   withSqlTransaction: async () => assert.fail('Customer offer lookup must be read-only'),
@@ -18,7 +19,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     calls.push({ database, sql, params });
     if (sql.includes('dbo.tblRechnung')) {
       assert.match(sql, /COALESCE\(k\.kd_InterCompany, 0\) = 0/);
-      return invoices.filter(row => !row.interCompany);
+      return (database.databaseName === 'BMS.POL' ? foreignInvoices : invoices).filter(row => !row.interCompany);
     }
     if (sql.includes('dbo.tblKun_Ansprech')) return [{ customerId: 'B', id: 71, name: 'Musterkontakt', email: 'b@example.invalid', language: 'de' }];
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
@@ -60,6 +61,27 @@ test.beforeEach(() => {
   invoices = [{ id: 'A', name: 'Kunde A', salesCode: 'ADM' }, { id: 'B', name: 'Kunde B', salesCode: 'ADM' }];
   accepted = [{ CustomerNumber: 'a', Status: 'sent' }, { CustomerNumber: 'b', Status: 'submitted' }];
   mandants = [];
+  foreignInvoices = [];
+});
+
+test('group buyers require a selected identity, merge matching buyers and keep foreign accounts read-only', async () => {
+  mandants = [{ firmaId: 3, shortName: 'FRU' }, { firmaId: 5, shortName: 'POL' }];
+  invoices[0].vat = 'DE123456789';
+  foreignInvoices = [{ id: 'B', name: 'Kunde A GmbH', vat: 'DE123456789', salesCode: 'TPR' },
+    { id: 'A', name: 'Kunde C', salesCode: 'HZI' },
+    { id: 'B', name: 'Kunde B', name2: 'Wareneingang', salesCode: 'HZI' }];
+  const identity = { active: true, personNumber: 130, shortCode: 'MFR', userId: 'm.frank' };
+  const result = await loadCustomerOfferAudience(sameDatabase, identity, catalogArticle, 41, { group: true });
+  assert.deepEqual(result.customers.map(({ id }) => id), ['A', 'B', 'POL:A']);
+  assert.deepEqual(result.customers[0].assignments, [{ salesCode: 'ADM', mandant: 'FRU' }, { salesCode: 'TPR', mandant: 'POL' }]);
+  assert.equal(result.customers[0].readOnly, false);
+  assert.deepEqual(result.customers[1].assignments, [{ salesCode: 'ADM', mandant: 'FRU' }, { salesCode: 'HZI', mandant: 'POL' }]);
+  assert.equal(result.customers[2].readOnly, true);
+  assert.deepEqual(calls.find(call => call.database.databaseName === 'BMS.POL').params, [catalogArticle.articleName]);
+  calls.length = 0;
+  const restricted = await loadCustomerOfferAudience(sameDatabase, { ...identity, personNumber: 1 }, catalogArticle, 41, { group: true });
+  assert.equal(restricted.customers.length, 2);
+  assert.equal(calls.some(call => call.database.databaseName === 'BMS.POL'), false);
 });
 
 test('a stock offer uses the exact stock key and the same customer scope without option matching', async () => {

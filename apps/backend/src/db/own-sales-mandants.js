@@ -22,7 +22,9 @@ function isOwnSalesMandantCustomer(customer) {
 
 async function loadOwnMandantNames() {
   return runSQLQuerySqlServer(config.sql.database, `
-    SELECT ${escapeIdentifier(config.sql.columns.firma)} AS name, [md_FirmaName] AS legalName
+    SELECT ${escapeIdentifier(config.sql.columns.firma)} AS name, [md_FirmaName] AS legalName,
+      ${escapeIdentifier(config.sql.columns.firmaId)} AS firmaId,
+      ${escapeIdentifier(config.sql.columns.firmaKurz)} AS shortName
     FROM [dbo].${escapeIdentifier(config.sql.tables.mandant)}
     WHERE ${escapeIdentifier(config.sql.columns.firmaId)} > 0
   `);

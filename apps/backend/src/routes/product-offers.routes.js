@@ -19,7 +19,7 @@ module.exports = function registerProductOffers(router, loadProductDetail) {
     const stockPositionKey = item.beNumber
       ? createHash('sha256').update(JSON.stringify([item.beNumber.toUpperCase(), item.storageId.toUpperCase()])).digest('hex')
       : undefined;
-    const loadAudience = () => loadCustomerOfferAudience(database, req.userIdentity, item, stockPositionKey);
+    const loadAudience = () => loadCustomerOfferAudience(database, req.userIdentity, item, stockPositionKey, { group: !action });
     res.set('Cache-Control', 'private, no-store');
     return { item, readOnly: readOnly || !stockPositionKey, stockPositionKey, loadAudience };
   }

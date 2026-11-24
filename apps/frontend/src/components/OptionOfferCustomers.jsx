@@ -250,10 +250,11 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
   const [selection, setSelection] = React.useState([]);
   const [salesCode, setSalesCode] = React.useState('');
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const salesCodes = [...new Set(customers.map(customer => customer.salesCode).filter(Boolean))].sort();
+  const customerSalesCodes = customer => customer.assignments?.map(assignment => assignment.salesCode) ?? [customer.salesCode];
+  const salesCodes = [...new Set(customers.flatMap(customerSalesCodes).filter(Boolean))].sort();
   const filter = salesFilter?.enabled && salesCodes.includes(salesCode) ? salesCode : '';
-  const visible = filter ? customers.filter(customer => customer.salesCode === filter) : customers;
-  const chosen = visible.filter(customer => !customer.sent && !customer.queued && selection.includes(customer.id));
+  const visible = filter ? customers.filter(customer => customerSalesCodes(customer).includes(filter)) : customers;
+  const chosen = visible.filter(customer => !customer.readOnly && !customer.sent && !customer.queued && selection.includes(customer.id));
 
   return <Card component="section" aria-labelledby={titleId} sx={{ mb: 1.5 }}>
     <CardContent sx={{ '&:last-child': { pb: 1.5 } }}>
@@ -277,7 +278,7 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {visible.map(customer => (
             <Box component="li" key={customer.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
-              {!readOnly && <Checkbox size="small" disabled={customer.sent || customer.queued}
+              {!readOnly && <Checkbox size="small" disabled={customer.readOnly || customer.sent || customer.queued}
                 checked={!customer.sent && !customer.queued && selection.includes(customer.id)}
                 inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
                 onChange={event => {
@@ -287,9 +288,9 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
               />}
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
-                {customer.salesCode && <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
-                  {customer.salesCode}
-                </Typography>}
+                {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
+                  {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
+                </Typography> : null}
               </Box>
               {customer.sent && <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
                 <HourglassEmptyIcon fontSize="small" />

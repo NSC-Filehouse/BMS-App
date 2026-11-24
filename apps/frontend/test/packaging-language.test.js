@@ -271,7 +271,8 @@ test('option details reload customers for the selected article and discard late 
 
 test('the customer suggestions start with all sales representatives and still support filtering', async () => {
   const view = await mount('../src/components/OptionOfferCustomers.jsx', {
-    customers: [{ id: 'A', name: 'Kunde Eins', salesCode: 'ADM' }, { id: 'B', name: 'Kunde Zwei', salesCode: 'AD2' }],
+    customers: [{ id: 'A', name: 'Kunde Eins', salesCode: 'ADM' }, { id: 'B', name: 'Kunde Zwei', salesCode: 'AD2',
+      assignments: [{ salesCode: 'AD2', mandant: 'FRU' }, { salesCode: 'TPR', mandant: 'POL' }] }],
     salesFilter: { enabled: true, defaultCode: 'ADM' },
   }, async path => { assert.fail(`Unexpected request: ${path}`); });
   const filter = () => view.field('Außendienst').props;
@@ -280,9 +281,10 @@ test('the customer suggestions start with all sales representatives and still su
   assert.match(view.text(), /Kunde Eins/);
   assert.match(view.text(), /Kunde Zwei/);
 
-  filter().onChange({ target: { value: 'AD2' } });
+  assert.match(view.text(), /AD2\(FRU\) TPR\(POL\)/);
+  filter().onChange({ target: { value: 'TPR' } });
   await view.flush();
-  assert.equal(filter().value, 'AD2');
+  assert.equal(filter().value, 'TPR');
   assert.doesNotMatch(view.text(), /Kunde Eins/);
   assert.match(view.text(), /Kunde Zwei/);
 
