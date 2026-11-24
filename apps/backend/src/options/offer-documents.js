@@ -158,11 +158,6 @@ function readTempOfferDocument(row, offer) {
     || pdf.length <= 5 || pdf.subarray(0, 5).toString() !== '%PDF-') {
     throw new Error('Das BMS-Angebot mit PDF ist nicht fertig.');
   }
-  if (row.documentJson) {
-    const document = readBmsOfferDocument(row.documentJson, offer.messageKey, pdf);
-    if (document.number !== number) throw new Error('Die BMS-Ausgaben haben unterschiedliche Angebotsnummern.');
-    return document;
-  }
   const en = offer.language === 'en';
   return {
     number, pdf, isBodyHtml: false,

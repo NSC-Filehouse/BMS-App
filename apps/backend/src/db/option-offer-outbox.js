@@ -12,7 +12,8 @@ const { createHttpError } = require('../utils');
 const outbox = 'BMSApp.OptionOfferMailOutbox';
 const documents = 'BMSApp.OptionOfferDocument';
 const run = (query, params) => runSQLQuerySqlServer(config.sql.database, query, params);
-const previewRecipients = getEmailsForUserCodes(['AKI', 'NSC']);
+const previewRecipientCodes = ['AKI', 'NSC', 'KMU'];
+const previewRecipients = getEmailsForUserCodes(previewRecipientCodes);
 
 function optionOfferMailEnabled() {
   return Boolean(config.optionOfferMail.enabled && config.mailService.enabled && config.mailService.baseAddress && config.mailService.apiKey);
@@ -143,7 +144,7 @@ async function claimOffer() {
       NextAttemptAt = DATEADD(MINUTE, 5, SYSUTCDATETIME()), UpdatedAt = SYSUTCDATETIME()
     OUTPUT inserted.Id AS id, inserted.Status AS status, inserted.MailServiceId AS mailServiceId,
       inserted.AttemptCount AS attempt, inserted.TempOfferId AS tempOfferId,
-      d.OfferJson AS offerJson, d.BmsDocumentJson AS documentJson,
+      d.OfferJson AS offerJson,
       h.tag_status AS erpStatus, h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf
     FROM ${outbox} o JOIN nextMail n ON n.Id = o.Id JOIN ${documents} d ON d.OptionOfferMailId = o.Id
     LEFT JOIN ${H} h ON h.tag_id=o.TempOfferId AND h.tag_company_id=o.CompanyId
@@ -171,7 +172,7 @@ async function confirmSent(row, mailServiceId, sentAt) {
 
 function classifyServiceStatus(result) {
   const value = String(result?.status ?? result?.Status ?? '').trim().toLowerCase();
-  if (value === 'sent') return 'sent';
+  if (value === 'sent' || value === '2') return 'sent';
   if (['rejected', 'cancelled', 'canceled'].includes(value)) return 'failed';
   if (value === 'failed') return 'unknown';
   return 'submitted';
@@ -200,7 +201,7 @@ async function deliverOffer(client, row) {
           ORDER BY p.tagp_line_no
         `, [row.tempOfferId, offer.companyId]);
       }
-      if (previewRecipients.length !== 2) throw new Error('Testempfänger fehlen.');
+      if (previewRecipients.length !== previewRecipientCodes.length) throw new Error('Testempfänger fehlen.');
       request = assembleOfferMail(offer, document, {
         clientMessageId: `bms-app:offer-preview:${offer.messageKey}`,
         to: previewRecipients.map(address => ({ address })),

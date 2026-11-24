@@ -214,21 +214,14 @@ Status 2. Die unveränderlichen Zusatzdaten in `OptionOfferDocument.OfferJson`
 enthalten unter anderem `nonBinding=true` für die freibleibende Vorlage.
 Die separate Angebots-XML folgt dem [XML-Schema](option-offer-v1.xsd).
 
-BMS kann in `BmsDocumentJson` optional den originalen Mailbetreff, -text und
-weitere Anhänge bereitstellen. Die Eigenschaften sind `source` (Wert `bms`),
-`messageKey`, `number`, `subject`, `body`, `isBodyHtml` und optional
-`attachments` mit `fileName`, `contentType` und `contentBase64`. Dazu
-müssen `TempOfferId`, `OfferJson.messageKey` und die BMS-Angebotsnummer zur
-Anforderung passen. Ohne diese Begleitdaten verwendet die App die Standardmail
-mit Anrede, Angebotsreferenz und Grußformel in der Kontaktsprache. Die Mail
-bezeichnet das Angebot als freibleibend. Bei einem ERP-Mailtext ergänzt die App
-diesen Hinweis, falls er fehlt.
+Die App verwendet den freibleibenden Standardtext mit Anrede,
+Angebotsreferenz und Grußformel in der Kontaktsprache.
 
 Die App ergänzt die separate Angebots-XML sowie drei `mailto:`-Links an den
 Außendienst. Zuerst steht „Angebot annehmen“, gefolgt von „Gegenangebot machen“
 und „Angebot nicht interessant“. Die Testmail mit ERP-PDF und XML geht
-ausschließlich an AKI und NSC.
+ausschließlich an AKI, NSC und KMU.
 Die stabil aus `messageKey` abgeleitete `ClientMessageId` hält Wiederholungen
-derselben Anfrage zusammen. Der bestätigte Status `Sent` markiert die interne
+derselben Anfrage zusammen. Der bestätigte Status `Sent` oder `2` markiert die interne
 Zustellung in der Warteschlange. In der Kundenhistorie entsteht kein Eintrag.
 Unbestätigte Versandfälle ohne MailService-ID bleiben zur Klärung gesperrt.

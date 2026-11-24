@@ -49,9 +49,12 @@ test('accepted mail keeps its MailService ID and creates no ERP activity yet', a
   await deliverOffer({
     submitMail: async request => {
       assert.equal(request.clientMessageId, 'bms-app:offer-preview:42-key');
-      assert.deepEqual(request.to, [{ address: 'Kimaz@mlplastics.de' }, { address: 'n.schroeder@filehouse.net' }]);
+      assert.deepEqual(request.to, [{ address: 'Kimaz@mlplastics.de' }, { address: 'n.schroeder@filehouse.net' }, { address: 'Musah@frupack.de' }]);
       assert.deepEqual(request.attachments[0].content, pdf);
       assert.equal(request.attachments[1].contentType, 'application/xml');
+      assert.equal(request.attachments.length, 2);
+      assert.match(request.body, /freibleibendes Angebot AN-42/);
+      assert.doesNotMatch(request.body, /BMS-Originaltext/);
       return { id: 'mail-123', status: 'Pending' };
     },
   }, { ...row, status: 'sending' });
@@ -107,15 +110,18 @@ test('submitting an option or a VL position creates a temp offer, one line and o
 });
 
 test('confirmation marks only the outbox for an internal preview', async () => {
-  await deliverOffer({
-    submitMail: async () => assert.fail('Already submitted'),
-    getMail: async id => {
-      assert.equal(id, 'mail-123');
-      return { Status: 'Sent', SentAt: '2026-11-23T13:40:00Z' };
-    },
-  }, { ...row, status: 'submitted', mailServiceId: 'mail-123' });
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].sql, /Status = N'sent'/);
+  for (const status of ['Sent', 2, '2']) {
+    calls.length = 0;
+    await deliverOffer({
+      submitMail: async () => assert.fail('Already submitted'),
+      getMail: async id => {
+        assert.equal(id, 'mail-123');
+        return { Status: status, SentAt: '2026-11-23T13:40:00Z' };
+      },
+    }, { ...row, status: 'submitted', mailServiceId: 'mail-123' });
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].sql, /Status = N'sent'/);
+  }
 });
 
 test('an ambiguous final failure only tracks the old provider ID', async () => {

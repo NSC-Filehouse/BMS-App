@@ -18,6 +18,7 @@ const emailMapping = Object.freeze({
   BBO: 'bourbon@frupack.fr',
   DZI: 'Zimmermann@mlplastics.de',
   DME: 'Meyer@mlplastics.de',
+  KMU: 'Musah@frupack.de',
   MFR: 'm.frank@filehouse.net',
   MMÜ: 'Mueller@mlplastics.de',
   MWI: 'm.winkler@mlholding.org',
