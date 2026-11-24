@@ -16,7 +16,7 @@ export function FeatureProvider({ children }) {
     let active = true;
     apiRequest('/me')
       .then((me) => {
-        if (active) setState({ loading: false, features: {
+        if (active) setState({ loading: false, userId: me?.identityResolved ? me.userId : null, features: {
           offers: Boolean(me?.identityResolved && me?.features?.offers),
           offerToOrder: Boolean(me?.identityResolved && me?.features?.offerToOrder),
           linkedProcurement: Boolean(me?.identityResolved && me?.features?.linkedProcurement),

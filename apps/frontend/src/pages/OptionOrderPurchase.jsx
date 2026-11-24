@@ -24,14 +24,14 @@ export default function OptionOrderPurchase() {
   return <PurchaseForOrder key={state.clientRequestId} state={state} />;
 }
 
-function PurchaseForOrder({ state }) {
+export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack }) {
   const { procurementOption: option, clientRequestId, returnTo } = state;
   const navigate = useNavigate();
   const { t, lang } = useI18n();
-  const base = `/options/${option.optionId}/positions/${option.optionPositionId}/purchase`;
+  const base = option.optionPositionId ? `/options/${option.optionId}/positions/${option.optionPositionId}/purchase` : null;
   const attachmentInputRef = React.useRef(null);
   const pendingSave = React.useRef(null);
-  const [availability, setAvailability] = React.useState(null);
+  const [availability, setAvailability] = React.useState(base ? null : {});
   const [proposals, setProposals] = React.useState([]);
   const [supplier, setSupplier] = React.useState(option.optionSupplier);
   const [supplierQuery, setSupplierQuery] = React.useState('');
@@ -45,9 +45,10 @@ function PurchaseForOrder({ state }) {
   const [totalAmount, setTotalAmount] = React.useState('');
   const [totalUnit, setTotalUnit] = React.useState('kg');
   const [quantityConfirmed, setQuantityConfirmed] = React.useState(false);
-  const back = () => navigateToReturn(navigate, returnTo, '/options');
+  const back = onBack || (() => navigateToReturn(navigate, returnTo, '/options'));
 
   React.useEffect(() => {
+    if (!base) return;
     const controller = new AbortController();
     apiRequest(`${base}/suppliers?q=`, { signal: controller.signal }).then(({ data, meta }) => {
       if (controller.signal.aborted) return;
@@ -65,8 +66,15 @@ function PurchaseForOrder({ state }) {
     if (query.length < 2) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      apiRequest(`${base}/suppliers?${new URLSearchParams({ q: query })}`, { signal: controller.signal })
-        .then(({ data }) => { if (!controller.signal.aborted) setSupplierResults((data || []).filter((row) => row.selectable)); })
+      const path = base ? `${base}/suppliers?${new URLSearchParams({ q: query })}`
+        : '/customers?' + new URLSearchParams({ q: query, supplierOnly: '1', includeInactive: '1', pageSize: '15' });
+      apiRequest(path, { signal: controller.signal })
+        .then(({ data = [] }) => {
+          if (controller.signal.aborted) return;
+          setSupplierResults(base ? data.filter((row) => row.selectable) : data.map((row) => ({
+            id: String(row.kd_KdNR).trim(), name: row.kd_Name1 || row.kd_Name2, city: row.kd_Ort,
+          })));
+        })
         .catch((cause) => { if (!controller.signal.aborted) setSearchError(cause.message); });
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
@@ -77,7 +85,7 @@ function PurchaseForOrder({ state }) {
     ? availability?.packagingTypes?.find((row) => row.id === Number(order.packagingTypeId))
     : defaultPackaging;
   const automaticTruck = availability?.truckOffer && Number(availability.offeredTrucks) > 0;
-  const needsQuantity = availability && !automaticTruck && (availability.remainingKg == null
+  const needsQuantity = base && availability && !automaticTruck && (availability.remainingKg == null
     || (availability.truckOffer && availability.quantityConfirmationEditable
       && availability.confirmedPackagingTypeId != null && packaging?.id !== Number(availability.confirmedPackagingTypeId)));
   const remainingKg = (truckOptionAvailability(availability || {}, packaging) || availability)?.remainingKg;
@@ -94,6 +102,7 @@ function PurchaseForOrder({ state }) {
       if (!pendingSave.current) {
         const amount = Number(values.positions[0].amount);
         if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error(t('offer_order_whole_kg'));
+        if (offerPosition && amount !== offerPosition.amountInKg) throw new Error(t('procurement_quantity_invalid'));
         if (needsQuantity) {
           const totalKg = confirmedTotalKg(totalAmount, totalUnit, packaging);
           if (!quantityConfirmed || totalKg == null) throw new Error(t('procurement_option_confirm_quantity'));
@@ -118,18 +127,23 @@ function PurchaseForOrder({ state }) {
       });
       const [saved] = data?.positions || [];
       if (!data?.id || !data.clientRequestId || !saved?.id || data.positions.length !== 1
-        || Number(saved.optionPositionId) !== Number(option.optionPositionId)
+        || Number(saved.optionPositionId || 0) !== Number(option.optionPositionId || 0)
         || saved.articleIndex.trim().toLowerCase() !== option.articleIndex.trim().toLowerCase()) {
         throw new Error(t('procurement_option_saved_purchase_missing'));
       }
-      navigate('/temp-orders/new', { replace: true, state: {
-        returnTo: { pathname: `/temp-purchase-orders/${data.id}`, state: { returnTo, shoppingReturnTo: returnTo } },
-        procurementOption: {
+      const purchasedLine = {
           optionId: saved.optionId, optionPositionId: saved.optionPositionId,
           savedPurchaseId: data.id, savedPurchasePositionId: saved.id, purchaseRequestId: data.clientRequestId,
           articleIndex: saved.articleIndex, article: option.article, amountInKg: saved.amount, price: '',
           costPrice: saved.purchasePrice, originalPackagingType: data.packagingType, originalPackagingTypeId: data.packagingTypeId,
-        },
+      };
+      if (onPurchaseSaved) {
+        onPurchaseSaved(purchasedLine);
+        return;
+      }
+      navigate('/temp-orders/new', { replace: true, state: {
+        returnTo: { pathname: `/temp-purchase-orders/${data.id}`, state: { returnTo, shoppingReturnTo: returnTo } },
+        procurementOption: purchasedLine,
       } });
     } catch (cause) {
       if ([400, 413, 422].includes(cause.status)) { pendingSave.current = null; setLocked(false); }
@@ -143,11 +157,13 @@ function PurchaseForOrder({ state }) {
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <DisclosureBackButton onClick={back} disabled={saving || locked} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
-      <Typography variant="h5" sx={{ flex: 1 }}>{t('purchase_option_title')}</Typography>
+      <Typography variant="h5" sx={{ flex: 1 }}>{t(base ? 'purchase_option_title' : 'procurement_offer_purchase_title')}</Typography>
       <IconButton disabled={!supplier || !availability || saving || locked} onClick={() => attachmentInputRef.current?.click()}
         aria-label={t('temp_order_attachment_add')}><AttachFileIcon /></IconButton>
     </Box>
-    <Alert severity="info">{t('procurement_option_purchase_first')}</Alert>
+    <Alert severity="info">{t(offerPosition?.candidates?.length
+      ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
+    {offerPosition && <Typography variant="body2">{offerPosition.article} · {Number(offerPosition.amountInKg).toLocaleString(lang)} kg</Typography>}
     {loadError && <Alert severity="error">{loadError}</Alert>}
     {searchError && <Alert severity="error">{searchError}</Alert>}
     {saveError && <Alert severity="error">{saveError}</Alert>}
@@ -168,19 +184,20 @@ function PurchaseForOrder({ state }) {
       }}
       renderInput={(params) => <TextField {...params} required size="small" label={t('supplier_label')} placeholder={t('purchase_supplier_query')} />}
     />}
-    {supplier && availability && <PurchaseOrderEditor key={supplier.id} isNew fixedPosition
+    {supplier && availability && <PurchaseOrderEditor key={supplier.id} isNew fixedPosition fixedQuantity={Boolean(offerPosition)} allowFirstPurchase={!base}
       attachmentInputRef={attachmentInputRef} onContinue={back} onSave={submit} onChange={setOrder} saving={saving} locked={locked}
       stockHint={stockHint}
       initialOrder={{
         supplierId: supplier.id, supplierName: supplier.name,
         packagingTypeId: defaultPackaging?.id, packagingType: defaultPackaging?.text,
-        deliveryTermText: state.incoterm,
-        loadingLocationText: state.loadingLocation || '', loadingLocationSource: state.loadingLocation ? 'manual' : '',
+        deliveryTermText: state.incoterm || availability.sourceIncoterm,
+        loadingLocationText: state.loadingLocation || availability.sourceLoadingLocation || '',
+        loadingLocationSource: state.loadingLocation || availability.sourceLoadingLocation ? 'manual' : '',
         positions: [{
           lineId: clientRequestId, optionId: option.optionId, optionPositionId: option.optionPositionId,
-          articleIndex: option.articleIndex, article: state.supplierArticleName || option.article, masterArticleName: option.article,
+          articleIndex: option.articleIndex, article: state.supplierArticleName || availability.sourceArticleName || option.article, masterArticleName: option.article,
           supplierConfirmed: true, articleConfirmed: true, unit: 'kg',
-          amount: initialRemainingKg > 0 ? Math.floor(initialRemainingKg) : '', amountTouched: true,
+          amount: offerPosition ? offerPosition.amountInKg : initialRemainingKg > 0 ? Math.floor(initialRemainingKg) : '', amountTouched: true,
           purchasePrice: option.costPrice ?? '', requestedDeliveryDate: '',
           originalPackagingType: optionPackagingText({
             packagingDisplay: availability.sourcePackagingDisplay, packagingText: availability.sourcePackaging,

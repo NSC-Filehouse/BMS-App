@@ -480,7 +480,9 @@ test('only NSC can open a scoped order draft, which retains prices and leaves in
   assert.equal(stocked.amountInKg, 11000);
   assert.equal(stocked.price, 2650);
   assert.equal(stocked.beNumber, state.stock[0].beNumber);
+  assert.equal(stocked.requiresPurchase, false);
   assert.equal(shortage.beNumber, undefined);
+  assert.equal(shortage.requiresPurchase, true);
   assert.deepEqual(shortage.candidates.map((candidate) => candidate.beNumber), [state.stock[0].beNumber]);
   assert.equal(state.positions.some((position) => position.tagp_order_position_id), false);
 });

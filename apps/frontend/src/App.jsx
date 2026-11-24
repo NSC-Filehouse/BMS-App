@@ -23,6 +23,7 @@ import ProductWpzDetail from './pages/ProductWpzDetail.jsx';
 import OrderCart from './pages/OrderCart.jsx';
 import PurchaseCart from './pages/PurchaseCart.jsx';
 import OptionOrderPurchase from './pages/OptionOrderPurchase.jsx';
+import { OfferOrderStart, OfferOrderPurchase } from './pages/OfferOrderPurchase.jsx';
 
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
@@ -195,7 +196,8 @@ function AppRoutes() {
         <Route path="/temp-offers/new" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
         <Route path="/temp-offers/:id" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferDetail /></FeatureGuard></MandantGuard>} />
         <Route path="/temp-offers/:id/edit" element={<MandantGuard><FeatureGuard feature="offers"><TempOfferEditor /></FeatureGuard></MandantGuard>} />
-        <Route path="/temp-offers/:offerSourceId/order/new" element={<MandantGuard><FeatureGuard feature="offerToOrder"><TempOrderForm /></FeatureGuard></MandantGuard>} />
+        <Route path="/temp-offers/:offerSourceId/order/new" element={<MandantGuard><FeatureGuard feature="offerToOrder"><OfferOrderStart /></FeatureGuard></MandantGuard>} />
+        <Route path="/temp-offers/:offerSourceId/order-purchase" element={<MandantGuard><FeatureGuard feature="linkedProcurement"><OfferOrderPurchase /></FeatureGuard></MandantGuard>} />
         <Route
           path="/temp-orders"
           element={

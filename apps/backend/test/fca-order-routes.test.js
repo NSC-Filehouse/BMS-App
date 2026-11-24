@@ -316,6 +316,34 @@ test('an already saved option purchase links once without sending it or inheriti
   assert.equal(purchases[0].orderPositionId, null);
 });
 
+test('an offer conversion links multiple separately saved purchases once and retains them if the order is deleted', async () => {
+  reset();
+  procurementEnabled = true;
+  sourceOffer = { id: 29, customerId: 'C1', version: '0x0000000000000001', status: 2 };
+  sourceOfferPositions = [13, 14].map((id) => ({ id, articleIndex: 'A1', unit: 'KG', quantity: 100, price: 2000, priceBasis: 1000 }));
+  const requestIds = ['35f27c04-0b5f-4367-9f79-2ec0259a5331', '35f27c04-0b5f-4367-9f79-2ec0259a5332'];
+  for (const [index, requestId] of requestIds.entries()) {
+    purchases.push({ id: 100 + index, positionId: 200 + index, companyId: 3, owner: 'NSC', requestId, status: 0,
+      amount: 100, unit: 'kg', articleIndex: 'A1', optionPositionId: null, packagingType: 'Sackware', packagingTypeId: 1 });
+  }
+  const input = payload({
+    incotermId: 2, offerSourceId: sourceOffer.id, offerSourceVersion: sourceOffer.version, procurementRequestId: requestIds[0],
+    positions: sourceOfferPositions.map((line, index) => ({
+      ...payload().positions[0], articleIndex: 'A1', beNumber: '', warehouseId: '', offerPositionId: line.id,
+      savedPurchasePositionId: purchases[index].positionId, purchaseRequestId: requestIds[index],
+    })),
+  });
+  const created = await request('post', input);
+  assert.equal(sourceOffer.status, 4);
+  assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [1, 2]);
+  assert.deepEqual(purchases.map((p) => [p.orderPositionId, p.status]), [[1, 0], [2, 0]]);
+  assert.deepEqual(savedPositions.map((line) => line.tap_purchase_position_id), [200, 201]);
+  assert.equal((await request('post', input)).data.id, created.data.id);
+  await request('delete');
+  assert.deepEqual(purchases.map((p) => p.orderPositionId), [null, null]);
+  assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [null, null]);
+});
+
 test('create, edit and copy persist FCA pickup text in the existing fields without the sales customer FK', async () => {
   reset();
   const created = await request('post', payload());

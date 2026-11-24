@@ -18,7 +18,7 @@ const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 1
 const priceText = (value, locale) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
-export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, optionQuantityFields }) {
+export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const [order, setOrder] = React.useState(() => initialOrder.paymentConditionText
@@ -271,7 +271,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`${t('product_article_index')}: ${p.articleIndex} · `:''}{t('original_packaging_type_label')}: {p.originalPackagingType || '–'}</Typography>
         {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">{t('purchase_option_title')}{p.remainingKg!=null?` · ${t('purchase_available_at_selection')}: ${Number(p.remainingKg).toLocaleString(locale)} kg`:''}</Typography>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
-          <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled || linkedOrder} helperText={stockHint} inputProps={{ min: linkedSetup || fixedPosition ? 1 : 0.001, step: linkedSetup || fixedPosition ? 1 : 0.001 }} />
+          <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled || linkedOrder} InputProps={{ readOnly: fixedQuantity }} helperText={stockHint} inputProps={{ min: linkedSetup || fixedPosition ? 1 : 0.001, step: linkedSetup || fixedPosition ? 1 : 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
             <TextField fullWidth label={t('purchase_price_input')} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>

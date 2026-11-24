@@ -110,7 +110,8 @@ async function assertOrderConversion(query, req, conversion, customerId, positio
     const source = sources.get(sourceId);
     if (!source || text(source.articleIndex).toLowerCase() !== text(position.articleIndex).toLowerCase()
       || !offerKilogramsPerUnit(source.unit)
-      || (position.purchaseDraft && source.optionPositionId && Number(source.optionPositionId) !== Number(position.optionPositionId))) {
+      || (position.purchaseDraft && source.optionPositionId && Number(source.optionPositionId) !== Number(position.optionPositionId))
+      || (position.savedPurchasePositionId && Number(source.optionPositionId || 0) !== Number(position.optionPositionId || 0))) {
       throw createHttpError(409, 'Eine Angebotsposition wurde bereits übernommen oder passt nicht zum gewählten Artikel.', {
         code: 'OFFER_ORDER_POSITION_CONFLICT',
       });
@@ -239,6 +240,7 @@ async function prepareOfferOrder(req, offer) {
       beNumber: selected?.beNumber, warehouseId: selected?.warehouseId,
       reservationInKg: selected?.reservationInKg, reservationDate: selected?.reservationDate,
       selectedStockKey: selected?.key || '', candidates,
+      requiresPurchase: Boolean(text(position.articleIndex)) && Number.isSafeInteger(amountInKg) && amountInKg > 0 && sufficient.length === 0,
     };
   });
   return {

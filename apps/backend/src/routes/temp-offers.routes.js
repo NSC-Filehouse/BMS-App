@@ -346,7 +346,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const offer = await readOfferForOrder(query, req, offerId(req), offerOwnerFilter(req));
     await customer(req, offer.customerId);
-    sendEnvelope(res, { data: await prepareOfferOrder(req, offer) });
+    const draft = await prepareOfferOrder(req, offer);
+    if (req.query?.preparePurchases === '1' && draft.positions.some((position) => position.requiresPurchase)
+      && !await procurementSchemaReady()) {
+      throw createHttpError(503, 'Die Datenbank muss für die Auftragsbeschaffung aktualisiert werden.', { code: 'PROCUREMENT_SCHEMA_MISSING' });
+    }
+    sendEnvelope(res, { data: draft });
   }),
 );
 

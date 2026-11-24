@@ -250,7 +250,7 @@ function normalizePackagingType(value) {
   return canonical[key] || key;
 }
 
-export default function TempOrderForm() {
+export default function TempOrderForm({ preparedOfferOrder } = {}) {
   const { id, offerSourceId } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
@@ -1087,9 +1087,7 @@ export default function TempOrderForm() {
           setLoading(true);
           setError('');
           setOfferSourceVersion('');
-          const response = await apiRequest(`/temp-offers/${encodeURIComponent(offerSourceId)}/order-draft`);
-          if (!alive) return;
-          sourceOrder = response.data;
+          sourceOrder = preparedOfferOrder;
           setOfferSourceVersion(sourceOrder.version);
           setOfferStockByPosition(Object.fromEntries(sourceOrder.positions.map((p) => [p.offerPositionId, p.candidates])));
         }
@@ -1138,29 +1136,35 @@ export default function TempOrderForm() {
             offerUnit: x.offerUnit,
             selectedStockKey: x.selectedStockKey,
             hasOfferCostPrice: x.hasOfferCostPrice,
+            ...(x.savedPurchase && {
+              savedPurchaseId: x.savedPurchase.savedPurchaseId,
+              savedPurchasePositionId: x.savedPurchase.savedPurchasePositionId,
+              purchaseRequestId: x.savedPurchase.purchaseRequestId,
+              selectedStockKey: '',
+            }),
           } : {}),
           productId: x.productId || null,
-          beNumber: x.beNumber,
-          warehouseId: x.warehouseId || x.warehouse,
+          beNumber: x.savedPurchase ? '' : x.beNumber,
+          warehouseId: x.savedPurchase ? '' : x.warehouseId || x.warehouse,
           articleIndex: x.articleIndex || '',
           article: x.article,
           articleOriginal: x.articleOriginal || '',
           articleChanged: Boolean(x.articleChanged),
           amountInKg: x.amountInKg,
           price: x.salePrice ?? x.price ?? '',
-          costPrice: x.costPrice ?? x.ep ?? null,
-          originalPackagingType: '',
-          originalPackagingTypeId: x.originalPackagingTypeId ?? null,
+          costPrice: x.savedPurchase?.costPrice ?? x.costPrice ?? x.ep ?? null,
+          originalPackagingType: x.savedPurchase?.originalPackagingType || '',
+          originalPackagingTypeId: x.savedPurchase?.originalPackagingTypeId ?? x.originalPackagingTypeId ?? null,
           packagingTypeChanged: false,
-          reservationInKg: x.reservationInKg ?? null,
-          reservationDate: x.reservationDate ?? null,
+          reservationInKg: x.savedPurchase ? null : x.reservationInKg ?? null,
+          reservationDate: x.savedPurchase ? null : x.reservationDate ?? null,
           ...createPositionDefaults({
             deliveryDate: x.deliveryDate ? String(x.deliveryDate).slice(0, 10) : (sourceOrder.deliveryDate ? String(sourceOrder.deliveryDate).slice(0, 10) : tomorrow()),
             ...getValutaDateState(x.valutaDate, x.deliveryDate || sourceOrder.deliveryDate || tomorrow()),
             deliveryDateAuto: x.deliveryDateAuto !== undefined
               ? Boolean(x.deliveryDateAuto)
               : !(x.deliveryDate || sourceOrder.deliveryDate),
-            wpzId: x.wpzId ?? null,
+            wpzId: x.savedPurchase ? null : x.wpzId ?? null,
             wpzOriginal: x.wpzOriginal ?? true,
             wpzComment: x.wpzComment || 'Original verwenden',
           }),
@@ -1179,7 +1183,9 @@ export default function TempOrderForm() {
             productId: x.productId || x.id || null,
             optionId: x.optionId, optionPositionId: x.optionPositionId,
             procurementArticle: Boolean(x.optionPositionId && !x.savedPurchasePositionId),
+            savedPurchaseId: x.savedPurchaseId,
             savedPurchasePositionId: x.savedPurchasePositionId,
+            purchaseRequestId: x.purchaseRequestId,
             optionSupplier: x.optionSupplier,
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
@@ -1230,7 +1236,7 @@ export default function TempOrderForm() {
       }
     });
     return () => { alive = false; };
-  }, [activeMandant, id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyOrder, offerSourceId]);
+  }, [activeMandant, id, isEdit, source, sourceItems, t, navigate, loadCustomerPaymentDefault, loadDeliveryAddresses, loadCustomerRepresentatives, isCopyCreate, copyOrder, offerSourceId, preparedOfferOrder]);
 
   React.useEffect(() => {
     if (!initialDataReady || !draftUserId) return;
@@ -1255,7 +1261,20 @@ export default function TempOrderForm() {
     const sources = [...positions, ...getOrderCartItems()];
     const restoredPositions = pendingDraft.positions
       .filter((position) => !offerSourceId || !position.offerPositionId || Object.hasOwn(offerStockByPosition, position.offerPositionId))
-      .map((position) => recoverOrderPositionSource(position, sources));
+      .map((position) => {
+        const original = positions.find((line) => line.offerPositionId && line.offerPositionId === position.offerPositionId);
+        if (original?.savedPurchasePositionId) {
+          const { savedPurchaseId, savedPurchasePositionId, purchaseRequestId, amountInKg, costPrice, originalPackagingType, originalPackagingTypeId } = original;
+          return { ...position, savedPurchaseId, savedPurchasePositionId, purchaseRequestId, amountInKg, costPrice,
+            originalPackagingType, originalPackagingTypeId, procurement: null, beNumber: '', warehouseId: '', selectedStockKey: '',
+            reservationInKg: null, reservationDate: null, wpzId: null };
+        }
+        return recoverOrderPositionSource(position.offerPositionId ? { ...position, procurement: null } : position, sources);
+      });
+    for (const position of positions) {
+      if (position.offerPositionId && position.savedPurchasePositionId
+        && !restoredPositions.some((restored) => restored.offerPositionId === position.offerPositionId)) restoredPositions.push(position);
+    }
     packagingTouchedRef.current = true;
     setForm((previous) => ({ ...previous, ...pendingDraft.form }));
     setPositions(restoredPositions);
@@ -1876,7 +1895,9 @@ export default function TempOrderForm() {
           id: x.id,
           ...(offerSourceId && x.offerPositionId ? { offerPositionId: x.offerPositionId } : {}),
           ...(!isEdit && x.procurement ? { procurement: x.procurement } : {}),
-          ...(!isEdit && x.savedPurchasePositionId ? { savedPurchasePositionId: x.savedPurchasePositionId } : {}),
+          ...(!isEdit && x.savedPurchasePositionId ? {
+            savedPurchasePositionId: x.savedPurchasePositionId, purchaseRequestId: x.purchaseRequestId,
+          } : {}),
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           articleIndex: x.articleIndex || null,
@@ -1897,7 +1918,9 @@ export default function TempOrderForm() {
       }
 
       if (needsPurchase || hasSavedPurchase) {
-        procurementRequest.current ||= hasSavedPurchase ? procurementOption.purchaseRequestId : createCustomerOperationId();
+        if (hasSavedPurchase) procurementRequest.current = positions.find((position) => position.savedPurchasePositionId).purchaseRequestId
+          || procurementOption?.purchaseRequestId;
+        else procurementRequest.current ||= createCustomerOperationId();
         payload.procurementRequestId = procurementRequest.current;
         saveTempOrderDraft(draftContext, { ...draftData, procurementRequestId: procurementRequest.current });
       }
@@ -2414,7 +2437,7 @@ export default function TempOrderForm() {
                     const fromOption = !isEdit && features.linkedProcurement && Boolean(x.procurementArticle && x.optionPositionId);
                     const offerStock = x.offerPositionId ? offerStockByPosition[x.offerPositionId] : procurementStock[activeMandant + ':' + x.articleIndex];
                     const stockCoversPosition = offerStock?.some((lot) => lot.available >= Number(x.amountInKg));
-                    const showProcurement = features.linkedProcurement && !isEdit && (x.procurementArticle || x.offerPositionId)
+                    const showProcurement = features.linkedProcurement && !isEdit && x.procurementArticle
                       && Number.isSafeInteger(Number(x.amountInKg)) && Number(x.amountInKg) > 0
                       && (Boolean(x.procurement) || (!fromOption && Array.isArray(offerStock) && !stockCoversPosition));
                     return (
@@ -2490,7 +2513,7 @@ export default function TempOrderForm() {
                               {t('product_article_index')}: {x.articleIndex || '-'}
                             </Typography>
                             {x.savedPurchasePositionId && <Typography variant="caption" color="text.secondary">
-                              {t('procurement_option_linked_purchase', { id: savedPurchaseId })}
+                              {t('procurement_option_linked_purchase', { id: x.savedPurchaseId })}
                             </Typography>}
                             {((!fromOption && !x.savedPurchasePositionId) || x.beNumber) && <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('product_be_number')}: {x.beNumber || '-'} | {t('product_storage_id')}: {x.warehouseId || '-'}
@@ -2498,7 +2521,7 @@ export default function TempOrderForm() {
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('original_packaging_type_label')}: {x.originalPackagingType || '-'}
                             </Typography>
-                            {x.offerPositionId && !x.procurement && !showProcurement && (
+                            {x.offerPositionId && !x.savedPurchasePositionId && !x.procurement && !showProcurement && (
                               <Typography variant="caption" color={x.beNumber ? 'text.secondary' : 'warning.main'}>
                                 {t(x.beNumber ? 'offer_order_position_copied' : (offerStock?.length ? 'offer_order_select_stock' : 'offer_order_position_stock_required'))}
                               </Typography>
@@ -2514,7 +2537,7 @@ export default function TempOrderForm() {
                           {showProcurement && <Button size="small" sx={{ justifySelf: 'start' }} onClick={() => setProcurementKey(x.clientKey)}>
                             {t(x.procurement ? 'procurement_edit' : 'procurement_action')}
                           </Button>}
-                          {offerStock?.some((lot) => lot.available >= Number(x.amountInKg)) && !x.procurement && (
+                          {offerStock?.some((lot) => lot.available >= Number(x.amountInKg)) && !x.procurement && !x.savedPurchasePositionId && (
                             <TextField
                               select
                               fullWidth
@@ -2544,7 +2567,7 @@ export default function TempOrderForm() {
                               ))}
                             </TextField>
                           )}
-                          {!fromOption && offerStock?.length === 0 && !showProcurement && !x.procurement && (
+                          {!fromOption && offerStock?.length === 0 && !showProcurement && !x.procurement && !x.savedPurchasePositionId && (
                             <Alert severity="warning">
                               {x.amountInKg === null
                                 ? t('offer_order_unsupported_unit', { unit: x.offerUnit, quantity: x.offerQuantity })

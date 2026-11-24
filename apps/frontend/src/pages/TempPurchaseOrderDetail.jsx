@@ -74,7 +74,8 @@ export default function TempPurchaseOrderDetail() {
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {!loading && item && <Card sx={{ width: '100%', minWidth: 0 }}><CardContent sx={{ pt: 2, minWidth: 0 }}>
-      <Typography variant="h6">{item.positions.some(p=>p.optionId!=null)?'Bestellung (Option)':'Bestellung'}</Typography>
+      <Typography variant="h6">{item.linkedOrderIds?.length ? t('procurement_purchase_for_order')
+        : item.positions.some(p=>p.optionId!=null) ? 'Bestellung (Option)' : 'Bestellung'}</Typography>
       {item.linkedOrderIds?.map((orderId) => <Button key={orderId} size="small"
         onClick={() => navigate('/temp-orders/' + orderId, { state: { returnTo: createReturnTo(location) } })}>
         {t('procurement_order_link', { id: orderId })}

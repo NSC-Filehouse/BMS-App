@@ -26,6 +26,7 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
   const availability = await loadOptionAvailability(source);
   const packagingTypes=await loadPurchasePackagingOptions(req.header('x-lang')==='en'?'en':'de');
   sendEnvelope(res,{data,meta:{...availability,supplierName:source.supplierName,
+    sourceIncoterm:source.incoterm,sourceLoadingLocation:source.loadingLocation,sourceArticleName:source.opp_Artikelname_Lieferant,
     confirmedQuantityKg:source.confirmedQuantityKg,quantitySourceHash:source.quantitySourceHash,
     confirmedPackagingTypeId:source.confirmedPackagingTypeId,confirmedTruckCount:source.confirmedTruckCount,
     truckOffer:isTruckOffer(source),offeredTrucks:offeredTruckCount(source),packagingTypes,

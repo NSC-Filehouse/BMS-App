@@ -1786,8 +1786,7 @@ async function completeLinkedProcurement(req, order, companyId, { handoff = true
   }, order.ta_id);
 }
 
-async function lockSavedOptionPurchase(query, position, companyId, user, requestId) {
-  // The original purchase request ID also identifies retries of the follow-up sales order.
+async function lockSavedPurchase(query, position, companyId, user) {
   const [purchase] = (await query(`
     SELECT pp.tbp_id AS id, pp.tbp_order_position_id AS linkedOrderPositionId,
       pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit,
@@ -1795,10 +1794,10 @@ async function lockSavedOptionPurchase(query, position, companyId, user, request
     FROM ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK)
     JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp WITH (UPDLOCK,HOLDLOCK) ON pp.tbp_tb_id=b.tb_id
     WHERE pp.tbp_id=? AND b.tb_company_id=? AND b.tb_created_by=? AND b.tb_client_request_id=?
-      AND pp.OptionID IS NOT NULL AND pp.OptionPositionID IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS} other WHERE other.tbp_tb_id=b.tb_id AND other.tbp_id<>pp.tbp_id)
-  `, [position.savedPurchasePositionId, companyId, user, requestId])).rows;
+  `, [position.savedPurchasePositionId, companyId, user, position.purchaseRequestId])).rows;
   if (!purchase || purchase.linkedOrderPositionId != null
+    || (!position.offerPositionId && !purchase.optionPositionId)
     || asText(purchase.articleIndex).toLowerCase() !== position.articleIndex.toLowerCase()
     || asText(purchase.unit).toLowerCase() !== 'kg' || Number(purchase.amount) !== position.amountInKg) {
     throw createHttpError(409, 'Die gespeicherte Bestellposition ist nicht mehr verfügbar oder Artikel und Menge wurden geändert.', {
@@ -1847,17 +1846,18 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const attachment = normalizeAttachmentInput(req);
   const submittedPositions = normalizePositionsInput(body);
   const hasInlineProcurement = submittedPositions.some((position) => position?.procurement);
-  const savedPurchaseCount = submittedPositions.filter((position) => position?.savedPurchasePositionId != null).length;
-  if (savedPurchaseCount > 1 || (savedPurchaseCount && hasInlineProcurement)) {
-    throw createHttpError(400, 'Pro Auftrag kann hier eine bereits gespeicherte Bestellposition übernommen werden.', {
+  const savedPurchaseLines = submittedPositions.filter((position) => position?.savedPurchasePositionId != null);
+  if (savedPurchaseLines.length && hasInlineProcurement) {
+    throw createHttpError(400, 'Gespeicherte Bestellungen und noch nicht gespeicherte Beschaffungen können hier nicht kombiniert werden.', {
       code: 'PROCUREMENT_SAVED_PURCHASE_INVALID',
     });
   }
-  const hasProcurement = hasInlineProcurement || savedPurchaseCount > 0;
+  const hasProcurement = hasInlineProcurement || savedPurchaseLines.length > 0;
   const procurementRequestId = hasProcurement ? asText(body.procurementRequestId).toLowerCase() : null;
+  const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
   if (hasProcurement) {
     assertProcurementAccess(userIdentity);
-    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(procurementRequestId)) {
+    if (!uuidPattern.test(procurementRequestId)) {
       throw createHttpError(400, 'Anfragekennung für die Beschaffung fehlt.', { code: 'PROCUREMENT_REQUEST_ID_INVALID' });
     }
     if (!await procurementSchemaReady()) {
@@ -1876,6 +1876,14 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
   const conversion = orderConversionInput(req, body, positionsInput);
+  // The first purchase request ID also identifies retries of the follow-up sales order.
+  const purchaseRequestIds = savedPurchaseLines.map((line) => asText(line.purchaseRequestId || procurementRequestId).toLowerCase());
+  if (purchaseRequestIds.length && (purchaseRequestIds[0] !== procurementRequestId
+    || purchaseRequestIds.some((requestId) => !uuidPattern.test(requestId))
+    || new Set(purchaseRequestIds).size !== purchaseRequestIds.length
+    || (savedPurchaseLines.length > 1 && savedPurchaseLines.some((position) => !conversion || !position.offerPositionId)))) {
+    throw createHttpError(400, 'Ungültige Referenz für die Übernahme der gespeicherten Bestellungen.', { code: 'PROCUREMENT_SAVED_PURCHASE_INVALID' });
+  }
   assertPositionsBelongToActiveMandant(req, positionsInput);
 
   const clientReferenceId = asText(body?.clientReferenceId);
@@ -1964,6 +1972,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         throw createHttpError(400, 'Ungültige Übernahme der gespeicherten Bestellposition.', { code: 'PROCUREMENT_SAVED_PURCHASE_INVALID' });
       }
       normalizedPositions.push({
+        offerPositionId: conversion ? Number(raw.offerPositionId) || null : null,
+        purchaseRequestId: asText(raw.purchaseRequestId || procurementRequestId).toLowerCase(),
         savedPurchasePositionId, beNumber: '', warehouseId: '', articleIndex,
         deliveryDate: deliveryDate.toISOString(), valutaDate: valutaDateState.storedDate,
         amountInKg, salePricePerKg, costPricePerKg, reservationInKg: null, reservationDate: null,
@@ -2137,6 +2147,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       `, [companyId, userShortCode, procurementRequestId]);
       if (prior.rows[0]) return prior.rows[0];
     }
+    const savedPurchases = new Map();
+    for (const position of normalizedPositions.filter((line) => line.savedPurchasePositionId)
+      .sort((left, right) => left.savedPurchasePositionId - right.savedPurchasePositionId)) {
+      const saved = await lockSavedPurchase(query, position, companyId, userShortCode);
+      savedPurchases.set(position, saved);
+      position.optionPositionId = saved.optionPositionId;
+    }
     if (conversion) await assertOrderConversion(query, req, conversion, clientReferenceId, normalizedPositions);
     if (conversion || hasProcurement) {
       await assertTempOrderPositionsAvailable({
@@ -2165,11 +2182,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       const posCtx = pos.productContext;
       const offerPositionId = conversion?.positionIds[i];
       const purchase = pos.purchaseDraft ? await savePurchaseDraft(query, pos.purchaseRequest, pos.purchaseDraft) : null;
-      const savedPurchase = pos.savedPurchasePositionId
-        ? await lockSavedOptionPurchase(query, pos, companyId, userShortCode, procurementRequestId) : null;
+      const savedPurchase = savedPurchases.get(pos);
       const purchasePositionId = savedPurchase?.id ?? purchase?.positions[0]?.id;
       if (savedPurchase) {
-        pos.optionPositionId = savedPurchase.optionPositionId;
         pos.originalPackagingType = savedPurchase.packagingType;
         pos.originalPackagingTypeId = savedPurchase.packagingTypeId;
         pos.packagingTypeChanged = packagingTypesChanged(orderLevel.packagingType, orderLevel.packagingTypeId,
@@ -3478,8 +3493,9 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
           WHERE p.tap_ta_id=?
         `, [id]);
         await query(`UPDATE ${TEMP_ORDER_POSITION_TABLE} SET tap_purchase_position_id=NULL WHERE tap_ta_id=?`, [id]);
+        const savedSeparately = purchases.some((purchase) => purchase.savedSeparately);
         for (const purchase of purchases) {
-          if (Number(purchase.status) === 0 && !purchase.savedSeparately) {
+          if (Number(purchase.status) === 0 && !savedSeparately) {
             await query(`DELETE FROM ${PROCUREMENT_PURCHASES} WHERE tb_id=? AND tb_status=0
               AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS}
                 WHERE tbp_tb_id=? AND tbp_order_position_id IS NOT NULL)`, [purchase.id, purchase.id]);

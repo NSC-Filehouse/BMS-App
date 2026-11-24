@@ -82,6 +82,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../utils/purchaseOrderAttachments.js': purchaseOrderAttachments,
     '../utils/optionPurchaseNavigation.js': { optionPurchaseReturnTo: () => ({ pathname: '/test' }) },
     '../utils/navigation.js': { createReturnTo: () => ({}), navigateToReturn: navigate },
+    '../components/FeatureAccess.jsx': { useFeatureAccess: () => ({ userId: 'nsc' }) },
   };
   const module = { exports: {} };
   const source = (await transformWithEsbuild(readFileSync(new URL(relativePath, import.meta.url), 'utf8'), relativePath, { loader: 'jsx', format: 'cjs' })).code;
@@ -270,6 +271,74 @@ test('the purchase-first editor saves the fixed option line and opens the custom
     articleIndex: 'A1', article: 'Grade', amountInKg: 12000, price: '', costPrice: 1755,
     originalPackagingType: 'Sackware', originalPackagingTypeId: 78,
   });
+});
+
+test('offer conversion opens purchasing only for shortages and returns to the prepared customer order', async () => {
+  const returnTo = { pathname: '/temp-offers/25' };
+  const version = '0x0000000000000001';
+  const stocked = { offerPositionId: 1, articleIndex: 'A', amountInKg: 10000, requiresPurchase: false, beNumber: 'BE1' };
+  const shortage = { offerPositionId: 2, articleIndex: 'B', amountInKg: 20000, requiresPurchase: true, candidates: [] };
+  const data = { version, clientReferenceId: 'C1', positions: [stocked, shortage] };
+  const request = async (path) => {
+    assert.equal(path, '/temp-offers/25/order-draft?preparePurchases=1');
+    return { data };
+  };
+  const path = '../src/pages/OfferOrderPurchase.jsx';
+  const params = { offerSourceId: '25' };
+  const start = await mount(path, {}, request, params, 'OfferOrderStart', { returnTo });
+  await start.flush();
+  const [paymentNavigation] = start.navigations;
+  assert.equal(paymentNavigation.path, '/temp-offers/25/order-purchase');
+  assert.deepEqual(paymentNavigation.options.state.positions, [shortage]);
+  const purchase = await mount(path, {}, request, params, 'OfferOrderPurchase', paymentNavigation.options.state);
+  await purchase.flush();
+  const editor = purchase.find((node) => node.props.onPurchaseSaved);
+  assert.equal(editor.props.offerPosition, shortage);
+  const saved = { savedPurchasePositionId: 38, savedPurchaseId: 27, purchaseRequestId: editor.props.state.clientRequestId };
+  editor.props.onPurchaseSaved(saved);
+  const [next] = purchase.navigations;
+  const finish = await mount(path, {}, request, params, 'OfferOrderPurchase', next.options.state);
+  await finish.flush();
+  const customerOrder = finish.find((node) => node.props.to === '/temp-offers/25/order/new');
+  const resumed = await mount(path, {}, request, params, 'OfferOrderStart', customerOrder.props.state);
+  await resumed.flush();
+  const form = resumed.find((node) => node.props.preparedOfferOrder);
+  assert.equal(form.props.preparedOfferOrder.clientReferenceId, 'C1');
+  assert.deepEqual(form.props.preparedOfferOrder.positions, [
+    { ...stocked, savedPurchase: null },
+    { ...shortage, savedPurchase: saved },
+  ]);
+});
+
+test('a regular offer line can be purchased first from a searched supplier with its offered quantity', async () => {
+  const line = { offerPositionId: 7, articleIndex: 'A1', article: 'Grade', amountInKg: 12000, candidates: [] };
+  const clientRequestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
+  let saved;
+  const view = await mount('../src/pages/OptionOrderPurchase.jsx', {
+    state: { procurementOption: line, clientRequestId }, offerPosition: line, onPurchaseSaved: (value) => { saved = value; },
+  }, async (path, _lang, request) => {
+    if (path.startsWith('/customers?')) {
+      assert.equal(new URLSearchParams(path.split('?')[1]).get('supplierOnly'), '1');
+      return { data: [{ kd_KdNR: 'LF1', kd_Name1: 'Supplier' }] };
+    }
+    assert.equal(path, '/temp-purchase-orders');
+    const [position] = JSON.parse(request.body.get('positions'));
+    assert.equal(position.optionPositionId, undefined);
+    assert.equal(position.amount, 12000);
+    return { data: { id: 27, clientRequestId, positions: [{ id: 38, articleIndex: 'A1', amount: 12000, purchasePrice: 1700 }] } };
+  }, {}, 'PurchaseForOrder');
+  await view.flush();
+  const finder = () => view.find((node) => node.type === 'Autocomplete' && node.props.openOnFocus);
+  finder().props.onInputChange(null, 'Supplier', 'input');
+  await view.flush();
+  await new Promise((resolve) => setTimeout(resolve, 275));
+  await view.flush();
+  finder().props.onChange(null, finder().props.options[0]);
+  await view.flush();
+  const editor = view.find((node) => node.props.fixedQuantity && node.props.onSave);
+  await editor.props.onSave(editor.props.initialOrder);
+  assert.equal(saved.savedPurchasePositionId, 38);
+  assert.equal(view.navigations.length, 0);
 });
 
 test('the first selectable article is preselected and a resolved supplier appears in the order dialog', async () => {
