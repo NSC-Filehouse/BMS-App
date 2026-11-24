@@ -1,11 +1,10 @@
 const { PDFDocument, StandardFonts } = require('pdf-lib');
 const { randomUUID } = require('node:crypto');
+const { offerXml } = require('../offers/quotation-xml');
 
 const escapeMarkup = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]);
-const withoutControls = value => String(value ?? '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g, '');
-const xmlText = value => escapeMarkup(withoutControls(value));
 const fileLabel = value => String(value).replace(/[^a-z0-9_.-]/gi, '_').slice(0, 100);
 
 function singleEmail(value) {
@@ -36,44 +35,6 @@ function responseLinks(offer, number, sender) {
         : `Vielen Dank für Ihr Angebot ${number}. Das Angebot ist für uns derzeit nicht interessant.`) },
     ],
   };
-}
-
-function offerXml(offer, number) {
-  const tag = (name, value) => `<${name}>${xmlText(value)}</${name}>`;
-  const { article, articleIndex, batch, quantityKg, availableQuantityKg, salePrice, incotermCode, pickup, customerId, validUntil } = offer;
-  if (offer.kind === 'app' && !offer.positions?.length) throw new Error('Angebotspositionen fehlen.');
-  const positions = offer.kind === 'app' ? offer.positions.flatMap(position => [
-    '  <Position>',
-    `    ${tag('ArticleNumber', position.articleIndex)}`,
-    `    ${tag('ArticleName', position.article)}`,
-    `    <Quantity unit="${xmlText(/^kg$/i.test(position.unit) ? 'KGM' : position.unit)}">${Number(position.quantity).toFixed(3)}</Quantity>`,
-    `    <Price currency="EUR" basis="${xmlText(position.priceBasis)}">${Number(position.price).toFixed(4)}</Price>`,
-    '  </Position>',
-  ]) : [
-    '  <Position>',
-    `    ${tag('ArticleNumber', articleIndex)}`,
-    `    ${tag('ArticleName', article)}`,
-    ...(batch ? [`    ${tag('Batch', batch)}`] : []),
-    `    <Quantity unit="KGM">${quantityKg.toFixed(3)}</Quantity>`,
-    `    <PricePerTonne currency="EUR">${salePrice.toFixed(4)}</PricePerTonne>`,
-    ...(batch && availableQuantityKg > quantityKg
-      ? [`    <AvailableBatchQuantity unit="KGM">${availableQuantityKg.toFixed(3)}</AvailableBatchQuantity>`] : []),
-    '  </Position>',
-  ];
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<Offer xmlns="urn:filehouse:bms:customer-offer:1" version="1.0">',
-    `  ${tag('OfferNumber', number)}`,
-    `  ${tag('CustomerNumber', customerId)}`,
-    '  <NonBinding>true</NonBinding>',
-    ...(validUntil ? [`  ${tag('ValidUntil', validUntil)}`] : []),
-    ...positions,
-    '  <Delivery>',
-    ...(incotermCode ? [`    ${tag('Incoterm', incotermCode)}`] : []),
-    ...(pickup ? [`    ${tag('PickupLocation', pickup)}`] : []),
-    '  </Delivery>',
-    '</Offer>',
-  ].join('\n');
 }
 
 const offerWeekday = new Intl.DateTimeFormat('de-DE', { weekday: 'long', timeZone: 'Europe/Berlin' });
@@ -217,7 +178,15 @@ async function createSampleOfferPdf(offer) {
 }
 
 async function sampleOfferEml(offer) {
-  const sample = { ...offer, senderEmail: 'aussendienst@example.invalid', recipientEmail: 'kunde@example.invalid' };
+  const sample = {
+    ...offer, senderEmail: 'aussendienst@example.invalid', recipientEmail: 'kunde@example.invalid',
+    header: { issueDate: new Date(), currency: 'EUR' },
+    seller: { name: 'Muster-Verkäufer' },
+    positions: [{
+      articleIndex: offer.articleIndex, article: offer.article, unit: 'KG',
+      quantity: offer.quantityKg, price: offer.salePrice, priceBasis: 1000,
+    }],
+  };
   const mail = assembleOfferMail(sample, {
     number: 'MUSTER-001', subject: 'Muster - Ihr Angebot',
     isBodyHtml: false, pdf: await createSampleOfferPdf(sample),

@@ -212,7 +212,16 @@ wie bei manuell erstellten App-Angeboten. Er schreibt Angebotsnummer, PDF-Bytes
 und Status 2 in den Angebotskopf. Der Mail-Worker verwendet die PDF erst ab
 Status 2. Die unveränderlichen Zusatzdaten in `OptionOfferDocument.OfferJson`
 enthalten unter anderem `nonBinding=true` für die freibleibende Vorlage.
-Die separate Angebots-XML folgt dem [XML-Schema](option-offer-v1.xsd).
+Die separate Angebots-XML ist ein UBL-2.3-Dokument vom Typ `Quotation`.
+Das [offizielle UBL-Schema](https://docs.oasis-open.org/ubl/os-UBL-2.3/xsd/maindoc/UBL-Quotation-2.3.xsd)
+gilt für Angebote aus der App, aus Optionen und aus der VL. Verkäuferdaten
+kommen aus dem Mandantenstamm, Käuferdaten und Positionen aus dem gespeicherten
+Angebot. Lieferanschriften werden als Adresszeilen übernommen, FCA-Abholorte
+stehen bei den Lieferbedingungen. Einzelpreise enthalten Menge und Einheit der
+Preisbasis. Steuerbeträge werden bei bekannten Steuerdaten ausgegeben. Interne
+Notizen, EK, Reservierungen, Lagerbestände und interne Prüfzeugnisanweisungen
+gehören nicht in die Kunden-XML. Das [frühere Schema](option-offer-v1.xsd) gilt
+für bereits erzeugte XML-Dateien im alten Format.
 
 Die App verwendet den freibleibenden Standardtext mit Anrede,
 Angebotsreferenz und Grußformel in der Kontaktsprache.

@@ -5,12 +5,14 @@ const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { berlinDate } = require('../options/read');
 const { readTempOfferDocument, assembleOfferMail, singleEmail } = require('../options/offer-documents');
 const { loadGeneratedOfferHeaders, createGeneratedTempOffer } = require('../offers/erp-mail');
-const { H, P, positionFields, select } = require('../offers/storage');
+const { H, P, dbIdentifier } = require('../offers/storage');
 const { getUserIdentityByShortCode } = require('./users');
 const { createHttpError } = require('../utils');
 
 const outbox = 'BMSApp.OptionOfferMailOutbox';
 const documents = 'BMSApp.OptionOfferDocument';
+const mandant = dbIdentifier(config.sql.tables.mandant);
+const mandantId = dbIdentifier(config.sql.columns.firmaId);
 const run = (query, params) => runSQLQuerySqlServer(config.sql.database, query, params);
 
 function optionOfferMailEnabled() {
@@ -143,9 +145,22 @@ async function claimOffer() {
     OUTPUT inserted.Id AS id, inserted.Status AS status, inserted.MailServiceId AS mailServiceId,
       inserted.AttemptCount AS attempt, inserted.TempOfferId AS tempOfferId,
       d.OfferJson AS offerJson,
-      h.tag_created_by AS createdBy, h.tag_status AS erpStatus, h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf
+      h.tag_created_by AS createdBy, h.tag_status AS erpStatus, h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf,
+      COALESCE(h.tag_offer_date, CONVERT(date, h.tag_created_at)) AS issueDate, h.tag_valid_until AS validUntil,
+      h.tag_currency AS currency, h.tag_customer_id AS customerId, h.tag_customer_name AS customerName,
+      h.tag_customer_address AS customerAddress, h.tag_contact AS contact,
+      h.tag_department AS department, h.tag_customer_reference AS customerReference,
+      h.tag_title AS title, h.tag_intro AS intro, h.tag_closing_text AS closingText,
+      h.tag_delivery_address AS deliveryAddress,
+      h.tag_delivery_terms AS deliveryTerms, h.tag_packaging AS packaging, h.tag_payment_text AS paymentText,
+      h.tag_discount_percent AS discountPercent, h.tag_discount_amount AS discountAmount,
+      h.tag_vat_percent AS vatPercent, h.tag_net_amount AS netAmount, h.tag_subtotal AS subtotal,
+      h.tag_vat_amount AS vatAmount, h.tag_total_amount AS totalAmount,
+      m.md_FirmaKurz AS sellerId, COALESCE(NULLIF(TRIM(m.md_FirmaName), ''), TRIM(m.md_Firma)) AS sellerName,
+      m.md_Strasse AS sellerStreet, m.md_PLZ AS sellerPostalCode, m.md_Ort AS sellerCity, m.md_LK_ISO2 AS sellerCountry
     FROM ${outbox} o JOIN nextMail n ON n.Id = o.Id JOIN ${documents} d ON d.OptionOfferMailId = o.Id
     LEFT JOIN ${H} h ON h.tag_id=o.TempOfferId AND h.tag_company_id=o.CompanyId
+    LEFT JOIN [dbo].${mandant} m ON m.${mandantId}=h.tag_company_id
   `, [berlinDate()]);
   return row;
 }
@@ -191,14 +206,19 @@ async function deliverOffer(client, row) {
     }
     if (row.status !== 'submitted') {
       const document = readTempOfferDocument(row, offer);
-      if (offer.kind === 'app') {
-        offer.positions = await run(`
-          SELECT ${select(positionFields, 'p.')}
-          FROM ${P} p JOIN ${H} h ON h.tag_id=p.tagp_offer_id
-          WHERE h.tag_id=? AND h.tag_company_id=? AND h.tag_status=2
-          ORDER BY p.tagp_line_no
-        `, [row.tempOfferId, offer.companyId]);
-      }
+      const positions = await run(`
+        SELECT p.tagp_line_no AS lineNo, p.tagp_article_index AS articleIndex, p.tagp_article AS article,
+          p.tagp_quantity AS quantity, p.tagp_unit AS unit, p.tagp_price AS price, p.tagp_price_basis AS priceBasis,
+          p.tagp_total AS total, p.tagp_description AS description, p.tagp_alternative_text AS alternativeText,
+          p.tagp_delivery_date AS deliveryDate, p.tagp_delivery_text AS deliveryText, p.tagp_valuta_date AS valutaDate
+        FROM ${P} p JOIN ${H} h ON h.tag_id=p.tagp_offer_id
+        WHERE h.tag_id=? AND h.tag_company_id=? AND h.tag_status=2
+        ORDER BY p.tagp_line_no
+      `, [row.tempOfferId, offer.companyId]);
+      const seller = {
+        id: row.sellerId, name: row.sellerName, street: row.sellerStreet,
+        postalCode: row.sellerPostalCode, city: row.sellerCity, country: row.sellerCountry,
+      };
       let recipient;
       const creatorCode = String(row.createdBy ?? '').trim().toUpperCase();
       if (creatorCode) {
@@ -211,7 +231,7 @@ async function deliverOffer(client, row) {
         await updateOffer(row, row.attempt === 1 ? 'failed' : 'unknown', 'Für den Angebotsersteller fehlt eine gültige Mailadresse.');
         return;
       }
-      request = assembleOfferMail(offer, document, {
+      request = assembleOfferMail({ ...offer, header: row, seller, positions }, document, {
         clientMessageId: `bms-app:offer-preview:${offer.messageKey}`,
         to: [{ address: recipient }],
       });

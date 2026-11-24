@@ -48,7 +48,7 @@ const bmsDocument = {
   body: 'BMS-Originaltext', isBodyHtml: false, pdfBase64: Buffer.from('%PDF-1.6\nTest-only').toString('base64'),
 };
 const pdf = Buffer.from('%PDF-1.7\nExact ERP bytes');
-const row = { id: 42, tempOfferId: 81, attempt: 1, erpStatus: 2, createdBy: 'AD', offerNumber: 'AN-42', pdf,
+const row = { id: 42, tempOfferId: 81, attempt: 1, erpStatus: 2, createdBy: 'AD', offerNumber: 'AN-42', pdf, issueDate: '2026-11-23', sellerName: 'Musterverkäufer',
   offerJson: JSON.stringify(offer), documentJson: JSON.stringify(bmsDocument) };
 test.beforeEach(() => { calls.length = 0; });
 
@@ -65,9 +65,9 @@ test('accepted mail keeps its MailService ID and creates no ERP activity yet', a
       return { id: 'mail-123', status: 'Pending' };
     },
   }, { ...row, status: 'sending' });
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].params, ['submitted', 'mail-123', null, 42, 1]);
-  assert.equal(calls[0].transaction, false);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].params, ['submitted', 'mail-123', null, 42, 1]);
+  assert.equal(calls[1].transaction, false);
 });
 
 test('when another user releases a draft, only the original creator receives the mail', async () => {
@@ -105,7 +105,7 @@ test('a manual offer preview includes the ERP PDF and XML for every linked posit
     assert.equal(request.subject, 'Ihr Angebot AN-42');
     assert.equal(request.attachments.length, 2);
     assert.deepEqual(request.attachments[0].content, pdf);
-    assert.match(request.attachments[1].content.toString(), /A &amp; B[\s\S]*<ArticleNumber>B<\/ArticleNumber>[\s\S]*<Quantity unit="ST">2\.000<\/Quantity>[\s\S]*<Price currency="EUR" basis="1">20\.0000<\/Price>/);
+    assert.match(request.attachments[1].content.toString(), /A &amp; B[\s\S]*<cbc:Quantity unitCode="C62">2\.000<\/cbc:Quantity>[\s\S]*<cbc:PriceAmount currencyID="EUR">20\.0000<\/cbc:PriceAmount>[\s\S]*<cbc:ID>B<\/cbc:ID>/);
     return { id: 'mail-123', status: 'Pending' };
   } }, { ...row, status: 'sending', documentJson: null, offerJson: JSON.stringify({ ...offer, kind: 'app', companyId: 3 }) });
   assert.deepEqual(calls[0].params, [81, 3]);
