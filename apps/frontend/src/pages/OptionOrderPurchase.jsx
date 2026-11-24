@@ -10,6 +10,7 @@ import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
 import { navigateToReturn } from '../utils/navigation.js';
 import { confirmedTotalKg, defaultOptionPackagingId, truckOptionAvailability } from '../utils/optionQuantityConfirmation.js';
+import { optionPackagingText } from '../utils/optionDisplay.js';
 import { purchaseOrderRequestBody } from '../utils/purchaseOrderAttachments.js';
 
 export default function OptionOrderPurchase() {
@@ -180,7 +181,9 @@ function PurchaseForOrder({ state }) {
           supplierConfirmed: true, articleConfirmed: true, unit: 'kg',
           amount: initialRemainingKg > 0 ? Math.floor(initialRemainingKg) : '', amountTouched: true,
           purchasePrice: option.costPrice ?? '', requestedDeliveryDate: '',
-          originalPackagingType: availability.sourcePackagingDisplay || availability.sourcePackaging || '',
+          originalPackagingType: optionPackagingText({
+            packagingDisplay: availability.sourcePackagingDisplay, packagingText: availability.sourcePackaging,
+          }, lang),
         }],
       }}
       optionQuantityFields={needsQuantity && <Box sx={{ display: 'grid', gap: 1 }}>

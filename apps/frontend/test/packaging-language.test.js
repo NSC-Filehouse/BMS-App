@@ -238,7 +238,10 @@ test('the purchase-first editor saves the fixed option line and opens the custom
   const clientRequestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
   const supplier = { id: 'LF1', name: 'Supplier' };
   const view = await mount('../src/pages/OptionOrderPurchase.jsx', {}, async (path, _lang, request) => {
-    if (path.endsWith('/suppliers?q=')) return { data: [supplier], meta: { packagingTypes: choices('de'), remainingKg: 24750 } };
+    if (path.endsWith('/suppliers?q=')) return { data: [supplier], meta: {
+      packagingTypes: choices('de'), remainingKg: 24750, sourcePackaging: 'Bags and/or Bulk',
+      sourcePackagingDisplay: { de: 'Sackware und/oder Siloware', en: 'Bags and/or Silo/bulk' },
+    } };
     assert.equal(path, '/temp-purchase-orders');
     assert.equal(request.body.get('clientRequestId'), clientRequestId);
     assert.equal(request.body.get('supplierId'), supplier.id);
@@ -257,6 +260,7 @@ test('the purchase-first editor saves the fixed option line and opens the custom
   const { initialOrder } = editor.props;
   assert.equal(initialOrder.positions.length, 1);
   assert.equal(initialOrder.positions[0].amount, 24750);
+  assert.equal(initialOrder.positions[0].originalPackagingType, 'Sackware und/oder Siloware');
   await editor.props.onSave({ ...initialOrder, positions: [{ ...initialOrder.positions[0], amount: 12000 }] });
   await view.flush();
   const [{ path, options }] = view.navigations;
