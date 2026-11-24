@@ -38,6 +38,13 @@ function purchaseTruckLoadKg(packaging) {
   return packagingKey(packaging)==='silo'?25000:24750;
 }
 
+async function loadPurchasePaymentText(id, lang = 'de') {
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT TOP 1 [zaS_Zahl_Text] AS text FROM [dbo].[tblZahltext_Sprachen]
+    WHERE [zaS_ID] = ? AND LOWER(COALESCE([zaS_SprachID], '')) = ?`, [id, lang === 'en' ? 'en' : 'de']);
+  return text(rows[0]?.text);
+}
+
 async function loadSupplierTerms(database, supplierId, lang = 'de') {
   const [orders, contacts] = await Promise.all([
     runSQLQueryAccess(database, `
@@ -53,12 +60,10 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
   ]);
   const row = orders[0] || {};
   const paymentConditionId = Number(row.paymentConditionId) || null;
-  const payment = paymentConditionId ? await runSQLQuerySqlServer(config.sql.database, `
-    SELECT TOP 1 [zaS_Zahl_Text] AS text FROM [dbo].[tblZahltext_Sprachen]
-    WHERE [zaS_ID] = ? AND LOWER(COALESCE([zaS_SprachID], '')) = ?`, [paymentConditionId, lang === 'en' ? 'en' : 'de']) : [];
+  const paymentConditionText = paymentConditionId ? await loadPurchasePaymentText(paymentConditionId, lang) : '';
   const names = contacts.map((contact) => ({ ...contact, name: [contact.salutation, contact.firstName, contact.lastName].map(text).filter(Boolean).join(' ') })).filter((contact) => contact.name);
   const contact = names.find((item) => Number(item.ranking) === 1) || (names.length === 1 ? names[0] : null);
-  return { paymentConditionId, paymentConditionText: text(payment[0]?.text), deliveryTermText: text(row.deliveryTermText), supplierContact: contact?.name || '', contacts: names };
+  return { paymentConditionId, paymentConditionText, deliveryTermText: text(row.deliveryTermText), supplierContact: contact?.name || '', contacts: names };
 }
 
 async function loadLatestPurchase(database, supplierId, articleIndex) {
@@ -130,4 +135,4 @@ function findPackaging(options, value, id) {
     || options.find((option) => option.aliases.some((alias) => packagingKey(alias) === packagingKey(value)));
 }
 
-module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions,loadPurchasePackagingOptions,purchaseTruckLoadKg, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };
+module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions,loadPurchasePackagingOptions,purchaseTruckLoadKg, loadSupplierTerms, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };

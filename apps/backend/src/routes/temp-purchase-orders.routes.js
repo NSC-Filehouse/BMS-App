@@ -11,7 +11,7 @@ const { appTableSql } = require('../db/app-tables');
 const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
   loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
-const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
+const { loadPurchaseOptions, loadSupplierTerms, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
 const { procurementSchemaReady, assertProcurementAccess, loadPurchaseOrderLinks } = require('../db/linked-procurement');
 const { loadHolidayRows } = require('../db/holidays');
 const {
@@ -388,10 +388,17 @@ router.get('/purchase-order-loading-locations', requirePurchaseOrders, requireMa
 router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.query?.supplierId);
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
-  await assertSupplier(req.database, supplierId, scope);
+  const supplier = await assertSupplier(req.database, supplierId, scope);
   const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
   const [options, defaults] = await Promise.all([loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang)]);
-  sendEnvelope(res, { data: { ...options, defaults } });
+  const supplierAddress = {
+    name: asText(supplier.kd_Name1) || asText(supplier.kd_Name2),
+    street: asText(supplier.kd_Strasse),
+    postalCode: asText(supplier.kd_PLZ),
+    city: asText(supplier.kd_Ort),
+    countryCode: asText(supplier.kd_LK),
+  };
+  sendEnvelope(res, { data: { ...options, defaults, supplierAddress } });
 }));
 
 router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
@@ -457,8 +464,19 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
     position.originalPackagingTypeId = originalOption?.id || null;
     position.packagingTypeChanged = originalOption ? packaging.id !== originalOption.id : packagingKey(packaging.text) !== packagingKey(original);
   }
-  // New orders use authoritative supplier terms; edits keep their saved terms.
-  const payment = existing || terms;
+  // Terms from purchase history and existing default snapshots take precedence.
+  let payment = existing || terms;
+  const selectedId = req.body?.paymentConditionId;
+  if ((!payment.paymentConditionText || payment.paymentConditionChanged) && asText(selectedId)
+    && (!payment.paymentConditionText || Number(selectedId) !== Number(payment.paymentConditionId))) {
+    const paymentConditionId = Number(selectedId);
+    const paymentConditionText = Number.isSafeInteger(paymentConditionId) && paymentConditionId > 0
+      ? await loadPurchasePaymentText(paymentConditionId, lang) : '';
+    if (!paymentConditionText) {
+      throw createHttpError(400, 'Bitte ein gültiges Zahlungsziel auswählen.', { code: 'PURCHASE_PAYMENT_CONDITION_INVALID' });
+    }
+    payment = { paymentConditionId, paymentConditionText, paymentConditionChanged: true };
+  }
   const loading = await resolveLoadingAddress(req.database, { ...req.body, supplierId, positions });
   await validateWorkingDates(positions, loading.address);
   return { positions, loading, packaging, incoterm, payment };
@@ -581,10 +599,10 @@ async function savePurchaseDraft(query, req, draft) {
     [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
     [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
     [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
-    OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
+    OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
   [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
     [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
-    payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
+    payment.paymentConditionChanged ? 1 : 0, payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
     asText(req.body?.comment) || null, user, now, user, now]);
   const id = result.rows[0].id;
   await insertPurchasePositions(query, id, positions, user, now);
@@ -638,7 +656,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   }
   await assertSupplier(req.database, existing.supplierId, scope);
   const storedPositions = await loadPositions(id);
-  const { positions, loading, packaging, incoterm } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
+  const { positions, loading, packaging, incoterm, payment } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
   const attachmentInput = normalizeAttachmentInput(req);
   const now = new Date().toISOString();
   const checkProcurement = await procurementSchemaReady();
@@ -646,9 +664,10 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
     const sources = await assertOptionQuantities(query,positions,id,packaging.text,req.userIdentity);
-    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=?,[tb_payment_condition_id]=?,[tb_payment_condition_text]=?,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
       [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
-      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
+      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, payment.paymentConditionChanged ? 1 : 0,
+      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
     const linked = checkProcurement ? await linkedPurchasePositions(query, id) : [];
     if (linked.length) {
       assertProcurementAccess(req.userIdentity);

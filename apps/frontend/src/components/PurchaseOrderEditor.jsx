@@ -21,7 +21,8 @@ const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === Str
 export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, optionQuantityFields }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
-  const [order, setOrder] = React.useState(initialOrder);
+  const [order, setOrder] = React.useState(() => initialOrder.paymentConditionText
+    ? initialOrder : { ...initialOrder, paymentConditionId: null });
   const [options, setOptions] = React.useState({ packagingTypes: [], incoterms: [] });
   const [locations, setLocations] = React.useState([]);
   const [history, setHistory] = React.useState({});
@@ -29,6 +30,10 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const [locationsLoading, setLocationsLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [locationError, setLocationError] = React.useState('');
+  const [paymentTexts, setPaymentTexts] = React.useState([]);
+  const [paymentTextsLoading, setPaymentTextsLoading] = React.useState(false);
+  const [paymentTextsError, setPaymentTextsError] = React.useState('');
+  const selectPayment = !order.paymentConditionText || order.paymentConditionChanged === true;
   const [attempted, setAttempted] = React.useState(false);
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
@@ -57,9 +62,11 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         const incoterm = data.incoterms.find((p) => Number(previous.deliveryTermId) === p.id)
           || data.incoterms.find((p) => same(p.text, deliveryTermText))
           || (isOptionPurchase ? findIncotermByCode(data.incoterms, deliveryTermText) : null);
+        const useDefaultPayment = isNew && !previous.paymentConditionChanged;
         return { ...previous, supplierContact: previous.supplierContact ?? data.defaults.supplierContact,
-          paymentConditionId: isNew ? data.defaults.paymentConditionId : previous.paymentConditionId,
-          paymentConditionText: isNew ? data.defaults.paymentConditionText : previous.paymentConditionText,
+          paymentConditionId: useDefaultPayment
+            ? (data.defaults.paymentConditionText ? data.defaults.paymentConditionId : null) : previous.paymentConditionId,
+          paymentConditionText: useDefaultPayment ? data.defaults.paymentConditionText : previous.paymentConditionText,
           packagingTypeId: packaging?.id || '', packagingType: packaging?.text || '',
           deliveryTermId: incoterm?.id || '', deliveryTermText: incoterm?.text || '',
         };
@@ -67,6 +74,18 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     }).catch((e) => alive && setError(e.message)).finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [initialOrder.supplierId, isNew, lang, locked, update]);
+
+  React.useEffect(() => {
+    if (loading || locked || !selectPayment) return;
+    const controller = new AbortController();
+    setPaymentTextsLoading(true);
+    setPaymentTextsError('');
+    apiRequest('/temp-orders/payment-texts', { signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setPaymentTexts(data || []); })
+      .catch((cause) => { if (!controller.signal.aborted) setPaymentTextsError(cause.message); })
+      .finally(() => { if (!controller.signal.aborted) setPaymentTextsLoading(false); });
+    return () => controller.abort();
+  }, [lang, loading, locked, selectPayment]);
 
   React.useEffect(() => {
     let alive = true;
@@ -183,7 +202,17 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         onInputChange={(_event,value,reason)=>{if(reason==='input'||reason==='clear')update({supplierContact:value});}}
         renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
-        <TextField label={t('payment_terms_label')} size="small" value={order.paymentConditionText || ''} InputProps={{ readOnly: true }} />
+        {selectPayment ? <TextField label={t('payment_terms_label')} select size="small" value={order.paymentConditionId || ''}
+          disabled={disabled || loading || paymentTextsLoading || Boolean(paymentTextsError)}
+          error={Boolean(paymentTextsError)} helperText={paymentTextsError} onChange={(event) => {
+            const selected = paymentTexts.find((entry) => entry.id === Number(event.target.value));
+            if (selected) update({ paymentConditionId: selected.id, paymentConditionText: selected.text, paymentConditionChanged: true });
+          }}>
+          <MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
+          {order.paymentConditionId && !paymentTexts.some((entry) => entry.id === Number(order.paymentConditionId)) &&
+            <MenuItem value={order.paymentConditionId} disabled>{order.paymentConditionText}</MenuItem>}
+          {paymentTexts.map((entry) => <MenuItem key={entry.id} value={entry.id}>{entry.text}</MenuItem>)}
+        </TextField> : <TextField label={t('payment_terms_label')} size="small" value={order.paymentConditionText} InputProps={{ readOnly: true }} />}
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
@@ -203,7 +232,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           {order.loadingLocationText && !locationOptions.some(p=>p.text===order.loadingLocationText) &&
             <MenuItem value={order.loadingLocationText} disabled><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
           {locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
-        </TextField><IconButton size="small" color="primary" aria-label={t('purchase_add_loading_location')} title={t('purchase_add_loading_location')} disabled={disabled} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
+        </TextField><IconButton size="small" color="primary" aria-label={t('purchase_add_loading_location')} title={t('purchase_add_loading_location')} disabled={disabled || loading || locationsLoading} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
         {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?t('purchase_hide_address'):t('purchase_show_address')}</Button>}
         {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
         </Box>
@@ -250,7 +279,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
       {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>{t('delete_label')}</Button>}
     </PurchaseOrderActions>
-    {newLocationOpen && <LoadingLocationDialog onClose={()=>setNewLocationOpen(false)} onConfirm={text=>{
+    {newLocationOpen && <LoadingLocationDialog
+      initialAddress={!locationError && !locations.length && !order.loadingLocationText ? options.supplierAddress : undefined}
+      onClose={()=>setNewLocationOpen(false)} onConfirm={text=>{
       setNewLocations(previous=>previous.some(item=>same(item.text,text))?previous:[...previous,{id:`manual:${text}`,text,source:'manual'}]);
       update({loadingLocationId:'',loadingLocationText:text,loadingLocationSource:'manual'});
       setShowLocationDetails(false);setNewLocationOpen(false);

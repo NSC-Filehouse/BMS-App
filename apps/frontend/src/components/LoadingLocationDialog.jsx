@@ -4,9 +4,14 @@ import {Alert,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,Dia
 import {apiRequest} from '../api/client.js';
 import {buildLoadingLocationText,loadingLocationDraftErrors} from '../utils/loadingLocationDraft.js';
 
-export default function LoadingLocationDialog({onClose,onConfirm}) {
+export default function LoadingLocationDialog({onClose,onConfirm,initialAddress}) {
   const { lang, t } = useI18n();
-  const [draft,setDraft]=React.useState({name:'',street:'',postalCode:'',city:'',countryId:'',pickupTimes:'',contact:'',notes:''});
+  const [draft,setDraft]=React.useState(() => ({
+    name:initialAddress?.name || '', street:initialAddress?.street || '',
+    postalCode:initialAddress?.postalCode || '', city:initialAddress?.city || '',
+    countryId:'',pickupTimes:'',contact:'',notes:'',
+  }));
+  const countryCode=String(initialAddress?.countryCode || '').trim().toUpperCase();
   const [countries,setCountries]=React.useState([]);
   const [loading,setLoading]=React.useState(true);
   const [error,setError]=React.useState('');
@@ -14,10 +19,19 @@ export default function LoadingLocationDialog({onClose,onConfirm}) {
   React.useEffect(()=>{
     const controller=new AbortController();let active=true;
     apiRequest('/delivery-address-country-types',{signal:controller.signal})
-      .then(response=>{if(active){setCountries(response.data || []);if(!response.data?.length)setError(t('delivery_address_country_load_error'));}})
+      .then(response=>{
+        if (!active) return;
+        const rows=response.data || [];
+        setCountries(rows);
+        if (!rows.length) setError(t('delivery_address_country_load_error'));
+        if (countryCode) {
+          const country=rows.find(row=>row.id===countryCode) || rows.find(row=>row.isoAlpha2===countryCode);
+          if (country) setDraft(previous=>previous.countryId ? previous : {...previous,countryId:country.id});
+        }
+      })
       .catch(cause=>{if(active)setError(cause.message);}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;controller.abort();};
-  },[lang, t]);
+  },[lang, t, countryCode]);
   const errors=loadingLocationDraftErrors(draft,countries);
   const change=field=>event=>setDraft(previous=>({...previous,[field]:event.target.value}));
   const confirm=()=>{setAttempted(true);if(!Object.values(errors).some(Boolean))onConfirm(buildLoadingLocationText(draft,countries));};

@@ -442,6 +442,61 @@ test('purchase editor and totals use English labels and preserve positions durin
   assert.ok(summary.text().includes('Total amount'));
 });
 
+test('a missing loading location opens an editable form prefilled from the supplier address', async () => {
+  const address = { name: 'Supplier', street: 'Plant 1', postalCode: '01234', city: 'Werkstadt', countryCode: 'D' };
+  const initialOrder = { supplierId: 'LF', positions: [{ lineId: 'one', optionId: 1, articleIndex: 'A' }] };
+  for (const locations of [[], [{ id: 'saved', text: 'Existing loading location' }]]) {
+    const editor = await mount('../src/components/PurchaseOrderEditor.jsx', { initialOrder, isNew: true }, async (path) => {
+      if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices('de'), incoterms: [], defaults: {}, supplierAddress: address } };
+      if (path.startsWith('/purchase-order-loading-locations')) return { data: locations };
+      if (path === '/temp-orders/payment-texts') return { data: [] };
+      throw new Error(path);
+    });
+    await editor.flush();
+    editor.find((node) => node.props['aria-label'] === 'Neuen Ladeort hinzufügen').props.onClick();
+    await editor.flush();
+    const dialog = editor.find((node) => Object.hasOwn(node.props, 'initialAddress'));
+    assert.deepEqual(dialog.props.initialAddress, locations.length ? undefined : address);
+  }
+  const dialog = await mount('../src/components/LoadingLocationDialog.jsx', { initialAddress: address }, async (path) => {
+    assert.equal(path, '/delivery-address-country-types');
+    return { data: [{ id: 'D', isoAlpha2: 'DE', name: 'Deutschland' }, { id: 'B', isoAlpha2: 'BE', name: 'Belgien' }] };
+  });
+  await dialog.flush();
+  assert.equal(dialog.field('Firma / Lager').props.value, address.name);
+  assert.equal(dialog.field('Straße + Hausnummer').props.value, address.street);
+  assert.equal(dialog.field('PLZ').props.value, address.postalCode);
+  assert.equal(dialog.field('Ort').props.value, address.city);
+  assert.equal(dialog.field('Land').props.value, 'D');
+  dialog.field('Land').props.onChange({ target: { value: 'B' } });
+  dialog.switchLanguage('en');
+  await dialog.flush();
+  assert.equal(dialog.field('Country').props.value, 'B');
+});
+
+test('the purchase editor offers standard payment terms if no supplier default is available', async () => {
+  const initialOrder = { supplierId: 'LF', positions: [{ lineId: 'one', optionId: 1, articleIndex: 'A' }] };
+  let updated;
+  const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
+    initialOrder, isNew: true, onChange: (order) => { updated = order; },
+  }, async (path, lang) => {
+    if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices(lang), incoterms: [], defaults: {} } };
+    if (path.startsWith('/purchase-order-loading-locations')) return { data: [] };
+    if (path === '/temp-orders/payment-texts') return { data: [{ id: 19, text: lang === 'en' ? 'Net 14 days' : '14 Tage netto' }] };
+    throw new Error(path);
+  });
+  await view.flush();
+  const field = view.field('Zahlungsziel');
+  assert.equal(field.props.select, true);
+  assert.equal(field.props.disabled, false);
+  field.props.onChange({ target: { value: '19' } });
+  view.switchLanguage('en');
+  await view.flush();
+  assert.equal(view.field('Payment terms').props.value, 19);
+  assert.equal(updated.paymentConditionId, 19);
+  assert.equal(updated.paymentConditionChanged, true);
+});
+
 test('an option purchase keeps its Incoterm code when ERP IDs and labels change with the language', async () => {
   const de = { id: 29, text: 'FCA / Frei Frachtführer' };
   const en = { id: 40, text: 'FCA / Free Carrier' };

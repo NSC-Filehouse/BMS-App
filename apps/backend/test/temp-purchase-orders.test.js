@@ -96,7 +96,8 @@ function fixture(options = {}) {
   };
   const values = {
     loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }], incoterms: [{ id: 1, text: 'FCA' }] }),
-    loadSupplierTerms: async () => ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
+    loadSupplierTerms: async () => options.supplierTerms || ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
+    loadPurchasePaymentText: async (id) => ({ 17: '30 Tage', 19: '14 Tage netto' })[id] || '',
     loadLatestPurchase: async (_db, _supplier, article) => article === 'A' ? { article: 'Neuester Name', originalPackagingType: 'Sackware' } : null,
     enrichPurchaseArticleNames: async (_db, _supplier, positions) => positions.map(p => ({ ...p, article: p.article === 'Unsere Bezeichnung' ? 'Neuester Name' : p.article, masterArticleName: 'Unsere Bezeichnung' })),
     loadPurchaseLocations: async () => options.locations || [{ id: 'Hamburg', text: 'Hamburg' }],
@@ -116,7 +117,7 @@ function fixture(options = {}) {
       },
     },
     '../db/app-tables': { appTableSql: (name) => name === 'tempPurchaseOrder' ? 'orders' : name === 'tempPurchaseOrderPosition' ? 'positions' : name },
-    '../db/customer-access': { getCustomerAccessScope: async () => ({ isFullAccess: options.fullAccess !== false }), loadVisibleCustomer: async () => ({ kd_Name1: 'Lieferant' }) },
+    '../db/customer-access': { getCustomerAccessScope: async () => ({ isFullAccess: options.fullAccess !== false }), loadVisibleCustomer: async () => options.supplier || ({ kd_Name1: 'Lieferant' }) },
     '../db/purchase-order-values': values, '../db/holidays': {}, '../delivery-calendar': require('../src/delivery-calendar'),
     '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: async () => ({ queued: true }) },
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
@@ -226,15 +227,31 @@ test('every purchase route still rejects ordinary users before accessing data', 
 });
 
 test('verified pilot users can still load purchase options', async () => {
-  const f = fixture({ routing: true });
+  const f = fixture({ routing: true, supplier: { kd_Name1: 'Lieferant', kd_Strasse: 'Plant 1 ', kd_PLZ: '01234', kd_Ort: 'Werkstadt', kd_LK: 'D' } });
   const result = await routedRequest(f.router, 'GET', '/purchase-order-options', {
     shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true,
   });
   assert.equal(result.data.defaults.paymentConditionId, 17);
+  assert.deepEqual(result.data.supplierAddress, {
+    name: 'Lieferant', street: 'Plant 1', postalCode: '01234', city: 'Werkstadt', countryCode: 'D',
+  });
 });
 
 const body = () => ({ supplierId: '42', clientRequestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', packagingTypeId: 79, deliveryTermId: 1, paymentConditionText: 'Manipuliert', paymentConditionId: 999,
   loadingLocationText: 'Hamburg', positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
+
+test('a missing supplier payment term can be filled from the validated catalog on draft save and edit', async () => {
+  const f = fixture({ supplierTerms: { paymentConditionId: null, paymentConditionText: '' } });
+  await assert.rejects(f.request(body()), (error) => error.details?.code === 'PURCHASE_PAYMENT_CONDITION_INVALID');
+  const saved = (await f.request({ ...body(), paymentConditionId: '19' })).data;
+  assert.equal(saved.paymentConditionId, 19);
+  assert.equal(saved.paymentConditionText, '14 Tage netto');
+  assert.equal(saved.paymentConditionChanged, true);
+  const edited = (await f.request({ ...saved, paymentConditionId: '17' }, 'put', '/temp-purchase-orders/:id')).data;
+  assert.equal(edited.paymentConditionId, 17);
+  assert.equal(edited.paymentConditionText, '30 Tage');
+  assert.equal(edited.paymentConditionChanged, true);
+});
 
 const file = (name = 'Prüfung.pdf', content = '%PDF-example') => ({ originalname: name, mimetype: 'application/pdf', buffer: Buffer.from(content), size: Buffer.byteLength(content) });
 
