@@ -5,6 +5,13 @@ export const TEMP_ORDER_STATUS = Object.freeze({
   NEEDS_REWORK: 3,
 });
 
+export const TEMP_ORDER_STATUS_LABEL_KEYS = Object.freeze({
+  [TEMP_ORDER_STATUS.DRAFT]: 'temp_order_status_draft',
+  [TEMP_ORDER_STATUS.APP_FINALIZED]: 'temp_order_status_app_finalized',
+  [TEMP_ORDER_STATUS.CS_ACCEPTED]: 'temp_order_status_cs_transferred',
+  [TEMP_ORDER_STATUS.NEEDS_REWORK]: 'temp_order_status_rework',
+});
+
 export function normalizeTempOrderStatus(value, legacyCompleted = false) {
   const text = value === null || value === undefined ? '' : String(value).trim();
   if (text) {
@@ -26,12 +33,7 @@ export function isTempOrderFinalizedStatus(value, legacyCompleted = false) {
 
 export function getTempOrderStatusLabel(t, value, legacyCompleted = false) {
   const status = normalizeTempOrderStatus(value, legacyCompleted);
-  const key = {
-    [TEMP_ORDER_STATUS.DRAFT]: 'temp_order_status_draft',
-    [TEMP_ORDER_STATUS.APP_FINALIZED]: 'temp_order_status_app_finalized',
-    [TEMP_ORDER_STATUS.CS_ACCEPTED]: 'temp_order_status_cs_transferred',
-    [TEMP_ORDER_STATUS.NEEDS_REWORK]: 'temp_order_status_rework',
-  }[status];
+  const key = TEMP_ORDER_STATUS_LABEL_KEYS[status];
   const label = key ? t(key) : t('temp_order_status_unknown', { code: status });
   return `${status} – ${label}`;
 }

@@ -1315,7 +1315,7 @@ export default function CustomerDetail() {
                     <Button sx={{ justifyContent: 'flex-start', p: 0 }} onClick={() => navigate(`/temp-offers/${offer.id}`, { state: { returnTo: createReturnTo(location) } })}>
                       {offer.bmsOfferNumber || `AN-${offer.id}`} · {offer.customerName}
                     </Button>
-                    <Typography variant="caption">{offerStatus(offer.status)} · {formatDateOnly(offer.createdAt)} · {offerMoney(offer.totalAmount)}</Typography>
+                    <Typography variant="caption">{offerStatus(offer.status, t)} · {formatDateOnly(offer.createdAt)} · {offerMoney(offer.totalAmount)}</Typography>
                     {(offer.positions || []).map((p, i) => <Typography key={i} variant="caption">{i + 1}. {p.article} · {p.quantity} {p.unit} · {p.price} EUR/{p.priceBasis} {p.unit}</Typography>)}
                   </CardContent>
                 </Card>)}

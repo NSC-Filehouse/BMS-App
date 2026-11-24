@@ -343,7 +343,7 @@ export default function TempOffersList() {
                         color: o.status === 3 ? 'warning.main' : 'primary.main',
                       }}
                     >
-                      {offerStatus(o.status, en)}
+                      {offerStatus(o.status, t)}
                     </Typography>
                     <Typography
                       variant="caption"

@@ -182,7 +182,7 @@ export default function TempOfferDetail() {
             />
             <InfoRow
               label={t('temp_order_status')}
-              value={offerStatus(offer.status, en)}
+              value={offerStatus(offer.status, t)}
             />
             {offer.mailStatus && (
               <InfoRow label={t('offer_mail_status')} value={t(

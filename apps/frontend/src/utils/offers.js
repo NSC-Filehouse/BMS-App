@@ -1,15 +1,15 @@
 import { createCustomerOperationId as createId } from './customerCreation.js';
-export const offerStatus = (status, en = false) => {
-  return (en
-    ? ['Created', 'Sent to BMS', 'Completed', 'Rework', 'Offer converted to order', 'Customer is not interested']
-    : [
-        'Erstellt',
-        'An BMS gesendet',
-        'Erledigt',
-        'Nacharbeit',
-        'Angebot zu Auftrag gemacht',
-        'Kunde hat kein Interesse',
-      ])[Number(status)] || '-';
+import { TEMP_ORDER_STATUS_LABEL_KEYS } from './tempOrderStatus.js';
+
+const offerStatusLabelKeys = {
+  ...TEMP_ORDER_STATUS_LABEL_KEYS,
+  4: 'temp_offer_status_converted',
+  5: 'temp_offer_status_not_interested',
+};
+
+export const offerStatus = (status, t) => {
+  const key = offerStatusLabelKeys[Number(status)];
+  return key ? t(key) : '-';
 };
 export const today = () =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(
