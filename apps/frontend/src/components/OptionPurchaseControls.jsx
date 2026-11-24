@@ -159,5 +159,8 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
       supplier={supplier} supplierEditable={Boolean(automaticSupplier)} article={article} returnTo={returnTo} onClose={() => setPurchaseOpen(false)} />}
   </>;
 
-  return renderDetails({ supplierField, purchaseControls });
+  return renderDetails({
+    supplierField, purchaseControls, article: enabled ? article : null,
+    articlePending: enabled && !article && !articles && !articleError,
+  });
 }

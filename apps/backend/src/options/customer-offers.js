@@ -1,8 +1,9 @@
 const config = require('../config');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
 const { buildCustomerScopeFilter, getCustomerAccessScope } = require('../db/customer-access');
+const { createHttpError } = require('../utils');
 const { articleByIndex, storedCandidate } = require('./matching-service');
-const { exactNameCandidates } = require('./purchase-source');
+const { exactNameCandidates, validateOptionArticle } = require('./purchase-source');
 const { articleHash } = require('./matching-contract');
 const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
@@ -79,9 +80,21 @@ async function loadOfferCustomerStatuses(companyId, positionId) {
   return new Map(rows.map(row => [text(row.CustomerNumber).toUpperCase(), text(row.Status)]));
 }
 
-async function loadOptionOfferCustomers(database, userIdentity, offer, position) {
-  const article = await resolveOfferArticle(database, offer, position);
-  return loadCustomerOfferAudience(database, userIdentity, article, position.id);
+async function loadOptionOfferCustomers(database, userIdentity, offer, position, selectedArticleIndex) {
+  if (selectedArticleIndex !== undefined && (typeof selectedArticleIndex !== 'string' || !selectedArticleIndex.trim())) {
+    throw createHttpError(400, 'Ungültiger Artikelindex.', { code: 'OPTION_ARTICLE_INVALID' });
+  }
+  const matchedArticle = await resolveOfferArticle(database, offer, position);
+  if (selectedArticleIndex === undefined) {
+    return loadCustomerOfferAudience(database, userIdentity, matchedArticle, position.id);
+  }
+
+  const articleIndex = selectedArticleIndex.trim();
+  const article = matchedArticle && text(matchedArticle.articleIndex) === articleIndex
+    ? matchedArticle
+    : await validateOptionArticle(database, position, { articleIndex });
+  const audience = await loadCustomerOfferAudience(database, userIdentity, article, position.id);
+  return { ...audience, matched: Boolean(matchedArticle && text(matchedArticle.articleIndex) === audience.article?.index) };
 }
 
 async function loadCustomerOfferAudience(database, userIdentity, article, sourceId) {

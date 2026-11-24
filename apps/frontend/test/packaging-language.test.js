@@ -18,7 +18,7 @@ const choices = lang => [{ id: 78, text: lang === 'en' ? 'Bags' : 'Sackware', al
 
 // Execute the component's hooks and handlers without a browser or live API.
 // State and effect cleanup persist across renders, including language changes.
-async function mount(relativePath, props, request, params = {}) {
+async function mount(relativePath, props, request, params = {}, exportName = 'default') {
   let cursor = 0, dirty = true, tree;
   const slots = [], effects = [], calls = [], location = { pathname: '/test', state: {} };
   const navigate = () => {};
@@ -71,6 +71,7 @@ async function mount(relativePath, props, request, params = {}) {
     '../utils/purchaseCart.js': purchaseCart,
     '../utils/optionQuantityConfirmation.js': quantities,
     '../utils/optionDisplay.js': optionDisplay,
+    '../utils/useOptionValidityRefresh.js': { useOptionValidityRefresh: () => 0 },
     '../utils/loadingLocationDraft.js': loadingLocations,
     '../utils/contactRanking.js': contactRanking,
     '../utils/incoterm.js': incoterm,
@@ -87,7 +88,7 @@ async function mount(relativePath, props, request, params = {}) {
   }, module, { getItem: () => null, setItem() {} }, { addEventListener() {}, removeEventListener() {} });
   const render = () => {
     cursor = 0; dirty = false;
-    tree = module.exports.default(props);
+    tree = module.exports[exportName](props);
     effects.splice(0).forEach(fn => fn());
   };
   return {
@@ -101,6 +102,7 @@ async function mount(relativePath, props, request, params = {}) {
       assert.equal(dirty, false, 'Component did not settle');
     },
     switchLanguage(lang) { env.lang = lang; dirty = true; },
+    updateProps(patch) { props = { ...props, ...patch }; dirty = true; },
     find(predicate) {
       const visit = node => {
         if (!node || typeof node !== 'object') return undefined;
@@ -140,7 +142,9 @@ test('an open offer reloads English choices without resetting packaging, comment
   assert.equal(view.calls.filter(call => call.path === '/temp-offers/meta').length, 2);
 });
 
-const renderPurchaseDetails = ({ supplierField, purchaseControls }) => [supplierField, purchaseControls];
+const renderPurchaseDetails = ({ supplierField, purchaseControls, article }) => [
+  supplierField, purchaseControls, { type: 'Details', props: { article } },
+];
 
 test('an ambiguous option requires inline supplier and compatible article choices before opening the order', async () => {
   const suppliers = [{ id: 'LF1', name: 'Supplier 1' }, { id: 'LF2', name: 'Supplier 2' }];
@@ -186,6 +190,7 @@ test('an ambiguous option requires inline supplier and compatible article choice
   await view.flush();
   assert.equal(supplierField().props.value, suppliers[1]);
   assert.equal(articleField().props.value, article);
+  assert.equal(view.find(node => node.type === 'Details').props.article, article);
 });
 
 test('the first selectable article is preselected and a resolved supplier appears in the order dialog', async () => {
@@ -201,6 +206,7 @@ test('the first selectable article is preselected and a resolved supplier appear
       throw new Error(path);
     });
     await view.flush();
+    assert.equal(view.find(node => node.type === 'Details').props.article, article);
     assert.throws(() => view.find(node => node.type === 'Autocomplete' && node.props.options === suppliers), /Expected element not found/);
     const order = view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen'));
     assert.equal(order.props.disabled, false);
@@ -218,7 +224,47 @@ test('the first selectable article is preselected and a resolved supplier appear
     });
     await popup.flush();
     assert.equal(popup.find(node => node.type === 'Autocomplete' && node.props.options === suppliers).props.value, suppliers[0]);
+
+    const articleField = () => view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled);
+    articleField().props.onChange(null, alternative);
+    await view.flush();
+    assert.equal(view.find(node => node.type === 'Details').props.article, alternative);
   }
+});
+
+test('option details reload customers for the selected article and discard late results', async () => {
+  const endpoint = '/options/1/positions/10/offer-customers';
+  const responseFor = index => ({ data: { article: { index }, matched: false, customers: [{ id: index }] } });
+  let resolvePrevious, previousSignal;
+  const view = await mount('../src/pages/OptionDetail.jsx', {
+    offer: { id: 1, positions: [] }, position: { id: 10 }, audienceEndpoint: endpoint, audienceKey: 'position-10', articleIndex: 'A',
+  }, async (path, _lang, options) => {
+    const index = new URL(path, 'http://localhost').searchParams.get('articleIndex');
+    if (index === 'B') {
+      previousSignal = options.signal;
+      return new Promise(resolve => { resolvePrevious = resolve; });
+    }
+    return responseFor(index);
+  }, {}, 'OptionPositionDetails');
+  const audience = () => view.find(node => Array.isArray(node.props?.customers)).props;
+  await view.flush();
+  assert.deepEqual(audience().customers, [{ id: 'A' }]);
+  assert.throws(() => view.find(node => node.props?.titleAccess), /Expected element not found/);
+
+  view.updateProps({ articleIndex: 'B' });
+  await view.flush();
+  assert.equal(audience().loading, true);
+  assert.deepEqual(audience().customers, []);
+
+  view.updateProps({ articleIndex: 'C+2' });
+  await view.flush();
+  assert.equal(previousSignal.aborted, true);
+  assert.deepEqual(audience().customers, [{ id: 'C+2' }]);
+  assert.equal(audience().query, '?articleIndex=C%2B2');
+
+  resolvePrevious(responseFor('B'));
+  await view.flush();
+  assert.deepEqual(audience().customers, [{ id: 'C+2' }]);
 });
 
 test('option purchase waits for the matching menu item before displaying the default packaging', async () => {

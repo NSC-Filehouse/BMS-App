@@ -20,7 +20,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
     if (sql.includes('OPENJSON')) return candidates;
     assert.match(sql, /a\.agA_Artikelindex=\?/);
-    return target ? [target] : [];
+    return target?.articleIndex === params[0] ? [target] : [];
   },
   runSQLQuerySqlServer: async (database, sql, params) => {
     calls.push({ database, sql, params });
@@ -110,6 +110,35 @@ test('a stale automatic match, an altered catalog article or an incompatible ass
   assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
 });
 
+test('an explicit selection loads the buyers for that article even without a unique match', async () => {
+  const unmatched = { ...position, singleCandidateIndex: null };
+  const first = await loadOptionOfferCustomers(sameDatabase, {}, owner, unmatched, 'A-PP');
+  assert.equal(first.matched, false);
+  assert.deepEqual(first.customers.map(customer => customer.id), ['A', 'B']);
+
+  target = { ...catalogArticle, articleIndex: 'B-PP' };
+  invoices = [{ id: 'C', name: 'Kunde C', salesCode: 'ADM' }];
+  const second = await loadOptionOfferCustomers(sameDatabase, {}, owner, unmatched, 'B-PP');
+  assert.equal(second.article.index, 'B-PP');
+  assert.equal(second.matched, false);
+  assert.deepEqual(second.customers.map(customer => customer.id), ['C']);
+  assert.deepEqual(calls.filter(call => call.sql.includes('dbo.tblRechnung')).map(call => call.params), [['A-PP', 'ADM'], ['B-PP', 'ADM']]);
+});
+
+test('the selected article keeps the automatic match indicator only when both indexes agree', async () => {
+  const result = await loadOptionOfferCustomers(sameDatabase, {}, owner, position, 'A-PP');
+  assert.equal(result.matched, true);
+});
+
+test('an invalid or incompatible selection never falls back to the automatic audience', async () => {
+  await assert.rejects(() => loadOptionOfferCustomers(sameDatabase, {}, owner, position, ['A-PP', 'B-PP']), /Ungültiger Artikelindex/);
+  target = null;
+  await assert.rejects(() => loadOptionOfferCustomers(sameDatabase, {}, owner, position, 'B-PP'), /nicht aktiv oder nicht vorhanden/);
+  target = { ...catalogArticle, articleIndex: 'B-PP', articleName: 'PP Copo NT MFI 1 - 2 natur' };
+  await assert.rejects(() => loadOptionOfferCustomers(sameDatabase, {}, owner, position, 'B-PP'), /passt technisch nicht/);
+  assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
+});
+
 test('a shared option uses an unambiguous compatible article from the active catalog', async () => {
   candidates = [
     { ...catalogArticle, articleIndex: 'B-PP' },
@@ -123,6 +152,11 @@ test('a shared option uses an unambiguous compatible article from the active cat
   assert.deepEqual(calls.find(call => call.sql.includes('OptionOfferMailOutbox')).params, [8, 41]);
   candidates.push({ ...catalogArticle, articleIndex: 'D-PP' });
   assert.deepEqual(await loadOptionOfferCustomers(foreignDatabase, {}, owner, position), { article: null, customers: [] });
+  target = candidates.at(-1);
+  const selected = await loadOptionOfferCustomers(foreignDatabase, {}, owner, position, 'D-PP');
+  assert.equal(selected.article.index, 'D-PP');
+  assert.equal(selected.matched, false);
+  assert.equal(calls.findLast(call => call.sql.includes('dbo.tblRechnung')).database, foreignDatabase);
 });
 
 test('server validates the actual buyer, contact, remaining quantity and FCA location before preparing mail', async () => {
@@ -140,4 +174,18 @@ test('server validates the actual buyer, contact, remaining quantity and FCA loc
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, pickup: '' }] } }, owner, position), /Abholort/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, customerId: 'X' }] } }, owner, position), /nicht verfügbar/);
   await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, contactId: 72 }] } }, owner, position), /Ansprechpartner/);
+});
+
+test('offer submission rechecks buyers and uses the selected article in the offer', async () => {
+  accepted = [];
+  target = { ...catalogArticle, articleIndex: 'B-PP', articleName: 'PP Copo NT MFI 11 - 15 natur' };
+  invoices = [invoices[1]];
+  const draft = { customerId: 'B', contactId: 71, incotermId: 29, quantityKg: 24750, salePrice: 1320, pickup: 'Hamburg' };
+  const userIdentity = { email: 'ad@example.invalid', fullName: 'Vertrieb', shortCode: 'ADM' };
+  const req = { database: sameDatabase, userIdentity, query: { articleIndex: 'B-PP' }, get: () => 'de', body: { customers: [draft] } };
+  const [offer] = await buildOfferSubmissions(req, owner, { ...position, singleCandidateIndex: null });
+  assert.equal(offer.articleIndex, 'B-PP');
+  assert.equal(offer.article, target.articleName);
+  assert.deepEqual(calls.find(call => call.sql.includes('dbo.tblRechnung')).params, ['B-PP', 'ADM']);
+  await assert.rejects(() => buildOfferSubmissions({ ...req, body: { customers: [{ ...draft, customerId: 'A' }] } }, owner, position), /nicht verfügbar/);
 });

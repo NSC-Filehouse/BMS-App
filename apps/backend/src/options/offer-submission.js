@@ -20,7 +20,7 @@ function decimal(value, places) {
 function buildOfferSubmissions(req, option, position) {
   return buildCustomerOfferSubmissions(req, {
     ...position, validUntil: position.validUntil || option.validUntil,
-  }, () => loadOptionOfferCustomers(req.database, req.userIdentity, option, position));
+  }, () => loadOptionOfferCustomers(req.database, req.userIdentity, option, position, req.query?.articleIndex));
 }
 
 async function buildCustomerOfferSubmissions(req, position, loadAudience) {

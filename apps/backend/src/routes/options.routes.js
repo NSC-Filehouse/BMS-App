@@ -57,7 +57,7 @@ const offerCustomerGuard = [requireMandant, requirePilotFeature('options')];
 router.get(offerCustomerPath, ...offerCustomerGuard, asyncHandler(async (req, res) => {
  const { offer, position } = await loadOfferPositionForCustomers(req);
  res.set('Cache-Control', 'private, no-store');
- const audience = await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position);
+ const audience = await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position, req.query.articleIndex);
  sendEnvelope(res, { data: { ...audience, sendEnabled: await offerMailSendEnabled() }, meta: { mandant: req.mandant } });
 }));
 router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, asyncHandler(async (req, res) => {

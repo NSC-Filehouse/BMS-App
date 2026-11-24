@@ -28,7 +28,7 @@ export default function OptionDetail() {
   const { id, positionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const { features } = useFeatureAccess();
   const sourceQuery = React.useMemo(() => {
     const input = new URLSearchParams(location.search), result = new URLSearchParams();
@@ -48,11 +48,6 @@ export default function OptionDetail() {
     ? JSON.stringify([mandant, endpoint, position.snapshotId, position.matchProcessingStatus,
       position.articleIndex, position.suggestedArticleIndex, validityRefresh])
     : '';
-  const [audienceResult, setAudienceResult] = React.useState(null);
-  const [audienceRevision, setAudienceRevision] = React.useState(0);
-  const audience = audienceResult?.key === audienceKey ? audienceResult : null;
-  const audienceEndpoint = `${endpoint}/offer-customers`;
-
   React.useEffect(() => {
     let active = true;
     setLoading(true);
@@ -66,34 +61,6 @@ export default function OptionDetail() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [endpoint, t, sourceQuery,validityRefresh,mandant]);
-
-  React.useEffect(() => {
-    if (!audienceKey) return undefined;
-    const controller = new AbortController();
-    apiRequest(audienceEndpoint, { signal: controller.signal })
-      .then(response => {
-        if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, ...response.data });
-      })
-      .catch(cause => {
-        if (!controller.signal.aborted) setAudienceResult({ key: audienceKey, error: cause.message || t('loading_error') });
-      });
-    return () => controller.abort();
-  }, [audienceKey, audienceEndpoint, audienceRevision, t]);
-
-  React.useEffect(() => {
-    if (!audience?.customers?.some(customer => customer.queued)) return undefined;
-    const timer = window.setTimeout(() => setAudienceRevision(value => value + 1), 15000);
-    return () => window.clearTimeout(timer);
-  }, [audience]);
-
-  function offersQueued(ids) {
-    const queued = new Set(ids);
-    setAudienceResult(previous => previous?.key === audienceKey && previous.customers ? {
-      ...previous, customers: previous.customers.map(customer => queued.has(customer.id)
-        ? { ...customer, queued: true, failed: false } : customer),
-    } : previous);
-    setAudienceRevision(value => value + 1);
-  }
 
   React.useEffect(() => {
     if (!offer || !location.hash) return;
@@ -121,8 +88,6 @@ export default function OptionDetail() {
     finally { setDeleting(false); }
   }
 
-  const packaging=offer?optionPackagingLayout(offer,lang):{common:'',positions:{}};
-
   return <Box sx={{ width: '100%', maxWidth: 900, minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
       <DisclosureBackButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
@@ -135,7 +100,57 @@ export default function OptionDetail() {
       key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
       enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
-      renderDetails={({ supplierField, purchaseControls }) => <Card sx={{ mb: 1.5 }}><CardContent>
+      renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails
+        offer={offer} position={position} supplierField={supplierField} purchaseControls={purchaseControls}
+        audienceEndpoint={`${endpoint}/offer-customers`} audienceKey={articlePending ? '' : audienceKey}
+        articleIndex={article?.articleIndex}
+      />} />}
+    <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
+  </Box>;
+}
+
+export function OptionPositionDetails({ offer, position, supplierField, purchaseControls, audienceEndpoint, audienceKey, articleIndex }) {
+  const { t, lang } = useI18n();
+  const query = articleIndex ? `?${new URLSearchParams({ articleIndex })}` : '';
+  const requestKey = audienceKey ? JSON.stringify([audienceKey, query]) : '';
+  const [audienceResult, setAudienceResult] = React.useState(null);
+  const [audienceRevision, setAudienceRevision] = React.useState(0);
+  const audience = audienceResult?.key === requestKey ? audienceResult : null;
+  const matchedArticle = audience?.matched === false ? null : audience?.article;
+
+  React.useEffect(() => {
+    if (!requestKey) return undefined;
+    const controller = new AbortController();
+    setAudienceResult(previous => previous?.key === requestKey ? previous : null);
+    apiRequest(`${audienceEndpoint}${query}`, { signal: controller.signal })
+      .then(response => {
+        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, ...response.data });
+      })
+      .catch(cause => {
+        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, error: cause.message || t('loading_error') });
+      });
+    return () => controller.abort();
+  }, [requestKey, audienceEndpoint, query, audienceRevision, t]);
+
+  React.useEffect(() => {
+    if (!audience?.customers?.some(customer => customer.queued)) return undefined;
+    const timer = window.setTimeout(() => setAudienceRevision(value => value + 1), 15000);
+    return () => window.clearTimeout(timer);
+  }, [audience]);
+
+  function offersQueued(ids) {
+    const queued = new Set(ids);
+    setAudienceResult(previous => previous?.key === requestKey && previous.customers ? {
+      ...previous, customers: previous.customers.map(customer => queued.has(customer.id)
+        ? { ...customer, queued: true, failed: false } : customer),
+    } : previous);
+    setAudienceRevision(value => value + 1);
+  }
+
+  const packaging = optionPackagingLayout(offer, lang);
+
+  return <>
+    <Card sx={{ mb: 1.5 }}><CardContent>
         <InfoRow label={t('option_from')} value={<>
           <Box component="span" sx={{display:'inline-flex',alignItems:'center',maxWidth:'100%'}}><Box component="span" sx={{minWidth:0}}>{offer.supplierName}</Box><OptionSourceDocuments key={offer.id} offer={offer} /></Box>
           {supplierField}
@@ -151,13 +166,13 @@ export default function OptionDetail() {
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
         <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>
           {optionPositionTitle(position)}
-          {audience?.article && <CheckIcon
+          {matchedArticle && <CheckIcon
             color="success" fontSize="small" titleAccess={t('option_article_found')}
             sx={{ verticalAlign: 'text-bottom', ml: 0.75 }}
           />}
         </Typography>
-        {(audience?.article?.name || position.singleCandidateName) && <Typography variant="caption" color="text.secondary">
-          {audience?.article?.name || position.singleCandidateName}
+        {(matchedArticle?.name || position.singleCandidateName) && <Typography variant="caption" color="text.secondary">
+          {matchedArticle?.name || position.singleCandidateName}
         </Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <InfoRow label={t('option_delivery_term')} value={optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
@@ -170,15 +185,14 @@ export default function OptionDetail() {
         {position.validUntil !== offer.validUntil && <InfoRow label={t('option_valid_until')} value={optionDate(position.validUntil)} />}
         {purchaseControls}
       </Box>
-    </CardContent></Card>} />}
-    {!loading && !error && audienceKey && (audience?.article || !audience || audience.error) && (
-      <OptionOfferCustomers key={`${mandant}:${position.id}:${audience?.article?.index ?? ''}`}
+    </CardContent></Card>
+    {requestKey && (audience?.article || !audience || audience.error) && (
+      <OptionOfferCustomers key={JSON.stringify([requestKey, audience?.article?.index])}
         customers={audience?.customers ?? []} salesFilter={audience?.salesFilter}
         position={position} loadingLocation={offer.loadingLocation}
-        loading={!audience} error={audience?.error} endpoint={audienceEndpoint}
+        loading={!audience} error={audience?.error} endpoint={audienceEndpoint} query={query}
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
     )}
-    <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
-  </Box>;
+  </>;
 }
