@@ -34,6 +34,7 @@ async function manualOfferMail(req, offer, language) {
     kind: 'app', messageKey: randomUUID(), companyId: Number(req.database.firmaId),
     customerId: offer.customerId, customerName: offer.customerName,
     contactId: contact.id, contactName: contact.name, recipientEmail,
+    contactSalutation: contact.salutation, contactLastName: contact.lastName,
     language: ['de', 'en'].includes(contact.language) ? contact.language : language,
     incotermId: offer.deliveryTermsId, incotermText: offer.deliveryTerms,
     incotermCode: incotermCode(offer.deliveryTerms), ...offerMailSender(req.userIdentity),

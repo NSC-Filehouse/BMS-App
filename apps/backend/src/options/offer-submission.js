@@ -86,6 +86,7 @@ async function buildCustomerOfferSubmissions(req, position, loadAudience) {
       costPrice: position.priceNeedsReview || (position.currency && position.currency !== 'EUR') ? null : decimal(position.pricePerTonne, 4),
       incotermId, incotermText, incotermCode: code, pickup,
       customerId: customer.id, customerName: customer.name, contactId: contact.id, contactName: contact.name, recipientEmail,
+      contactSalutation: contact.salutation, contactLastName: contact.lastName,
       language: contact.language === 'de' || contact.language === 'en' ? contact.language : (req.get('x-lang') === 'en' ? 'en' : 'de'),
       senderCode, senderName, senderEmail,
     };

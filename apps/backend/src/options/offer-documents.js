@@ -76,22 +76,41 @@ function offerXml(offer, number) {
   ].join('\n');
 }
 
-function defaultOfferBody(offer, number) {
+const offerWeekday = new Intl.DateTimeFormat('de-DE', { weekday: 'long', timeZone: 'Europe/Berlin' });
+const weekdayGreetings = {
+  Montag: 'ich hoffe, Sie haben einen guten Start in die Woche.',
+  Mittwoch: 'ich hoffe, Ihre Woche ist bisher gut verlaufen.',
+  Freitag: 'ich hoffe, Sie haben schon ein paar schöne Pläne fürs Wochenende.',
+};
+
+function germanOfferSalutation(offer) {
+  // Older queued offers only contain the combined display name.
+  const legacy = /^(Herrn?|Frau)\s+(.+)$/i.exec(String(offer.contactName ?? '').trim());
+  const salutation = String(offer.contactSalutation ?? legacy?.[1] ?? '').trim().toLowerCase();
+  const name = String(offer.contactLastName ?? legacy?.[2] ?? '').trim();
+  if (name && salutation === 'frau') return `Sehr geehrte Frau ${name},`;
+  if (name && (salutation === 'herr' || salutation === 'herrn')) return `Sehr geehrter Herr ${name},`;
+  return 'Sehr geehrte Damen und Herren,';
+}
+
+function defaultOfferBody(offer, number, now) {
   if (offer.language === 'en') return [
     'Dear Sir or Madam,',
     `Please find our non-binding offer ${number} attached. Our general terms and conditions of sale and delivery apply.`,
     `We hope our offer meets your requirements. When placing your order, please quote our offer reference ${number}. If you have any questions, we will be happy to help.`,
     `Kind regards\n${offer.senderName}`,
   ].join('\n\n');
+  const greeting = weekdayGreetings[offerWeekday.format(now)];
   return [
-    'Sehr geehrte Damen und Herren,',
-    `anbei senden wir Ihnen unser freibleibendes Angebot ${number} zu unseren allgemeinen Geschäfts- und Lieferbedingungen.`,
+    germanOfferSalutation(offer),
+    ...(greeting ? [greeting] : []),
+    `${greeting ? 'Anbei' : 'anbei'} senden wir Ihnen unser freibleibendes Angebot ${number} zu unseren allgemeinen Geschäfts- und Lieferbedingungen.`,
     `Wir hoffen, unser Angebot sagt Ihnen zu, und freuen uns auf Ihren Auftrag. Bei Ihrer Bestellung bitten wir Sie, unsere Angebotsreferenz ${number} anzugeben. Für Rückfragen stehen wir Ihnen gerne zur Verfügung.`,
     `Mit freundlichen Grüßen\n${offer.senderName}`,
   ].join('\n\n');
 }
 
-function assembleOfferMail(offer, document, delivery) {
+function assembleOfferMail(offer, document, delivery, now = new Date()) {
   const fromAddress = singleEmail(offer.senderEmail);
   const recipient = singleEmail(offer.recipientEmail);
   if (!fromAddress || !recipient) throw new Error('Ungültiger Absender oder Empfänger.');
@@ -110,7 +129,7 @@ function assembleOfferMail(offer, document, delivery) {
     + `<p>${escapeMarkup(links.fallback)}</p></div>`;
   const en = offer.language === 'en';
   const nonBinding = en ? /\bnon[\s\u00a0\u2010-\u2011-]+binding\b/i : /\bfreibleibend\p{L}*\b/iu;
-  const mailText = document.body || defaultOfferBody(offer, document.number);
+  const mailText = document.body || defaultOfferBody(offer, document.number, now);
   const visibleText = document.isBodyHtml
     ? mailText.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '').replace(/&nbsp;/gi, ' ')
     : mailText;

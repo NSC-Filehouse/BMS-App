@@ -54,6 +54,21 @@ test('standard offer mail uses the template and existing non-binding wording is 
   assert.doesNotMatch(erp, /Dieses Angebot ist freibleibend/);
 });
 
+test('German offer mail uses the selected contact and the weekday in Berlin', () => {
+  const document = { number: 'AN-123', pdf, subject: 'Ihr Angebot' };
+  const contact = { contactSalutation: 'Frau', contactLastName: 'von Berg', contactName: 'Frau Eva von Berg' };
+  const bodyAt = (date, fields = contact) => assembleOfferMail({ ...offer, ...fields }, document, undefined, new Date(date)).body;
+
+  assert.match(bodyAt('2026-11-22T23:05:00Z'), /Sehr geehrte Frau von Berg,<br><br>ich hoffe, Sie haben einen guten Start in die Woche\.<br><br>Anbei/);
+  assert.match(bodyAt('2026-11-25T12:00:00Z', { contactSalutation: 'Herr', contactLastName: 'Koch' }),
+    /Sehr geehrter Herr Koch,<br><br>ich hoffe, Ihre Woche ist bisher gut verlaufen\./);
+  assert.match(bodyAt('2026-11-27T12:00:00Z', { contactName: 'Herrn Max Koch' }),
+    /Sehr geehrter Herr Max Koch,<br><br>ich hoffe, Sie haben schon ein paar schöne Pläne fürs Wochenende\./);
+  for (const day of [24, 26, 28, 29]) {
+    assert.match(bodyAt(`2026-11-${day}T12:00:00Z`), /Sehr geehrte Frau von Berg,<br><br>anbei/);
+  }
+});
+
 test('XML escapes customer-visible fields and communicates only known batch limits', () => {
   assert.match(offerXml(offer, 'AN-123'), /PPC &lt;7600&gt; &amp; Co\./);
   assert.match(offerXml(offer, 'AN-123'), /AvailableBatchQuantity unit="KGM">49500\.000/);

@@ -185,6 +185,7 @@ async function loadOfferContacts(database, customerIds) {
   const rows = await runSQLQueryAccess(database, `
     SELECT kdA_KdNR AS customerId, kdA_lfdNR AS id,
       LTRIM(RTRIM(CONCAT(kdA_Anrede,N' ',kdA_Vorname,N' ',kdA_Name))) AS name,
+      kdA_Anrede AS salutation, kdA_Name AS lastName,
       kdA_Position AS position, kdA_Ranking AS ranking, kdA_eMail AS email, kdA_SprachID AS language
     FROM dbo.tblKun_Ansprech
     WHERE kdA_KdNR IN (SELECT [value] FROM OPENJSON(?))
@@ -192,6 +193,7 @@ async function loadOfferContacts(database, customerIds) {
   `, [JSON.stringify(customerIds)]);
   return rows.filter(row => Number(row.id) > 0 && text(row.name)).map(row => ({
     customerId: text(row.customerId), id: Number(row.id), name: text(row.name), position: text(row.position),
+    salutation: text(row.salutation), lastName: text(row.lastName),
     ranking: Number(row.ranking) || null, email: text(row.email), language: text(row.language).toLowerCase(),
   }));
 }
