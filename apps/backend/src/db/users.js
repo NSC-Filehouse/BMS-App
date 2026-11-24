@@ -300,7 +300,8 @@ async function getUserIdentitiesByShortCodes(shortCodes) {
       [ma_Handy] AS mobile,
       [ma_Durchwahl] AS extension,
       [ma_FirmaID] AS mainCompanyId,
-      [ma_K\u00FCrzel] AS shortCode
+      [ma_K\u00FCrzel] AS shortCode,
+      [ma_Aktiv] AS active
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ma_K\u00FCrzel], '')))) IN (${values.map(() => '?').join(', ')})
   `, values);
@@ -371,7 +372,8 @@ async function getUserIdentityByShortCode(shortCode, companyId = null) {
       [ma_Handy] AS mobile,
       [ma_Durchwahl] AS extension,
       [ma_FirmaID] AS mainCompanyId,
-      [ma_K\u00FCrzel] AS shortCode
+      [ma_K\u00FCrzel] AS shortCode,
+      [ma_Aktiv] AS active
     FROM [dbo].[${config.fxSql.views.mitarbeiter}]
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ma_K\u00FCrzel], '')))) = ?
     ${orderSql}

@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { navigateToReturn } from '../utils/navigation.js';
 import { supplierReturnTo } from '../utils/purchaseCart.js';
+import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
 import { purchaseOrderListReturnTo } from '../utils/purchaseOrderDisplay.js';
 import { isTempOrderEditableStatus } from '../utils/tempOrderStatus.js';
@@ -18,6 +19,7 @@ export default function TempPurchaseOrderForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useI18n();
+  const { features } = useFeatureAccess();
   const attachmentInputRef = React.useRef(null);
   const [order, setOrder] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -58,7 +60,7 @@ export default function TempPurchaseOrderForm() {
     </Box>
     {error && <Alert severity="error">{error}</Alert>}
     {isTempOrderEditableStatus(order.status)
-      ? <PurchaseOrderEditor key={order.id} initialOrder={order} attachmentInputRef={attachmentInputRef} onSave={save} onDelete={remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />
+      ? <PurchaseOrderEditor key={order.id} initialOrder={order} attachmentInputRef={attachmentInputRef} onSave={save} allowFirstPurchase={features.linkedProcurement} linkedOrder={Boolean(order.linkedOrderIds?.length)} onDelete={order.linkedOrderIds?.length ? undefined : remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />
       : <Alert severity="info">Diese Bestellung ist nicht mehr bearbeitbar.</Alert>}
   </Box>;
 }

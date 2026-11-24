@@ -15,7 +15,7 @@ import {optionArticleBlocked,optionPositionTitle,optionQuantity} from '../utils/
 
 const fieldFontSize='0.8125rem';
 
-export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, supplier: initialSupplier, supplierEditable, article, returnTo, onClose }) {
+export default function OptionPurchaseDialog({ offer, position, preferredSupplierId, supplier: initialSupplier, supplierEditable, article, returnTo, onClose, onPrepared, defaultAmount, stockHint }) {
   const { t, lang } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const navigate = useNavigate();
@@ -23,7 +23,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers,setSuppliers] = React.useState(null);
   const [supplierId,setSupplierId] = React.useState(initialSupplier?.id);
-  const supplier = supplierEditable && suppliers ? suppliers.find(row => row.id === supplierId) : initialSupplier;
+  const supplier = supplierEditable && suppliers
+    ? (suppliers.find(row => row.id === supplierId) || (supplierId === undefined && (suppliers.find(row => row.preferred) || (suppliers.length === 1 ? suppliers[0] : null))))
+    : initialSupplier;
   const [contacts,setContacts]=React.useState([]),[contact,setContact]=React.useState(null);
   const [contactMeta,setContactMeta]=React.useState({}),[contactsLoading,setContactsLoading]=React.useState(false);
   const [contactError,setContactError]=React.useState(''),[contactCreateOpen,setContactCreateOpen]=React.useState(false);
@@ -108,7 +110,12 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     try {
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
         supplierId:supplier.id,contactId:contact?.id || null,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,packagingTypeId,amount:requestedAmount,
+
       })});
+      if (onPrepared) {
+        onPrepared(response.data);
+        return;
+      }
       addPurchaseCartItems([response.data.position],cartReturnTo,response.data.header);
       navigate('/purchase-cart',{state:{returnTo:cartReturnTo}});
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
@@ -117,8 +124,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const selectedPackaging=packagingTypes.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
-  const requestedAmount=orderAmount ?? effectiveAvailability.remainingKg ?? '';
-  const invalidAmount=requestedAmount==='' || !Number.isFinite(Number(requestedAmount)) || Number(requestedAmount)<=0 || Number(requestedAmount)>effectiveAvailability.remainingKg;
+  const requestedAmount=orderAmount ?? defaultAmount ?? effectiveAvailability.remainingKg ?? '';
+  const invalidAmount=requestedAmount==='' || !Number.isFinite(Number(requestedAmount)) || Number(requestedAmount)<=0 || Number(requestedAmount)>effectiveAvailability.remainingKg || (onPrepared && (!Number.isSafeInteger(Number(requestedAmount)) || Number(requestedAmount)>Number(defaultAmount)));
   const choicesUnavailable = availabilityLoading || Boolean(availabilityError) || packagingLoading || Boolean(packagingError);
   const unavailable = choicesUnavailable || effectiveAvailability.remainingKg == null || effectiveAvailability.remainingKg<=0 || quantityEditing || !selectedPackaging;
   const enteringQuantity=!automaticTruck && (availability.remainingKg===null || quantityEditing);
@@ -161,7 +168,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
       </Box>}
       <TextField label={t('purchase_order_quantity')} type="number" required size="small" value={requestedAmount} disabled={busy || unavailable}
         error={!unavailable && invalidAmount} inputProps={{min:0.001,max:effectiveAvailability.remainingKg??undefined,step:0.001}}
-        helperText={effectiveAvailability.remainingKg!=null?t('purchase_max_available', { amount: Number(effectiveAvailability.remainingKg).toLocaleString(locale) }):(availability.quantityText || optionQuantity(position,t))}
+        helperText={stockHint || (effectiveAvailability.remainingKg!=null?t('purchase_max_available', { amount: Number(effectiveAvailability.remainingKg).toLocaleString(locale) }):(availability.quantityText || optionQuantity(position,t)))}
         onChange={e=>setOrderAmount(e.target.value)} />
       {effectiveAvailability.orderedKg>0 && <Typography variant="body2">{t('purchase_remaining', { amount: Number(effectiveAvailability.remainingKg).toLocaleString(locale) })}</Typography>}
       {!automaticTruck && availability.remainingKg===null && <Alert severity="warning">{availability.truckOffer?t('purchase_missing_trucks'):t('purchase_missing_quantity')}</Alert>}
@@ -189,7 +196,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {errorCode==='PURCHASE_CART_SUPPLIER_CONFLICT' && <Link component={RouterLink} to="/purchase-cart" state={{returnTo:cartReturnTo}} onClick={()=>savePurchaseCartContext({returnTo:cartReturnTo})} sx={{display:'block',mt:1}}>{t('purchase_open_cart')}</Link>}
       </Alert>}
     </DialogContent>
-    <DialogActions><Button disabled={busy} onClick={onClose}>{t('purchase_cancel')}</Button><Button variant="contained" disabled={busy||contactsLoading||Boolean(contactError)||unavailable||invalidAmount||!supplier||!article||optionArticleBlocked(article)} onClick={submit}>{t('purchase_to_cart')}</Button></DialogActions>
+    <DialogActions><Button disabled={busy} onClick={onClose}>{t('purchase_cancel')}</Button><Button variant="contained" disabled={busy||contactsLoading||Boolean(contactError)||unavailable||invalidAmount||!supplier||!article||optionArticleBlocked(article)} onClick={submit}>{onPrepared ? t('procurement_continue') : t('purchase_to_cart')}</Button></DialogActions>
     {contactCreateOpen && supplier && <ContactCreateDialog key={`${supplier.id}:${contactMandant}`} customerId={supplier.id} customerName={supplier.name}
       mandant={contactMandant} rankings={getSelectableContactRankings(contacts)} initialContact={contactMeta.suggestion}
       onClose={()=>setContactCreateOpen(false)} onExisting={refreshContact}

@@ -4,6 +4,7 @@ const config = require('../config');
 const logger = require('../logger');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
@@ -11,6 +12,7 @@ const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput,
   loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { loadPurchaseOptions, loadSupplierTerms, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
+const { procurementSchemaReady, assertProcurementAccess, loadPurchaseOrderLinks } = require('../db/linked-procurement');
 const { loadHolidayRows } = require('../db/holidays');
 const {
   getHolidayStatus,
@@ -344,8 +346,14 @@ async function loadOrderForUser(id, companyId, userShortCode, isFullAccess) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+async function linkedPurchasePositions(query, id) {
+  return (await query(`SELECT tbp_id AS id,tbp_amount AS amount,tbp_article_index AS articleIndex
+    FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE tbp_tb_id=? AND tbp_order_position_id IS NOT NULL`, [id])).rows;
+}
+
 async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess) {
   if (!Number.isInteger(id) || id <= 0) throw createHttpError(400, 'Ungültige Bestellnummer.');
+  const checkProcurement = await procurementSchemaReady();
   return withSqlTransaction(config.sql.database, async ({ query }) => {
     const ownerSql = isFullAccess ? '' : ' AND [tb_created_by]=?';
     const params = isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
@@ -355,6 +363,9 @@ async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess)
     // its first HTTP response was lost. Owner/tenant filtering stays in SQL.
     if (!row) return { id, deleted: true };
     if (!isEditable(normalizeStatus(row.status))) throw createHttpError(409, 'Diese Bestellung kann nicht gelöscht werden.', { code: 'PURCHASE_ORDER_LOCKED' });
+    if (checkProcurement && (await linkedPurchasePositions(query, id)).length) {
+      throw createHttpError(409, 'Bitte den verknüpften Auftrag öffnen, um den Vorgang zu löschen.', { code: 'PURCHASE_ORDER_LINKED' });
+    }
     for (const [tableKey, column] of [['purchaseOrderMailOutbox', 'pom_PurchaseOrderID'], ['purchaseOrderCsMailOutbox', 'pcom_PurchaseOrderID']]) {
       const table = appTableSql(tableKey);
       await query(`IF OBJECT_ID(?, N'U') IS NOT NULL DELETE FROM ${table} WHERE [${column}]=?`, [table, id]);
@@ -425,7 +436,20 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
     }
     if (!latestByArticle.has(position.articleIndex)) latestByArticle.set(position.articleIndex, await loadLatestPurchase(req.database, supplierId, position.articleIndex));
     const latest = latestByArticle.get(position.articleIndex);
-    if (!latest) throw createHttpError(400, 'Der Artikel gehört nicht zum gewählten Lieferanten.', { code: 'PURCHASE_POSITION_INVALID' });
+    if (!latest) {
+      if (!pilotFeaturesForIdentity(req.userIdentity).linkedProcurement) {
+        throw createHttpError(400, 'Der Artikel gehört nicht zum gewählten Lieferanten.', { code: 'PURCHASE_POSITION_INVALID' });
+      }
+      const [catalogArticle] = await runSQLQueryAccess(req.database, `
+        SELECT [agA_Artikelname] AS article FROM [dbo].[tblArt_Artikel] WHERE [agA_Artikelindex]=? AND COALESCE([agA_Deaktiv],0)=0
+      `, [position.articleIndex]);
+      if (!catalogArticle?.article) throw createHttpError(422, 'Artikel im Stamm nicht gefunden.', { code: 'PURCHASE_POSITION_INVALID' });
+      position.article = asText(catalogArticle.article);
+      position.originalPackagingType = stored?.originalPackagingType || null;
+      position.originalPackagingTypeId = stored?.originalPackagingTypeId || null;
+      position.packagingTypeChanged = Boolean(position.originalPackagingType && packagingKey(packaging.text) !== packagingKey(position.originalPackagingType));
+      continue;
+    }
     const original = stored?.originalPackagingType || (stored ? existing?.packagingType : latest.originalPackagingType);
     const originalOption = findPackaging(options.packagingTypes, original);
     position.article = asText(latest.article);
@@ -510,7 +534,11 @@ router.get('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
   const row = await loadOrderForUser(Number(req.params.id), Number(req.database?.firmaId || 0), asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
   if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
-  sendEnvelope(res, { status: 200, data: await withPurchaseOrderAttachments(mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id)))), meta: { mandant: req.mandant }, error: null });
+  const data = await withPurchaseOrderAttachments(mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))));
+  if (pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await procurementSchemaReady()) {
+    data.linkedOrderIds = await loadPurchaseOrderLinks(id, companyId);
+  }
+  sendEnvelope(res, { status: 200, data, meta: { mandant: req.mandant }, error: null });
 }));
 
 router.get('/temp-purchase-orders/:id/attachments/:attachmentId', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
@@ -530,6 +558,43 @@ router.get('/temp-purchase-orders/:id/attachments/:attachmentId', requirePurchas
   res.send(attachment.buffer);
 }));
 
+
+async function preparePurchaseDraft(req) {
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const supplierId = asText(req.body?.supplierId);
+  const supplier = await assertSupplier(req.database, supplierId, scope);
+  const companyId = Number(req.database?.firmaId || 0);
+  const user = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
+  const clientRequestId = isUuid(req.body?.clientRequestId) ? asText(req.body.clientRequestId) : crypto.randomUUID();
+  const now = new Date().toISOString();
+  const prepared = await preparePurchase(req, supplierId, req.body?.positions);
+  return { ...prepared, supplier, supplierId, companyId, user, clientRequestId, now };
+}
+
+async function savePurchaseDraft(query, req, draft) {
+  const { positions, loading, packaging, incoterm, payment, supplier, supplierId, companyId, user, clientRequestId, now } = draft;
+  const attachmentInput = normalizeAttachmentInput(req);
+  if (attachmentInput.removeAttachmentIds.length) throw createHttpError(400, 'Eine neue Bestellung hat noch keine gespeicherten Anhänge.');
+  const sources = await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
+  const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
+    [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
+    [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
+    [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
+    [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
+    OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
+  [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
+    [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
+    payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
+    asText(req.body?.comment) || null, user, now, user, now]);
+  const id = result.rows[0].id;
+  await insertPurchasePositions(query, id, positions, user, now);
+  const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
+  const order = mapOrder(saved.rows[0], await loadPositions(id, query));
+  if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user, now });
+  await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
+  return withPurchaseOrderAttachments(order, query);
+}
+
 router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   parsePurchaseBody(req);
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -538,40 +603,20 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
   const companyId = Number(req.database?.firmaId || 0);
   const user = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
   const clientRequestId = isUuid(req.body?.clientRequestId) ? asText(req.body.clientRequestId) : crypto.randomUUID();
-  const now = new Date().toISOString();
   const prior = await runSQLQuerySqlServer(config.sql.database, `${orderSelectSql()} WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
   if (prior[0]) {
     if (asText(prior[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
     sendEnvelope(res, { data: await withPurchaseOrderAttachments(mapOrder(prior[0], await loadPositions(prior[0].id))), meta: { alreadyCreated: true } });
     return;
   }
-  const { positions, loading, packaging, incoterm, payment } = await preparePurchase(req, supplierId, req.body?.positions);
+  const draft = { ...await preparePurchase(req, supplierId, req.body?.positions), supplier, supplierId, companyId, user, clientRequestId, now: new Date().toISOString() };
   const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const retry = await query(`${orderSelectSql()} WITH (UPDLOCK, HOLDLOCK) WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
     if (retry.rows[0]) {
       if (asText(retry.rows[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
       return withPurchaseOrderAttachments(mapOrder(retry.rows[0], await loadPositions(retry.rows[0].id, query)), query);
     }
-    const attachmentInput = normalizeAttachmentInput(req);
-    if (attachmentInput.removeAttachmentIds.length) throw createHttpError(400, 'Eine neue Bestellung hat noch keine gespeicherten Anhänge.');
-    const sources = await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
-    const result = await query(`INSERT INTO ${TEMP_PURCHASE_ORDER_TABLE} (
-      [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
-      [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
-      [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
-      [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
-      OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
-    [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
-      [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
-      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
-      asText(req.body?.comment) || null, user, now, user, now]);
-    const id = result.rows[0].id;
-    await insertPurchasePositions(query, id, positions, user, now);
-    const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
-    const order = mapOrder(saved.rows[0], await loadPositions(id, query));
-    if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user, now });
-    await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
-    return withPurchaseOrderAttachments(order, query);
+    return savePurchaseDraft(query, req, draft);
   });
   sendEnvelope(res, { status: 201, data: created, meta: { mandant: req.mandant } });
 }));
@@ -596,6 +641,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   const { positions, loading, packaging, incoterm } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
   const attachmentInput = normalizeAttachmentInput(req);
   const now = new Date().toISOString();
+  const checkProcurement = await procurementSchemaReady();
   const updated = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
@@ -603,8 +649,28 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
     await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=0,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
       [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
       WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
-    await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
-    await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
+    const linked = checkProcurement ? await linkedPurchasePositions(query, id) : [];
+    if (linked.length) {
+      assertProcurementAccess(req.userIdentity);
+      const byId = new Map(positions.map((position) => [Number(position.id), position]));
+      if (byId.size !== linked.length || positions.length !== linked.length || linked.some((saved) => {
+        const edited = byId.get(Number(saved.id));
+        return !edited || Number(saved.amount) !== edited.amount || asText(saved.articleIndex) !== edited.articleIndex;
+      })) {
+        throw createHttpError(409, 'Artikel und Menge der verknüpften Bestellung bleiben erhalten.', { code: 'PURCHASE_ORDER_LINKED' });
+      }
+      for (const position of positions) {
+        await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET tbp_article=?,tbp_purchase_price=?,
+          tbp_requested_delivery_date=?,tbp_reserved_for=?,tbp_comment=?,tbp_packaging_type_changed=?,
+          tbp_option_mfi_acknowledged=?,tbp_last_modified_by=?,tbp_last_modified_date=?
+          WHERE tbp_id=? AND tbp_tb_id=?`,
+        [position.article, position.purchasePrice, position.requestedDeliveryDate, position.reservedFor,
+          position.comment, position.packagingTypeChanged ? 1 : 0, position.acknowledgeUnverifiedMfi ? 1 : 0, user, now, position.id, id]);
+      }
+    } else {
+      await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
+      await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
+    }
     await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
     const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
     const order = mapOrder(saved.rows[0], await loadPositions(id, query));
@@ -623,9 +689,8 @@ router.delete('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant
   res.status(204).end();
 }));
 
-router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
+async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false } = {}) {
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
-  const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
   const userShortCode = asText(req.userIdentity?.shortCode) || asText(req.userEmail) || 'APP';
   const mailValidation = validateOrderMailConfig(config.orderMail, config.mailService);
@@ -633,6 +698,7 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
   const csRecipient = resolveOrderMailRecipient(companyId, config.orderMail);
   if (!csRecipient.ok) throw createHttpError(422, 'Kein CS-Mail-Empfänger für den Mandanten konfiguriert.', { code: 'PURCHASE_CS_MAIL_RECIPIENT_MISSING' });
   const now = new Date().toISOString();
+  const checkProcurement = await procurementSchemaReady();
   const finalized = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const ownerSql = accessScope.isFullAccess ? '' : ' AND [tb_created_by]=?';
     const ownerParams = accessScope.isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
@@ -640,7 +706,11 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
     const row = current.rows[0];
     if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
     const positions = await loadPositions(id, query);
-    if ([STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: await withPurchaseOrderAttachments(mapOrder(row, positions), query), alreadyFinalized: true };
+    const linked = checkProcurement ? await linkedPurchasePositions(query, id) : [];
+    if (linked.length) assertProcurementAccess(req.userIdentity);
+    if (linkedOnly && !linked.length) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
+    if ((draftOnly && normalizeStatus(row.status) !== STATUS.DRAFT)
+      || [STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: await withPurchaseOrderAttachments(mapOrder(row, positions), query), alreadyFinalized: true };
     for (const position of positions.filter(line => line.optionId!=null)) {
       const source = await loadOptionPosition(position.optionId,position.optionPositionId,null,{identity:req.userIdentity});
       await validateOptionSupplier(req.database,source,row.supplierId);
@@ -666,8 +736,7 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
   const mapped = finalized.mapped;
   const updatedPositions = mapped.positions;
   if (finalized.alreadyFinalized) {
-    sendEnvelope(res, { data: mapped, meta: { alreadyFinalized: true } });
-    return;
+    return { data: mapped, meta: { alreadyFinalized: true } };
   }
   let csMail = { queued: false, reason: 'not_available' };
   try {
@@ -725,11 +794,18 @@ router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, require
     logger.warn(`Timeline fuer Bestellung ${id} konnte nicht angelegt werden: ${timelineError?.message || timelineError}`);
     timelineEntries = [];
   }
-  sendEnvelope(res, { status: 200, data: { ...mapped, csMail }, meta: { alreadyFinalized: false }, error: null });
+  return { status: 200, data: { ...mapped, csMail }, meta: { alreadyFinalized: false }, error: null };
+}
+
+router.post('/temp-purchase-orders/:id/finalize', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
+  sendEnvelope(res, await finalizePurchase(req, Number(req.params.id)));
 }));
 
 module.exports = router;
 module.exports.STATUS = STATUS;
+module.exports.preparePurchaseDraft = preparePurchaseDraft;
+module.exports.finalizePurchase = finalizePurchase;
+module.exports.savePurchaseDraft = savePurchaseDraft;
 module.exports.normalizePositions = normalizePositions;
 module.exports.getNextWorkingDate = getNextWorkingDate;
 module.exports.buildPurchaseCreatedPeriodFilter = buildPurchaseCreatedPeriodFilter;

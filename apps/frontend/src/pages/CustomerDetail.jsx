@@ -47,6 +47,7 @@ import {
 import { recordRecentCustomer } from '../utils/recentCustomers.js';
 import { addProductsToOrderCart } from '../utils/orderCartProducts.js';
 import { addPurchaseCartItems, getPurchaseCartContext } from '../utils/purchaseCart.js';
+import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
 import SupplierArticles from '../components/SupplierArticles.jsx';
 import SupplierOptions from '../components/SupplierOptions.jsx';
 import { filterSupplierInvoices } from '../utils/supplierInvoices.js';
@@ -448,6 +449,7 @@ export default function CustomerDetail() {
   const [batchCartSuccess, setBatchCartSuccess] = React.useState('');
   const [batchCartAdding, setBatchCartAdding] = React.useState(false);
   const [purchaseCartError, setPurchaseCartError] = React.useState('');
+  const [pickPurchaseArticle, setPickPurchaseArticle] = React.useState(false);
   const [orderPdfLoadingId, setOrderPdfLoadingId] = React.useState('');
   const [orderPdfErrors, setOrderPdfErrors] = React.useState({});
   const [docs, setDocs] = React.useState({
@@ -1485,6 +1487,25 @@ export default function CustomerDetail() {
               </AccordionDetails>
             </Accordion>
 
+            {isSupplier && canCreatePurchaseOrder && features.linkedProcurement && <>
+              <Button size="small" sx={{ alignSelf: 'flex-start', mb: 1 }} onClick={() => setPickPurchaseArticle(true)}>
+                {t('procurement_add_article')}
+              </Button>
+              {pickPurchaseArticle && <OfferArticlePicker open onClose={() => setPickPurchaseArticle(false)} onAdd={(articles) => {
+                try {
+                  const returnTo = supplierArticleReturnTo(location.state?.supplierArticleState);
+                  addPurchaseCartItems(articles.map((article) => ({
+                    supplierId: id, supplierName: name, articleIndex: article.articleIndex, article: article.article, firstPurchase: true,
+                  })), returnTo);
+                  setPurchaseCartError('');
+                  setPickPurchaseArticle(false);
+                  navigate('/purchase-cart', { state: { returnTo } });
+                } catch (error) {
+                  setPickPurchaseArticle(false);
+                  setPurchaseCartError(error.message);
+                }
+              }} />}
+            </>}
             {isSupplier && purchaseCartError && <Alert severity="error">{purchaseCartError}</Alert>}
             {isSupplier && <SupplierArticles key={id} groups={docs.purchasedArticles.items} loaded={docs.purchasedArticles.loaded}
               loading={docs.purchasedArticles.loading} error={docs.purchasedArticles.error}

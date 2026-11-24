@@ -23,19 +23,27 @@ if(!schema.columns.some(column=>column.tableName===optionSnapshotTable && column
 }
 const positionReferences=[
  ['tbl_Temp_Ang_Position','tagp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
+ ['tbl_Temp_Ang_Position','tagp_option_position_id','tblOptionenPositionen','opp_id'],
  ['tbl_Temp_Auf_Position','tap_purchase_position_id','tbl_Temp_Best_Position','tbp_id'],
  ['tbl_Temp_Auf_Position','tap_offer_position_id','tbl_Temp_Ang_Position','tagp_id'],
  ['tbl_Temp_Auf_Position','tap_option_position_id','tblOptionenPositionen','opp_id'],
  ['tbl_Temp_Best_Position','tbp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
 ];
 const optionDeliveryColumns = [
+  { tableName: 'tbl_Temp_Best_Position', name: 'tbp_bms_position_id', typeName: 'nvarchar', max_length: 34 },
+  { tableName: 'tbl_Temp_Auftrag', name: 'ta_procurement_request_id', typeName: 'nvarchar', max_length: 72 },
   { tableName: 'tblOptionen', name: 'op_QuellangebotHash', typeName: 'char', max_length: 64 },
   { tableName: 'tblOptionenPositionen', name: 'opp_LieferdatenJson', typeName: 'nvarchar', max_length: -1 },
 ].map(column => ({
   ...column, precision: 0, scale: 0, is_nullable: true, is_identity: false, is_computed: false,
   collation_name: 'Latin1_General_CI_AS',
 }));
-for (const column of optionDeliveryColumns) {
+const procurementNotification = {
+  tableName: 'tbl_Temp_Auftrag', name: 'ta_procurement_notified_at', typeName: 'datetime2',
+  max_length: 8, precision: 27, scale: 7, is_nullable: true, is_identity: false, is_computed: false,
+};
+const additionalColumns = [...optionDeliveryColumns, procurementNotification];
+for (const column of additionalColumns) {
   if (!schema.columns.some(existing => existing.tableName === column.tableName && existing.name === column.name)) {
     schema.columns.push(column);
   }
@@ -130,11 +138,11 @@ sql+=`\n -- Preserve the original option data with each generated purchase attac
  IF COL_LENGTH(${literal('BMSApp.'+optionSnapshotTable)},${literal(optionSnapshotColumn)}) IS NULL
   ${execute(`ALTER TABLE ${full(optionSnapshotTable)} ADD ${quote(optionSnapshotColumn)} ${type(optionSnapshot)} COLLATE ${optionSnapshot.collation_name} NULL;`)}
 `;
-for (const column of optionDeliveryColumns) {
+for (const column of additionalColumns) {
   const table = literal('BMSApp.' + column.tableName);
   const name = literal(column.name);
   const ddl = 'ALTER TABLE ' + full(column.tableName) + ' ADD ' + quote(column.name)
-    + ' ' + type(column) + ' COLLATE ' + column.collation_name + ' NULL;';
+    + ' ' + type(column) + (column.collation_name ? ' COLLATE ' + column.collation_name : '') + ' NULL;';
   sql += ' IF COL_LENGTH(' + table + ',' + name + ') IS NULL\n  ' + execute(ddl) + '\n';
 }
 sql+=addOptionOfferSchema.offerMailUpgrade;

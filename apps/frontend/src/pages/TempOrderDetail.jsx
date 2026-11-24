@@ -139,6 +139,8 @@ export default function TempOrderDetail() {
   const orderStatus = normalizeTempOrderStatus(item?.orderStatus, item?.completed);
   const orderIsEditable = item ? isTempOrderEditableStatus(orderStatus, item.completed) : false;
   const orderIsFinalized = item ? isTempOrderFinalizedStatus(orderStatus, item.completed) : false;
+  const procurement = item?.procurement;
+  const awaitingProcurement = procurement && procurement.status !== 'ready';
 
   const load = React.useCallback(async () => {
     try {
@@ -368,11 +370,20 @@ export default function TempOrderDetail() {
 
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {location.state?.procurementHandoffError && Boolean(item?.procurement?.draftPurchaseIds?.length)
+        && <Alert severity="warning" sx={{ mb: 2 }}>{location.state.procurementHandoffError}</Alert>}
       {creditMailWarning && <Alert severity="warning" sx={{ mb: 2 }}>{t('credit_limit_optional_mail_failed')}</Alert>}
 
       {!loading && !error && item && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent sx={{ pt: 2 }}>
+            {procurement && <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1 }}>
+              {orderIsEditable && <Typography variant="body2">{t('procurement_status_' + procurement.status)}</Typography>}
+              {procurement.purchaseIds.map((purchaseId) => <Button key={purchaseId} size="small"
+                onClick={() => navigate('/temp-purchase-orders/' + purchaseId, { state: { returnTo: createReturnTo(location) } })}>
+                {t('procurement_purchase_link', { id: purchaseId })}
+              </Button>)}
+            </Box>}
             {orderIsEditable && !customerRequirementsComplete && (
               <Alert
                 severity={customerRequirementsAvailable && customerFound && missingCustomerRequirements.length ? 'warning' : 'info'}
@@ -557,7 +568,7 @@ export default function TempOrderDetail() {
                   variant="contained"
                   sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
                   onClick={openFinalizeDialog}
-                  disabled={!customerRequirementsComplete || checkingCreditLimit || finalizing}
+                  disabled={Boolean(awaitingProcurement) || !customerRequirementsComplete || checkingCreditLimit || finalizing}
                 >
                   {checkingCreditLimit ? t('credit_limit_checking') : t('temp_order_send_to_bms')}
                 </Button>
@@ -578,6 +589,7 @@ export default function TempOrderDetail() {
               )}
               <Button
                 variant="outlined"
+                disabled={Boolean(awaitingProcurement)}
                 sx={{ minWidth: 0, width: '100%', whiteSpace: 'nowrap' }}
                 onClick={() => navigate('/temp-orders/new', {
                   state: {

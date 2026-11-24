@@ -3,7 +3,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { Navigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 
-const noFeatures = { offers: false, offerToOrder: false, purchaseOrders: false, options: false, forecast: false };
+const noFeatures = { offers: false, offerToOrder: false, linkedProcurement: false, purchaseOrders: false, options: false, forecast: false };
 const FeatureContext = React.createContext({ loading: true, features: noFeatures });
 
 export function FeatureProvider({ children }) {
@@ -19,6 +19,7 @@ export function FeatureProvider({ children }) {
         if (active) setState({ loading: false, features: {
           offers: Boolean(me?.identityResolved && me?.features?.offers),
           offerToOrder: Boolean(me?.identityResolved && me?.features?.offerToOrder),
+          linkedProcurement: Boolean(me?.identityResolved && me?.features?.linkedProcurement),
           purchaseOrders: Boolean(me?.identityResolved && me?.features?.purchaseOrders),
           options: Boolean(me?.identityResolved && me?.features?.options),
           forecast: Boolean(me?.identityResolved && me?.features?.forecast),

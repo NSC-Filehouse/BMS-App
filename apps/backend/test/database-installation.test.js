@@ -33,6 +33,7 @@ test('current identity keys, order/option relationships and source storage are p
 test('position references are nullable, upgradeable and checked against the target position keys',()=>{
  const relationships=[
   ['tbl_Temp_Ang_Position','tagp_order_position_id','tbl_Temp_Auf_Position','tap_id'],
+  ['tbl_Temp_Ang_Position','tagp_option_position_id','tblOptionenPositionen','opp_id'],
   ['tbl_Temp_Auf_Position','tap_purchase_position_id','tbl_Temp_Best_Position','tbp_id'],
   ['tbl_Temp_Auf_Position','tap_offer_position_id','tbl_Temp_Ang_Position','tagp_id'],
   ['tbl_Temp_Auf_Position','tap_option_position_id','tblOptionenPositionen','opp_id'],
@@ -52,7 +53,7 @@ test('incompatible installations abort atomically instead of altering or deletin
  const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
  assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,785);
+ assert.equal(manifest.length,789);
  assert.equal(new Set(manifest.map(c=>c.table)).size,45);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
  const pdf=manifest.find(c=>c.table==='tbl_Temp_Angebot' && c.column==='tag_offer_pdf');

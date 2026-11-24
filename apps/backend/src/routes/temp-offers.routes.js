@@ -37,7 +37,9 @@ const {
   read,
 } = require('../offers/storage');
 const { synchronizeReservations } = require('../offers/reservations');
-const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable } = require('../offers/order-conversion');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { procurementSchemaReady, loadOrderProcurement } = require('../db/linked-procurement');
+const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable, loadOfferOrderIds, hasOfferOrderSchema } = require('../offers/order-conversion');
 const { hasExecutiveAccess } = require('../executive-access');
 const { isFcaIncoterm } = require('../incoterm');
 const { manualOfferMail } = require('../offers/erp-mail');
@@ -393,7 +395,15 @@ router.get(
       row.mailStatus = state?.mailStatus ?? null;
       row.generated = Number(state?.generated) === 1;
     }
-    row.canMarkNotInterested = ownOffer && !row.generated && notInterestedSourceStatuses.includes(row.status);
+    if (!row.readOnly && pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await hasOfferOrderSchema(query)) {
+      const ids = await loadOfferOrderIds(query, row.id, req.database.firmaId);
+      const linkedSchema = ids.length > 0 && await procurementSchemaReady();
+      row.orders = await Promise.all(ids.map(async (id) => {
+        const procurement = linkedSchema ? await loadOrderProcurement(id, req.database.firmaId) : null;
+        return { id, procurementStatus: procurement?.status ?? null };
+      }));
+    }
+    row.canMarkNotInterested = ownOffer && !row.generated && !row.orders?.length && notInterestedSourceStatuses.includes(row.status);
     sendEnvelope(res, { data: row });
   }),
 );
@@ -410,6 +420,7 @@ router.post(
       const current = await read(tx, id, companyId, createdBy, true);
       if (!current) notFound();
       requireVersion(current, req.body?.version);
+      await assertOfferPositionsEditable(tx, id);
       if (mailSchemaReady) {
         const generated = (await tx(`
           SELECT 1 AS generated FROM BMSApp.OptionOfferMailOutbox

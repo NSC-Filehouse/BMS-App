@@ -39,7 +39,12 @@ const {
   lockTempOrderAvailability,
   withTempOrderAvailabilityLock,
 } = require('../db/temp-order-availability');
-const { orderConversionInput, assertOrderConversion, linkOfferPosition, markOfferConverted, unlinkOfferPositions } = require('../offers/order-conversion');
+const { preparePurchaseDraft, savePurchaseDraft, finalizePurchase } = require('./temp-purchase-orders.routes');
+const { assertProcurementAccess, procurementSchemaReady, loadOrderProcurement, assertLinkedOrderReady } = require('../db/linked-procurement');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
+const PROCUREMENT_PURCHASE_POSITIONS = appTableSql('tempPurchaseOrderPosition');
+const PROCUREMENT_PURCHASES = appTableSql('tempPurchaseOrder');
+const { orderConversionInput, assertOrderConversion, linkOfferPosition, markOfferConverted, unlinkOfferPositions, prepareOfferOrder } = require('../offers/order-conversion');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { isFcaIncoterm } = require('../incoterm');
 const { loadPickupAddresses, assertSinglePickupAddress, normalizePickupAddressInput } = require('../db/pickup-addresses');
@@ -366,7 +371,9 @@ async function loadTempOrderPickupAddresses(req, positions) {
 
 async function applyFcaPickupAddress(req, body, orderLevel, positions) {
   if (!isFcaIncoterm(orderLevel.incotermText)) return;
-  const summary = await loadTempOrderPickupAddresses(req, positions);
+  const stocked = positions.filter((position) => position.beNumber);
+  const summary = await loadTempOrderPickupAddresses(req, stocked);
+  if (stocked.length < positions.length) summary.unresolved.push(...positions.filter((position) => !position.beNumber));
   Object.assign(orderLevel, normalizePickupAddressInput(body, summary));
 }
 
@@ -1148,6 +1155,8 @@ async function loadOrderPositions(orderId) {
     const cOriginalPackagingTypeId = resolveColumn(cols, ['tap_Verpackungsart_id']);
     const cPackagingTypeChanged = resolveColumn(cols, ['tap_Verpackungsart_Gewechselt']);
     const cOfferPositionId = resolveColumn(cols, ['tap_offer_position_id']);
+    const cPurchasePositionId = resolveColumn(cols, ['tap_purchase_position_id']);
+    const cOptionPositionId = resolveColumn(cols, ['tap_option_position_id']);
 
     const pick = (col, alias) => (col ? `${toId(col)} AS ${toId(alias)}` : `NULL AS ${toId(alias)}`);
     const effectiveValutaDate = cValutaDate && cDeliveryDate
@@ -1179,7 +1188,9 @@ async function loadOrderPositions(orderId) {
         ${pick(cWpzOriginal, 'wpzOriginal')},
         ${pick(cWpzComment, 'wpzComment')},
         ${pick(cPackagingTypeChanged, 'packagingTypeChanged')},
-        ${pick(cOfferPositionId, 'offerPositionId')}
+        ${pick(cOfferPositionId, 'offerPositionId')},
+        ${pick(cPurchasePositionId, 'purchasePositionId')},
+        ${pick(cOptionPositionId, 'optionPositionId')}
       FROM ${TEMP_ORDER_POSITION_TABLE}
       WHERE ${toId(cOrderId)} = ?
       ORDER BY ${cLineNo ? `${toId(cLineNo)} ASC` : '(SELECT 1)'}
@@ -1249,6 +1260,14 @@ async function loadPositionSummariesForOrders(orderIds) {
   }
   return map;
 }
+
+router.get('/temp-orders/procurement/stock', requireMandant, asyncHandler(async (req, res) => {
+  assertProcurementAccess(req.userIdentity);
+  const articleIndex = asText(req.query.articleIndex).slice(0, 50);
+  if (!articleIndex) throw createHttpError(400, 'Artikel fehlt.');
+  const draft = await prepareOfferOrder(req, { positions: [{ articleIndex, quantity: 1, unit: 'kg' }] });
+  sendEnvelope(res, { data: draft.positions[0].candidates });
+}));
 
 router.post('/temp-orders/pickup-addresses', requireMandant, asyncHandler(async (req, res) => {
   const positions = req.body?.positions;
@@ -1508,6 +1527,8 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
       ),
       mail: await loadOrderMailState(row.ta_id),
       customerRequirements,
+      ...(pilotFeaturesForIdentity(userIdentity).linkedProcurement && await procurementSchemaReady()
+        ? { procurement: await loadOrderProcurement(id, companyId) } : {}),
     },
     meta: { mandant: req.mandant, id },
     error: null,
@@ -1740,6 +1761,42 @@ router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (re
   res.send(row.attachment);
 }));
 
+async function completeLinkedProcurement(req, order, companyId) {
+  const procurement = await loadOrderProcurement(order.ta_id, companyId);
+  const handoffs = await Promise.allSettled((procurement?.draftPurchaseIds || [])
+    .map((id) => finalizePurchase(req, id, { draftOnly: true, linkedOnly: true })));
+  for (const handoff of handoffs) {
+    if (handoff.status === 'rejected') logger.warn('Bestellübergabe für Auftrag ' + order.ta_id + ': ' + handoff.reason?.message);
+  }
+  const mapped = mapTempOrderWithPositions(order, await loadOrderPositions(order.ta_id));
+  return mapTempOrderWithAttachments({
+    ...mapped, procurement,
+    procurementHandoffOpen: handoffs.some((handoff) => handoff.status === 'rejected'),
+  }, order.ta_id);
+}
+
+function expandProcurementPositions(positions) {
+  return positions.flatMap((position) => {
+    if (!position?.procurement) return [position];
+    const total = Number(position.amountInKg);
+    const purchased = Number(position.procurement.position?.amount);
+    const stock = position.procurement.stock;
+    if (!Number.isSafeInteger(total) || !Number.isSafeInteger(purchased) || purchased <= 0 || purchased > total
+      || (purchased < total && (!asText(stock?.beNumber) || !asText(stock?.warehouseId)))) {
+      throw createHttpError(400, 'Die Bestellmenge und der gewählte VL-Bestand müssen den Auftrag decken.', { code: 'PROCUREMENT_QUANTITY_INVALID' });
+    }
+    const pending = { ...position, beNumber: '', warehouseId: '', amountInKg: purchased };
+    if (purchased === total) return [pending];
+    return [pending, {
+      ...position, amountInKg: total - purchased, procurement: null, offerPositionId: null,
+      beNumber: stock.beNumber, warehouseId: stock.warehouseId,
+      reservationInKg: stock.reservationInKg, reservationDate: stock.reservationDate,
+      costPricePerKg: stock.costPrice ?? position.costPricePerKg,
+      expectedProcurementArticle: asText(position.articleIndex).toLowerCase(),
+    }];
+  });
+}
+
 router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
   const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
@@ -1755,7 +1812,26 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   const body = getRequestBody(req);
   const attachment = normalizeAttachmentInput(req);
-  const positionsInput = normalizePositionsInput(body);
+  const submittedPositions = normalizePositionsInput(body);
+  const hasProcurement = Array.isArray(submittedPositions) && submittedPositions.some((position) => position?.procurement);
+  const procurementRequestId = hasProcurement ? asText(body.procurementRequestId).toLowerCase() : null;
+  if (hasProcurement) {
+    assertProcurementAccess(userIdentity);
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(procurementRequestId)) {
+      throw createHttpError(400, 'Anfragekennung für die Beschaffung fehlt.', { code: 'PROCUREMENT_REQUEST_ID_INVALID' });
+    }
+    if (!await procurementSchemaReady()) {
+      throw createHttpError(503, 'Die Datenbank muss für die Auftragsbeschaffung aktualisiert werden.', { code: 'PROCUREMENT_SCHEMA_MISSING' });
+    }
+    const prior = await runSQLQuerySqlServer(config.sql.database, `
+      SELECT * FROM ${TEMP_ORDER_TABLE} WHERE ta_company_id=? AND ta_CreatedBy=? AND ta_procurement_request_id=?
+    `, [companyId, userShortCode, procurementRequestId]);
+    if (prior[0]) {
+      sendEnvelope(res, { data: await completeLinkedProcurement(req, prior[0], companyId) });
+      return;
+    }
+  }
+  const positionsInput = hasProcurement ? expandProcurementPositions(submittedPositions) : submittedPositions;
   if (!Array.isArray(positionsInput) || !positionsInput.length) {
     throw createHttpError(400, 'At least one position is required.', { code: 'TEMP_ORDER_MISSING_POSITIONS' });
   }
@@ -1824,7 +1900,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
-    if (!beNumber || !warehouseId) {
+    if ((!beNumber || !warehouseId) && !raw?.procurement) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
     }
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
@@ -1840,6 +1916,31 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
+    if (raw?.procurement) {
+      const purchaseRequest = Object.assign(Object.create(req), {
+        body: { ...raw.procurement.header, positions: [{ ...raw.procurement.position, amount: amountInKg, unit: 'kg' }] },
+        files: [],
+      });
+      const purchaseDraft = await preparePurchaseDraft(purchaseRequest);
+      const purchase = purchaseDraft.positions[0];
+      if (asText(raw.articleIndex).toLowerCase() !== asText(purchase.articleIndex).toLowerCase()) {
+        throw createHttpError(409, 'Auftrag und Bestellung müssen denselben Artikel verwenden.', { code: 'PROCUREMENT_ARTICLE_MISMATCH' });
+      }
+      const originalPackagingType = purchase.originalPackagingType || purchaseDraft.packaging.text;
+      const originalPackagingTypeId = purchase.originalPackagingTypeId || purchaseDraft.packaging.id;
+      normalizedPositions.push({
+        beNumber: '', warehouseId: '', articleIndex: purchase.articleIndex,
+        deliveryDate: deliveryDate.toISOString(), valutaDate: valutaDateState.storedDate,
+        amountInKg, salePricePerKg, costPricePerKg, reservationInKg: null, reservationDate: null,
+        ...resolveArticleName({ requestedArticle: raw.article, canonicalArticle: raw.article || purchase.article }),
+        wpzId: null, wpzOriginal: null, wpzComment: asText(raw.wpzComment) || null,
+        originalPackagingType, originalPackagingTypeId,
+        packagingTypeChanged: packagingTypesChanged(orderLevel.packagingType, orderLevel.packagingTypeId, originalPackagingType, originalPackagingTypeId),
+        productContext: {}, purchaseDraft, purchaseRequest,
+        optionPositionId: purchase.optionPositionId,
+      });
+      continue;
+    }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
     const reservation = await resolveReservationInput({
       database: sourceDatabase,
@@ -1850,6 +1951,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       isFullAccess: accessScope.isFullAccess,
     });
     const productContext = await loadProductContext(sourceDatabase, beNumber, warehouseId);
+    if (raw.expectedProcurementArticle && asText(productContext.articleIndex).toLowerCase() !== raw.expectedProcurementArticle) {
+      throw createHttpError(409, 'VL und Bestellung müssen denselben Artikel verwenden.', { code: 'PROCUREMENT_ARTICLE_MISMATCH' });
+    }
     const articleName = resolveArticleName({
       requestedArticle: raw?.article,
       canonicalArticle: productContext.article,
@@ -1892,10 +1996,11 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     });
   }
 
+  const stockedPositions = normalizedPositions.filter((position) => position.beNumber);
   await applyFcaPickupAddress(req, body, orderLevel, normalizedPositions);
   await assertTempOrderPositionsAvailable({
     companyId,
-    positions: normalizedPositions,
+    positions: stockedPositions,
   });
 
   const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
@@ -1969,12 +2074,18 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     VALUES (${orderInsertValues.join(', ')})
   `;
   const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
-    if (conversion) {
-      await assertOrderConversion(query, req, conversion, clientReferenceId, normalizedPositions);
-      await lockTempOrderAvailability(query, companyId);
+    if (conversion || hasProcurement) await lockTempOrderAvailability(query, companyId);
+    if (hasProcurement) {
+      const prior = await query(`
+        SELECT * FROM ${TEMP_ORDER_TABLE} WHERE ta_company_id=? AND ta_CreatedBy=? AND ta_procurement_request_id=?
+      `, [companyId, userShortCode, procurementRequestId]);
+      if (prior.rows[0]) return prior.rows[0];
+    }
+    if (conversion) await assertOrderConversion(query, req, conversion, clientReferenceId, normalizedPositions);
+    if (conversion || hasProcurement) {
       await assertTempOrderPositionsAvailable({
         companyId,
-        positions: await loadCurrentOrderPositions(req.database, normalizedPositions, userShortCode, { allowAnyReservation: accessScope.isFullAccess }),
+        positions: await loadCurrentOrderPositions(req.database, stockedPositions, userShortCode, { allowAnyReservation: accessScope.isFullAccess }),
         query,
       });
     }
@@ -1984,6 +2095,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       throw createHttpError(500, 'Temp order create verification failed.', { code: 'TEMP_ORDER_CREATE_FAILED' });
     }
 
+    if (hasProcurement) await query(`UPDATE ${TEMP_ORDER_TABLE} SET ta_procurement_request_id=? WHERE ta_id=?`,
+      [procurementRequestId, createdRow.ta_id]);
     await insertTempOrderAttachments(query, {
       orderId: createdRow.ta_id,
       files: attachment.files,
@@ -1995,6 +2108,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       const pos = normalizedPositions[i];
       const posCtx = pos.productContext;
       const offerPositionId = conversion?.positionIds[i];
+      const purchase = pos.purchaseDraft ? await savePurchaseDraft(query, pos.purchaseRequest, pos.purchaseDraft) : null;
+      const purchasePositionId = purchase?.positions[0]?.id;
+      if (pos.purchaseDraft && !purchasePositionId) throw createHttpError(500, 'Bestellposition konnte nicht angelegt werden.');
       const posInsertColumns = [
         '[tap_ta_id]', '[tap_line_no]', '[tap_be_number]', '[tap_Artikelindex]', '[tap_article]', '[tap_Artikelname_Original]', '[tap_Artikelname_Gewechselt]', '[tap_amount_in_kg]', '[tap_warehouse]', '[tap_price]',
         '[tap_ep]', '[tap_reservation_in_kg]', '[tap_reservation_date]',
@@ -2004,12 +2120,13 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         '[tap_wpz_original]', '[tap_wpz_comment]', '[tap_wpz_id]', '[tap_Verpackungsart]', '[tap_Verpackungsart_id]', '[tap_Verpackungsart_Gewechselt]',
         '[tap_CreatedBy]', '[tap_CreateDate]', '[tap_LastModifiedBy]', '[tap_LastModifiedDate]',
         ...(offerPositionId ? ['[tap_offer_position_id]'] : []),
+        ...(purchasePositionId ? ['[tap_purchase_position_id]', '[tap_option_position_id]'] : []),
       ];
       const posSql = `
         INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
           ${posInsertColumns.join(', ')}
         )
-        ${offerPositionId ? 'OUTPUT INSERTED.tap_id AS id' : ''}
+        ${offerPositionId || purchasePositionId ? 'OUTPUT INSERTED.tap_id AS id' : ''}
         VALUES (${posInsertColumns.map(() => '?').join(', ')})
       `;
       const inserted = await query(posSql, [
@@ -2041,8 +2158,12 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         userShortCode,
         nowIso,
         ...(offerPositionId ? [offerPositionId] : []),
+        ...(purchasePositionId ? [purchasePositionId, pos.optionPositionId ?? null] : []),
       ]);
       if (offerPositionId) await linkOfferPosition(query, offerPositionId, inserted.rows[0].id);
+      if (purchasePositionId) await query(`
+        UPDATE ${PROCUREMENT_PURCHASE_POSITIONS} SET tbp_order_position_id=? WHERE tbp_id=?
+      `, [inserted.rows[0].id, purchasePositionId]);
     }
     if (conversion?.positionIds.some(Boolean)) {
       await markOfferConverted(query, conversion.offerId, req.database.firmaId, userShortCode);
@@ -2053,9 +2174,8 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
 
   sendEnvelope(res, {
     status: 201,
-    data: await mapTempOrderWithAttachments(
-      mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)),
-      created.ta_id,
+    data: hasProcurement ? await completeLinkedProcurement(req, created, companyId) : await mapTempOrderWithAttachments(
+      mapTempOrderWithPositions(created, await loadOrderPositions(created.ta_id)), created.ta_id,
     ),
     meta: { mandant: req.mandant },
     error: null,
@@ -2254,6 +2374,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
       resolvedMissingPackaging.set(Number(position.id), originalPackagingTypeInfo);
     }
   }
+  const checkProcurement = await procurementSchemaReady();
   let finalized;
   const tempOrderHeaderSelectSql = await getTempOrderHeaderSelectSql();
   try {
@@ -2342,6 +2463,7 @@ router.post('/temp-orders/:id/finalize', requireMandant, asyncHandler(async (req
         ORDER BY [tap_line_no] ASC
       `, [id]);
       const positions = positionsResult.rows || [];
+      if (checkProcurement) await assertLinkedOrderReady(query, id, companyId);
       const mappedOrder = mapTempOrderRow(orderRow);
       const attachmentResult = await query(`
         SELECT
@@ -2761,6 +2883,11 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       p.[tap_CreatedBy] AS createdBy,
       p.[tap_CreateDate] AS createdAt,
       ${hasColumn(positionCols, 'tap_offer_position_id') ? 'p.[tap_offer_position_id]' : 'NULL'} AS offerPositionId,
+      ${hasColumn(positionCols, 'tap_purchase_position_id') ? 'p.[tap_purchase_position_id]' : 'NULL'} AS purchasePositionId,
+      p.[tap_amount_in_kg] AS amountInKg,
+      p.[tap_wpz_id] AS wpzId,
+      p.[tap_wpz_original] AS wpzOriginal,
+      p.[tap_wpz_comment] AS wpzComment,
       o.[ta_ClientReferenceId] AS orderCustomerId
     FROM ${TEMP_ORDER_POSITION_TABLE} AS p
     INNER JOIN ${TEMP_ORDER_TABLE} AS o
@@ -2770,6 +2897,21 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       ${qualifiedOwnerFilter.whereSql}
   `, [id, companyId, ...qualifiedOwnerFilter.params]);
   const storedPositionsById = new Map((storedPositionRows || []).map((row) => [Number(row.id), row]));
+  const linked = [...storedPositionsById.values()].some((position) => position.purchasePositionId);
+  if (linked) {
+    assertProcurementAccess(userIdentity);
+    const retained = new Set(positionsInput.map((position) => Number(position.id)));
+    if (retained.size !== positionsInput.length || retained.size !== storedPositionsById.size
+      || positionsInput.some((position) => {
+        const saved = storedPositionsById.get(Number(position.id));
+        return !saved || Number(position.amountInKg) !== Number(saved.amountInKg)
+          || asText(saved.orderCustomerId) !== clientReferenceId
+          || asText(saved.beNumber) !== asText(position.beNumber)
+          || asText(saved.warehouseId) !== asText(position.warehouseId);
+      })) {
+      throw createHttpError(409, 'Kunde, Mengen und Quellen bleiben bei verknüpften Aufträgen erhalten.', { code: 'PROCUREMENT_POSITION_LOCKED' });
+    }
+  }
 
   const normalizedPositions = [];
   for (const raw of positionsInput) {
@@ -2779,7 +2921,9 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
     const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
-    if (!beNumber || !warehouseId) {
+    const stored = storedPositionsById.get(Number(raw?.id));
+    const awaitingPurchase = Boolean(stored?.purchasePositionId && !stored.beNumber);
+    if ((!beNumber || !warehouseId) && !awaitingPurchase) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });
     }
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
@@ -2787,6 +2931,17 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     }
     if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+    }
+    if (awaitingPurchase) {
+      const valuta = normalizeTempOrderValutaDate(raw?.valutaDate, deliveryDate, stored.valutaDate);
+      if (!valuta.valid) throw createHttpError(400, 'Invalid valuta date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      normalizedPositions.push({
+        ...stored, deliveryDate: deliveryDate.toISOString(), valutaDate: valuta.storedDate,
+        amountInKg, salePricePerKg, costPricePerKg, reservationInKg: null, reservationDate: null,
+        ...resolveArticleName({ requestedArticle: raw.article, storedArticle: stored.article, storedOriginalArticle: stored.articleOriginal }),
+        packagingTypeChanged: packagingTypesChanged(orderLevel.packagingType, orderLevel.packagingTypeId, stored.originalPackagingType, stored.originalPackagingTypeId),
+      });
+      continue;
     }
     const sourceDatabase = await resolvePositionDatabase(req, beNumber);
     const reservation = await resolveReservationInput({
@@ -2883,7 +3038,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
   await assertTempOrderPositionsAvailable({
     companyId,
     excludeOrderId: id,
-    positions: normalizedPositions,
+    positions: normalizedPositions.filter((position) => position.beNumber),
   });
 
   const deliveryDates = Array.from(new Set(normalizedPositions.map((pos) => String(pos.deliveryDate || '')).filter(Boolean)));
@@ -2980,10 +3135,22 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       throw createHttpError(409, 'Finalized temp order cannot be edited.', { code: 'TEMP_ORDER_FINALIZED', id });
     }
 
+    if (linked) {
+      const current = (await query(`
+        SELECT tap_id AS id,tap_be_number AS beNumber,tap_warehouse AS warehouseId
+        FROM ${TEMP_ORDER_POSITION_TABLE} WHERE tap_ta_id=?
+      `, [id])).rows;
+      if (current.length !== normalizedPositions.length || current.some((position) => {
+        const saved = storedPositionsById.get(Number(position.id));
+        return !saved || position.beNumber !== saved.beNumber || position.warehouseId !== saved.warehouseId;
+      })) {
+        throw createHttpError(409, 'Die VL-Zuordnung wurde aktualisiert. Bitte den Auftrag neu laden.', { code: 'PROCUREMENT_POSITION_CHANGED' });
+      }
+    }
     await assertTempOrderPositionsAvailable({
       companyId,
       excludeOrderId: id,
-      positions: await loadCurrentOrderPositions(req.database, normalizedPositions, lockedOrder.createdBy, { allowAnyReservation: true }),
+      positions: await loadCurrentOrderPositions(req.database, normalizedPositions.filter((position) => position.beNumber), lockedOrder.createdBy, { allowAnyReservation: true }),
       query,
     });
 
@@ -3214,6 +3381,31 @@ router.delete('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) 
       throw createHttpError(409, 'Finalized temp order cannot be deleted.', { code: 'TEMP_ORDER_FINALIZED', id });
     }
 
+    if (hasColumn(positionCols, 'tap_purchase_position_id')) {
+      const purchases = (await query(`
+        SELECT DISTINCT b.tb_id AS id,b.tb_status AS status
+        FROM ${TEMP_ORDER_POSITION_TABLE} p
+        JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp ON pp.tbp_id=p.tap_purchase_position_id
+        JOIN ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK) ON b.tb_id=pp.tbp_tb_id
+        WHERE p.tap_ta_id=? AND b.tb_company_id=?
+      `, [id, companyId])).rows;
+      if (purchases.length) {
+        assertProcurementAccess(userIdentity);
+        await query(`
+          UPDATE pp SET tbp_order_position_id=NULL FROM ${PROCUREMENT_PURCHASE_POSITIONS} pp
+          JOIN ${TEMP_ORDER_POSITION_TABLE} p ON p.tap_id=pp.tbp_order_position_id
+          WHERE p.tap_ta_id=?
+        `, [id]);
+        await query(`UPDATE ${TEMP_ORDER_POSITION_TABLE} SET tap_purchase_position_id=NULL WHERE tap_ta_id=?`, [id]);
+        for (const purchase of purchases) {
+          if (Number(purchase.status) === 0) {
+            await query(`DELETE FROM ${PROCUREMENT_PURCHASES} WHERE tb_id=? AND tb_status=0
+              AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS}
+                WHERE tbp_tb_id=? AND tbp_order_position_id IS NOT NULL)`, [purchase.id, purchase.id]);
+          }
+        }
+      }
+    }
     if (hasColumn(positionCols, 'tap_offer_position_id')) await unlinkOfferPositions(query, id);
     await query(`DELETE FROM ${TEMP_ORDER_POSITION_TABLE} WHERE [tap_ta_id] = ?`, [id]);
     await query(`DELETE FROM ${ORDER_MAIL_OUTBOX_TABLE} WHERE [om_OrderID] = ?`, [id]);

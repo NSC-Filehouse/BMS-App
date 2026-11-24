@@ -140,6 +140,11 @@ function fixture(options = {}) {
       },
     },
   };
+  dependencies['../pilot-features'] = require('../src/pilot-features');
+  dependencies['../db/linked-procurement'] = {
+    procurementSchemaReady: async () => false,
+    assertProcurementAccess: require('../src/db/linked-procurement').assertProcurementAccess,
+  };
   const attachmentModule = { exports: {} };
   const optionPdf = require('../src/options/purchase-order-pdf');
   const attachmentDependencies = {

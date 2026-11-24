@@ -30,6 +30,7 @@ const { pilotFeaturesForIdentity } = require('./pilot-features');
 const { hasExecutiveAccess } = require('./executive-access');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-outbox');
+const { startLinkedProcurementWorker } = require('./db/linked-procurement');
 const { startUnfinalizedOrderReminderWorker } = require('./db/unfinalized-order-reminder');
 const { startTempOrderReworkPushWorker } = require('./db/temp-order-rework-push');
 const { startVlCompletionMailWorker } = require('./db/vl-completion-mail');
@@ -161,6 +162,7 @@ app.listen(config.port, config.host, () => {
   startOrderMailOutboxWorker();
   startCreditLimitMailOutboxWorker();
   startUnfinalizedOrderReminderWorker();
+  startLinkedProcurementWorker(tempPurchaseOrdersRouter.finalizePurchase);
   startTempOrderReworkPushWorker();
   startVlCompletionMailWorker();
   startDailyVlMailWorker();

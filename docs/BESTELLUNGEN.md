@@ -158,6 +158,36 @@ werden weiterhin von dieser Übernahme gesetzt. Schema-Installation, produktive
 Datenänderungen und ein Serverneustart werden durch einen Code-Push nicht
 automatisch ausgeführt.
 
+## Kundenauftrag mit vorgelagerter Beschaffung (NSC-Pilot)
+
+Beim Speichern legt die App den Kundenauftrag und je zu beschaffender
+Auftragsposition eine Bestellung mit den beidseitigen Positionsreferenzen in
+einer Transaktion an. Eine bewusst gewählte VL-Teilmenge bleibt eine eigene
+Auftragsposition. Die App übergibt die Bestellung über den bestehenden
+CS-Ablauf. Nach einem Übergabefehler kann der AD die gespeicherte Bestellung
+über den Auftrag öffnen und senden.
+
+Die BMS-Übernahme muss für jede App-Position den daraus erzeugten
+`dbo.tblBest_Position.beP_BEposID` in
+`BMSApp.tbl_Temp_Best_Position.tbp_bms_position_id` zur ursprünglichen
+`tbp_id` zurückschreiben. Dazu gehören der neue Kopfindex
+`tb_bestellindex` und `tb_status = 2`. Bei genau einer Position in der
+App-Bestellung und genau einer Position unter dem bestätigten BMS-Kopf
+kann die App die Position über diesen Kopf auflösen, wenn Lieferant und
+Artikel übereinstimmen. Mehrdeutige Rückgaben warten auf eine eindeutige
+Positions-ID. Die historischen `tbp_source_*`-Felder behalten ihre Bedeutung.
+
+Der Abgleich wartet auf die VL-Position und den dafür verfügbaren Bestand im
+aktiven Mandanten. Danach kann der AD den Kundenauftrag über dessen
+bestehende Abschlussaktion an BMS übergeben. Der normale Entwurfs-Reminder
+überspringt verknüpfte Entwürfe. Für NSC zählt er zusätzlich eigenständige
+Bestellentwürfe.
+
+Für den Pilotstart den aktuellen Installer in der zentralen Testdatenbank
+anwenden. Die Rückgabe im Testmandanten mit Status 2, Einzel- und
+Mehrfachpositionen, verzögerter VL und dem bestehenden Mail-/Push-Ablauf
+prüfen.
+
 ## Lieferantenbezeichnungen und Rechnungen (29.10.2026)
 
 In „Bereits eingekaufte Artikel“ ist die Lieferantenbezeichnung führend. Fehlt sie im Artikelstamm, wird die letzte beim Lieferanten verwendete Bestellbezeichnung genutzt. Unsere interne Bezeichnung bleibt ein separates Feld und erscheint nur beim Bestellen bzw. in Bestellansichten klein unter der Lieferantenbezeichnung. Speichern, Kopieren und Finalisieren übernehmen den Lieferantennamen in tbp_article; vorhandene Entwürfe mit unserer aktuellen Stammdatenbezeichnung werden vor der Übergabe korrigiert. Bereits finalisierte Datensätze werden dabei nicht umgeschrieben. Die interne Bezeichnung wird lesend aus dem jeweiligen Mandanten ergänzt; neue Spalten sind nicht erforderlich.

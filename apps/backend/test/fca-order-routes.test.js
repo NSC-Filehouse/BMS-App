@@ -12,6 +12,9 @@ let sourcePackagingError;
 let sourceOffer;
 let sourceOfferPositions;
 let rejectBacklink;
+let purchases;
+let procurementEnabled;
+let failPurchase;
 const positionColumns = ['tap_id', 'tap_ta_id', 'tap_line_no', 'tap_be_number', 'tap_Artikelindex', 'tap_article', 'tap_Artikelname_Original',
   'tap_Artikelname_Gewechselt', 'tap_amount_in_kg', 'tap_warehouse', 'tap_price', 'tap_ep', 'tap_delivery_date', 'tap_ValutaDatum',
   'tap_about', 'tap_mfi', 'tap_wpz_id', 'tap_wpz_original', 'tap_wpz_comment', 'tap_Verpackungsart', 'tap_Verpackungsart_id',
@@ -25,6 +28,7 @@ function reset() {
   order = null; savedPositions = []; writes = []; pickupReads = 0;
   sourcePackagingType = 'Sackware'; sourcePackagingError = false;
   sourceOffer = null; sourceOfferPositions = []; rejectBacklink = false;
+  purchases = []; procurementEnabled = false; failPurchase = false;
 }
 function insertFields(sql, params) {
   const columns = sql.match(/INSERT INTO[^\n]+\(([\s\S]*?)\)\s*(?:OUTPUT|VALUES)/i)[1];
@@ -41,14 +45,31 @@ function mappedPosition(row) {
     warehouse: row.tap_warehouse, warehouseId: row.tap_warehouse, deliveryDate: row.tap_delivery_date, valutaDate: row.tap_ValutaDatum,
     originalPackagingType: row.tap_Verpackungsart, originalPackagingTypeId: row.tap_Verpackungsart_id,
     about: row.tap_about, mfi: row.tap_mfi, createdBy: row.tap_CreatedBy, createdAt: row.tap_CreateDate,
-    offerPositionId: row.tap_offer_position_id, orderCustomerId: order?.ta_ClientReferenceId,
+    offerPositionId: row.tap_offer_position_id, purchasePositionId: row.tap_purchase_position_id, orderCustomerId: order?.ta_ClientReferenceId,
   };
 }
 async function sqlQuery(database, sql, params = []) {
-  if (sql.includes('COL_LENGTH')) return [{ ready: Number(Boolean(sourceOffer)) }];
-  if (sql.includes('UPDATE [BMSApp].[tbl_Temp_Angebot]')) {
+  if (sql.includes('COL_LENGTH')) return [{ ready: Number(sql.includes('ta_procurement_notified_at') ? procurementEnabled : Boolean(sourceOffer)) }];
+  if (sql.includes('SET ta_procurement_request_id=?')) {
+    order.ta_procurement_request_id = params[0];
+    return [];
+  }
+  if (sql.includes('WHERE ta_company_id=? AND ta_CreatedBy=? AND ta_procurement_request_id=?')) {
+    return order?.ta_procurement_request_id === params[2] ? [order] : [];
+  }
+  if (sql.includes('SET tbp_order_position_id=?')) {
+    purchases.find((purchase) => purchase.positionId === params[1]).orderPositionId = params[0];
+    return [];
+  }
+  if (sql.includes('tbp_bms_position_id AS bmsPositionId')) {
+    return purchases.filter((purchase) => savedPositions.some((position) => position.tap_id === purchase.orderPositionId
+      && position.tap_ta_id === params[0])).map((purchase) => ({
+      purchaseStatus: purchase.status, purchaseId: purchase.id, beNumber: '', warehouseId: '',
+    }));
+  }
+  if (sql.includes('UPDATE offer SET tag_status=4')) {
     assert.deepEqual(params, ['NSC', sourceOffer.id, 3]);
-    sourceOffer.status = 4;
+    if (sourceOfferPositions.every((row) => row.orderPositionId)) sourceOffer.status = 4;
     return [];
   }
   if (sql.includes('FROM [BMSApp].[tbl_Temp_Angebot]')) {
@@ -120,11 +141,11 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     return [];
   },
   withSqlTransaction: async (database, work) => {
-    const prior = structuredClone({ order, savedPositions, sourceOfferPositions });
+    const prior = structuredClone({ order, savedPositions, sourceOfferPositions, purchases });
     try {
       return await work({ query: async (sql, params) => ({ rows: await sqlQuery(database, sql, params), rowsAffected: [1] }) });
     } catch (error) {
-      ({ order, savedPositions, sourceOfferPositions } = prior);
+      ({ order, savedPositions, sourceOfferPositions, purchases } = prior);
       throw error;
     }
   },
@@ -136,6 +157,21 @@ require.cache[require.resolve('../src/db/delivery-addresses')] = { exports: {
   loadCustomerDeliveryAddresses: async () => [{ id: 51, text: 'Customer warehouse' }],
 } };
 require.cache[require.resolve('../src/db/temp-order-planning')] = { exports: { ...planning, loadTempOrderPlanning: async () => new Map() } };
+require.cache[require.resolve('../src/routes/temp-purchase-orders.routes')] = { exports: {
+  preparePurchaseDraft: async (request) => ({
+    positions: request.body.positions,
+    packaging: { text: 'Sackware', id: 1 },
+  }),
+  savePurchaseDraft: async (_query, _request, draft) => {
+    if (failPurchase) throw new Error('Simulated purchase insert failure');
+    const purchase = { id: 100 + purchases.length, positionId: 200 + purchases.length, amount: draft.positions[0].amount, status: 0 };
+    purchases.push(purchase);
+    return { id: purchase.id, positions: [{ id: purchase.positionId }] };
+  },
+  finalizePurchase: async (_request, id) => {
+    purchases.find((purchase) => purchase.id === id).status = 1;
+  },
+} };
 const router = require('../src/routes/temp-orders.routes');
 
 function payload(overrides = {}) {
@@ -172,7 +208,7 @@ test('the order route links only retained offer lines and frees them on removal 
   rejectBacklink = false;
 
   const created = await request('post', conversion);
-  assert.equal(sourceOffer.status, 4);
+  assert.equal(sourceOffer.status, 2);
   assert.equal(created.data.positions[0].offerPositionId, 13);
   assert.equal(created.data.positions[1].offerPositionId, undefined);
   assert.equal(sourceOfferPositions[0].orderPositionId, created.data.positions[0].id);
@@ -186,6 +222,46 @@ test('the order route links only retained offer lines and frees them on removal 
   await request('delete');
   assert.equal(sourceOfferPositions[1].orderPositionId, null);
   assert.equal(order, null);
+});
+
+test('coupled creation stores an explicit VL remainder, both references and one handoff across a retry', async () => {
+  reset();
+  procurementEnabled = true;
+  const base = payload().positions[0];
+  const position = {
+    ...base, articleIndex: 'A1', beNumber: '', warehouseId: '', amountInKg: 100,
+    procurement: {
+      header: { supplierId: 'S1' },
+      position: { articleIndex: 'A1', optionPositionId: 9, amount: 60 },
+      stock: { beNumber: base.beNumber, warehouseId: base.warehouseId },
+    },
+  };
+  const input = payload({
+    incotermId: 2, procurementRequestId: '35f27c04-0b5f-4367-9f79-2ec0259a5331', positions: [position],
+  });
+  await assert.rejects(request('post', input, { shortCode: 'AD' }), { status: 403 });
+  failPurchase = true;
+  await assert.rejects(request('post', input), /Simulated purchase insert failure/);
+  assert.equal(order, null);
+  assert.equal(savedPositions.length, 0);
+  assert.equal(purchases.length, 0);
+
+  failPurchase = false;
+  const result = await request('post', input);
+  assert.equal(result.data.procurement.status, 'purchase');
+  assert.equal(purchases[0].status, 1);
+  assert.equal(purchases[0].amount, 60);
+  assert.equal(purchases[0].orderPositionId, savedPositions[0].tap_id);
+  assert.equal(savedPositions[0].tap_purchase_position_id, purchases[0].positionId);
+  assert.equal(savedPositions[0].tap_option_position_id, 9);
+  assert.equal(savedPositions[0].tap_be_number, '');
+  assert.equal(savedPositions[1].tap_be_number, base.beNumber);
+  assert.deepEqual(savedPositions.map((row) => row.tap_amount_in_kg), [60, 40]);
+
+  const retry = await request('post', input);
+  assert.equal(retry.data.id, result.data.id);
+  assert.equal(purchases.length, 1);
+  assert.equal(savedPositions.length, 2);
 });
 
 test('create, edit and copy persist FCA pickup text in the existing fields without the sales customer FK', async () => {

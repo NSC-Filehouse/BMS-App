@@ -22,6 +22,7 @@ function pilotFeaturesForIdentity(identity) {
   return {
     offers: enabled,
     offerToOrder: matches(OFFER_ORDER_USER),
+    linkedProcurement: matches(OFFER_ORDER_USER),
     purchaseOrders: purchasingEnabled,
     options: purchasingEnabled,
     optionsVlPreview: enabled,

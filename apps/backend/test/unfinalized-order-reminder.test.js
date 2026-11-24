@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  standalonePurchaseCountsSql,
   buildOpenOrderCountSql,
   buildOpenOrderCountsByOwnerSql,
   formatReminderPushBody,
@@ -42,6 +43,8 @@ test('open order count query only selects own non-final orders', () => {
   assert.match(sql, /COUNT_BIG\(\*\)/);
   assert.match(sql, /ta_CreatedBy/);
   assert.match(sql, /ta_Status/);
+  assert.match(sql, /NOT EXISTS/);
+  assert.match(sql, /tap_purchase_position_id IS NOT NULL OR p.tap_offer_position_id IS NOT NULL/);
   assert.match(sql, /COALESCE\(\[ta_Status\], 0\) IN \(0, 3\)/);
 });
 
@@ -51,6 +54,13 @@ test('all-user query groups open orders by normalized creator short code', () =>
   assert.match(sql, /openOrderCount/);
   assert.match(sql, /GROUP BY LOWER\(LTRIM\(RTRIM\(COALESCE\(\[ta_CreatedBy\]/);
   assert.match(sql, /ta_Status/);
+});
+
+test('the purchase reminder selects only standalone drafts in the NSC pilot', () => {
+  const sql = standalonePurchaseCountsSql();
+  assert.match(sql, /tb_status=0/);
+  assert.match(sql, /tb_created_by\)\)\)='nsc'/);
+  assert.match(sql, /NOT EXISTS.*tbp_order_position_id IS NOT NULL/s);
 });
 
 test('reminder push text is localized and includes the count', () => {

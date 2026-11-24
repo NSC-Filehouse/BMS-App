@@ -44,8 +44,9 @@ test('the four active executives can use every regular mandant and cannot resolv
     assert.equal(hasExecutiveAccess({ ...identity, personNumber: 999 }), false);
     assert.equal(hasExecutiveAccess({ ...identity, userId: 'different' }), false);
     assert.equal(hasExecutiveAccess({ ...identity, shortCode: 'OTHER' }), false);
-    const { offerToOrder, ...sharedFeatures } = pilotFeaturesForIdentity(identity);
+    const { offerToOrder, linkedProcurement, ...sharedFeatures } = pilotFeaturesForIdentity(identity);
     assert.equal(offerToOrder, false);
+    assert.equal(linkedProcurement, false);
     assert.ok(Object.values(sharedFeatures).every(Boolean));
     assert.deepEqual((await getMandantsForIdentity(identity)).map(row => row.firmaId).sort(), [1, 3]);
     assert.equal((await getDatabaseConnectionForIdentity(identity, 'Frupack')).firmaId, 3);

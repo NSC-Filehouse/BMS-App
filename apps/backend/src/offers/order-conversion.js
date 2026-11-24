@@ -9,6 +9,7 @@ const { createHttpError } = require('../utils');
 const { H, P, read } = require('./storage');
 
 const orderPositions = appTableSql('tempOrderPosition');
+const offerMail = 'BMSApp.OptionOfferMailOutbox';
 const text = (value) => String(value ?? '').trim();
 
 async function hasOfferOrderSchema(query) {
@@ -42,7 +43,31 @@ async function readOfferForOrder(query, req, offerId, owner, locked = false) {
     });
   }
   const linked = await linkedOfferPositions(query, offer.id);
-  return { ...offer, positions: offer.positions.filter((position) => !linked.has(Number(position.id))) };
+  const positions = offer.positions.filter((position) => !linked.has(Number(position.id)));
+  const [schema] = (await query(`SELECT CASE WHEN COL_LENGTH(?, 'tagp_option_position_id') IS NOT NULL
+    AND COL_LENGTH(?, 'TempOfferId') IS NOT NULL THEN 1 ELSE 0 END AS sourcesReady`,
+  [appTableDisplayName('tempOfferPosition'), offerMail])).rows;
+  if (Number(schema?.sourcesReady) === 1 && positions.length) {
+    const rows = (await query(`
+      SELECT p.tagp_id AS id, COALESCE(p.tagp_option_position_id, legacy.optionPositionId) AS optionPositionId,
+             op.opp_op_id AS optionId
+      FROM ${P} p
+      OUTER APPLY (
+        SELECT CASE WHEN COUNT(DISTINCT m.OptionPositionId)=1 THEN MIN(m.OptionPositionId) END AS optionPositionId
+        FROM ${offerMail} m
+        WHERE m.TempOfferId=p.tagp_offer_id AND m.CompanyId=? AND m.ArticleIndex=p.tagp_article_index
+        AND (SELECT COUNT(*) FROM ${P} x WHERE x.tagp_offer_id=p.tagp_offer_id)=1
+      ) legacy
+      LEFT JOIN ${appTableSql('optionPositions')} op ON op.opp_id=COALESCE(p.tagp_option_position_id,legacy.optionPositionId)
+      WHERE p.tagp_offer_id=?
+    `, [req.database.firmaId, offer.id])).rows;
+    const sources = new Map(rows.map((row) => [Number(row.id), row]));
+    for (const position of positions) {
+      const source = sources.get(Number(position.id));
+      if (source?.optionId) Object.assign(position, { optionId: source.optionId, optionPositionId: source.optionPositionId });
+    }
+  }
+  return { ...offer, positions };
 }
 
 async function assertOfferPositionsEditable(query, offerId) {
@@ -84,7 +109,8 @@ async function assertOrderConversion(query, req, conversion, customerId, positio
     if (!sourceId) return;
     const source = sources.get(sourceId);
     if (!source || text(source.articleIndex).toLowerCase() !== text(position.articleIndex).toLowerCase()
-      || !offerKilogramsPerUnit(source.unit)) {
+      || !offerKilogramsPerUnit(source.unit)
+      || (position.purchaseDraft && source.optionPositionId && Number(source.optionPositionId) !== Number(position.optionPositionId))) {
       throw createHttpError(409, 'Eine Angebotsposition wurde bereits übernommen oder passt nicht zum gewählten Artikel.', {
         code: 'OFFER_ORDER_POSITION_CONFLICT',
       });
@@ -105,17 +131,38 @@ async function linkOfferPosition(query, offerPositionId, orderPositionId) {
 
 async function markOfferConverted(query, offerId, companyId, userShortCode) {
   await query(`
-    UPDATE ${H} SET tag_status=4,tag_modified_at=SYSUTCDATETIME(),tag_modified_by=?
-    WHERE tag_id=? AND tag_company_id=? AND tag_status<>4
+    UPDATE offer SET tag_status=4,tag_modified_at=SYSUTCDATETIME(),tag_modified_by=?
+    FROM ${H} offer
+    WHERE offer.tag_id=? AND offer.tag_company_id=? AND offer.tag_status<>4
+      AND NOT EXISTS (SELECT 1 FROM ${P} WHERE tagp_offer_id=offer.tag_id AND tagp_order_position_id IS NULL)
   `, [userShortCode, offerId, companyId]);
 }
 
 async function unlinkOfferPositions(query, orderId, retainedIds = []) {
-  await query(`
+  const result = await query(`
     UPDATE p SET p.tagp_order_position_id=NULL
+    OUTPUT DELETED.tagp_offer_id AS id
     FROM ${P} p JOIN ${orderPositions} o ON o.tap_id=p.tagp_order_position_id
     WHERE o.tap_ta_id=? ${retainedIds.length ? `AND o.tap_id NOT IN (${retainedIds.map(() => '?').join(',')})` : ''}
   `, [orderId, ...retainedIds]);
+  const affected = [...new Set(result.rows.map((row) => Number(row.id)))];
+  if (affected.length) {
+    await query(`UPDATE ${H}
+      SET tag_status=CASE WHEN NULLIF(tag_bms_offer_number,'') IS NULL THEN 0 ELSE 2 END,tag_modified_at=SYSUTCDATETIME()
+      WHERE tag_status=4 AND tag_id IN (${affected.map(() => '?').join(',')})
+    `, affected);
+  }
+}
+
+async function loadOfferOrderIds(query, offerId, companyId) {
+  const result = await query(`
+    SELECT DISTINCT o.ta_id AS id FROM ${P} p
+      JOIN ${orderPositions} op ON op.tap_id=p.tagp_order_position_id AND op.tap_offer_position_id=p.tagp_id
+      JOIN ${appTableSql('tempOrder')} o ON o.ta_id=op.tap_ta_id
+    WHERE p.tagp_offer_id=? AND o.ta_company_id=?
+    ORDER BY o.ta_id
+  `, [offerId, companyId]);
+  return result.rows.map((row) => Number(row.id));
 }
 
 function offerKilogramsPerUnit(unit) {
@@ -181,6 +228,7 @@ async function prepareOfferOrder(req, offer) {
     if (selected) allocated.set(selected.key, (allocated.get(selected.key) || 0) + amountInKg);
     return {
       offerPositionId: position.id, articleIndex: position.articleIndex, article: position.article,
+      optionId: position.optionId, optionPositionId: position.optionPositionId,
       offerQuantity: position.quantity, offerUnit: position.unit, amountInKg,
       price: kgPerUnit ? (Number(position.price) * 1000) / (Number(position.priceBasis) * kgPerUnit) : null,
       costPrice: Number(position.costPrice) || selected?.costPrice || null,
@@ -209,5 +257,5 @@ async function prepareOfferOrder(req, offer) {
 
 module.exports = {
   readOfferForOrder, assertOfferPositionsEditable, orderConversionInput, assertOrderConversion,
-  linkOfferPosition, markOfferConverted, unlinkOfferPositions, prepareOfferOrder,
+  linkOfferPosition, markOfferConverted, unlinkOfferPositions, prepareOfferOrder, loadOfferOrderIds, hasOfferOrderSchema,
 };

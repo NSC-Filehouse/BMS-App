@@ -334,14 +334,22 @@ export default function TempOfferDetail() {
                 </Button>
               )}
             </Box>
-            {(offer.canMarkNotInterested || features.offerToOrder) && (
+            {offer.orders?.length > 0 && <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 1 }}>
+              {offer.orders.map((order) => <Box key={order.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Button size="small" onClick={() => navigate('/temp-orders/' + order.id, { state: { returnTo: createReturnTo(location, state) } })}>
+                  {t('procurement_order_link', { id: order.id })}
+                </Button>
+                {order.procurementStatus && <Typography variant="caption">{t('procurement_status_' + order.procurementStatus)}</Typography>}
+              </Box>)}
+            </Box>}
+            {(offer.canMarkNotInterested || (features.offerToOrder && !offer.readOnly && offer.status !== 4)) && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
                 {offer.canMarkNotInterested && (
                   <Button variant="outlined" disabled={busy} onClick={() => setAction('not-interested')}>
                     {t('offer_not_interested')}
                   </Button>
                 )}
-                {features.offerToOrder && (
+                {features.offerToOrder && !offer.readOnly && offer.status !== 4 && (
                   <Button
                     variant="contained"
                     color="primary"

@@ -1,7 +1,9 @@
 const config = require('../config');
 const logger = require('../logger');
 const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
-const { appTableSql } = require('./app-tables');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { procurementSchemaReady } = require('./linked-procurement');
+const { appTableDisplayName, appTableSql } = require('./app-tables');
 const { getUserIdentitiesByShortCodes, getUserIdentityByEmail } = require('./users');
 const { sendDirectPushNotificationToUser } = require('./push');
 const {
@@ -13,6 +15,32 @@ const {
 
 const TEMP_ORDER_TABLE = appTableSql('tempOrder');
 const REMINDER_STATE_TABLE = appTableSql('orderReminderState');
+const ORDER_POSITIONS = appTableSql('tempOrderPosition');
+const PURCHASES = appTableSql('tempPurchaseOrder');
+const PURCHASE_POSITIONS = appTableSql('tempPurchaseOrderPosition');
+
+async function hasOrderLinks() {
+  const [row] = await runSQLQuerySqlServer(config.sql.database, `
+    SELECT CASE WHEN COL_LENGTH(?, 'tap_offer_position_id') IS NOT NULL
+       AND COL_LENGTH(?, 'tap_purchase_position_id') IS NOT NULL THEN 1 ELSE 0 END AS ready
+  `, [appTableDisplayName('tempOrderPosition'), appTableDisplayName('tempOrderPosition')]);
+  return Number(row?.ready) === 1;
+}
+
+function excludeLinkedOrders(tableName, excludeLinks) {
+  return excludeLinks ? `AND NOT EXISTS (
+    SELECT 1 FROM ${ORDER_POSITIONS} p WHERE p.tap_ta_id=${tableName}.ta_id
+      AND (p.tap_purchase_position_id IS NOT NULL OR p.tap_offer_position_id IS NOT NULL)
+  )` : '';
+}
+
+function standalonePurchaseCountsSql() {
+  return `SELECT LOWER(LTRIM(RTRIM(tb_created_by))) AS userShortCode,COUNT_BIG(*) AS openPurchaseCount
+    FROM ${PURCHASES} b
+    WHERE tb_status=0 AND LOWER(LTRIM(RTRIM(tb_created_by)))='nsc'
+      AND NOT EXISTS (SELECT 1 FROM ${PURCHASE_POSITIONS} p WHERE p.tbp_tb_id=b.tb_id AND p.tbp_order_position_id IS NOT NULL)
+    GROUP BY LOWER(LTRIM(RTRIM(tb_created_by)))`;
+}
 const STALE_LOCK_MINUTES = 10;
 const DEFAULT_RETRY_DELAY_MINUTES = 10;
 
@@ -46,16 +74,17 @@ function normalizeReminderConfig(reminderConfig = config.unfinalizedOrderReminde
   };
 }
 
-function buildOpenOrderCountSql(tableName = TEMP_ORDER_TABLE) {
+function buildOpenOrderCountSql(tableName = TEMP_ORDER_TABLE, excludeLinks = true) {
   return `
     SELECT COUNT_BIG(*) AS openCount
     FROM ${tableName}
     WHERE LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) = ?
       AND COALESCE([ta_Status], 0) IN (0, 3)
+      ${excludeLinkedOrders(tableName, excludeLinks)}
   `;
 }
 
-function buildOpenOrderCountsByOwnerSql(tableName = TEMP_ORDER_TABLE) {
+function buildOpenOrderCountsByOwnerSql(tableName = TEMP_ORDER_TABLE, excludeLinks = true) {
   return `
     SELECT
       LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) AS userShortCode,
@@ -63,6 +92,7 @@ function buildOpenOrderCountsByOwnerSql(tableName = TEMP_ORDER_TABLE) {
     FROM ${tableName}
     WHERE COALESCE([ta_Status], 0) IN (0, 3)
       AND LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], '')))) <> ''
+    ${excludeLinkedOrders(tableName, excludeLinks)}
     GROUP BY LOWER(LTRIM(RTRIM(COALESCE([ta_CreatedBy], ''))))
   `;
 }
@@ -91,7 +121,7 @@ function addMinutes(date, minutes) {
 async function loadOpenOrderCount(shortCode) {
   const rows = await runSQLQuerySqlServer(
     config.sql.database,
-    buildOpenOrderCountSql(),
+    buildOpenOrderCountSql(TEMP_ORDER_TABLE, await hasOrderLinks()),
     [asText(shortCode).toLowerCase()],
   );
   const value = rows?.[0]?.openCount;
@@ -102,7 +132,7 @@ async function loadOpenOrderCount(shortCode) {
 async function loadOpenOrderCountsByOwner() {
   const rows = await runSQLQuerySqlServer(
     config.sql.database,
-    buildOpenOrderCountsByOwnerSql(),
+    buildOpenOrderCountsByOwnerSql(TEMP_ORDER_TABLE, await hasOrderLinks()),
     [],
   );
   return (Array.isArray(rows) ? rows : [])
@@ -179,7 +209,8 @@ async function claimReminderState({ userEmail, userShortCode, openOrderCount, no
 async function completeReminderState(stateId, { openOrderCount, channel, intervalMinutes }) {
   const now = new Date();
   const nowIso = now.toISOString();
-  const nextCheckAt = addMinutes(now, intervalMinutes);
+  const intervalMs = intervalMinutes * 60_000;
+  const nextCheckAt = new Date((Math.floor(now.getTime() / intervalMs) + 1) * intervalMs).toISOString();
   await runSQLQuerySqlServer(config.sql.database, `
     UPDATE ${REMINDER_STATE_TABLE}
     SET [ors_LastOpenOrderCount] = ?,
@@ -232,7 +263,7 @@ function mapReminderUser(identity) {
   if (!isEmailAddress(email)) {
     throw new Error(`Keine gueltige E-Mail-Adresse fuer Reminder-Benutzer: ${email || '-'}`);
   }
-  return { email, shortCode };
+  return { email, shortCode, canRemindPurchases: pilotFeaturesForIdentity(identity).linkedProcurement };
 }
 
 async function resolveConfiguredReminderUser(settings) {
@@ -249,15 +280,27 @@ function buildReminderClientMessageId(email, intervalMinutes, now = new Date()) 
   return `bms-app:open-order-reminder:${normalizeEmail(email)}:${slot}`;
 }
 
-async function deliverReminder({ email, openOrderCount, intervalMinutes }) {
+function reminderMessage(openOrderCount, openPurchaseCount, lang) {
+  const parts = [];
+  if (openOrderCount) parts.push(formatReminderPushBody(openOrderCount, lang));
+  if (openPurchaseCount) parts.push(lang === 'en'
+    ? `You still have ${openPurchaseCount} open purchase ${openPurchaseCount === 1 ? 'draft' : 'drafts'}.`
+    : `Du hast noch ${openPurchaseCount} offene ${openPurchaseCount === 1 ? 'Bestellung' : 'Bestellungen'}.`);
+  return parts.join(' ');
+}
+
+async function deliverReminder({ email, openOrderCount, openPurchaseCount, intervalMinutes }) {
+  const purchaseOnly = !openOrderCount && openPurchaseCount > 0;
   let pushResult;
   try {
     pushResult = await sendDirectPushNotificationToUser({
       email,
-      titleByLanguage: (language) => formatReminderPushTitle(language),
-      bodyByLanguage: (language) => formatReminderPushBody(openOrderCount, language),
+      titleByLanguage: (language) => openPurchaseCount
+        ? (language === 'en' ? 'BMS App - open drafts' : 'BMS-App - offene Entwürfe')
+        : formatReminderPushTitle(language),
+      bodyByLanguage: (language) => reminderMessage(openOrderCount, openPurchaseCount, language),
       tag: `unfinalized-order-reminder-${email}`,
-      data: { path: 'temp-orders?status=draft&ownerScope=mine' },
+      data: { path: purchaseOnly ? 'temp-purchase-orders?status=draft&ownerScope=mine' : 'temp-orders?status=draft&ownerScope=mine' },
     });
   } catch (error) {
     logger.warn(`Push fuer Auftrags-Reminder fehlgeschlagen: ${error?.message || error}`);
@@ -280,14 +323,16 @@ async function deliverReminder({ email, openOrderCount, intervalMinutes }) {
     orderMailConfig: config.orderMail,
     mailServiceConfig: config.mailService,
     recipient: email,
-    subject: UNFINALIZED_ORDER_REMINDER_SUBJECT,
-    body: formatUnfinalizedOrderReminderBody({ count: openOrderCount }),
+    subject: openPurchaseCount ? 'BMS-App: offene Entwürfe' : UNFINALIZED_ORDER_REMINDER_SUBJECT,
+    body: openPurchaseCount
+      ? reminderMessage(openOrderCount, openPurchaseCount, 'de')
+      : formatUnfinalizedOrderReminderBody({ count: openOrderCount }),
     clientMessageId: buildReminderClientMessageId(email, intervalMinutes),
   });
   return { channel: 'email', transport: delivery.transport, pushResult };
 }
 
-async function processReminderForUser({ user, openOrderCount, intervalMinutes }) {
+async function processReminderForUser({ user, openOrderCount, openPurchaseCount = 0, intervalMinutes }) {
   let stateId = null;
   try {
     stateId = await claimReminderState({
@@ -299,7 +344,7 @@ async function processReminderForUser({ user, openOrderCount, intervalMinutes })
       return { status: 'not_due', email: user.email, openOrderCount };
     }
 
-    if (openOrderCount === 0) {
+    if (openOrderCount === 0 && openPurchaseCount === 0) {
       await completeReminderState(stateId, {
         openOrderCount,
         channel: null,
@@ -312,6 +357,7 @@ async function processReminderForUser({ user, openOrderCount, intervalMinutes })
     const delivery = await deliverReminder({
       email: user.email,
       openOrderCount,
+      openPurchaseCount,
       intervalMinutes,
     });
     await completeReminderState(stateId, {
@@ -355,18 +401,26 @@ async function runUnfinalizedOrderReminder() {
 
   workerRunning = true;
   try {
+    const purchaseCounts = await procurementSchemaReady()
+      ? await runSQLQuerySqlServer(config.sql.database, standalonePurchaseCountsSql(), [])
+      : [];
+    const purchasesByOwner = new Map(purchaseCounts.map((row) => [row.userShortCode, Number(row.openPurchaseCount)]));
     if (settings.hasConfiguredUser) {
       const user = await resolveConfiguredReminderUser(settings);
       const openOrderCount = await loadOpenOrderCount(user.shortCode);
       const result = await processReminderForUser({
         user,
         openOrderCount,
+        openPurchaseCount: user.canRemindPurchases ? purchasesByOwner.get(user.shortCode.toLowerCase()) || 0 : 0,
         intervalMinutes: settings.intervalMinutes,
       });
       return { enabled: true, mode: 'test-user', ...result };
     }
 
     const ownerCounts = await loadOpenOrderCountsByOwner();
+    for (const userShortCode of purchasesByOwner.keys()) {
+      if (!ownerCounts.some((owner) => owner.userShortCode === userShortCode)) ownerCounts.push({ userShortCode, openOrderCount: 0 });
+    }
     const identitiesByShortCode = await getUserIdentitiesByShortCodes(
       ownerCounts.map((row) => row.userShortCode),
     );
@@ -401,6 +455,7 @@ async function runUnfinalizedOrderReminder() {
       results.push(await processReminderForUser({
         user,
         openOrderCount: owner.openOrderCount,
+        openPurchaseCount: user.canRemindPurchases ? purchasesByOwner.get(owner.userShortCode) || 0 : 0,
         intervalMinutes: settings.intervalMinutes,
       }));
     }
@@ -442,6 +497,7 @@ function startUnfinalizedOrderReminderWorker() {
 }
 
 module.exports = {
+  standalonePurchaseCountsSql,
   buildOpenOrderCountSql,
   buildOpenOrderCountsByOwnerSql,
   buildReminderClientMessageId,

@@ -48,7 +48,7 @@ export default function TempPurchaseOrderDetail() {
   const finalize = async () => {
     if (working) return;
     setWorking(true); setError('');
-    try { const response = await apiRequest(`/temp-purchase-orders/${encodeURIComponent(id)}/finalize`, { method: 'POST' }); setItem(response.data); }
+    try { const response = await apiRequest(`/temp-purchase-orders/${encodeURIComponent(id)}/finalize`, { method: 'POST' }); setItem((previous) => ({ ...response.data, linkedOrderIds: previous?.linkedOrderIds })); }
     catch (e) { setError(e.message || 'Senden fehlgeschlagen.'); }
     finally { setWorking(false); }
   };
@@ -75,6 +75,10 @@ export default function TempPurchaseOrderDetail() {
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {!loading && item && <Card sx={{ width: '100%', minWidth: 0 }}><CardContent sx={{ pt: 2, minWidth: 0 }}>
       <Typography variant="h6">{item.positions.some(p=>p.optionId!=null)?'Bestellung (Option)':'Bestellung'}</Typography>
+      {item.linkedOrderIds?.map((orderId) => <Button key={orderId} size="small"
+        onClick={() => navigate('/temp-orders/' + orderId, { state: { returnTo: createReturnTo(location) } })}>
+        {t('procurement_order_link', { id: orderId })}
+      </Button>)}
       <InfoRow label="Lieferant" value={item.supplierName} />
       <InfoRow label="Lieferantennummer" value={item.supplierId} />
       <InfoRow label="Anschrift" value={item.supplierAddress} />
@@ -119,7 +123,7 @@ export default function TempPurchaseOrderDetail() {
           shoppingReturnTo: location.state?.shoppingReturnTo || supplierReturnTo(item.supplierId),
         } })}>Bearbeiten</Button>}
         <Button variant="outlined" disabled={working} onClick={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(item.supplierId), '/suppliers')}>Weiter einkaufen</Button>
-        {editable && <Button variant="outlined" color="error" onClick={remove} disabled={working}>Löschen</Button>}
+        {editable && !item.linkedOrderIds?.length && <Button variant="outlined" color="error" onClick={remove} disabled={working}>Löschen</Button>}
       </PurchaseOrderActions>
     </CardContent></Card>}
   </Box>;

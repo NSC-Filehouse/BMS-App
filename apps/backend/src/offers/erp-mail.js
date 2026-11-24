@@ -1,5 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { runSQLQueryAccess, runSQLQuerySqlServer } = require('../db/access');
+const { appTableDisplayName } = require('../db/app-tables');
 const { loadPackagingTypes } = require('../db/packaging-types');
 const config = require('../config');
 const { createHttpError } = require('../utils');
@@ -94,12 +95,17 @@ async function createGeneratedTempOffer(query, offer, header) {
     tag_language: offer.language, tag_currency: 'EUR', tag_valid_until: offer.validUntil || null,
   });
   const id = result.rows[0].tag_id;
+  const optionPositionId = offer.stockPositionKey ? null : Number(offer.positionId) || null;
+  const sourceSchema = optionPositionId ? (await query(`
+    SELECT CASE WHEN COL_LENGTH(?, 'tagp_option_position_id') IS NOT NULL THEN 1 ELSE 0 END AS ready
+  `, [appTableDisplayName('tempOfferPosition')])).rows[0] : null;
   await insert(query, P, positionFields, {
     lineNo: 1, lineKey: randomUUID(), articleIndex: offer.articleIndex, article: offer.article.slice(0, 75),
     masterArticle: offer.article.slice(0, 75), quantity: offer.quantityKg, unit: 'KG', price: offer.salePrice,
     priceBasis: 1000, costPrice: offer.costPrice || 0, wpzOriginal: true, wpzComment: 'Original verwenden', reserve: false,
   }, {
     tagp_offer_id: id, tagp_description: offer.batch ? `Charge ${offer.batch}` : null,
+    ...(Number(sourceSchema?.ready) === 1 ? { tagp_option_position_id: optionPositionId } : {}),
   });
   return id;
 }

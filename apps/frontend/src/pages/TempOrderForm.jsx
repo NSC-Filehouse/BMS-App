@@ -53,6 +53,9 @@ import PickupAddressField from '../components/PickupAddressField.jsx';
 import { isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../utils/incoterm.js';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
+import { useFeatureAccess } from '../components/FeatureAccess.jsx';
+import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
+import ProcurementDialog from '../components/ProcurementDialog.jsx';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
   CUSTOMER_ORDER_REQUIREMENTS,
@@ -254,9 +257,13 @@ export default function TempOrderForm() {
   const location = useLocation();
   const { t, lang } = useI18n();
   const activeMandant = getMandant();
+  const { features } = useFeatureAccess();
 
   const source = location.state?.source || null;
-  const sourceItems = Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null;
+  const procurementOption = features.linkedProcurement ? location.state?.procurementOption : null;
+  const sourceItems = React.useMemo(() => procurementOption ? [procurementOption]
+    : Array.isArray(location.state?.sourceItems) ? location.state.sourceItems : null,
+  [location.state?.sourceItems, procurementOption]);
   const copyOrder = location.state?.copyOrder || null;
   const copyPositions = Array.isArray(copyOrder?.positions) ? copyOrder.positions : null;
   const isCartCreate = !isEdit && Array.isArray(sourceItems) && sourceItems.length > 0;
@@ -267,6 +274,10 @@ export default function TempOrderForm() {
   const [loading, setLoading] = React.useState(false);
   const [offerSourceVersion, setOfferSourceVersion] = React.useState('');
   const [offerStockByPosition, setOfferStockByPosition] = React.useState({});
+  const [procurementStock, setProcurementStock] = React.useState({});
+  const [procurementKey, setProcurementKey] = React.useState(null);
+  const [pickProcurementArticle, setPickProcurementArticle] = React.useState(false);
+  const procurementRequest = React.useRef(null);
   const loadedOfferRef = React.useRef('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -296,6 +307,21 @@ export default function TempOrderForm() {
   const [customerPaymentDefaultText, setCustomerPaymentDefaultText] = React.useState('');
   const [customerReminderInvoicesCount, setCustomerReminderInvoicesCount] = React.useState(0);
   const [positions, setPositions] = React.useState([]);
+  const linkedOrder = isEdit && positions.some((position) => position.purchasePositionId);
+  const needsPurchase = !isEdit && positions.some((position) => position.procurement);
+  const procurementLine = procurementKey ? positions.find((position) => position.clientKey === procurementKey) : null;
+  const directArticleKeys = [...new Set(positions.filter((position) => position.procurementArticle).map((position) => position.articleIndex))].join('\u001f');
+  React.useEffect(() => {
+    if (!features.linkedProcurement || !directArticleKeys) return;
+    const controller = new AbortController();
+    for (const articleIndex of directArticleKeys.split('\u001f')) {
+      apiRequest('/temp-orders/procurement/stock?articleIndex=' + encodeURIComponent(articleIndex), { signal: controller.signal })
+        .then(({ data }) => {
+          if (!controller.signal.aborted) setProcurementStock((previous) => ({ ...previous, [activeMandant + ':' + articleIndex]: data || [] }));
+        }).catch((err) => { if (!controller.signal.aborted) setError(err.message); });
+    }
+    return () => controller.abort();
+  }, [activeMandant, directArticleKeys, features.linkedProcurement]);
   const [editingArticleKey, setEditingArticleKey] = React.useState('');
   const [editingArticleValue, setEditingArticleValue] = React.useState('');
   const [mandants, setMandants] = React.useState([]);
@@ -386,7 +412,7 @@ export default function TempOrderForm() {
   const isFca = isFcaIncoterm(form.incotermText);
   const addressModeCacheRef = React.useRef({});
   const [pickupAddressStatus, setPickupAddressStatus] = React.useState({ loading: false, conflict: false, error: '' });
-  const pickupPositionSignature = React.useMemo(() => JSON.stringify(positions.map((position) => ({
+  const pickupPositionSignature = React.useMemo(() => JSON.stringify(positions.filter((position) => position.beNumber && !position.procurement).map((position) => ({
     beNumber: String(position.beNumber || '').trim(), warehouseId: String(position.warehouseId || position.warehouse || '').trim(),
   }))), [positions]);
   const pickupContextKey = `${activeMandant}|${form.clientReferenceId}|${pickupPositionSignature}`;
@@ -427,8 +453,9 @@ export default function TempOrderForm() {
   const draftContext = React.useMemo(() => ({
     userId: draftUserId,
     mandant: activeMandant,
-    orderId: isEdit ? `edit:${id}` : (offerSourceId ? `offer:${offerSourceId}:${offerSourceVersion}` : 'new'),
-  }), [activeMandant, draftUserId, id, isEdit, offerSourceId, offerSourceVersion]);
+    orderId: isEdit ? `edit:${id}` : (offerSourceId ? `offer:${offerSourceId}:${offerSourceVersion}`
+      : (procurementOption ? `option:${procurementOption.optionPositionId}` : 'new')),
+  }), [activeMandant, draftUserId, id, isEdit, offerSourceId, offerSourceVersion, procurementOption]);
   const draftScopeKey = `${draftUserId}\u001f${activeMandant}\u001f${draftContext.orderId}`;
   const [packagingOptions, setPackagingOptions] = React.useState([]);
   const packagingTouchedRef = React.useRef(false);
@@ -440,6 +467,7 @@ export default function TempOrderForm() {
     positions,
     removeAttachmentIds,
     hadPendingAttachments: restoredFilesMissing || pendingAttachmentFiles.length > 0,
+    ...(procurementRequest.current ? { procurementRequestId: procurementRequest.current } : {}),
     serverModifiedAt: draftOriginalModifiedAt,
     ui: {
       customerQuery,
@@ -1010,6 +1038,7 @@ export default function TempOrderForm() {
           setPositions(loadedPositions.map((p) => ({
             id: p.id,
             offerPositionId: p.offerPositionId,
+            purchasePositionId: p.purchasePositionId,
             clientKey: `stored-${p.id}`,
             beNumber: p.beNumber,
             warehouseId: p.warehouse || p.warehouseId,
@@ -1095,6 +1124,7 @@ export default function TempOrderForm() {
           clientKey: createClientPositionKey(x.beNumber || `copy-${idx}`),
           ...(offerSourceId ? {
             offerPositionId: x.offerPositionId,
+            optionId: x.optionId, optionPositionId: x.optionPositionId,
             offerQuantity: x.offerQuantity,
             offerUnit: x.offerUnit,
             selectedStockKey: x.selectedStockKey,
@@ -1138,6 +1168,8 @@ export default function TempOrderForm() {
             id: null,
             clientKey: x.clientKey || createClientPositionKey(x.beNumber || `cart-${idx}`),
             productId: x.productId || x.id || null,
+            optionId: x.optionId, optionPositionId: x.optionPositionId,
+            procurementArticle: Boolean(x.optionPositionId),
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
             articleIndex: x.articleIndex || '',
@@ -1216,6 +1248,7 @@ export default function TempOrderForm() {
     packagingTouchedRef.current = true;
     setForm((previous) => ({ ...previous, ...pendingDraft.form }));
     setPositions(restoredPositions);
+    procurementRequest.current = pendingDraft.procurementRequestId || null;
     setRemoveAttachmentIds(Array.isArray(pendingDraft.removeAttachmentIds) ? pendingDraft.removeAttachmentIds : []);
     setRestoredFilesMissing(Boolean(pendingDraft.hadPendingAttachments));
     setDraftOriginalModifiedAt(String(pendingDraft.serverModifiedAt || ''));
@@ -1737,9 +1770,10 @@ export default function TempOrderForm() {
     if (!form.specialPaymentId) messages.push(t('validation_special_payment_text_required'));
 
     for (const pos of (Array.isArray(positions) ? positions : [])) {
-      if (!String(pos.beNumber || '').trim() || !String(pos.warehouseId || '').trim()) {
+      const onPurchase = pos.procurement || pos.purchasePositionId;
+      if (!onPurchase && (!String(pos.beNumber || '').trim() || !String(pos.warehouseId || '').trim())) {
         const message = pos.offerPositionId
-          ? t(offerStockByPosition[pos.offerPositionId]?.length ? 'offer_order_select_stock' : 'offer_order_position_stock_required')
+          ? t(offerStockByPosition[pos.offerPositionId]?.some((lot) => lot.available >= Number(pos.amountInKg)) ? 'offer_order_select_stock' : 'offer_order_position_stock_required')
           : t('validation_position_source_required');
         messages.push(`${pos.article || '-'}: ${message}`);
         if (pos.offerPositionId) continue;
@@ -1752,7 +1786,7 @@ export default function TempOrderForm() {
         messages.push(`${pos.beNumber}: ${t('validation_article_name_required')}`);
       }
       const amount = Number(pos.amountInKg);
-      if (pos.offerPositionId && !Number.isInteger(amount)) {
+      if ((pos.offerPositionId || onPurchase) && !Number.isInteger(amount)) {
         messages.push(`${pos.article}: ${t('offer_order_whole_kg')}`);
       }
       const costPrice = Number(pos.costPrice);
@@ -1815,6 +1849,7 @@ export default function TempOrderForm() {
         payload.positions = positions.map((x) => ({
           id: x.id,
           ...(offerSourceId && x.offerPositionId ? { offerPositionId: x.offerPositionId } : {}),
+          ...(!isEdit && x.procurement ? { procurement: x.procurement } : {}),
           beNumber: x.beNumber,
           warehouseId: x.warehouseId,
           articleIndex: x.articleIndex || null,
@@ -1834,6 +1869,11 @@ export default function TempOrderForm() {
         }));
       }
 
+      if (needsPurchase) {
+        procurementRequest.current ||= crypto.randomUUID();
+        payload.procurementRequestId = procurementRequest.current;
+        saveTempOrderDraft(draftContext, { ...draftData, procurementRequestId: procurementRequest.current });
+      }
       const requestBody = new FormData();
       Object.entries(payload).forEach(([key, value]) => {
         if (key === 'positions') {
@@ -1859,12 +1899,14 @@ export default function TempOrderForm() {
       setSuccess(t('temp_order_saved'));
       const newId = res?.data?.id;
       if (newId) {
-        if (!isCopyCreate && Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
+        if (!isCopyCreate && !procurementOption && Array.isArray(sourceItems) && sourceItems.length > 0) clearOrderCart();
+        const procurementHandoffError = res?.data?.procurementHandoffOpen ? t('procurement_handoff_open') : '';
         navigate(`/temp-orders/${encodeURIComponent(newId)}`, {
           replace: true,
-          state: (location.state?.afterSaveReturnTo || location.state?.returnTo)
-            ? { returnTo: location.state.afterSaveReturnTo || location.state.returnTo }
-            : null,
+          state: {
+            returnTo: location.state?.afterSaveReturnTo || location.state?.returnTo,
+            ...(procurementHandoffError ? { procurementHandoffError } : {}),
+          },
         });
       } else {
         navigateToReturn(navigate, location.state?.returnTo, '/temp-orders');
@@ -2021,7 +2063,7 @@ export default function TempOrderForm() {
 
             {!offerSourceId && (
               <Autocomplete
-                disabled={positions.some((position) => position.offerPositionId)}
+                disabled={linkedOrder || positions.some((position) => position.offerPositionId)}
                 options={customerOptions}
                 value={selectedCustomer}
                 getOptionLabel={(opt) => String(opt?.kd_Name1 || opt?.kd_Name2 || opt?.kd_KdNR || '')}
@@ -2307,7 +2349,10 @@ export default function TempOrderForm() {
                   <Typography variant="subtitle2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     {t('order_positions_count')}: {positions.length}
                   </Typography>
-                  {isPositionsMode && (
+                  {features.linkedProcurement && !isEdit && <Button size="small" onClick={() => setPickProcurementArticle(true)}>
+                    {t('procurement_add_article')}
+                  </Button>}
+                  {isPositionsMode && !linkedOrder && (
                     <IconButton
                       size="small"
                       color="primary"
@@ -2339,7 +2384,11 @@ export default function TempOrderForm() {
                     const foreignMandant = findForeignMandantName(x.beNumber, mandants, activeMandant);
                     const positionKey = getPositionKey(x, idx);
                     const isEditingArticle = editingArticleKey === positionKey;
-                    const offerStock = offerSourceId ? offerStockByPosition[x.offerPositionId] : null;
+                    const offerStock = x.offerPositionId ? offerStockByPosition[x.offerPositionId] : procurementStock[activeMandant + ':' + x.articleIndex];
+                    const stockCoversPosition = offerStock?.some((lot) => lot.available >= Number(x.amountInKg));
+                    const showProcurement = features.linkedProcurement && !isEdit && (x.procurementArticle || x.offerPositionId)
+                      && Number.isSafeInteger(Number(x.amountInKg)) && Number(x.amountInKg) > 0
+                      && (Boolean(x.procurement) || (Array.isArray(offerStock) && !stockCoversPosition));
                     return (
                       <Accordion key={positionKey} disableGutters>
                       <AccordionSummary
@@ -2418,7 +2467,7 @@ export default function TempOrderForm() {
                             <Typography variant="caption" sx={{ minWidth: 0, opacity: 0.75, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                               {t('original_packaging_type_label')}: {x.originalPackagingType || '-'}
                             </Typography>
-                            {x.offerPositionId && (
+                            {x.offerPositionId && !x.procurement && !showProcurement && (
                               <Typography variant="caption" color={x.beNumber ? 'text.secondary' : 'warning.main'}>
                                 {t(x.beNumber ? 'offer_order_position_copied' : (offerStock?.length ? 'offer_order_select_stock' : 'offer_order_position_stock_required'))}
                               </Typography>
@@ -2431,12 +2480,15 @@ export default function TempOrderForm() {
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
-                          {offerStock?.length > 0 && (
+                          {showProcurement && <Button size="small" sx={{ justifySelf: 'start' }} onClick={() => setProcurementKey(x.clientKey)}>
+                            {t(x.procurement ? 'procurement_edit' : 'procurement_action')}
+                          </Button>}
+                          {offerStock?.some((lot) => lot.available >= Number(x.amountInKg)) && !x.procurement && (
                             <TextField
                               select
                               fullWidth
                               label={t('offer_order_select_stock')}
-                              value={offerStock.some((lot) => lot.key === x.selectedStockKey) ? x.selectedStockKey : ''}
+                              value={offerStock.some((lot) => lot.key === x.selectedStockKey && lot.available >= Number(x.amountInKg)) ? x.selectedStockKey : ''}
                               onChange={(event) => {
                                 const lot = offerStock.find((option) => option.key === event.target.value);
                                 if (!lot) return;
@@ -2454,14 +2506,14 @@ export default function TempOrderForm() {
                                 } : position));
                               }}
                             >
-                              {offerStock.map((lot) => (
+                              {offerStock.filter((lot) => lot.available >= Number(x.amountInKg)).map((lot) => (
                                 <MenuItem key={lot.key} value={lot.key}>
                                   {lot.beNumber} · {lot.warehouse || lot.warehouseId} · {Number(lot.available).toLocaleString(lang)} kg
                                 </MenuItem>
                               ))}
                             </TextField>
                           )}
-                          {offerStock?.length === 0 && (
+                          {offerStock?.length === 0 && !showProcurement && !x.procurement && (
                             <Alert severity="warning">
                               {x.amountInKg === null
                                 ? t('offer_order_unsupported_unit', { unit: x.offerUnit, quantity: x.offerQuantity })
@@ -2504,6 +2556,7 @@ export default function TempOrderForm() {
                               type="number"
                               label={t('product_amount')}
                               value={x.amountInKg ?? ''}
+                              disabled={linkedOrder || Boolean(x.procurement)}
                               onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, amountInKg: e.target.value } : p)))}
                               inputProps={{ min: 1, step: 'any' }}
                               size="small"
@@ -2536,7 +2589,7 @@ export default function TempOrderForm() {
                             helperText={t('validation_wpz_individual_required')}
                           />
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <IconButton size="small" color="error" aria-label={t('delete_label')} onClick={() => onRemovePosition(idx)}>
+                            <IconButton size="small" color="error" aria-label={t('delete_label')} disabled={linkedOrder} onClick={() => onRemovePosition(idx)}>
                               <DeleteOutlineIcon fontSize="small" />
                             </IconButton>
                           </Box>
@@ -2550,13 +2603,33 @@ export default function TempOrderForm() {
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button variant="contained" onClick={submit} disabled={saving || deletingOrder}>
-                {t('save_label')}
+                {t(needsPurchase ? 'procurement_save_and_order' : 'save_label')}
               </Button>
             </Box>
           </CardContent>
         </Card>
       )}
 
+      {pickProcurementArticle && <OfferArticlePicker open onClose={() => setPickProcurementArticle(false)} onAdd={(articles) => {
+        setPositions((previous) => [...previous, ...articles.map((article) => ({
+          clientKey: createClientPositionKey(article.articleIndex), procurementArticle: true,
+          articleIndex: article.articleIndex, article: article.article, amountInKg: '', price: '', costPrice: article.costPrice ?? '',
+          ...createPositionDefaults({ deliveryDate: tomorrow(), deliveryDateAuto: true }),
+        }))]);
+        setPickProcurementArticle(false);
+      }} />}
+      {procurementLine && <ProcurementDialog key={procurementLine.clientKey} line={procurementLine}
+        onClose={() => setProcurementKey(null)}
+        onConfirm={(procurement) => {
+          setPositions((previous) => previous.map((position) => position.clientKey === procurementKey ? {
+            ...position, procurement, beNumber: '', warehouseId: '', selectedStockKey: '',
+            originalPackagingType: procurement.header.packagingType,
+            originalPackagingTypeId: procurement.header.packagingTypeId,
+            costPrice: Number(procurement.position.purchasePrice) > 0 ? Number(procurement.position.purchasePrice) : position.costPrice,
+          } : position));
+          setProcurementKey(null);
+        }}
+      />}
       <Dialog open={validationOpen} onClose={() => setValidationOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('validation_dialog_title')}</DialogTitle>
         <DialogContent>

@@ -354,6 +354,7 @@ BEGIN TRY
     [tagp_cost_price] [decimal](18,4) NOT NULL CONSTRAINT [DF_Temp_Ang_Position_cost] DEFAULT ((0)),
     [tagp_wpz_original] [bit] NOT NULL CONSTRAINT [DF_Temp_Ang_Position_wpz] DEFAULT ((1)),
     [tagp_wpz_comment] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
+    [tagp_option_position_id] [int] NULL,
     [tagp_order_position_id] [int] NULL,
     CONSTRAINT [PK_Temp_Ang_Position] PRIMARY KEY CLUSTERED ([tagp_id] ASC),
     CONSTRAINT [UQ_Temp_Ang_Position_key] UNIQUE NONCLUSTERED ([tagp_offer_id] ASC, [tagp_line_key] ASC),
@@ -463,6 +464,8 @@ BEGIN TRY
   EXEC(N'CREATE TABLE [BMSApp].[tbl_Temp_Auftrag] (
     [ta_id] [int] IDENTITY(1,1) NOT NULL,
     [ta_company_id] [int] NOT NULL,
+    [ta_procurement_request_id] [nvarchar](36) COLLATE Latin1_General_CI_AS NULL,
+    [ta_procurement_notified_at] [datetime2](7) NULL,
     [ta_ClientReferenceId] [nvarchar](16) COLLATE Latin1_General_CI_AS NOT NULL,
     [ta_client_name] [nvarchar](255) COLLATE Latin1_General_CI_AS NOT NULL,
     [ta_client_address] [nvarchar](255) COLLATE Latin1_General_CI_AS NOT NULL,
@@ -548,6 +551,7 @@ BEGIN TRY
     [OptionID] [int] NULL,
     [OptionPositionID] [int] NULL,
     [tbp_option_mfi_acknowledged] [bit] NOT NULL CONSTRAINT [DF_Temp_Best_Position_option_mfi] DEFAULT ((0)),
+    [tbp_bms_position_id] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL,
     [tbp_order_position_id] [int] NULL,
     CONSTRAINT [PK_tbl_Temp_Best_Position] PRIMARY KEY CLUSTERED ([tbp_id] ASC),
     CONSTRAINT [UQ_tbl_Temp_Best_Position_line] UNIQUE NONCLUSTERED ([tbp_tb_id] ASC, [tbp_line_no] ASC)
@@ -1149,6 +1153,14 @@ BEGIN TRY
  END;
 
  -- Add optional position links to existing installations before checking their columns.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_bms_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_bms_position_id] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Auftrag',N'ta_procurement_request_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auftrag] ADD [ta_procurement_request_id] [nvarchar](36) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Auftrag',N'ta_procurement_notified_at') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Auftrag] ADD [ta_procurement_notified_at] [datetime2](7) NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Ang_Position',N'tagp_option_position_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] ADD [tagp_option_position_id] [int] NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Ang_Position',N'tagp_order_position_id') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] ADD [tagp_order_position_id] [int] NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Auf_Position',N'tap_purchase_position_id') IS NULL
@@ -1966,6 +1978,10 @@ BEGIN TRY
 {"table":"ContactCreationOperation","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"ContactCreationOperation","column":"UpdatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Best_Position","column":"tbp_bms_position_id","type":"nvarchar","length":34,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Auftrag","column":"ta_procurement_request_id","type":"nvarchar","length":72,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Auftrag","column":"ta_procurement_notified_at","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Ang_Position","column":"tagp_option_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Auf_Position","column":"tap_purchase_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Auf_Position","column":"tap_offer_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Auf_Position","column":"tap_option_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
@@ -2083,6 +2099,8 @@ BEGIN TRY
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Aktivitaet_Status] ON [BMSApp].[tbl_Temp_Aktivitaet] ([Status] ASC, [Id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.ContactCreationOperation') AND name=N'IX_ContactCreationOperation_Scope')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_ContactCreationOperation_Scope] ON [BMSApp].[ContactCreationOperation] ([UserId] ASC, [Mandant] ASC, [CustomerNumber] ASC, [CreatedAt] DESC);');
+ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'IX_tbl_Temp_Ang_Position_tagp_option_position_id')
+  EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Ang_Position_tagp_option_position_id] ON [BMSApp].[tbl_Temp_Ang_Position] ([tagp_option_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'IX_tbl_Temp_Ang_Position_tagp_order_position_id')
   EXEC(N'CREATE NONCLUSTERED INDEX [IX_tbl_Temp_Ang_Position_tagp_order_position_id] ON [BMSApp].[tbl_Temp_Ang_Position] ([tagp_order_position_id] ASC) WITH (PAD_INDEX=OFF, STATISTICS_NORECOMPUTE=OFF, IGNORE_DUP_KEY=OFF, ALLOW_ROW_LOCKS=ON, ALLOW_PAGE_LOCKS=ON);');
  IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'IX_tbl_Temp_Auf_Position_tap_purchase_position_id')
@@ -2255,6 +2273,8 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Aktivitaet] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Aktivitaet_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.OptionOfferDocument') AND name=N'FK_OptionOfferDocument_OptionOfferMailId')
   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferDocument] WITH CHECK ADD CONSTRAINT [FK_OptionOfferDocument_OptionOfferMailId] FOREIGN KEY ([OptionOfferMailId]) REFERENCES [BMSApp].[OptionOfferMailOutbox] ([Id]);');
+ IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'FK_tbl_Temp_Ang_Position_tagp_option_position_id')
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Ang_Position_tagp_option_position_id] FOREIGN KEY ([tagp_option_position_id]) REFERENCES [BMSApp].[tblOptionenPositionen] ([opp_id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Ang_Position') AND name=N'FK_tbl_Temp_Ang_Position_tagp_order_position_id')
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] WITH CHECK ADD CONSTRAINT [FK_tbl_Temp_Ang_Position_tagp_order_position_id] FOREIGN KEY ([tagp_order_position_id]) REFERENCES [BMSApp].[tbl_Temp_Auf_Position] ([tap_id]);');
  IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'BMSApp.tbl_Temp_Auf_Position') AND name=N'FK_tbl_Temp_Auf_Position_tap_purchase_position_id')
