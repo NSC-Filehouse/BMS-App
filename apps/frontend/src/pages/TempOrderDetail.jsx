@@ -12,11 +12,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
@@ -634,7 +636,19 @@ export default function TempOrderDetail() {
       )}
 
       <Dialog open={finalizeOpen} onClose={() => (!finalizing ? setFinalizeOpen(false) : undefined)} fullWidth maxWidth="sm">
-        <DialogTitle>{creditLimitPreview ? t('credit_limit_prompt_title') : t('temp_order_send_bms')}</DialogTitle>
+        <DialogTitle sx={creditLimitPreview ? { position: 'relative', pr: 8 } : undefined}>
+          {creditLimitPreview ? t('credit_limit_prompt_title') : t('temp_order_send_bms')}
+          {creditLimitPreview && (
+            <IconButton
+              aria-label={t('close_label')}
+              onClick={() => setFinalizeOpen(false)}
+              disabled={finalizing}
+              sx={{ position: 'absolute', top: 8, right: 12 }}
+            >
+              <CloseIcon />
+            </IconButton>
+          )}
+        </DialogTitle>
         <DialogContent>
           {creditLimitCheckError && <Alert severity="warning" sx={{ mb: 1.5 }}>{t('credit_limit_check_failed')}: {creditLimitCheckError}</Alert>}
           {creditLimitPreview ? (
@@ -682,11 +696,21 @@ export default function TempOrderDetail() {
             <Typography variant="body2">{t('temp_order_send_bms_confirm')}</Typography>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFinalizeOpen(false)} disabled={finalizing}>{t('back_label')}</Button>
+        <DialogActions
+          disableSpacing={Boolean(creditLimitPreview)}
+          sx={creditLimitPreview ? {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            alignItems: 'stretch',
+            gap: 1.5,
+            px: 3,
+            pb: 2,
+            '& .MuiButton-root': { minWidth: 0, textTransform: 'none', lineHeight: 1.3, overflowWrap: 'anywhere' },
+          } : undefined}
+        >
           {creditLimitPreview ? (
             <>
-              <Button onClick={() => finalizeOrder(false)} disabled={finalizing}>
+              <Button variant="outlined" onClick={() => finalizeOrder(false)} disabled={finalizing}>
                 {finalizing ? t('temp_order_sending_bms') : t('credit_limit_no_send')}
               </Button>
               <Button
@@ -698,9 +722,12 @@ export default function TempOrderDetail() {
               </Button>
             </>
           ) : (
-            <Button variant="contained" onClick={() => finalizeOrder(false)} disabled={finalizing}>
-              {finalizing ? t('temp_order_sending_bms') : t('temp_order_send_bms')}
-            </Button>
+            <>
+              <Button onClick={() => setFinalizeOpen(false)} disabled={finalizing}>{t('back_label')}</Button>
+              <Button variant="contained" onClick={() => finalizeOrder(false)} disabled={finalizing}>
+                {finalizing ? t('temp_order_sending_bms') : t('temp_order_send_bms')}
+              </Button>
+            </>
           )}
         </DialogActions>
       </Dialog>
