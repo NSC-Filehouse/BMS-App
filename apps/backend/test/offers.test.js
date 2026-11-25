@@ -446,6 +446,10 @@ test('manual release enqueues a verified recipient and the detail serves only th
   const declined = await call(`${url}/not-interested`, 'POST', current);
   assert.equal(declined.json.data.status, 5);
   assert.equal((await call(url)).json.data.canMarkNotInterested, false);
+  state.schemaReady = true;
+  const conversion = await call(`${url}/order-draft`);
+  assert.equal(conversion.status, 409);
+  assert.equal(conversion.json.code, 'OFFER_ORDER_NOT_INTERESTED');
   assert.deepEqual((await call(`${url}/pdf`)).pdf, pdf);
 });
 test('only NSC can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {

@@ -42,6 +42,11 @@ async function readOfferForOrder(query, req, offerId, owner, locked = false) {
       code: 'OFFER_ORDER_WAITING_FOR_BMS',
     });
   }
+  if (offer.status === 5) {
+    throw createHttpError(409, 'Dieses Angebot wurde als „Kunde hat kein Interesse“ markiert.', {
+      code: 'OFFER_ORDER_NOT_INTERESTED',
+    });
+  }
   const linked = await linkedOfferPositions(query, offer.id);
   const positions = offer.positions.filter((position) => !linked.has(Number(position.id)));
   const [schema] = (await query(`SELECT CASE WHEN COL_LENGTH(?, 'tagp_option_position_id') IS NOT NULL

@@ -342,7 +342,7 @@ export default function TempOfferDetail() {
                   {t('offer_not_interested')}
                 </Button>
               )}
-              {features.offerToOrder && !offer.readOnly && offer.status !== 4 && (
+              {features.offerToOrder && !offer.readOnly && ![4, 5].includes(offer.status) && (
                 <Button
                   variant="contained"
                   color="primary"
