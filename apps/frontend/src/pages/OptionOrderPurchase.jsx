@@ -34,6 +34,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   const [availability, setAvailability] = React.useState(base ? null : {});
   const [proposals, setProposals] = React.useState([]);
   const [supplier, setSupplier] = React.useState(option.optionSupplier);
+  const [supplierResolvedFromOption, setSupplierResolvedFromOption] = React.useState(false);
   const [supplierQuery, setSupplierQuery] = React.useState('');
   const [supplierResults, setSupplierResults] = React.useState(null);
   const [loadError, setLoadError] = React.useState('');
@@ -53,7 +54,9 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
     apiRequest(`${base}/suppliers?q=`, { signal: controller.signal }).then(({ data, meta }) => {
       if (controller.signal.aborted) return;
       setProposals(data || []);
-      setSupplier((current) => current || data?.find((row) => row.preferred) || (data?.length === 1 ? data[0] : null));
+      const resolved = data?.find((row) => row.preferred) || (data?.length === 1 ? data[0] : null);
+      setSupplierResolvedFromOption(Boolean(resolved && resolved.selectable !== false));
+      setSupplier((current) => current || resolved);
       setAvailability(meta);
       setTotalAmount(meta.confirmedTruckCount ?? meta.confirmedQuantityKg ?? '');
       setTotalUnit(meta.truckOffer ? 'truck' : 'kg');
@@ -90,7 +93,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
       && availability.confirmedPackagingTypeId != null && packaging?.id !== Number(availability.confirmedPackagingTypeId)));
   const remainingKg = (truckOptionAvailability(availability || {}, packaging) || availability)?.remainingKg;
   const initialRemainingKg = (truckOptionAvailability(availability || {}, defaultPackaging) || availability)?.remainingKg;
-  const canEditSupplier = !option.optionSupplier;
+  const canEditSupplier = !option.optionSupplier && !(offerPosition && supplierResolvedFromOption);
   const supplierChoices = query.length < 2 ? proposals : supplierResults || [];
   const stockHint = remainingKg == null ? undefined : t('purchase_max_available', { amount: Number(remainingKg).toLocaleString(lang) });
 
@@ -163,7 +166,6 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
     </Box>
     <Alert severity="info">{t(offerPosition?.candidates?.length
       ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
-    {offerPosition && <Typography variant="body2">{offerPosition.article} · {Number(offerPosition.amountInKg).toLocaleString(lang)} kg</Typography>}
     {loadError && <Alert severity="error">{loadError}</Alert>}
     {searchError && <Alert severity="error">{searchError}</Alert>}
     {saveError && <Alert severity="error">{saveError}</Alert>}
