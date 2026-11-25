@@ -25,6 +25,7 @@ export default function WpzCommentField({
   onChange,
   error = false,
   helperText = '',
+  required = false,
 }) {
   const { t } = useI18n();
 
@@ -72,6 +73,7 @@ export default function WpzCommentField({
           minRows={2}
           fullWidth
           error={error}
+          required={required}
           helperText={error ? helperText : ''}
         />
       )}

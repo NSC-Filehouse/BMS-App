@@ -34,7 +34,6 @@ import {
   newOfferPosition,
 } from '../utils/offers.js';
 import { findOptionOfferIncoterm } from '../utils/incoterm.js';
-import { isValidSalePrice } from '../utils/salePrice.js';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import OfferCustomerPicker from '../components/OfferCustomerPicker.jsx';
 import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
@@ -52,7 +51,22 @@ const dates = (o) => ({
   })),
 });
 
-const validOfferQuantity = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
+const validDecimal = (value, scale) => new RegExp(`^\\d+(?:[.,]\\d{1,${scale}})?$`).test(String(value ?? ''))
+  && Number(String(value).replace(',', '.')) <= 999999999;
+const numeric = (value) => Number(String(value).replace(',', '.'));
+
+function offerPositionErrors(position) {
+  return {
+    quantity: !validDecimal(position.quantity, 3) || numeric(position.quantity) <= 0,
+    price: !validDecimal(position.price, 4),
+    costPrice: position.costPrice != null && position.costPrice !== '' && !validDecimal(position.costPrice, 4),
+    wpz: position.wpzOriginal === false && !position.wpzComment?.trim(),
+    stock: position.reserve && (!position.beNumber || !position.warehouseId || !/^kg$/i.test(position.unit)),
+    reserveQuantity: position.reserve && (!validDecimal(position.reserveQuantity, 3)
+      || numeric(position.reserveQuantity) <= 0 || numeric(position.reserveQuantity) > numeric(position.quantity)),
+    reserveUntil: position.reserve && !position.reserveUntil,
+  };
+}
 export default function TempOfferEditor() {
   const { id } = useParams();
   const location = useLocation();
@@ -68,7 +82,7 @@ export default function TempOfferEditor() {
   const [form, setForm] = React.useState(blankOffer);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [supplierValidationAttempt, setSupplierValidationAttempt] = React.useState(0);
+  const [validationAttempt, setValidationAttempt] = React.useState(0);
   const [error, setError] = React.useState('');
   const [options, setOptions] = React.useState({
     payments: [],
@@ -269,14 +283,11 @@ export default function TempOfferEditor() {
     );
   async function save(e) {
     e.preventDefault();
-    if (form.positions.some(position => position.sourceSupplierId
-      && (!validOfferQuantity(position.quantity) || !isValidSalePrice(position.price)))) {
-      setSupplierValidationAttempt(attempt => attempt + 1);
-      setError(t('offer_supplier_quantity_price_required'));
-      return;
-    }
-    if (isFca && !String(form.deliveryAddress || '').trim()) {
-      setError(t('validation_pickup_address_required'));
+    const firstError = Object.entries(headerErrors).find(([, invalid]) => invalid)?.[0];
+    const hasPositionErrors = positionErrors.some(fields => Object.values(fields).some(Boolean));
+    if (firstError || hasPositionErrors) {
+      setValidationAttempt(attempt => attempt + 1);
+      setError(t(firstError || 'offer_position_fields_invalid'));
       return;
     }
     setSaving(true);
@@ -330,17 +341,8 @@ export default function TempOfferEditor() {
     setPositionError('');
   }
   function addPosition() {
-    if (
-      !(Number(candidate.quantity) > 0) ||
-      candidate.price === '' ||
-      Number(candidate.price) < 0 ||
-      !candidate.deliveryDate
-    ) {
-      setPositionError(
-        en
-          ? 'Please enter quantity, sales price and delivery date.'
-          : 'Bitte Menge, Verkaufspreis und Lieferdatum angeben.',
-      );
+    if (!candidate.deliveryDate || Object.values(offerPositionErrors(candidate)).some(Boolean)) {
+      setPositionError(t('offer_position_fields_invalid'));
       return;
     }
     patch({ positions: [...form.positions, candidate] });
@@ -351,6 +353,13 @@ export default function TempOfferEditor() {
     } else setCandidate(null);
   }
   const isFca = /^FCA\b/i.test(form.deliveryTerms);
+  const headerErrors = {
+    validation_customer_required: !form.customerId,
+    validation_incoterm_required: !form.deliveryTermsId,
+    validation_packaging_required: !form.packagingId,
+    validation_pickup_address_required: isFca && !String(form.deliveryAddress || '').trim(),
+  };
+  const positionErrors = form.positions.map(offerPositionErrors);
   const selectedCustomer = form.customerId
     ? { kd_KdNR: form.customerId, kd_Name1: form.customerName }
     : null;
@@ -450,7 +459,8 @@ export default function TempOfferEditor() {
               if (reason === 'input') setCustomerQuery(v);
             }}
             renderInput={(params) => (
-              <TextField {...params} label={t('customer_select')} fullWidth />
+              <TextField {...params} label={t('customer_select')} required
+                error={Boolean(validationAttempt && headerErrors.validation_customer_required)} fullWidth />
             )}
           />
           <TextField
@@ -512,6 +522,8 @@ export default function TempOfferEditor() {
           <TextField
             select
             label={t('incoterm_label')}
+            required
+            error={Boolean(validationAttempt && headerErrors.validation_incoterm_required)}
             value={form.deliveryTermsId || ''}
             onChange={(e) => {
               const i = options.incoterms.find(
@@ -539,6 +551,8 @@ export default function TempOfferEditor() {
           <TextField
             select
             label={t('packaging_type_label')}
+            required
+            error={Boolean(validationAttempt && headerErrors.validation_packaging_required)}
             disabled={optionsLanguage !== lang}
             value={form.packagingId || ''}
             onChange={(e) => {
@@ -565,6 +579,7 @@ export default function TempOfferEditor() {
                 isFca ? 'pickup_address_label' : 'delivery_address_label',
               )}
               required={isFca}
+              error={Boolean(validationAttempt && headerErrors.validation_pickup_address_required)}
               value={form.deliveryAddress}
               onChange={(e) =>
                 patch({
@@ -696,9 +711,8 @@ export default function TempOfferEditor() {
                   key={p.lineKey}
                   position={p}
                   defaultExpanded={Boolean(!id && p.sourceSupplierId)}
-                  validationAttempt={supplierValidationAttempt}
-                  quantityError={Boolean(supplierValidationAttempt && p.sourceSupplierId && !validOfferQuantity(p.quantity))}
-                  priceError={Boolean(supplierValidationAttempt && p.sourceSupplierId && !isValidSalePrice(p.price))}
+                  validationAttempt={validationAttempt}
+                  fieldErrors={validationAttempt ? positionErrors[i] : undefined}
                   onChange={(values) =>
                     patch({
                       positions: form.positions.map((x, j) =>
@@ -715,7 +729,7 @@ export default function TempOfferEditor() {
             <Button
               type="submit"
               variant="contained"
-              disabled={saving || !form.customerId || !form.positions.length}
+              disabled={saving || !form.positions.length}
             >
               {t('save_label')}
             </Button>
@@ -754,6 +768,8 @@ export default function TempOfferEditor() {
               />
               <OfferPositionFields
                 position={candidate}
+                requireDeliveryDate
+                fieldErrors={positionError ? { ...offerPositionErrors(candidate), deliveryDate: !candidate.deliveryDate } : undefined}
                 onChange={(v) => setCandidate((p) => ({ ...p, ...v }))}
               />
             </>

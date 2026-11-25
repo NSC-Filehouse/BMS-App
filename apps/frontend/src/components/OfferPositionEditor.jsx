@@ -22,7 +22,7 @@ import SaleMarginHint from './SaleMarginHint.jsx';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
-export function OfferPositionFields({ position: p, onChange, quantityError, priceError }) {
+export function OfferPositionFields({ position: p, onChange, fieldErrors = {}, requireDeliveryDate = false }) {
   const { t, lang } = useI18n();
   const field = (key, label, extra = {}) => (
     <TextField
@@ -47,6 +47,8 @@ export function OfferPositionFields({ position: p, onChange, quantityError, pric
             type="date"
             size="small"
             label={t('delivery_date')}
+            required={requireDeliveryDate}
+            error={Boolean(fieldErrors.deliveryDate)}
             value={p.deliveryDate || ''}
             onChange={(e) =>
               onChange({
@@ -74,7 +76,7 @@ export function OfferPositionFields({ position: p, onChange, quantityError, pric
             : `${t('product_amount')} (${p.unit})`,
           {
             type: 'number',
-            error: quantityError,
+            error: Boolean(fieldErrors.quantity),
             required: true,
             inputProps: { min: 0.001, step: 'any' },
           },
@@ -85,7 +87,7 @@ export function OfferPositionFields({ position: p, onChange, quantityError, pric
             /^kg$/i.test(p.unit)
               ? t('order_sale_price_per_tonne')
               : `${lang === 'en' ? 'Sales price' : 'Verkaufspreis'} / ${p.priceBasis} ${p.unit}`,
-            { type: 'number', error: priceError, required: true,
+            { type: 'number', error: Boolean(fieldErrors.price), required: true,
               inputProps: { min: 0, step: 'any' } },
           )}
           <SaleMarginHint
@@ -99,10 +101,13 @@ export function OfferPositionFields({ position: p, onChange, quantityError, pric
         </Box>
         {field('costPrice', t('product_price'), {
           type: 'number',
+          error: Boolean(fieldErrors.costPrice),
           inputProps: { min: 0, step: 'any' },
         })}
       </Box>
       <WpzCommentField
+        required
+        error={Boolean(fieldErrors.wpz)}
         wpzId={null}
         wpzOriginal={p.wpzOriginal}
         wpzComment={p.wpzComment}
@@ -117,17 +122,17 @@ export default function OfferPositionEditor({
   onChange,
   onRemove,
   defaultExpanded = false,
-  quantityError = false,
-  priceError = false,
+  fieldErrors,
   validationAttempt = 0,
 }) {
   const { t, lang } = useI18n();
   const en = lang === 'en';
   const [editing, setEditing] = React.useState(false);
   const [expanded, setExpanded] = React.useState(defaultExpanded);
+  const invalid = Boolean(fieldErrors && Object.values(fieldErrors).some(Boolean));
   React.useEffect(() => {
-    if (validationAttempt && (quantityError || priceError)) setExpanded(true);
-  }, [validationAttempt, quantityError, priceError]);
+    if (validationAttempt && invalid) setExpanded(true);
+  }, [validationAttempt, invalid]);
   const [article, setArticle] = React.useState(p.article);
   const [stocks, setStocks] = React.useState([]);
   const [error, setError] = React.useState('');
@@ -280,7 +285,7 @@ export default function OfferPositionEditor({
         </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
-        <OfferPositionFields position={p} onChange={onChange} quantityError={quantityError} priceError={priceError} />
+        <OfferPositionFields position={p} onChange={onChange} fieldErrors={fieldErrors} />
         <FormControlLabel
           sx={{ m: 0 }}
           control={
@@ -306,6 +311,8 @@ export default function OfferPositionEditor({
             {error && <Alert severity="error">{error}</Alert>}
             <TextField
               select
+              required
+              error={Boolean(fieldErrors?.stock)}
               size="small"
               label={
                 en ? 'Stock position / warehouse' : 'Bestandsposition / Lager'
@@ -349,6 +356,8 @@ export default function OfferPositionEditor({
                 size="small"
                 type="number"
                 label={t('order_reserve_amount')}
+                required
+                error={Boolean(fieldErrors?.reserveQuantity)}
                 value={p.reserveQuantity ?? ''}
                 onChange={(e) => onChange({ reserveQuantity: e.target.value })}
                 inputProps={{ min: 0.001, max: p.quantity, step: 'any' }}
@@ -357,6 +366,8 @@ export default function OfferPositionEditor({
                 size="small"
                 type="date"
                 label={t('order_reserved_until')}
+                required
+                error={Boolean(fieldErrors?.reserveUntil)}
                 value={p.reserveUntil || ''}
                 onChange={(e) => onChange({ reserveUntil: e.target.value })}
                 InputLabelProps={{ shrink: true }}

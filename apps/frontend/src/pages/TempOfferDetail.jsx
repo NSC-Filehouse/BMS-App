@@ -293,11 +293,13 @@ export default function TempOfferDetail() {
             </Box>
             <Box
               sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gridAutoRows: '1fr',
                 gap: 1,
                 mt: 2,
                 minWidth: 0,
+                '& > .MuiButton-root': { minWidth: 0, overflowWrap: 'anywhere' },
               }}
             >
               {editable && !offer.generated && (
@@ -306,7 +308,7 @@ export default function TempOfferDetail() {
                   disabled={busy}
                   onClick={() => setAction('release')}
                 >
-                  {en ? 'Release for BMS' : 'Für BMS freigeben'}
+                  {t('temp_order_send_to_bms')}
                 </Button>
               )}
               {editable && !offer.generated && (
@@ -370,8 +372,8 @@ export default function TempOfferDetail() {
         <DialogTitle>
           {action === 'release'
             ? en
-              ? 'Release offer for BMS import?'
-              : 'Angebot zur BMS-Übernahme freigeben?'
+              ? 'Send offer to BMS?'
+              : 'Angebot an BMS senden?'
             : action === 'not-interested'
               ? t('offer_confirm_not_interested')
               : en
