@@ -756,7 +756,7 @@ async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false
   });
   const mapped = finalized.mapped;
   const updatedPositions = mapped.positions;
-  if (finalized.alreadyFinalized) {
+  if (finalized.alreadyFinalized && (draftOnly || mapped.status !== STATUS.APP_FINALIZED)) {
     return { data: mapped, meta: { alreadyFinalized: true } };
   }
   let csMail = { queued: false, reason: 'not_available' };
@@ -770,6 +770,9 @@ async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false
     if (csMail.outboxId) await processPurchaseOrderCsMailOutboxById(csMail.outboxId);
   } catch (mailError) {
     csMail = { queued: false, reason: mailError?.message || 'mail_failed' };
+  }
+  if (finalized.alreadyFinalized) {
+    return { data: { ...mapped, csMail }, meta: { alreadyFinalized: true } };
   }
   // A finalized purchase order is visible in the shared timeline and follows
   // the same push-notification path as sales orders. It never enters sales

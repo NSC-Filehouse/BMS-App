@@ -310,10 +310,12 @@ test('offer conversion opens purchasing only for shortages and returns to the pr
   ]);
 });
 
-test('a regular offer line can be purchased first from a searched supplier with its offered quantity', async () => {
+test('a regular offer line retries BMS handoff for the same saved purchase before opening the order', async () => {
   const line = { offerPositionId: 7, articleIndex: 'A1', article: 'Grade', amountInKg: 12000, candidates: [] };
   const clientRequestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
   let saved;
+  let creates = 0;
+  let handoffs = 0;
   const view = await mount('../src/pages/OptionOrderPurchase.jsx', {
     state: { procurementOption: line, clientRequestId }, offerPosition: line, onPurchaseSaved: (value) => { saved = value; },
   }, async (path, _lang, request) => {
@@ -321,7 +323,12 @@ test('a regular offer line can be purchased first from a searched supplier with 
       assert.equal(new URLSearchParams(path.split('?')[1]).get('supplierOnly'), '1');
       return { data: [{ kd_KdNR: 'LF1', kd_Name1: 'Supplier' }] };
     }
+    if (path === '/temp-purchase-orders/27/finalize') {
+      handoffs += 1;
+      return { data: { status: 1, csMail: { queued: handoffs > 1 } } };
+    }
     assert.equal(path, '/temp-purchase-orders');
+    creates += 1;
     const [position] = JSON.parse(request.body.get('positions'));
     assert.equal(position.optionPositionId, undefined);
     assert.equal(position.amount, 12000);
@@ -340,8 +347,15 @@ test('a regular offer line can be purchased first from a searched supplier with 
   assert.equal(editor.props.supplierSelection.props.value.id, 'LF1');
   assert.equal(editor.props.initialOrder.supplierName, 'Supplier');
   assert.doesNotMatch(view.text(), /Lieferant nicht eindeutig/);
-  await editor.props.onSave(editor.props.initialOrder);
+  await editor.props.onSend(editor.props.initialOrder);
+  await view.flush();
+  assert.equal(saved, undefined);
+  assert.match(view.text(), /Bestellung 27 wurde gespeichert/);
+  const lockedEditor = view.find((node) => node.props.savedForHandoff);
+  await lockedEditor.props.onSend(lockedEditor.props.initialOrder);
   assert.equal(saved.savedPurchasePositionId, 38);
+  assert.equal(creates, 1);
+  assert.equal(handoffs, 2);
   assert.equal(view.navigations.length, 0);
 });
 

@@ -119,7 +119,7 @@ function fixture(options = {}) {
     '../db/app-tables': { appTableSql: (name) => name === 'tempPurchaseOrder' ? 'orders' : name === 'tempPurchaseOrderPosition' ? 'positions' : name },
     '../db/customer-access': { getCustomerAccessScope: async () => ({ isFullAccess: options.fullAccess !== false }), loadVisibleCustomer: async () => options.supplier || ({ kd_Name1: 'Lieferant' }) },
     '../db/purchase-order-values': values, '../db/holidays': {}, '../delivery-calendar': require('../src/delivery-calendar'),
-    '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: async () => ({ queued: true }) },
+    '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: options.queueCsMail || (async () => ({ queued: true })) },
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
     '../db/timeline': { appendTimelineEntries: async (entries) => timeline.push(...entries) },
     '../options/purchase-source': {
@@ -446,6 +446,24 @@ test('finalize locks the saved order and publishes current purchase identity, ne
   await f.request({}, 'post', '/temp-purchase-orders/:id/finalize');
   assert.equal(f.timeline.length, 1);
   await assert.rejects(f.request(body(), 'put', '/temp-purchase-orders/:id'), /nicht mehr bearbeitbar/);
+});
+
+test('finalize retries missing mail for the same status-1 purchase without publishing twice', async () => {
+  const attempts = [];
+  const f = fixture({ queueCsMail: async ({ order }) => {
+    attempts.push(order.id);
+    if (attempts.length === 1) throw new Error('Mail queue unavailable');
+    return { queued: true };
+  } });
+  await f.request(body());
+  const first = await f.request({}, 'post', '/temp-purchase-orders/:id/finalize');
+  assert.equal(first.data.status, 1);
+  assert.equal(first.data.csMail.queued, false);
+  const retry = await f.request({}, 'post', '/temp-purchase-orders/:id/finalize');
+  assert.equal(retry.meta.alreadyFinalized, true);
+  assert.equal(retry.data.csMail.queued, true);
+  assert.deepEqual(attempts, [1, 1]);
+  assert.equal(f.timeline.length, 1);
 });
 
 test('legacy internal article names are replaced before hand-off and remain supplier names in persistence and timeline', async () => {

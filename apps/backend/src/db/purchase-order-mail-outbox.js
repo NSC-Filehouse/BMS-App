@@ -106,8 +106,15 @@ async function queuePurchaseOrderCsMail({ order, positions, mandantName, mandant
   const body = formatPurchaseOrderCsMailBody({ order, positions, mandantName, mandantShortName });
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     INSERT INTO ${CS_OUTBOX_TABLE} ([pcom_PurchaseOrderID],[pcom_CompanyID],[pcom_Recipient],[pcom_RecipientSource],[pcom_Subject],[pcom_Body],[pcom_Status],[pcom_AttemptCount],[pcom_CreateDate],[pcom_LastModifiedDate])
-    OUTPUT INSERTED.[pcom_ID] AS id VALUES (?,?,?,?,?,? ,N'pending',0,SYSUTCDATETIME(),SYSUTCDATETIME())
-  `, [order.id, companyId, recipient.address, recipient.source, PURCHASE_ORDER_CS_MAIL_SUBJECT, body]);
+    OUTPUT INSERTED.[pcom_ID] AS id
+    SELECT ?,?,?,?,?,?,N'pending',0,SYSUTCDATETIME(),SYSUTCDATETIME()
+    WHERE NOT EXISTS (SELECT 1 FROM ${CS_OUTBOX_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [pcom_PurchaseOrderID]=?)
+  `, [order.id, companyId, recipient.address, recipient.source, PURCHASE_ORDER_CS_MAIL_SUBJECT, body, order.id]);
+  if (!rows?.[0]) {
+    const [concurrent] = await runSQLQuerySqlServer(config.sql.database, `SELECT TOP 1 [pcom_ID] AS id, [pcom_Status] AS status FROM ${CS_OUTBOX_TABLE} WHERE [pcom_PurchaseOrderID] = ?`, [order.id]);
+    if (concurrent) return { queued: false, alreadyQueued: true, outboxId: Number(concurrent.id), status: asText(concurrent.status) };
+    return { queued: false, reason: 'mail_not_queued' };
+  }
   return { queued: true, outboxId: Number(rows?.[0]?.id || 0) };
 }
 

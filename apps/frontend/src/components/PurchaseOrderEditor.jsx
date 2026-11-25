@@ -18,7 +18,7 @@ const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 1
 const priceText = (value, locale) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
-export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
+export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onSend, savedForHandoff = false, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const [order, setOrder] = React.useState(() => initialOrder.paymentConditionText
@@ -148,14 +148,14 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     if (order.positions.length === 1 && onDelete) { void onDelete(); return; }
     update((previous) => ({ ...previous, positions: previous.positions.filter((p) => p.lineId !== lineId) }));
   };
-  const submit = async () => {
+  const submit = async (action = onSave) => {
     setAttempted(true);
     if (!locked && missing.length) {
       requestAnimationFrame(() => editorRef.current?.querySelector('[aria-invalid="true"]')?.focus());
       return;
     }
     setRejectedDeliveryDate(null);
-    const saveFailure = await onSave(order);
+    const saveFailure = await action(order);
     const date = saveFailure?.payload?.error?.details?.date;
     if (saveFailure?.code === 'PURCHASE_DELIVERY_DATE_NON_WORKING' && date) {
       setRejectedDeliveryDate({ date, loadingLocationText: order.loadingLocationText });
@@ -284,8 +284,11 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     })}
     {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type') : t('purchase_missing_fields')}</Alert>}
     <PurchaseOrderActions>
-      <Button variant="outlined" onClick={onContinue} disabled={disabled}>{linkedSetup || fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>
-      <Button variant="contained" onClick={submit} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
+      {!onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{linkedSetup || fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>}
+      <Button variant={onSend ? 'outlined' : 'contained'} onClick={() => submit()} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : savedForHandoff ? t('purchase_continue_to_order') : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : onSend ? t('save_label') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
+      {onSend && <Button variant="contained" onClick={() => submit(onSend)}
+        disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{t('temp_order_send_to_bms')}</Button>}
+      {onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{t('back_label')}</Button>}
       {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>{t('delete_label')}</Button>}
     </PurchaseOrderActions>
     {newLocationOpen && <LoadingLocationDialog

@@ -31,6 +31,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   const base = option.optionPositionId ? `/options/${option.optionId}/positions/${option.optionPositionId}/purchase` : null;
   const attachmentInputRef = React.useRef(null);
   const pendingSave = React.useRef(null);
+  const [savedPurchase, setSavedPurchase] = React.useState(null);
   const [availability, setAvailability] = React.useState(base ? null : {});
   const [proposals, setProposals] = React.useState([]);
   const [supplier, setSupplier] = React.useState(option.optionSupplier);
@@ -97,8 +98,9 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   const supplierChoices = query.length < 2 ? proposals : supplierResults || [];
   const stockHint = remainingKg == null ? undefined : t('purchase_max_available', { amount: Number(remainingKg).toLocaleString(lang) });
 
-  const submit = async (values) => {
+  const submit = async (values, sendToBms = false) => {
     if (saving) return;
+    let purchase = savedPurchase;
     setSaving(true);
     setSaveError('');
     try {
@@ -125,14 +127,24 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         pendingSave.current = { ...values, clientRequestId };
       }
       setLocked(true);
-      const { data } = await apiRequest('/temp-purchase-orders', {
+      const data = purchase || (await apiRequest('/temp-purchase-orders', {
         method: 'POST', body: purchaseOrderRequestBody(pendingSave.current),
-      });
+      })).data;
       const [saved] = data?.positions || [];
       if (!data?.id || !data.clientRequestId || !saved?.id || data.positions.length !== 1
         || Number(saved.optionPositionId || 0) !== Number(option.optionPositionId || 0)
         || saved.articleIndex.trim().toLowerCase() !== option.articleIndex.trim().toLowerCase()) {
         throw new Error(t('procurement_option_saved_purchase_missing'));
+      }
+      purchase = data;
+      setSavedPurchase(data);
+      if (sendToBms) {
+        const result = await apiRequest(`/temp-purchase-orders/${encodeURIComponent(data.id)}/finalize`, { method: 'POST' });
+        const mail = result.data?.csMail;
+        if (Number(result.data?.status) !== 2
+          && (Number(result.data?.status) !== 1 || (!mail?.queued && !mail?.alreadyQueued))) {
+          throw new Error(t('purchase_bms_mail_pending'));
+        }
       }
       const purchasedLine = {
           optionId: saved.optionId, optionPositionId: saved.optionPositionId,
@@ -149,8 +161,9 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         procurementOption: purchasedLine,
       } });
     } catch (cause) {
-      if ([400, 413, 422].includes(cause.status)) { pendingSave.current = null; setLocked(false); }
-      setSaveError(cause.message || t('loading_error'));
+      if (!purchase && [400, 413, 422].includes(cause.status)) { pendingSave.current = null; setLocked(false); }
+      const message = cause.message || t('loading_error');
+      setSaveError(purchase ? t('purchase_bms_saved_error', { id: purchase.id, message }) : message);
       return cause;
     } finally {
       setSaving(false);
@@ -196,6 +209,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
     {supplier && availability && <PurchaseOrderEditor key={supplier.id} isNew fixedPosition fixedQuantity={Boolean(offerPosition)} allowFirstPurchase={!base}
       supplierSelection={supplierSelection}
       attachmentInputRef={attachmentInputRef} onContinue={back} onSave={submit} onChange={setOrder} saving={saving} locked={locked}
+      onSend={(values) => submit(values, true)} savedForHandoff={Boolean(savedPurchase)}
       stockHint={stockHint}
       initialOrder={{
         supplierId: supplier.id, supplierName: supplier.name,
