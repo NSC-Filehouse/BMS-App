@@ -132,12 +132,28 @@ async function sqlQuery(database, sql, params = []) {
     return sql.includes('OUTPUT INSERTED.tap_id') ? [{ id: row.tap_id }] : [];
   }
   if (sql.includes('UPDATE') && sql.includes('[tbl_Temp_Auftrag]')) { writes.push(sql); Object.assign(order, updateFields(sql, params)); return []; }
-  if (sql.includes('UPDATE') && sql.includes('[tbl_Temp_Auf_Position]')) { writes.push(sql); Object.assign(savedPositions[0], updateFields(sql, params)); return []; }
+  if (sql.includes('UPDATE') && sql.includes('[tbl_Temp_Auf_Position]')) {
+    writes.push(sql);
+    if (sql.includes('WHERE tap_id=? AND tap_ta_id=?')) {
+      const reserved = savedPositions.find(row => row.tap_id === params.at(-2) && row.tap_ta_id === params.at(-1));
+      if (!reserved) return [];
+      Object.assign(reserved, updateFields(sql, params));
+      return [{ id: reserved.tap_id }];
+    }
+    Object.assign(savedPositions[0], updateFields(sql, params)); return [];
+  }
   if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auf_Position]')) {
     savedPositions = savedPositions.filter((row) => row.tap_ta_id !== params[0] || params.slice(1).includes(row.tap_id));
     return [];
   }
-  if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auftrag]')) { order = null; return []; }
+  if (sql.includes('DELETE FROM') && sql.includes('[tbl_Temp_Auftrag]')) {
+    if (sql.includes('ta_Status=-1')) {
+      const reserved = purchases.find(item => item.reservedOrderId === params[0]);
+      if (reserved) reserved.reservedOrderId = null;
+      return [];
+    }
+    order = null; return [];
+  }
   if (sql.includes('FROM') && sql.includes('[tbl_Temp_Auf_Position]')) return savedPositions.filter(row => row.tap_ta_id === params[0]).map(mappedPosition);
   if (sql.includes('FROM') && sql.includes('[tbl_Temp_Auftrag]') && !sql.includes('[tbl_Temp_Auftrag_Anhang]')) {
     return order ? [{ ...order, id: order.ta_id, completed: false, orderStatus: 0 }] : [];
@@ -324,8 +340,10 @@ test('an offer conversion links multiple separately saved purchases once and ret
   sourceOfferPositions = [13, 14].map((id) => ({ id, articleIndex: 'A1', unit: 'KG', quantity: 100, price: 2000, priceBasis: 1000 }));
   const requestIds = ['35f27c04-0b5f-4367-9f79-2ec0259a5331', '35f27c04-0b5f-4367-9f79-2ec0259a5332'];
   for (const [index, requestId] of requestIds.entries()) {
+    savedPositions.push({ tap_id: 71 + index, tap_ta_id: 80 + index, tap_line_no: 1 });
     purchases.push({ id: 100 + index, positionId: 200 + index, companyId: 3, owner: 'NSC', requestId, status: 0,
-      amount: 100, unit: 'kg', articleIndex: 'A1', purchasePrice: 1300 + index, optionPositionId: null, packagingType: 'Sackware', packagingTypeId: 1 });
+      amount: 100, unit: 'kg', articleIndex: 'A1', purchasePrice: 1300 + index, optionPositionId: null,
+      packagingType: 'Sackware', packagingTypeId: 1, orderPositionId: 71 + index, reservedOrderId: 80 + index });
   }
   const input = payload({
     incotermId: 2, offerSourceId: sourceOffer.id, offerSourceVersion: sourceOffer.version, procurementRequestId: requestIds[0],
@@ -336,14 +354,37 @@ test('an offer conversion links multiple separately saved purchases once and ret
   });
   const created = await request('post', input);
   assert.equal(sourceOffer.status, 4);
-  assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [1, 2]);
-  assert.deepEqual(purchases.map((p) => [p.orderPositionId, p.status]), [[1, 0], [2, 0]]);
+  assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [71, 72]);
+  assert.deepEqual(purchases.map((p) => [p.orderPositionId, p.status, p.reservedOrderId]), [[71, 0, null], [72, 0, null]]);
   assert.deepEqual(savedPositions.map((line) => line.tap_purchase_position_id), [200, 201]);
   assert.deepEqual(savedPositions.map((line) => line.tap_ep), [1300, 1301]);
   assert.equal((await request('post', input)).data.id, created.data.id);
   await request('delete');
   assert.deepEqual(purchases.map((p) => p.orderPositionId), [null, null]);
   assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [null, null]);
+});
+
+test('saving a direct order keeps the reserved position ID and adds a separate stock remainder', async () => {
+  reset();
+  procurementEnabled = true;
+  const requestId = '35f27c04-0b5f-4367-9f79-2ec0259a5771';
+  savedPositions.push({ tap_id: 77, tap_ta_id: 80, tap_line_no: 1 });
+  purchases.push({ id: 100, positionId: 200, companyId: 3, owner: 'NSC', requestId, status: 1,
+    amount: 60, unit: 'kg', articleIndex: 'A1', purchasePrice: 1200, packagingType: 'Sackware', packagingTypeId: 1,
+    orderPositionId: 77, reservedOrderId: 80 });
+  const stock = payload().positions[0];
+  const input = payload({ incotermId: 2, procurementRequestId: requestId, positions: [{
+    ...stock, articleIndex: 'A1', beNumber: '', warehouseId: '', amountInKg: 100,
+    savedPurchasePositionId: 200, purchaseRequestId: requestId, savedPurchaseAmount: 60,
+    savedPurchaseStock: { beNumber: stock.beNumber, warehouseId: stock.warehouseId, costPrice: 1100 },
+  }] });
+  const saved = await request('post', input);
+  assert.equal(purchases[0].orderPositionId, 77);
+  assert.equal(purchases[0].reservedOrderId, null);
+  assert.equal(savedPositions[0].tap_ta_id, saved.data.id);
+  assert.deepEqual(savedPositions.map(row => [row.tap_amount_in_kg, row.tap_be_number]), [[60, ''], [40, stock.beNumber]]);
+  assert.equal((await request('post', input)).data.id, saved.data.id);
+  assert.equal(savedPositions.length, 2);
 });
 
 test('create, edit and copy persist FCA pickup text in the existing fields without the sales customer FK', async () => {

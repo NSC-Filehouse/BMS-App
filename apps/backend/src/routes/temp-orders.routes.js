@@ -42,6 +42,7 @@ const {
 const { preparePurchaseDraft, savePurchaseDraft, finalizePurchase } = require('./temp-purchase-orders.routes');
 const { assertProcurementAccess, procurementSchemaReady, loadOrderProcurement,
   loadOrderProcurementLines, loadOrderProcurementStatuses } = require('../db/linked-procurement');
+const { PURCHASE_RESERVATION_STATUS, removePurchaseReservation } = require('../db/purchase-order-reservation');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
 const PROCUREMENT_PURCHASE_POSITIONS = appTableSql('tempPurchaseOrderPosition');
 const PROCUREMENT_PURCHASES = appTableSql('tempPurchaseOrder');
@@ -418,7 +419,7 @@ function normalizeStoredTempOrderStatus(value, legacyCompleted = false) {
   const text = asText(value);
   if (text) {
     const numeric = Number(text);
-    if (Number.isInteger(numeric) && numeric >= 0) return numeric;
+    if (Number.isInteger(numeric) && (numeric >= 0 || numeric === PURCHASE_RESERVATION_STATUS)) return numeric;
   }
   return legacyCompleted ? TEMP_ORDER_STATUS.APP_FINALIZED : TEMP_ORDER_STATUS.DRAFT;
 }
@@ -1398,6 +1399,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
     SELECT COUNT(*) AS total
     FROM ${TEMP_ORDER_TABLE} o
     WHERE [o].[ta_company_id] = ?
+    AND COALESCE([o].[ta_Status],0) <> ${PURCHASE_RESERVATION_STATUS}
     ${ownerFilter.whereSql}
     ${statusFilter.whereSql}
     ${createdPeriodFilter.whereSql}
@@ -1432,6 +1434,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
       ORDER BY p.[tap_line_no] ASC
     ) fp
     WHERE [o].[ta_company_id] = ?
+    AND COALESCE([o].[ta_Status],0) <> ${PURCHASE_RESERVATION_STATUS}
     ${ownerFilter.whereSql}
     ${statusFilter.whereSql}
     ${createdPeriodFilter.whereSql}
@@ -1514,6 +1517,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
     SELECT TOP 1 ${headerSelectSql}
     FROM ${TEMP_ORDER_TABLE}
     WHERE [ta_id] = ? AND [ta_company_id] = ?
+      AND COALESCE([ta_Status],0) <> ${PURCHASE_RESERVATION_STATUS}
       ${ownerFilter.whereSql}
   `;
   const rows = await runSQLQuerySqlServer(config.sql.database, sql, [id, companyId, ...ownerFilter.params]);
@@ -1791,14 +1795,18 @@ async function lockSavedPurchase(query, position, companyId, user) {
     SELECT pp.tbp_id AS id, pp.tbp_order_position_id AS linkedOrderPositionId,
       pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit, pp.tbp_purchase_price AS purchasePrice,
       pp.OptionPositionID AS optionPositionId, b.tb_packaging_type AS packagingType, b.tb_packaging_type_id AS packagingTypeId,
-      COALESCE(b.tb_currency,pp.tbp_currency,N'EUR') AS currency
+      COALESCE(b.tb_currency,pp.tbp_currency,N'EUR') AS currency, reserved.ta_id AS reservedOrderId
     FROM ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK)
     JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp WITH (UPDLOCK,HOLDLOCK) ON pp.tbp_tb_id=b.tb_id
+    LEFT JOIN ${TEMP_ORDER_POSITION_TABLE} reservedPosition ON reservedPosition.tap_id=pp.tbp_order_position_id
+    LEFT JOIN ${TEMP_ORDER_TABLE} reserved ON reserved.ta_id=reservedPosition.tap_ta_id
+      AND reserved.ta_Status=${PURCHASE_RESERVATION_STATUS} AND reserved.ta_company_id=b.tb_company_id
+      AND reserved.ta_CreatedBy=b.tb_created_by
     WHERE pp.tbp_id=? AND b.tb_company_id=? AND b.tb_created_by=? AND b.tb_client_request_id=?
       AND NOT EXISTS (SELECT 1 FROM ${PROCUREMENT_PURCHASE_POSITIONS} other WHERE other.tbp_tb_id=b.tb_id AND other.tbp_id<>pp.tbp_id)
   `, [position.savedPurchasePositionId, companyId, user, position.purchaseRequestId])).rows;
-  if (!purchase || purchase.linkedOrderPositionId != null
-    || (!position.offerPositionId && !purchase.optionPositionId)
+  if (!purchase || (purchase.linkedOrderPositionId != null && !purchase.reservedOrderId)
+    || (!purchase.reservedOrderId && !position.offerPositionId && !purchase.optionPositionId)
     || asText(purchase.articleIndex).toLowerCase() !== position.articleIndex.toLowerCase()
     || asText(purchase.unit).toLowerCase() !== 'kg' || Number(purchase.amount) !== position.amountInKg
     || asInt(purchase.purchasePrice, 0) <= 0) {
@@ -1811,10 +1819,12 @@ async function lockSavedPurchase(query, position, companyId, user) {
 
 function expandProcurementPositions(positions) {
   return positions.flatMap((position) => {
-    if (!position?.procurement) return [position];
+    const inline = position?.procurement;
+    const saved = position?.savedPurchasePositionId != null && position.savedPurchaseAmount != null;
+    if (!inline && !saved) return [position];
     const total = Number(position.amountInKg);
-    const purchased = Number(position.procurement.position?.amount);
-    const stock = position.procurement.stock;
+    const purchased = Number(inline ? inline.position?.amount : position.savedPurchaseAmount);
+    const stock = inline ? inline.stock : position.savedPurchaseStock;
     if (!Number.isSafeInteger(total) || !Number.isSafeInteger(purchased) || purchased <= 0 || purchased > total
       || (purchased < total && (!asText(stock?.beNumber) || !asText(stock?.warehouseId)))) {
       throw createHttpError(400, 'Die Bestellmenge und der gewählte VL-Bestand müssen den Auftrag decken.', { code: 'PROCUREMENT_QUANTITY_INVALID' });
@@ -1822,7 +1832,7 @@ function expandProcurementPositions(positions) {
     const pending = { ...position, beNumber: '', warehouseId: '', amountInKg: purchased };
     if (purchased === total) return [pending];
     return [pending, {
-      ...position, amountInKg: total - purchased, procurement: null, offerPositionId: null,
+      ...position, amountInKg: total - purchased, procurement: null, offerPositionId: null, savedPurchasePositionId: null,
       beNumber: stock.beNumber, warehouseId: stock.warehouseId,
       reservationInKg: stock.reservationInKg, reservationDate: stock.reservationDate,
       costPricePerKg: stock.costPrice ?? position.costPricePerKg,
@@ -1849,11 +1859,6 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   const submittedPositions = normalizePositionsInput(body);
   const hasInlineProcurement = submittedPositions.some((position) => position?.procurement);
   const savedPurchaseLines = submittedPositions.filter((position) => position?.savedPurchasePositionId != null);
-  if (savedPurchaseLines.length && hasInlineProcurement) {
-    throw createHttpError(400, 'Gespeicherte Bestellungen und noch nicht gespeicherte Beschaffungen können hier nicht kombiniert werden.', {
-      code: 'PROCUREMENT_SAVED_PURCHASE_INVALID',
-    });
-  }
   const hasProcurement = hasInlineProcurement || savedPurchaseLines.length > 0;
   const procurementRequestId = hasProcurement ? asText(body.procurementRequestId).toLowerCase() : null;
   const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
@@ -1883,7 +1888,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
   if (purchaseRequestIds.length && (purchaseRequestIds[0] !== procurementRequestId
     || purchaseRequestIds.some((requestId) => !uuidPattern.test(requestId))
     || new Set(purchaseRequestIds).size !== purchaseRequestIds.length
-    || (savedPurchaseLines.length > 1 && savedPurchaseLines.some((position) => !conversion || !position.offerPositionId)))) {
+    || (savedPurchaseLines.length > 1 && conversion && savedPurchaseLines.some((position) => !position.offerPositionId)))) {
     throw createHttpError(400, 'Ungültige Referenz für die Übernahme der gespeicherten Bestellungen.', { code: 'PROCUREMENT_SAVED_PURCHASE_INVALID' });
   }
   assertPositionsBelongToActiveMandant(req, positionsInput);
@@ -2207,14 +2212,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         ...(offerPositionId ? ['[tap_offer_position_id]'] : []),
         ...(purchasePositionId ? ['[tap_purchase_position_id]', '[tap_option_position_id]'] : []),
       ];
-      const posSql = `
-        INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (
-          ${posInsertColumns.join(', ')}
-        )
-        ${offerPositionId || purchasePositionId ? 'OUTPUT INSERTED.tap_id AS id' : ''}
-        VALUES (${posInsertColumns.map(() => '?').join(', ')})
-      `;
-      const inserted = await query(posSql, [
+      const posParams = [
         createdRow.ta_id,
         i + 1,
         pos.beNumber,
@@ -2247,9 +2245,27 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         nowIso,
         ...(offerPositionId ? [offerPositionId] : []),
         ...(purchasePositionId ? [purchasePositionId, pos.optionPositionId ?? null] : []),
-      ]);
+      ];
+      const inserted = savedPurchase?.reservedOrderId
+        ? await query(`
+          UPDATE ${TEMP_ORDER_POSITION_TABLE}
+          SET ${posInsertColumns.map(column => column + '=?').join(', ')}
+          OUTPUT INSERTED.tap_id AS id
+          WHERE tap_id=? AND tap_ta_id=?
+        `, [...posParams, savedPurchase.linkedOrderPositionId, savedPurchase.reservedOrderId])
+        : await query(`
+          INSERT INTO ${TEMP_ORDER_POSITION_TABLE} (${posInsertColumns.join(', ')})
+          ${offerPositionId || purchasePositionId ? 'OUTPUT INSERTED.tap_id AS id' : ''}
+          VALUES (${posInsertColumns.map(() => '?').join(', ')})
+        `, posParams);
+      if (savedPurchase?.reservedOrderId) {
+        if (inserted.rows.length !== 1) {
+          throw createHttpError(409, 'Die reservierte Auftragsposition ist nicht mehr verfügbar.', { code: 'PURCHASE_RESERVATION_FAILED' });
+        }
+        await removePurchaseReservation(query, savedPurchase.reservedOrderId, companyId);
+      }
       if (offerPositionId) await linkOfferPosition(query, offerPositionId, inserted.rows[0].id);
-      if (purchasePositionId) await query(`
+      if (purchasePositionId && !savedPurchase?.reservedOrderId) await query(`
         UPDATE ${PROCUREMENT_PURCHASE_POSITIONS} SET tbp_order_position_id=? WHERE tbp_id=?
       `, [inserted.rows[0].id, purchasePositionId]);
     }

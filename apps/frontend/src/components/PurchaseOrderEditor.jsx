@@ -15,7 +15,7 @@ const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 1
 const priceText = (value, locale) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
-export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onSend, savedForHandoff = false, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
+export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onSend, savedForHandoff = false, onContinue, onDelete, saving, locked = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const [order, setOrder] = React.useState(() => ({
@@ -91,7 +91,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         const response = await apiRequest(`/customers/${encodeURIComponent(order.supplierId)}/procured-articles/${encodeURIComponent(id)}/purchase-defaults`);
         initialHistory[id] = response.data.defaults;
       } catch (error) {
-        if (error.code !== 'PURCHASE_ARTICLE_NOT_FOUND' || (!linkedSetup && !allowFirstPurchase && !order.positions.some((p) => p.articleIndex === id && p.firstPurchase))) throw error;
+        if (error.code !== 'PURCHASE_ARTICLE_NOT_FOUND' || (!allowFirstPurchase && !order.positions.some((p) => p.articleIndex === id && p.firstPurchase))) throw error;
       }
     })).then(() => {
       if (!alive) return;
@@ -102,7 +102,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       })) }));
     }).catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, [isNew, locationSignature, order.supplierId, locked, linkedSetup, allowFirstPurchase, update]);
+  }, [isNew, locationSignature, order.supplierId, locked, allowFirstPurchase, update]);
 
   const patchPosition = (lineId, patch) => update((previous) => ({ ...previous, positions: previous.positions.map((p) => p.lineId === lineId ? { ...p, ...patch } : p) }));
   const missing = purchaseMissingFields(order);
@@ -150,7 +150,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     {restoredFilesMissing && <Alert severity="info">{t('temp_order_draft_attachment_hint')}</Alert>}
     {error && <Alert severity="error">{error}</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
-      {!linkedSetup && <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
         <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{t('temp_order_attachment_label')}</Typography>
         {savedAttachments.length || pendingAttachmentFiles.length ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, flex: 1 }}>
@@ -172,7 +172,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
             </Box>)}
           </Box>
         ) : <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 0 }}>{t('temp_order_attachment_none')}</Typography>}
-      </Box>}
+      </Box>
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       {supplierSelection}
       <Autocomplete options={contacts} value={contacts.find(item => String(item.id) === String(order.supplierContactId)) || null}
@@ -232,15 +232,15 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && (errors.articleIndex || fieldErrors.articleType) ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <Typography variant="subtitle1" title={p.article} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{String(p.article || '').slice(0, 75)}</Typography>
-          {!fixedPosition && <IconButton size="small" color="primary" aria-label={t('purchase_copy_position')} disabled={disabled || linkedSetup || linkedOrder} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>}
-          {!fixedPosition && <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled || linkedSetup || linkedOrder} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>}
+          {!fixedPosition && <IconButton size="small" color="primary" aria-label={t('purchase_copy_position')} disabled={disabled || linkedOrder} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>}
+          {!fixedPosition && <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled || linkedOrder} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>}
         </Box>
         {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
           <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>{t('purchase_internal_name')}: {p.masterArticleName || last.masterArticleName}</Typography>}
         <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`${t('product_article_index')}: ${p.articleIndex} · `:''}{t('original_packaging_type_label')}: {p.originalPackagingType || '–'}</Typography>
         {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">{t('purchase_option_title')}{p.remainingKg!=null?` · ${t('purchase_available_at_selection')}: ${Number(p.remainingKg).toLocaleString(locale)} kg`:''}</Typography>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
-          <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled || linkedOrder} InputProps={{ readOnly: fixedQuantity }} helperText={stockHint} inputProps={{ min: linkedSetup || fixedPosition ? 1 : 0.001, step: linkedSetup || fixedPosition ? 1 : 0.001 }} />
+          <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled || linkedOrder} InputProps={{ readOnly: fixedQuantity }} helperText={stockHint} inputProps={{ min: fixedPosition ? 1 : 0.001, step: fixedPosition ? 1 : 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
             <TextField fullWidth label={t('purchase_price_input', { currency: order.currency })} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>
@@ -258,8 +258,8 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     })}
     {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type') : t('purchase_missing_fields')}</Alert>}
     <PurchaseOrderActions>
-      {!onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{linkedSetup || fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>}
-      <Button variant={onSend ? 'outlined' : 'contained'} onClick={() => submit()} disabled={saving || (!locked && (loading || Boolean(error)))}>{saving ? <CircularProgress size={20} /> : savedForHandoff ? t('purchase_continue_to_order') : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : onSend ? t('save_label') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
+      {!onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>}
+      <Button variant={onSend ? 'outlined' : 'contained'} onClick={() => submit()} disabled={saving || (!locked && (loading || Boolean(error)))}>{saving ? <CircularProgress size={20} /> : savedForHandoff ? t('purchase_continue_to_order') : locked ? t('purchase_retry_save') : onSend ? t('save_label') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
       {onSend && <Button variant="contained" onClick={() => submit(onSend)}
         disabled={saving || (!locked && (loading || Boolean(error)))}>{t('temp_order_send_to_bms')}</Button>}
       {onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{t('back_label')}</Button>}

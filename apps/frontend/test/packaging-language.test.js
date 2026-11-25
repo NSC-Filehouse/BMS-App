@@ -271,11 +271,12 @@ test('the purchase-first editor saves the fixed option line and opens the custom
     } };
     assert.equal(path, '/temp-purchase-orders');
     assert.equal(request.body.get('clientRequestId'), clientRequestId);
+    assert.equal(request.body.get('reserveOrderPosition'), 'true');
     assert.equal(request.body.get('supplierId'), supplier.id);
     assert.equal(JSON.parse(request.body.get('positions'))[0].articleIndex, 'A1');
     return { data: { id: 27, clientRequestId, packagingType: 'Sackware', packagingTypeId: 78, currency: 'USD',
       supplierId: supplier.id, deliveryTermId: 2, loadingLocationText: 'Supplier pickup', paymentConditionId: 10,
-      positions: [{ id: 38, optionId: 1, optionPositionId: 10, articleIndex: 'A1', amount: 12000, purchasePrice: 1755 }],
+      positions: [{ id: 38, orderPositionId: 77, optionId: 1, optionPositionId: 10, articleIndex: 'A1', amount: 12000, purchasePrice: 1755 }],
     } };
   }, { id: '1', positionId: '10' }, 'default', {
     mandant: '10', clientRequestId, incoterm: 'FCA', loadingLocation: 'Supplier pickup',
@@ -336,6 +337,35 @@ test('offer conversion opens purchasing only for shortages and returns to the pr
   ]);
 });
 
+test('a direct order uses the same purchase editor and sends only after the reserved ID is saved', async () => {
+  const clientRequestId = '4f5f5b80-08de-4039-b3cb-08f01999ae52';
+  const line = { articleIndex: 'A1', article: 'Grade', amountInKg: 15000, optionSupplier: { id: 'LF1', name: 'Supplier' } };
+  const lot = { key: 'lot', beNumber: 'BE1', warehouseId: 'L1', available: 5000 };
+  let returned;
+  const view = await mount('../src/pages/OptionOrderPurchase.jsx', {
+    state: { clientRequestId, procurementOption: line }, directPosition: line, stockLots: [lot],
+    onPurchaseSaved: value => { returned = value; }, onBack() {},
+  }, async (path, _lang, request) => {
+    if (path === '/temp-purchase-orders/27/finalize') {
+      return { data: { status: 1, csMail: { queued: true } } };
+    }
+    assert.equal(path, '/temp-purchase-orders');
+    assert.equal(request.body.get('reserveOrderPosition'), 'true');
+    return { data: { id: 27, clientRequestId, currency: 'EUR',
+      positions: [{ id: 38, orderPositionId: 77, articleIndex: 'A1', amount: 10000, purchasePrice: 900 }] } };
+  }, {}, 'PurchaseForOrder');
+  await view.flush();
+  const editor = view.find(node => node.props.fixedPosition && node.props.onSend);
+  const values = { ...editor.props.initialOrder, positions: [{ ...editor.props.initialOrder.positions[0], amount: 10000 }] };
+  editor.props.onChange(values);
+  await view.flush();
+  await view.find(node => node.props.fixedPosition && node.props.onSend).props.onSend(values);
+  assert.deepEqual(view.calls.map(call => call.path), ['/temp-purchase-orders', '/temp-purchase-orders/27/finalize']);
+  assert.equal(returned.savedPurchasePositionId, 38);
+  assert.equal(returned.savedPurchaseAmount, 10000);
+  assert.deepEqual(returned.savedPurchaseStock, lot);
+});
+
 test('a regular offer line retries BMS handoff for the same saved purchase before opening the order', async () => {
   const line = { offerPositionId: 7, articleIndex: 'A1', article: 'Grade', amountInKg: 12000, candidates: [] };
   const clientRequestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
@@ -358,7 +388,7 @@ test('a regular offer line retries BMS handoff for the same saved purchase befor
     const [position] = JSON.parse(request.body.get('positions'));
     assert.equal(position.optionPositionId, undefined);
     assert.equal(position.amount, 12000);
-    return { data: { id: 27, clientRequestId, positions: [{ id: 38, articleIndex: 'A1', amount: 12000, purchasePrice: 1700 }] } };
+    return { data: { id: 27, clientRequestId, positions: [{ id: 38, orderPositionId: 77, articleIndex: 'A1', amount: 12000, purchasePrice: 1700 }] } };
   }, {}, 'PurchaseForOrder');
   await view.flush();
   const finder = () => view.find((node) => node.type === 'Autocomplete' && node.props.openOnFocus);

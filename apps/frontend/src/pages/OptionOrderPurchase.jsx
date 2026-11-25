@@ -24,13 +24,14 @@ export default function OptionOrderPurchase() {
   return <PurchaseForOrder key={state.clientRequestId} state={state} />;
 }
 
-export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack }) {
+export function PurchaseForOrder({ state, offerPosition, directPosition, stockLots = [], onPurchaseSaved, onBack }) {
   const { procurementOption: option, clientRequestId, returnTo } = state;
   const navigate = useNavigate();
   const { t, lang } = useI18n();
   const base = option.optionPositionId ? `/options/${option.optionId}/positions/${option.optionPositionId}/purchase` : null;
   const attachmentInputRef = React.useRef(null);
   const pendingSave = React.useRef(null);
+  const pendingStock = React.useRef(null);
   const [savedPurchase, setSavedPurchase] = React.useState(null);
   const [availability, setAvailability] = React.useState(base ? null : {});
   const [proposals, setProposals] = React.useState([]);
@@ -44,6 +45,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   const [saving, setSaving] = React.useState(false);
   const [locked, setLocked] = React.useState(false);
   const [order, setOrder] = React.useState(null);
+  const [stockKey, setStockKey] = React.useState(directPosition?.procurement?.stock?.key || '');
   const [totalAmount, setTotalAmount] = React.useState('');
   const [totalUnit, setTotalUnit] = React.useState('kg');
   const [quantityConfirmed, setQuantityConfirmed] = React.useState(false);
@@ -96,6 +98,11 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   const initialRemainingKg = (truckOptionAvailability(availability || {}, defaultPackaging) || availability)?.remainingKg;
   const canEditSupplier = !option.optionSupplier && !(offerPosition && supplierResolvedFromOption);
   const supplierChoices = query.length < 2 ? proposals : supplierResults || [];
+  const directAmount = Number(directPosition?.amountInKg);
+  const requestedAmount = Number(order?.positions[0]?.amount ?? directPosition?.procurement?.position?.amount ?? directAmount);
+  const remainder = directAmount - requestedAmount;
+  const usableLots = remainder > 0 ? stockLots.filter(lot => lot.available >= remainder) : [];
+  const selectedLot = usableLots.find(lot => lot.key === stockKey) || (usableLots.length === 1 ? usableLots[0] : null);
   const stockHint = remainingKg == null ? undefined : t('purchase_max_available', { amount: Number(remainingKg).toLocaleString(lang) });
 
   const submit = async (values, sendToBms = false) => {
@@ -108,6 +115,9 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         const amount = Number(values.positions[0].amount);
         if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error(t('offer_order_whole_kg'));
         if (offerPosition && amount !== offerPosition.amountInKg) throw new Error(t('procurement_quantity_invalid'));
+        if (directPosition && (amount > directAmount || (amount < directAmount && !selectedLot))) {
+          throw new Error(t('procurement_quantity_invalid'));
+        }
         if (needsQuantity) {
           const totalKg = confirmedTotalKg(totalAmount, totalUnit, packaging);
           if (!quantityConfirmed || totalKg == null) throw new Error(t('procurement_option_confirm_quantity'));
@@ -124,14 +134,15 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         } else if (remainingKg != null && amount > remainingKg) {
           throw new Error(t('procurement_option_quantity_limit'));
         }
-        pendingSave.current = { ...values, clientRequestId };
+        pendingSave.current = { ...values, clientRequestId, reserveOrderPosition: true };
+        pendingStock.current = selectedLot;
       }
       setLocked(true);
       const data = purchase || (await apiRequest('/temp-purchase-orders', {
         method: 'POST', body: purchaseOrderRequestBody(pendingSave.current),
       })).data;
       const [saved] = data?.positions || [];
-      if (!data?.id || !data.clientRequestId || !saved?.id || data.positions.length !== 1
+      if (!data?.id || !data.clientRequestId || !saved?.id || !saved.orderPositionId || data.positions.length !== 1
         || Number(saved.optionPositionId || 0) !== Number(option.optionPositionId || 0)
         || saved.articleIndex.trim().toLowerCase() !== option.articleIndex.trim().toLowerCase()) {
         throw new Error(t('procurement_option_saved_purchase_missing'));
@@ -152,6 +163,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
           articleIndex: saved.articleIndex, article: option.article, amountInKg: saved.amount, price: '',
           costPrice: data.currency === 'USD' ? null : saved.purchasePrice, purchaseCurrency: data.currency,
           originalPackagingType: data.packagingType, originalPackagingTypeId: data.packagingTypeId,
+          ...(directPosition && { savedPurchaseAmount: saved.amount, savedPurchaseStock: pendingStock.current }),
       };
       if (onPurchaseSaved) {
         onPurchaseSaved(purchasedLine);
@@ -191,11 +203,12 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
   return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <DisclosureBackButton onClick={back} disabled={saving || locked} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
-      <Typography variant="h5" sx={{ flex: 1 }}>{t(base ? 'purchase_option_title' : 'procurement_offer_purchase_title')}</Typography>
+      <Typography variant="h5" sx={{ flex: 1 }}>{t(base ? 'purchase_option_title' : offerPosition
+        ? 'procurement_offer_purchase_title' : 'procurement_purchase_title')}</Typography>
       <IconButton disabled={!supplier || !availability || saving || locked} onClick={() => attachmentInputRef.current?.click()}
         aria-label={t('temp_order_attachment_add')}><AttachFileIcon /></IconButton>
     </Box>
-    <Alert severity="info">{t(offerPosition?.candidates?.length
+    <Alert severity="info">{t((offerPosition?.candidates?.length || stockLots.length)
       ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
     {loadError && <Alert severity="error">{loadError}</Alert>}
     {searchError && <Alert severity="error">{searchError}</Alert>}
@@ -207,26 +220,34 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         {supplierSelection}
       </CardContent>
     </Card>}
+    {usableLots.length > 1 && <TextField select size="small" label={t('offer_order_select_stock')}
+      value={selectedLot?.key || ''} disabled={saving || locked} onChange={event => setStockKey(event.target.value)}>
+      {usableLots.map(lot => <MenuItem key={lot.key} value={lot.key}>
+        {lot.beNumber} · {lot.warehouse || lot.warehouseId} · {Number(lot.available).toLocaleString(lang)} kg
+      </MenuItem>)}
+    </TextField>}
     {supplier && availability && <PurchaseOrderEditor key={supplier.id} isNew fixedPosition fixedQuantity={Boolean(offerPosition)} allowFirstPurchase={!base}
       supplierSelection={supplierSelection}
       attachmentInputRef={attachmentInputRef} onContinue={back} onSave={submit} onChange={setOrder} saving={saving} locked={locked}
       onSend={(values) => submit(values, true)} savedForHandoff={Boolean(savedPurchase)}
       stockHint={stockHint}
       initialOrder={{
-        supplierId: supplier.id, supplierName: supplier.name,
         packagingTypeId: defaultPackaging?.id, packagingType: defaultPackaging?.text,
         deliveryTermText: state.incoterm || availability.sourceIncoterm,
         loadingLocationText: state.loadingLocation || availability.sourceLoadingLocation || '',
         loadingLocationSource: state.loadingLocation || availability.sourceLoadingLocation ? 'manual' : '',
+        ...directPosition?.procurement?.header,
+        supplierId: supplier.id, supplierName: supplier.name,
         positions: [{
           lineId: clientRequestId, optionId: option.optionId, optionPositionId: option.optionPositionId,
           articleIndex: option.articleIndex, article: state.supplierArticleName || availability.sourceArticleName || option.article, masterArticleName: option.article,
           supplierConfirmed: true, articleConfirmed: true, unit: 'kg',
-          amount: offerPosition ? offerPosition.amountInKg : initialRemainingKg > 0 ? Math.floor(initialRemainingKg) : '', amountTouched: true,
-          purchasePrice: option.costPrice ?? '', requestedDeliveryDate: '',
+          amount: offerPosition?.amountInKg ?? directPosition?.amountInKg ?? (initialRemainingKg > 0 ? Math.floor(initialRemainingKg) : ''), amountTouched: true,
+          purchasePrice: directPosition && !base ? '' : option.costPrice ?? '', requestedDeliveryDate: directPosition?.deliveryDate || '',
           originalPackagingType: optionPackagingText({
             packagingDisplay: availability.sourcePackagingDisplay, packagingText: availability.sourcePackaging,
           }, lang),
+          ...directPosition?.procurement?.position,
         }],
       }}
       optionQuantityFields={needsQuantity && <Box sx={{ display: 'grid', gap: 1 }}>

@@ -13,6 +13,7 @@ function fixture(options = {}) {
   const mails = [];
   const csMails = [];
   const attachments = [];
+  const reservations = [];
   let failDelete = false;
   let failRead = false;
   let failAttachmentRead = false;
@@ -22,6 +23,31 @@ function fixture(options = {}) {
     assert.equal((sql.match(/\?/g) || []).length, params.length, `SQL parameter count: ${sql}`);
     calls.push({ sql, params });
     assert.doesNotMatch(sql, /\bAND\s+AND\b/i, 'composed list predicates must be valid SQL');
+    if (sql.includes('INSERT INTO tempOrder (')) {
+      reservations.push({ id: 80 + reservations.length, status: -1, companyId: params[0] });
+      return { rows: [{ id: reservations.at(-1).id }] };
+    }
+    if (sql.includes('INSERT INTO tempOrderPosition (')) {
+      const reservation = reservations.find(item => item.id === params[0]);
+      reservation.positionId = 100 + reservation.id;
+      return { rows: [{ id: reservation.positionId }] };
+    }
+    if (sql.includes('SET tbp_order_position_id=')) {
+      const position = lines.find(item => item.tbp_tb_id === params[1] && item.tbp_line_no === 1 && !item.tbp_order_position_id);
+      if (!position) return { rows: [] };
+      position.tbp_order_position_id = params[0];
+      return { rows: [{ id: position.tbp_id }] };
+    }
+    if (sql.includes('CASE WHEN o.ta_Status=-1')) {
+      return { rows: lines.filter(item => item.tbp_tb_id === params[0] && item.tbp_order_position_id).map(item => ({
+        ...project(sql, item), reservedOrderId: reservations.find(row => row.positionId === item.tbp_order_position_id)?.id,
+      })) };
+    }
+    if (sql.includes('DELETE FROM tempOrder\n')) {
+      const index = reservations.findIndex(item => item.id === params[0] && item.companyId === params[1]);
+      if (index >= 0) reservations.splice(index, 1);
+      return { rows: [] };
+    }
     if (sql.includes('COL_LENGTH')) {
       return { rows: [{ optionSnapshotLength: options.optionSnapshotSupported === false ? null : -1 }] };
     }
@@ -118,7 +144,7 @@ function fixture(options = {}) {
         ? (options.inactiveArticle ? [] : [{ article: 'Stammartikel' }]) : [{ ok: 1 }],
       runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows,
       withSqlTransaction: async (_db, work) => {
-        const arrays = [headers, lines, mails, csMails, attachments];
+        const arrays = [headers, lines, mails, csMails, attachments, reservations];
         const before = structuredClone(arrays);
         try { return await work({ query }); } catch (error) { arrays.forEach((items, index) => items.splice(0, items.length, ...before[index])); throw error; }
       },
@@ -154,6 +180,10 @@ function fixture(options = {}) {
     },
   };
   dependencies['../pilot-features'] = require('../src/pilot-features');
+  const reservationModule = { exports: {} };
+  new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-reservation.js'), 'utf8'))(
+    name => (name === './app-tables' ? dependencies['../db/app-tables'] : dependencies[name]), reservationModule);
+  dependencies['../db/purchase-order-reservation'] = reservationModule.exports;
   dependencies['../db/linked-procurement'] = {
     procurementSchemaReady: async () => Boolean(options.procurementEnabled),
     assertProcurementAccess: require('../src/db/linked-procurement').assertProcurementAccess,
@@ -190,7 +220,7 @@ function fixture(options = {}) {
     const res = { headers: {}, setHeader(key, value) { this.headers[key] = value; }, send(buffer) { resolve({ buffer, headers: this.headers }); }, status(status) { this.statusCode = status; return this; }, json(payload) { resolve({ status: this.statusCode, ...payload }); }, end() { resolve({ status: this.statusCode }); } };
     routes.find((r) => r.path === route && r.method === method).handlers.at(-1)(req, res, reject);
   });
-  return { router, request, headers, lines, calls, timeline, mails, csMails, attachments, attachmentModule: attachmentModule.exports, failAttachmentRead: () => { failAttachmentRead = true; }, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
+  return { router, request, headers, lines, calls, timeline, mails, csMails, attachments, reservations, attachmentModule: attachmentModule.exports, failAttachmentRead: () => { failAttachmentRead = true; }, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
 }
 
 function routedRequest(router, method, url, userIdentity) {
@@ -497,6 +527,34 @@ test('rejects historical free text and pickup addresses owned by another custome
   await assert.rejects(f.request({ ...body(), addressId: null, loadingLocationText: 'Fremder Ort' }), /Adresse.*Stamm/i);
   await assert.rejects(f.request({ ...body(), addressCustomerId: '43' }), /Adressinhaber/);
   assert.equal(f.headers.length, 0);
+});
+
+test('purchase-first save reserves a real position before finalization and reuses it on retries', async () => {
+  const identity = { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true };
+  const context = { companyId: 0, userIdentity: identity };
+  const f = fixture({ procurementEnabled: true, queueCsMail: async ({ positions }) => {
+    assert.equal(positions[0].orderPositionId, 180);
+    return { queued: true };
+  } });
+  const input = { ...body(), reserveOrderPosition: 'true' };
+  await assert.rejects(f.request(input), { status: 403 });
+  const saved = await f.request(input, 'post', '/temp-purchase-orders', context);
+  assert.equal(saved.data.positions[0].orderPositionId, 180);
+  const retry = await f.request(input, 'post', '/temp-purchase-orders', context);
+  assert.equal(retry.data.positions[0].orderPositionId, 180);
+  assert.deepEqual(f.reservations, [{ id: 80, status: -1, companyId: 0, positionId: 180 }]);
+  const final = await f.request({}, 'post', '/temp-purchase-orders/:id/finalize', context);
+  assert.equal(final.data.status, 1);
+  assert.equal(final.data.positions[0].orderPositionId, 180);
+});
+
+test('deleting an unsent linked purchase also removes its reservation', async () => {
+  const f = fixture({ procurementEnabled: true });
+  const context = { userIdentity: { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: true } };
+  await f.request({ ...body(), reserveOrderPosition: true }, 'post', '/temp-purchase-orders', context);
+  assert.equal(f.reservations.length, 1);
+  await f.request({}, 'delete', '/temp-purchase-orders/:id', context);
+  assert.equal(f.reservations.length, 0);
 });
 
 test('structured pickup address and USD fields survive create, edit and finalize for repeated article positions', async () => {

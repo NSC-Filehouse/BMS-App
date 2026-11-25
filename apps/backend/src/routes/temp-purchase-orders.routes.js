@@ -14,6 +14,7 @@ const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-
 const { loadPurchaseOptions, loadSupplierTerms, loadPurchaseWarehouses, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { procurementSchemaReady, assertProcurementAccess, loadPurchaseOrderLinks } = require('../db/linked-procurement');
+const { PURCHASE_RESERVATION_STATUS, reservePurchaseOrderPosition, removePurchaseReservation } = require('../db/purchase-order-reservation');
 const { loadHolidayRows } = require('../db/holidays');
 const {
   getHolidayStatus,
@@ -109,6 +110,7 @@ function mapOrder(row, positions = []) {
     closingDate: row.closingDate || null,
     positions: (Array.isArray(positions) ? positions : []).map((position) => ({
       id: Number(position.id),
+      orderPositionId: asNumber(position.orderPositionId),
       lineNo: Number(position.lineNo),
       articleIndex: asText(position.articleIndex),
       article: asText(position.article),
@@ -183,6 +185,7 @@ async function loadPositions(orderId, query = null) {
   const result = await execute(`
     SELECT
       [tbp_id] AS id,
+      [tbp_order_position_id] AS orderPositionId,
       [tbp_line_no] AS [lineNo],
       [tbp_article_index] AS articleIndex,
       [tbp_article] AS article,
@@ -402,8 +405,12 @@ async function loadOrderForUser(id, companyId, userShortCode, isFullAccess) {
 }
 
 async function linkedPurchasePositions(query, id) {
-  return (await query(`SELECT tbp_id AS id,tbp_amount AS amount,tbp_article_index AS articleIndex
-    FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE tbp_tb_id=? AND tbp_order_position_id IS NOT NULL`, [id])).rows;
+  return (await query(`SELECT pp.[tbp_id] AS id,pp.[tbp_amount] AS amount,pp.[tbp_article_index] AS articleIndex,
+      CASE WHEN o.ta_Status=${PURCHASE_RESERVATION_STATUS} THEN o.ta_id END AS reservedOrderId
+    FROM ${TEMP_PURCHASE_POSITION_TABLE} pp
+    JOIN ${appTableSql('tempOrderPosition')} p ON p.tap_id=pp.tbp_order_position_id
+    JOIN ${appTableSql('tempOrder')} o ON o.ta_id=p.tap_ta_id
+    WHERE pp.tbp_tb_id=?`, [id])).rows;
 }
 
 async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess) {
@@ -418,7 +425,8 @@ async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess)
     // its first HTTP response was lost. Owner/tenant filtering stays in SQL.
     if (!row) return { id, deleted: true };
     if (!isEditable(normalizeStatus(row.status))) throw createHttpError(409, 'Diese Bestellung kann nicht gelöscht werden.', { code: 'PURCHASE_ORDER_LOCKED' });
-    if (checkProcurement && (await linkedPurchasePositions(query, id)).length) {
+    const linked = checkProcurement ? await linkedPurchasePositions(query, id) : [];
+    if (linked.some(position => position.reservedOrderId == null)) {
       throw createHttpError(409, 'Bitte den verknüpften Auftrag öffnen, um den Vorgang zu löschen.', { code: 'PURCHASE_ORDER_LINKED' });
     }
     for (const [tableKey, column] of [['purchaseOrderMailOutbox', 'pom_PurchaseOrderID'], ['purchaseOrderCsMailOutbox', 'pcom_PurchaseOrderID']]) {
@@ -426,6 +434,9 @@ async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess)
       await query(`IF OBJECT_ID(?, N'U') IS NOT NULL DELETE FROM ${table} WHERE [${column}]=?`, [table, id]);
     }
     await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
+    for (const orderId of new Set(linked.map(position => position.reservedOrderId))) {
+      await removePurchaseReservation(query, orderId, companyId);
+    }
     await query(`DELETE FROM ${TEMP_PURCHASE_ORDER_TABLE} WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     return { id, deleted: true };
   });
@@ -676,7 +687,7 @@ async function preparePurchaseDraft(req) {
 
 async function savePurchaseDraft(query, req, draft) {
   const { positions, loading, packaging, incoterm, payment, supplier, supplierId, companyId, user, clientRequestId, now,
-    currency, reference, contact } = draft;
+    currency, reference, contact, reserveOrderPosition } = draft;
   const attachmentInput = normalizeAttachmentInput(req);
   if (attachmentInput.removeAttachmentIds.length) throw createHttpError(400, 'Eine neue Bestellung hat noch keine gespeicherten Anhänge.');
   const sources = await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
@@ -694,6 +705,9 @@ async function savePurchaseDraft(query, req, draft) {
     contact?.id ?? null, loading.warehouseId, loading.customerId, loading.id, reference, currency]);
   const id = result.rows[0].id;
   await insertPurchasePositions(query, id, positions, currency, user, now);
+  if (reserveOrderPosition) {
+    await reservePurchaseOrderPosition(query, { companyId, user, purchaseId: id, position: positions[0] });
+  }
   const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
   const order = mapOrder(saved.rows[0], await loadPositions(id, query));
   if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user, now });
@@ -703,6 +717,18 @@ async function savePurchaseDraft(query, req, draft) {
 
 router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, attachmentUploadMiddleware, asyncHandler(async (req, res) => {
   parsePurchaseBody(req);
+  const reserveOrderPosition = req.body?.reserveOrderPosition === true || req.body?.reserveOrderPosition === 'true';
+  if (reserveOrderPosition) {
+    assertProcurementAccess(req.userIdentity);
+    if (!isUuid(req.body?.clientRequestId) || req.body?.positions?.length !== 1) {
+      throw createHttpError(400, 'Für die vorgezogene Bestellung ist eine einzelne Auftragsposition erforderlich.', {
+        code: 'PURCHASE_RESERVATION_INVALID',
+      });
+    }
+    if (!await procurementSchemaReady()) {
+      throw createHttpError(503, 'Die Auftragsverknüpfung steht noch nicht zur Verfügung.', { code: 'PROCUREMENT_SCHEMA_MISSING' });
+    }
+  }
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplierId = asText(req.body?.supplierId);
   const supplier = await assertSupplier(req.database, supplierId, scope);
@@ -715,7 +741,14 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
     sendEnvelope(res, { data: await withPurchaseOrderAttachments(mapOrder(prior[0], await loadPositions(prior[0].id))), meta: { alreadyCreated: true } });
     return;
   }
-  const draft = { ...await preparePurchase(req, supplierId, req.body?.positions), supplier, supplierId, companyId, user, clientRequestId, now: new Date().toISOString() };
+  const draft = { ...await preparePurchase(req, supplierId, req.body?.positions), supplier, supplierId, companyId, user, clientRequestId,
+    reserveOrderPosition, now: new Date().toISOString() };
+  if (reserveOrderPosition && (!Number.isSafeInteger(draft.positions[0].amount) || draft.positions[0].amount > 2147483647
+    || Math.round(draft.positions[0].purchasePrice) <= 0)) {
+    throw createHttpError(400, 'Für die Auftragsverknüpfung sind eine Menge in ganzen Kilogramm und ein positiver Einkaufspreis erforderlich.', {
+      code: 'PURCHASE_RESERVATION_INVALID',
+    });
+  }
   const created = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const retry = await query(`${orderSelectSql()} WITH (UPDLOCK, HOLDLOCK) WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
     if (retry.rows[0]) {
