@@ -74,12 +74,19 @@ export default function TempPurchaseOrderDetail() {
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {!loading && item && <Card sx={{ width: '100%', minWidth: 0 }}><CardContent sx={{ pt: 2, minWidth: 0 }}>
-      <Typography variant="h6">{item.linkedOrderIds?.length ? t('procurement_purchase_for_order')
-        : item.positions.some(p=>p.optionId!=null) ? 'Bestellung (Option)' : 'Bestellung'}</Typography>
-      {item.linkedOrderIds?.map((orderId) => <Button key={orderId} size="small"
-        onClick={() => navigate('/temp-orders/' + orderId, { state: { returnTo: createReturnTo(location) } })}>
-        {t('procurement_order_link', { id: orderId })}
-      </Button>)}
+      {item.linkedOrderIds?.length ? (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1 }}>
+          <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 700 }}>
+            {t('procurement_purchase_for_order')}
+          </Typography>
+          {item.linkedOrderIds.map((orderId) => <Button key={orderId} size="small"
+            onClick={() => navigate('/temp-orders/' + orderId, { state: { returnTo: createReturnTo(location) } })}>
+            {t('procurement_order_link', { id: orderId })}
+          </Button>)}
+        </Box>
+      ) : (
+        <Typography variant="h6">{item.positions.some((p) => p.optionId != null) ? 'Bestellung (Option)' : 'Bestellung'}</Typography>
+      )}
       <InfoRow label="Lieferant" value={item.supplierName} />
       <InfoRow label="Lieferantennummer" value={item.supplierId} />
       <InfoRow label="Anschrift" value={item.supplierAddress} />
