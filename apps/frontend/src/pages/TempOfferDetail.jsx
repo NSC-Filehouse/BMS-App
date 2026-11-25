@@ -155,11 +155,6 @@ export default function TempOfferDetail() {
         <Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
           {en ? 'Offer' : 'Angebot'} {offer?.bmsOfferNumber || `AN-${id}`}
         </Typography>
-        {offer?.pdfReady && (
-          <Button variant="outlined" sx={{ flexShrink: 0, whiteSpace: 'nowrap' }} disabled={pdfLoading} onClick={downloadPdf}>
-            {t('offer_download_pdf')}
-          </Button>
-        )}
       </Box>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -174,7 +169,19 @@ export default function TempOfferDetail() {
       {offer && (
         <Card sx={{ width: '100%', minWidth: 0 }}>
           <CardContent>
-            <InfoRow label={t('order_customer')} value={offer.customerName} />
+            {offer.pdfReady ? (
+              <Box sx={{ mb: 0.5, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 1, mt: -1.75, mr: -1.75, mb: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">{t('order_customer')}</Typography>
+                  <Button variant="outlined" sx={{ flexShrink: 0 }} disabled={pdfLoading} onClick={downloadPdf}>
+                    {t('offer_download_pdf')}
+                  </Button>
+                </Box>
+                <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{offer.customerName || '-'}</Typography>
+              </Box>
+            ) : (
+              <InfoRow label={t('order_customer')} value={offer.customerName} />
+            )}
             <InfoRow
               label={en ? 'Customer reference' : 'Kundenreferenz'}
               value={offer.customerReference}
