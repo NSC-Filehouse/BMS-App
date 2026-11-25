@@ -329,6 +329,7 @@ test('a regular offer line can be purchased first from a searched supplier with 
   }, {}, 'PurchaseForOrder');
   await view.flush();
   const finder = () => view.find((node) => node.type === 'Autocomplete' && node.props.openOnFocus);
+  assert.match(view.text(), /Lieferant nicht eindeutig/);
   finder().props.onInputChange(null, 'Supplier', 'input');
   await view.flush();
   await new Promise((resolve) => setTimeout(resolve, 275));
@@ -336,6 +337,9 @@ test('a regular offer line can be purchased first from a searched supplier with 
   finder().props.onChange(null, finder().props.options[0]);
   await view.flush();
   const editor = view.find((node) => node.props.fixedQuantity && node.props.onSave);
+  assert.equal(editor.props.supplierSelection.props.value.id, 'LF1');
+  assert.equal(editor.props.initialOrder.supplierName, 'Supplier');
+  assert.doesNotMatch(view.text(), /Lieferant nicht eindeutig/);
   await editor.props.onSave(editor.props.initialOrder);
   assert.equal(saved.savedPurchasePositionId, 38);
   assert.equal(view.navigations.length, 0);

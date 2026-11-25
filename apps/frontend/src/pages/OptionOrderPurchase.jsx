@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Checkbox, CircularProgress, FormControlLabel, IconButton, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Card, CardContent, Checkbox, CircularProgress, FormControlLabel, IconButton, MenuItem, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -157,20 +157,7 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
     }
   };
 
-  return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <DisclosureBackButton onClick={back} disabled={saving || locked} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
-      <Typography variant="h5" sx={{ flex: 1 }}>{t(base ? 'purchase_option_title' : 'procurement_offer_purchase_title')}</Typography>
-      <IconButton disabled={!supplier || !availability || saving || locked} onClick={() => attachmentInputRef.current?.click()}
-        aria-label={t('temp_order_attachment_add')}><AttachFileIcon /></IconButton>
-    </Box>
-    <Alert severity="info">{t(offerPosition?.candidates?.length
-      ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
-    {loadError && <Alert severity="error">{loadError}</Alert>}
-    {searchError && <Alert severity="error">{searchError}</Alert>}
-    {saveError && <Alert severity="error">{saveError}</Alert>}
-    {!availability && !loadError && <CircularProgress size={24} />}
-    {canEditSupplier && availability && <Autocomplete
+  const supplierSelection = canEditSupplier && availability ? <Autocomplete
       options={supplier && !supplierChoices.some((row) => row.id === supplier.id) ? [supplier, ...supplierChoices] : supplierChoices}
       value={supplier} disabled={saving || locked} openOnFocus filterOptions={(rows) => rows}
       loading={query.length >= 2 && !supplierResults && !searchError} noOptionsText={t('suppliers_search_empty')}
@@ -185,8 +172,29 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
         setSupplier(selected); setSupplierQuery(''); setSupplierResults(null); setOrder(null);
       }}
       renderInput={(params) => <TextField {...params} required size="small" label={t('supplier_label')} placeholder={t('purchase_supplier_query')} />}
-    />}
+    /> : null;
+
+  return <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%', minWidth: 0, display: 'grid', gap: 1.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DisclosureBackButton onClick={back} disabled={saving || locked} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
+      <Typography variant="h5" sx={{ flex: 1 }}>{t(base ? 'purchase_option_title' : 'procurement_offer_purchase_title')}</Typography>
+      <IconButton disabled={!supplier || !availability || saving || locked} onClick={() => attachmentInputRef.current?.click()}
+        aria-label={t('temp_order_attachment_add')}><AttachFileIcon /></IconButton>
+    </Box>
+    <Alert severity="info">{t(offerPosition?.candidates?.length
+      ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
+    {loadError && <Alert severity="error">{loadError}</Alert>}
+    {searchError && <Alert severity="error">{searchError}</Alert>}
+    {saveError && <Alert severity="error">{saveError}</Alert>}
+    {!availability && !loadError && <CircularProgress size={24} />}
+    {!supplier && supplierSelection && <Card sx={{ minWidth: 0 }}>
+      <CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
+        <Typography variant="h6">{t('purchase_supplier_ambiguous')}</Typography>
+        {supplierSelection}
+      </CardContent>
+    </Card>}
     {supplier && availability && <PurchaseOrderEditor key={supplier.id} isNew fixedPosition fixedQuantity={Boolean(offerPosition)} allowFirstPurchase={!base}
+      supplierSelection={supplierSelection}
       attachmentInputRef={attachmentInputRef} onContinue={back} onSave={submit} onChange={setOrder} saving={saving} locked={locked}
       stockHint={stockHint}
       initialOrder={{

@@ -18,7 +18,7 @@ const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 1
 const priceText = (value, locale) => value === null || value === undefined ? '–' : `${Number(value).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/t`;
 const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === String(b || '').trim().toLocaleLowerCase('de-DE');
 
-export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields }) {
+export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
   const [order, setOrder] = React.useState(() => initialOrder.paymentConditionText
@@ -201,6 +201,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         ) : <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 0 }}>{t('temp_order_attachment_none')}</Typography>}
       </Box>}
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
+      {supplierSelection}
       <Autocomplete freeSolo forcePopupIcon options={contacts} value={order.supplierContact || null} inputValue={order.supplierContact || ''}
         disabled={disabled || loading} noOptionsText={t('purchase_no_contact')}
         onChange={(_event,value)=>update({supplierContact:value || ''})}
