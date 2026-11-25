@@ -7,6 +7,8 @@ import {
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -255,7 +257,8 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
   const salesCodes = [...new Set(customers.flatMap(customerSalesCodes).filter(Boolean))].sort();
   const filter = salesFilter?.enabled && salesCodes.includes(salesCode) ? salesCode : '';
   const visible = filter ? customers.filter(customer => customerSalesCodes(customer).includes(filter)) : customers;
-  const chosen = visible.filter(customer => !customer.readOnly && !customer.sent && !customer.queued && selection.includes(customer.id));
+  const canSelect = customer => !customer.readOnly && !customer.sent && !customer.queued && !customer.offerStatus;
+  const chosen = visible.filter(customer => canSelect(customer) && selection.includes(customer.id));
 
   return <Card component="section" aria-labelledby={titleId} sx={{ mb: 1.5 }}>
     <CardContent sx={{ '&:last-child': { pb: 1.5 } }}>
@@ -279,8 +282,8 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {visible.map(customer => (
             <Box component="li" key={customer.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
-              {!readOnly && <Checkbox size="small" disabled={customer.readOnly || customer.sent || customer.queued}
-                checked={!customer.sent && !customer.queued && selection.includes(customer.id)}
+              {!readOnly && <Checkbox size="small" disabled={!canSelect(customer)}
+                checked={canSelect(customer) && selection.includes(customer.id)}
                 inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
                 onChange={event => {
                   const checked = event.target.checked;
@@ -293,12 +296,18 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                   {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
                 </Typography> : null}
               </Box>
-              {(customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
+              {customer.offerStatus === 4 && <Tooltip title={t('temp_offer_status_converted')}>
+                <CheckIcon color="success" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_converted')} />
+              </Tooltip>}
+              {customer.offerStatus === 5 && <Tooltip title={t('temp_offer_status_not_interested')}>
+                <CloseIcon color="error" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_not_interested')} />
+              </Tooltip>}
+              {!customer.offerStatus && (customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
                 <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
                   <HourglassEmptyIcon fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
                 </Box>
               </Tooltip>}
-              {customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
+              {!customer.offerStatus && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
             </Box>
           ))}
         </Stack>

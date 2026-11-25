@@ -9,6 +9,7 @@ const { articleHash } = require('./matching-contract');
 const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
 const { hasExecutiveAccess } = require('../executive-access');
+const { H } = require('../offers/storage');
 
 const text = value => String(value ?? '').trim();
 const nameKey = value => text(value).normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -87,19 +88,23 @@ async function loadArticleCustomers(database, userIdentity, articleIndex, group)
 async function loadOfferCustomerStatuses(companyId, positionId) {
   if (positionId == null) return new Map();
   // The UI can be deployed ahead of the separately installed schema.
-  const rows = typeof positionId === 'string' ? await runSQLQuerySqlServer(config.sql.database, `
-    IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
-      EXEC sys.sp_executesql
-        N'SELECT CustomerNumber, Status FROM BMSApp.OptionOfferMailOutbox WHERE CompanyId = @company AND OptionPositionId IS NULL AND StockPositionKey = @stock',
-        N'@company INT, @stock NVARCHAR(64)', @company = ?, @stock = ?;
-  `, [companyId, positionId]) : await runSQLQuerySqlServer(config.sql.database, `
-    IF OBJECT_ID(N'BMSApp.OptionOfferMailOutbox', N'U') IS NOT NULL
-      EXEC sys.sp_executesql
-        N'SELECT CustomerNumber, Status FROM BMSApp.OptionOfferMailOutbox
-          WHERE CompanyId = @company AND OptionPositionId = @position',
-        N'@company INT, @position INT', @company = ?, @position = ?;
+  const stock = typeof positionId === 'string';
+  const schemaCheck = stock ? "COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey')" : "OBJECT_ID(N'BMSApp.OptionOfferMailOutbox', N'U')";
+  const source = stock ? 'm.OptionPositionId IS NULL AND m.StockPositionKey=@source' : 'm.OptionPositionId=@source';
+  const rows = await runSQLQuerySqlServer(config.sql.database, `
+    IF ${schemaCheck} IS NOT NULL
+    BEGIN
+      DECLARE @withOffer bit = CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'TempOfferId') IS NOT NULL
+        AND COL_LENGTH(N'${H}', N'tag_status') IS NOT NULL THEN 1 ELSE 0 END;
+      DECLARE @sql nvarchar(max) = N'SELECT m.CustomerNumber, m.Status'
+        + CASE WHEN @withOffer=1 THEN N', h.tag_status AS OfferStatus' ELSE N'' END
+        + N' FROM BMSApp.OptionOfferMailOutbox m'
+        + CASE WHEN @withOffer=1 THEN N' LEFT JOIN ${H} h ON h.tag_id=m.TempOfferId AND h.tag_company_id=m.CompanyId' ELSE N'' END
+        + N' WHERE m.CompanyId=@company AND ${source}';
+      EXEC sys.sp_executesql @sql, N'@company INT, @source ${stock ? 'NVARCHAR(64)' : 'INT'}', @company=?, @source=?;
+    END
   `, [companyId, positionId]);
-  return new Map(rows.map(row => [text(row.CustomerNumber).toUpperCase(), text(row.Status)]));
+  return new Map(rows.map(row => [text(row.CustomerNumber).toUpperCase(), row]));
 }
 
 async function loadOptionOfferCustomers(database, userIdentity, offer, position, selectedArticleIndex, options) {
@@ -170,9 +175,11 @@ async function loadCustomerOfferAudience(database, userIdentity, article, source
   ]);
   const matchedArticle = { index: articleIndex, name: text(article.articleName) };
   const localCustomers = customers.map(customer => {
-    const status = statuses.get(customer.id.toUpperCase());
+    const record = statuses.get(customer.id.toUpperCase());
+    const status = text(record?.Status);
+    const offerStatus = Number(record?.OfferStatus);
     return { ...customer, sent: status === 'sent', queued: Boolean(status && !['sent', 'failed'].includes(status)),
-      failed: status === 'failed' };
+      failed: status === 'failed', ...([4, 5].includes(offerStatus) ? { offerStatus } : {}) };
   });
   if (group && canSeeGroupBuyers(userIdentity)) {
     return { article: matchedArticle, salesFilter: { ...salesFilter, enabled: true },

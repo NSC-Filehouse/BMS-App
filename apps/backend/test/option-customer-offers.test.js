@@ -33,7 +33,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     if (sql.includes('tblOptionenArtikelKandidaten')) {
       return stored ? [{ oak_DatenJson: JSON.stringify(stored), oak_oab_id: 25 }] : [];
     }
-    assert.match(sql, /CustomerNumber, Status/);
+    assert.match(sql, /m\.CustomerNumber, m\.Status/);
     return accepted;
   },
 } };
@@ -92,10 +92,10 @@ test('a stock offer uses the exact stock key and the same customer scope without
   assert.equal(result.customers[1].queued, true);
   assert.equal(calls.length, 3);
   const buyerQuery = calls.find(call => call.sql.includes('dbo.tblRechnung'));
-  const statusQuery = calls.find(call => call.sql.includes('CustomerNumber, Status'));
+  const statusQuery = calls.find(call => call.sql.includes('m.CustomerNumber, m.Status'));
   assert.match(buyerQuery.sql, /k.kd_Aussendienst/);
   assert.deepEqual(buyerQuery.params, ['A-PP', 'ADM']);
-  assert.match(statusQuery.sql, /OptionPositionId IS NULL AND StockPositionKey/);
+  assert.match(statusQuery.sql, /m\.OptionPositionId IS NULL AND m\.StockPositionKey/);
   assert.deepEqual(statusQuery.params, [3, stockPositionKey]);
 });
 
@@ -142,6 +142,15 @@ test('an eligible match returns scoped buyers and only the recorded sent status 
   assert.match(purchases.sql, /r\.re_Auftragsstatus = N'Rechnung'/);
   assert.match(purchases.sql, /UPPER\(LTRIM\(RTRIM\(k\.kd_Aussendienst\)\)\) = \?/);
   assert.deepEqual(calls.find(call => call.sql.includes('OptionOfferMailOutbox')).params, [3, 41]);
+});
+
+test('the option audience exposes converted and declined offers for the matching customer', async () => {
+  accepted[0].OfferStatus = 4;
+  accepted[1].OfferStatus = 5;
+  const { customers } = await loadOptionOfferCustomers(sameDatabase, {}, owner, position);
+  assert.deepEqual(customers.map(({ id, offerStatus }) => [id, offerStatus]), [['A', 4], ['B', 5]]);
+  assert.match(calls.find(call => call.sql.includes('OptionOfferMailOutbox')).sql,
+    /h\.tag_id=m\.TempOfferId AND h\.tag_company_id=m\.CompanyId/);
 });
 
 test('explicit cross-sales access may display different representatives for filtering', async () => {

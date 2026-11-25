@@ -65,7 +65,7 @@ async function buildCustomerOfferSubmissions(req, position, loadAudience) {
     const salePrice = decimal(row.salePrice, 4);
     const contact = contactsById.get(`${customerIds[index]}:${Number(row.contactId)}`);
     const recipientEmail = singleEmail(contact?.email);
-    if (customer.sent || customer.queued) throw invalid(`Für ${customer.name} besteht bereits ein Versandvorgang.`);
+    if (customer.sent || customer.queued || customer.offerStatus) throw invalid(`Für ${customer.name} besteht bereits ein Versandvorgang.`);
     if (!contact || contact.name.length > 200 || !recipientEmail) {
       throw invalid(`Bitte für ${customer.name} einen Ansprechpartner mit Mailadresse auswählen.`);
     }
