@@ -293,10 +293,11 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                   {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
                 </Typography> : null}
               </Box>
-              {customer.sent && <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
-                <HourglassEmptyIcon fontSize="small" />
-              </Box>}
-              {customer.queued && <Typography variant="caption" color="text.secondary">{t('option_offer_queued')}</Typography>}
+              {(customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
+                <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
+                  <HourglassEmptyIcon fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
+                </Box>
+              </Tooltip>}
               {customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
             </Box>
           ))}
