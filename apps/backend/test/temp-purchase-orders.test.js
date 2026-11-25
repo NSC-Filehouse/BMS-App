@@ -97,7 +97,12 @@ function fixture(options = {}) {
       for (const match of sql.split('SET ')[1].split('WHERE')[0].matchAll(/\[(\w+)\]\s*=\s*(\?|NULL|\d+)/g)) row[match[1]] = match[2] === '?' ? params[index++] : match[2] === 'NULL' ? null : Number(match[2]);
       return { rows: [] };
     }
-    if (sql.startsWith('UPDATE positions')) { const row=lines.find(p=>p.tbp_id===params[3] && p.tbp_tb_id===params[4]); row.tbp_article=params[0]; return { rows: [] }; }
+    if (sql.startsWith('UPDATE positions')) {
+      const row = lines.find(p => p.tbp_id === params.at(-2) && p.tbp_tb_id === params.at(-1));
+      row.tbp_article = params[0];
+      if (sql.includes('[tbp_place_at_supplier]=?')) row.tbp_place_at_supplier = params[1];
+      return { rows: [] };
+    }
     if (sql.startsWith('DELETE FROM positions')) { lines.splice(0, lines.length, ...lines.filter((p) => p.tbp_tb_id !== params[0])); return { rows: [] }; }
     if (sql.includes('INSERT INTO')) {
       const columns = sql.slice(sql.indexOf('(') + 1, sql.indexOf(')')).match(/\w+/g);
@@ -153,7 +158,7 @@ function fixture(options = {}) {
     '../db/customer-access': { getCustomerAccessScope: async () => ({ isFullAccess: options.fullAccess !== false }), loadVisibleCustomer: async () => options.supplier || ({ kd_Name1: 'Lieferant' }) },
     '../db/purchase-order-values': values, '../db/holidays': {}, '../delivery-calendar': require('../src/delivery-calendar'),
     '../db/delivery-addresses': { loadCustomerDeliveryAddresses: async (_database, id) => ({
-      42: [{ id: '11', text: 'Hamburg' }, { id: '12', text: 'Werk B' }],
+      42: [{ id: '11', text: 'Hamburg', city: 'Hamburg' }, { id: '12', text: 'Werk B', city: 'Berlin' }],
       43: [{ id: '13', text: 'Lageradresse' }],
       44: [{ id: '14', text: 'Kundenadresse' }],
     }[id] || []) },
@@ -595,6 +600,34 @@ test('a warehouse delivery uses its warehouse account and a direct delivery can 
   assert.equal(direct.loadingLocationText, 'Kundenadresse');
 });
 
+test('combined address choices provide all ERP keys for pickup, warehouse delivery and direct customer delivery', async () => {
+  const f = fixture();
+  const choices = async query => (await f.request({}, 'get', '/purchase-order-addresses', {
+    query: { supplierId: '42', combined: '1', ...query },
+  })).data;
+  const pickup = await choices({ deliveryTermId: '1' });
+  assert.deepEqual(pickup.map(row => [row.warehouseId, row.addressCustomerId, row.addressId]),
+    [['LG0000', '42', 11], ['LG0000', '42', 12]]);
+  const delivery = await choices({ deliveryTermId: '2' });
+  assert.deepEqual(delivery.map(row => [row.warehouseId, row.addressCustomerId, row.addressId]), [['LG0001', '43', 13]]);
+  const direct = await choices({ deliveryTermId: '2', addressCustomerId: '44' });
+  assert.deepEqual(direct.map(row => [row.warehouseId, row.addressCustomerId, row.addressId]), [['LG0000', '44', 14]]);
+});
+
+test('the pickup city is derived in the background and a stored pickup reference survives an edit', async () => {
+  const f = fixture();
+  const input = { ...body(), warehouseId: 'LG0000' };
+  const created = (await f.request(input)).data;
+  assert.equal(created.positions[0].placeAtSupplier, 'Hamburg');
+  assert.equal(created.positions[0].pickupReference, '');
+  f.lines[0].tbp_pickup_reference = 'SUPPLIER-123';
+  const edited = (await f.request({ ...created, addressId: 12 }, 'put', '/temp-purchase-orders/:id')).data;
+  assert.equal(edited.positions[0].placeAtSupplier, 'Berlin');
+  assert.equal(edited.positions[0].pickupReference, 'SUPPLIER-123');
+  const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+  assert.equal(sent.positions[0].placeAtSupplier, 'Berlin');
+  assert.equal(sent.positions[0].pickupReference, 'SUPPLIER-123');
+});
 test('enforces the active ERP master article and position field lengths on save', async () => {
   await assert.rejects(fixture({ inactiveArticle: true }).request(body()), /Artikel im Stamm/);
   const input = body();

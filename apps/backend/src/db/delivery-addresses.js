@@ -99,6 +99,7 @@ function mapDeliveryAddressRow(row) {
     short: row?.kdL_Kurz === null || row?.kdL_Kurz === undefined ? '' : String(row.kdL_Kurz).trim(),
     name1: row?.kdL_Name1 === null || row?.kdL_Name1 === undefined ? '' : String(row.kdL_Name1).trim(),
     name2: row?.kdL_Name2 === null || row?.kdL_Name2 === undefined ? '' : String(row.kdL_Name2).trim(),
+    city: asText(row?.kdL_Ort),
     countryCode,
     region: asText(row?.kdL_Region),
   };

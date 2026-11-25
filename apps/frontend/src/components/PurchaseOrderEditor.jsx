@@ -178,6 +178,12 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <Autocomplete options={contacts} value={contacts.find(item => String(item.id) === String(order.supplierContactId)) || null}
         disabled={disabled || loading} noOptionsText={t('purchase_no_contact')}
         getOptionLabel={item => item.name} isOptionEqualToValue={(a, b) => a.id === b.id}
+        renderOption={(props, item) => <li {...props} key={item.id}>
+          <Box sx={{ display: 'grid', minWidth: 0 }}>
+            <Typography variant="body2">{item.name}</Typography>
+            {item.position && <Typography variant="caption" color="text.secondary">{item.position}</Typography>}
+          </Box>
+        </li>}
         onChange={(_event, value) => update({ supplierContactId: value?.id ?? '', supplierContact: value?.name || '' })}
         renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
@@ -248,10 +254,6 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         </Box>
         <TextField label={t('purchase_reserved_for')} size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
         <TextField label={t('purchase_position_note')} size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
-        <TextField label={lang === 'en' ? 'Location at supplier' : 'Lager bei Strecke'} size="small" value={p.placeAtSupplier || ''}
-          onChange={event => patchPosition(p.lineId, { placeAtSupplier: event.target.value })} disabled={disabled} inputProps={{ maxLength: 25 }} />
-        <TextField label={lang === 'en' ? 'Pickup reference' : 'Abholreferenz'} size="small" value={p.pickupReference || ''}
-          onChange={event => patchPosition(p.lineId, { pickupReference: event.target.value })} disabled={disabled} inputProps={{ maxLength: 25 }} />
         <TextField label={lang === 'en' ? 'Availability note' : 'Bemerkung für die Verfügbarkeitsliste'} size="small" value={p.availabilityNote || ''}
           onChange={event => patchPosition(p.lineId, { availabilityNote: event.target.value })} disabled={disabled} inputProps={{ maxLength: 255 }} />
       </CardContent></Card>;

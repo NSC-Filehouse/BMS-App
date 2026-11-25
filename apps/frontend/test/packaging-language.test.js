@@ -624,20 +624,24 @@ test('a purchase pickup loads its supplier addresses and selects a unique techni
     },
   }, async (path) => {
     const query = new URLSearchParams(path.split('?')[1]);
-    assert.equal(query.get('addressCustomerId'), 'LF');
-    assert.equal(query.get('warehouseId'), 'LG0000');
-    return { data: [{ id: '39', text: 'Stammadresse' }] };
+    assert.equal(query.get('combined'), '1');
+    assert.equal(query.get('selectedWarehouseId'), 'LG0000');
+    return { data: [{ id: '39', addressId: 39, addressCustomerId: 'LF', warehouseId: 'LG0000', text: 'Stammadresse' }] };
   });
   await editor.flush();
-  assert.equal(editor.field('Abholadresse').props.value, '39');
+  const selectedKey = JSON.stringify(['LG0000', 'LF', '39']);
+  assert.equal(editor.field('Ladeort').props.value, selectedKey);
   assert.equal(order.addressCustomerId, 'LF');
+  assert.equal(order.warehouseId, 'LG0000');
+  assert.equal(order.addressId, 39);
   assert.equal(order.loadingLocationText, 'Stammadresse');
-  const warehouseOption = editor.find(node => node.type === 'MenuItem' && node.props.value === 'LG0000');
-  assert.deepEqual(warehouseOption.props.children, ['Strecke']);
+  const addressOption = editor.find(node => node.type === 'MenuItem' && node.props.value === selectedKey);
+  assert.equal(addressOption.props.children[0].props.primary, 'Stammadresse');
+  assert.equal(editor.field('Ladeort').props.SelectProps.renderValue().props.primary, 'Stammadresse');
 });
 
 test('purchase contact dropdown displays the name while retaining the technical contact ID', async () => {
-  const contact = { id: 8117, name: 'Mr. Amaury De Coninck' };
+  const contact = { id: 8117, name: 'Mr. Amaury De Coninck', position: 'Geschäftsführer' };
   let changed;
   const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
     initialOrder: { supplierId: 'LF', supplierContactId: contact.id, paymentConditionText: '30 Tage', positions: [] },
@@ -651,11 +655,37 @@ test('purchase contact dropdown displays the name while retaining the technical 
   await view.flush();
   const dropdown = view.find(node => node.props.getOptionLabel && node.props.options?.[0]?.id === contact.id);
   assert.equal(dropdown.props.getOptionLabel(contact), contact.name);
+  const rendered = dropdown.props.renderOption({}, contact);
+  const role = rendered.props.children[0].props.children[1];
+  assert.equal(role.props.variant, 'caption');
+  assert.equal(role.props.color, 'text.secondary');
+  assert.deepEqual(role.props.children, ['Geschäftsführer']);
   assert.equal(dropdown.props.value.id, 8117);
   dropdown.props.onChange(null, contact);
   await view.flush();
   assert.equal(changed.supplierContactId, 8117);
   assert.equal(changed.supplierContact, contact.name);
+});
+
+test('a saved direct customer delivery keeps its hidden warehouse and address mapping', async () => {
+  let order = { supplierId: 'LF', warehouseId: 'LG0000', deliveryTermId: 2, deliveryTermText: 'DAP',
+    addressCustomerId: 'C1', addressId: 39, loadingLocationText: 'Customer, Street 1, 12345 Town' };
+  const view = await mount('../src/components/PurchaseOrderDeliveryFields.jsx', {
+    warehouses: [{ id: 'LG0000', isDirect: true }], order,
+    update: apply => {
+      order = typeof apply === 'function' ? apply(order) : { ...order, ...apply };
+      view.updateProps({ order });
+    },
+  }, async path => {
+    const query = new URLSearchParams(path.split('?')[1]);
+    assert.equal(query.get('addressCustomerId'), 'C1');
+    return { data: [{ addressId: 39, addressCustomerId: 'C1', warehouseId: 'LG0000', text: order.loadingLocationText }],
+      meta: { canDeliverToCustomer: true } };
+  });
+  await view.flush();
+  assert.equal(order.addressId, 39);
+  assert.equal(order.warehouseId, 'LG0000');
+  assert.equal(view.field('Ladeort').props.SelectProps.renderValue().props.primary, 'Customer');
 });
 
 test('the loading location dialog still supports entering an optional offer loading location', async () => {

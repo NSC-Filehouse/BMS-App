@@ -343,7 +343,17 @@ async function resolvePurchaseAddress(req, body, accessScope) {
   if (!address?.text) {
     throw createHttpError(400, 'Bitte eine Liefer- oder Abholadresse aus dem Stamm auswählen.', { code: 'PURCHASE_ADDRESS_REQUIRED' });
   }
-  return { warehouseId: warehouse.id, customerId, id: Number(address.id), address, text: address.text };
+  return { warehouseId: warehouse.id, isDirect: warehouse.isDirect,
+    pickup: /^(FCA|EXW)\b/i.test(body.deliveryTermText), customerId, id: Number(address.id), address, text: address.text };
+}
+
+function applyPurchaseLogistics(positions, loading, storedPositions = []) {
+  for (const position of positions) {
+    const stored = storedPositions.find(item => item.id === (position.id || position.copyOfPositionId));
+    const city = loading.isDirect && loading.pickup ? asText(loading.address.city).slice(0, 25) : '';
+    position.placeAtSupplier = city || stored?.placeAtSupplier || position.placeAtSupplier || null;
+    position.pickupReference = stored?.pickupReference || position.pickupReference || null;
+  }
 }
 
 function resolveSupplierContact(terms, value) {
@@ -476,6 +486,38 @@ router.get('/purchase-order-addresses', requirePurchaseOrders, requireMandant, a
   const { incoterms } = await loadPurchaseOptions(req.database, req.header('x-lang') === 'en' ? 'en' : 'de');
   const incoterm = incoterms.find(item => item.id === Number(req.query?.deliveryTermId));
   if (!incoterm) throw createHttpError(400, 'Bitte eine gültige Lieferbedingung auswählen.', { code: 'PURCHASE_HEADER_INVALID' });
+  if (req.query?.combined === '1') {
+    const warehouses = await loadPurchaseWarehouses(req.database, supplierId);
+    const pickup = /^(FCA|EXW)\b/i.test(incoterm.text);
+    const directWarehouses = warehouses.filter(warehouse => warehouse.isDirect);
+    const directWarehouse = directWarehouses.length === 1 ? directWarehouses[0] : null;
+    const requestedCustomer = asText(req.query?.addressCustomerId);
+    let sources;
+    if (pickup) {
+      const selected = warehouses.find(warehouse => warehouse.id === asText(req.query?.selectedWarehouseId)) || directWarehouse;
+      sources = selected ? [{ warehouse: selected, customerId: supplierId }] : [];
+    } else if (requestedCustomer) {
+      if (!directWarehouse || !await loadVisibleCustomer(req.database, requestedCustomer, scope)) {
+        throw createHttpError(400, 'Bitte einen gültigen Lieferkunden auswählen.', { code: 'PURCHASE_ADDRESS_OWNER_INVALID' });
+      }
+      sources = [{ warehouse: directWarehouse, customerId: requestedCustomer }];
+    } else {
+      sources = warehouses.filter(warehouse => !warehouse.isDirect).flatMap(warehouse =>
+        warehouse.owners.map(owner => ({ warehouse, customerId: owner.id })));
+    }
+    const customerIds = [...new Set(sources.map(source => source.customerId))];
+    const addressLists = new Map(await Promise.all(customerIds.map(async customerId =>
+      [customerId, await loadCustomerDeliveryAddresses(req.database, customerId)])));
+    const choices = sources.flatMap(({ warehouse, customerId }) =>
+      addressLists.get(customerId).filter(address => address.text).map(address => ({
+        ...address, warehouseId: warehouse.id, addressCustomerId: customerId, addressId: Number(address.id),
+        warehouseName: pickup || warehouse.isDirect ? '' : warehouse.label,
+      })));
+    const uniqueChoices = [...new Map(choices.map(choice =>
+      [JSON.stringify([choice.warehouseId, choice.addressCustomerId, choice.addressId]), choice])).values()];
+    sendEnvelope(res, { data: uniqueChoices, meta: { canDeliverToCustomer: !pickup && Boolean(directWarehouse) } });
+    return;
+  }
   const { addresses } = await loadPurchaseAddressChoices(req, {
     supplierId, warehouseId: asText(req.query?.warehouseId), addressCustomerId: req.query?.addressCustomerId,
     deliveryTermText: incoterm.text,
@@ -561,6 +603,7 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
   }
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const loading = await resolvePurchaseAddress(req, { ...req.body, supplierId, deliveryTermText: incoterm.text }, scope);
+  applyPurchaseLogistics(positions, loading, storedPositions);
   await validateWorkingDates(positions, loading.address);
   return { positions, loading, packaging, incoterm, payment, currency, reference, contact };
 }
@@ -876,11 +919,14 @@ async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false
     }
     const sources = await assertOptionQuantities(query,positions,id,row.packagingType,req.userIdentity);
     const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
+    applyPurchaseLogistics(namedPositions, loading);
     for (const position of namedPositions) {
       position.article = purchaseArticleText(position.article);
       const stored = positions.find(item => item.id === position.id);
-      if (stored.article !== position.article) await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET [tbp_article]=?,[tbp_last_modified_by]=?,[tbp_last_modified_date]=? WHERE [tbp_id]=? AND [tbp_tb_id]=?`,
-        [position.article, userShortCode, now, position.id, id]);
+      if (stored.article !== position.article || asText(stored.placeAtSupplier) !== asText(position.placeAtSupplier)) {
+        await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET [tbp_article]=?,[tbp_place_at_supplier]=?,[tbp_last_modified_by]=?,[tbp_last_modified_date]=? WHERE [tbp_id]=? AND [tbp_tb_id]=?`,
+          [position.article, position.placeAtSupplier, userShortCode, now, position.id, id]);
+      }
       Object.assign(stored, position);
     }
     normalizePositions(positions);
