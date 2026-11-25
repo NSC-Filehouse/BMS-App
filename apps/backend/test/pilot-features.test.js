@@ -7,14 +7,14 @@ test('pilot features belong to the three verified employee identities', () => {
     ['AKI', 1, 'Kimaz'], ['MFR', 130, 'M.Frank'], ['NSC', 227, 'n.schroeder'],
   ]) {
     assert.deepEqual(pilotFeaturesForIdentity({ shortCode, personNumber, userId, active: true }), {
-      offers: true, offerToOrder: shortCode === 'NSC', linkedProcurement: shortCode === 'NSC', purchaseOrders: true, options: true, optionsVlPreview: true, forecast: true, frupackGroupVl: true,
+      offers: true, offerToOrder: true, linkedProcurement: true, purchaseOrders: true, options: true, optionsVlPreview: true, forecast: true, frupackGroupVl: true,
     });
   }
 });
 
-test('Kevin Musah receives the purchase order and options features', () => {
+test('Kevin Musah receives offers, offer conversion and linked purchasing', () => {
   assert.deepEqual(pilotFeaturesForIdentity({ shortCode: 'KMU', personNumber: 126, userId: 'Musah', active: true }), {
-    offers: false, offerToOrder: false, linkedProcurement: false, purchaseOrders: true, options: true, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
+    offers: true, offerToOrder: true, linkedProcurement: true, purchaseOrders: true, options: true, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
   });
 });
 

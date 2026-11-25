@@ -315,6 +315,8 @@ async function fixture(t) {
               ? { shortCode: 'MFR', personNumber: 130, userId: 'm.frank', active: true }
               : who === 'AKI'
               ? { shortCode: 'AKI', personNumber: 1, userId: 'kimaz', active: true }
+              : who === 'KMU'
+              ? { shortCode: 'KMU', personNumber: 126, userId: 'musah', active: true }
               : {
                   shortCode: who,
                   personNumber: 999,
@@ -453,7 +455,7 @@ test('manual release enqueues a verified recipient and the detail serves only th
   assert.equal(conversion.json.code, 'OFFER_ORDER_NOT_INTERESTED');
   assert.deepEqual((await call(`${url}/pdf`)).pdf, pdf);
 });
-test('only NSC can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {
+test('authorized purchasers can open a scoped order draft, which retains prices and leaves insufficient stock unresolved', async (t) => {
   const { state, call } = await fixture(t);
   const body = input();
   body.customerReference = 'K-422';
@@ -462,13 +464,20 @@ test('only NSC can open a scoped order draft, which retains prices and leaves in
   const created = await call('/temp-offers', 'POST', body);
   assert.equal(created.status, 201);
   const url = `/temp-offers/${created.json.data.id}/order-draft`;
-  for (const other of ['OBA', 'MFR', 'OTHER']) {
+  for (const other of ['OBA', 'OTHER']) {
     const before = state.calls.length;
     const denied = await call(url, 'GET', null, { 'x-test-user': other });
     assert.equal(denied.status, 403);
     assert.equal(state.calls.length, before);
   }
   assert.equal((await call(url)).status, 503);
+  for (const shortCode of ['AKI', 'MFR', 'KMU']) {
+    const headers = { 'x-test-user': shortCode };
+    const own = await call('/temp-offers', 'POST', input(), headers);
+    assert.equal(own.status, 201, shortCode);
+    const draft = await call(`/temp-offers/${own.json.data.id}/order-draft`, 'GET', null, headers);
+    assert.equal(draft.status, 503, shortCode);
+  }
   state.schemaReady = true;
   assert.equal((await call(url, 'GET', null, { 'x-test-company': '13' })).status, 404);
   state.stock = [

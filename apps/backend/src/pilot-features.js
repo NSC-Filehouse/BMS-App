@@ -19,10 +19,11 @@ function pilotFeaturesForIdentity(identity) {
     && user.shortCode === shortCode && user.personNumber === personNumber && user.userId === userId;
   const enabled = hasExecutiveAccess(identity) || PILOT_USERS.some(matches);
   const purchasingEnabled = enabled || matches(PURCHASING_USER);
+  const orderPurchasingEnabled = PILOT_USERS.some(matches) || matches(PURCHASING_USER);
   return {
-    offers: enabled,
-    offerToOrder: matches(OFFER_ORDER_USER),
-    linkedProcurement: matches(OFFER_ORDER_USER),
+    offers: enabled || orderPurchasingEnabled,
+    offerToOrder: orderPurchasingEnabled,
+    linkedProcurement: orderPurchasingEnabled,
     purchaseOrders: purchasingEnabled,
     options: purchasingEnabled,
     optionsVlPreview: enabled,
