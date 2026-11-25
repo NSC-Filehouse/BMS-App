@@ -10,6 +10,8 @@ const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
 const { hasExecutiveAccess } = require('../executive-access');
 const { H } = require('../offers/storage');
+const { canViewAllOffers } = require('../offers/read-access');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
 
 const text = value => String(value ?? '').trim();
 const nameKey = value => text(value).normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -99,7 +101,7 @@ async function loadOfferCustomerStatuses(companyId, positionId) {
       DECLARE @withOffer bit = CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'TempOfferId') IS NOT NULL
         AND COL_LENGTH(N'${H}', N'tag_status') IS NOT NULL THEN 1 ELSE 0 END;
       DECLARE @sql nvarchar(max) = N'SELECT m.CustomerNumber, m.Status'
-        + CASE WHEN @withOffer=1 THEN N', h.tag_status AS OfferStatus' ELSE N'' END
+        + CASE WHEN @withOffer=1 THEN N', h.tag_status AS OfferStatus, h.tag_id AS OfferId, h.tag_created_by AS OfferOwner' ELSE N'' END
         + N' FROM BMSApp.OptionOfferMailOutbox m'
         + CASE WHEN @withOffer=1 THEN N' LEFT JOIN ${H} h ON h.tag_id=m.TempOfferId AND h.tag_company_id=m.CompanyId' ELSE N'' END
         + N' WHERE m.CompanyId=@company AND ${source}';
@@ -175,12 +177,18 @@ async function loadCustomerOfferAudience(database, userIdentity, article, source
     loadOfferCustomerStatuses(Number(database.firmaId), sourceId),
   ]);
   const matchedArticle = articleIndex ? { index: articleIndex, name: text(article.articleName) } : null;
+  const offersEnabled = pilotFeaturesForIdentity(userIdentity).offers;
+  const viewAll = offersEnabled && canViewAllOffers({ userIdentity });
+  const shortCode = text(userIdentity?.shortCode).toUpperCase();
   const withStatus = customer => {
     const record = statuses.get(customer.id.toUpperCase());
     const status = text(record?.Status);
     const offerStatus = Number(record?.OfferStatus);
+    const offerId = Number(record?.OfferId);
+    const canOpenOffer = offersEnabled && offerId > 0 && (viewAll || (shortCode && shortCode === text(record?.OfferOwner).toUpperCase()));
     return { ...customer, sent: status === 'sent', queued: Boolean(status && !['sent', 'failed'].includes(status)),
-      failed: status === 'failed', ...([4, 5].includes(offerStatus) ? { offerStatus } : {}) };
+      failed: status === 'failed', ...([4, 5].includes(offerStatus) ? { offerStatus } : {}),
+      ...(canOpenOffer ? { offerId } : {}) };
   };
   const localCustomers = customers.map(withStatus);
   const known = new Set(customers.map(customer => customer.id.toUpperCase()));

@@ -61,7 +61,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
   };
   const dependencies = {
     react: React,
-    'react-router-dom': { useNavigate: () => navigate, useLocation: () => location, useParams: () => params },
+    'react-router-dom': { Link: 'Link', useNavigate: () => navigate, useLocation: () => location, useParams: () => params },
     '../api/client.js': { apiRequest: (path, options) => {
       calls.push({ path, lang: env.lang });
       return request(path, env.lang, options);
@@ -448,6 +448,18 @@ test('option details show customer offers separately without a resolved article'
   await view.flush();
   assert.deepEqual(history(), recorded);
   assert.deepEqual(view.find(node => node.props?.query === '?articleIndex=D').props.customers, [{ id: 'D' }]);
+});
+
+test('recorded offers link to offer details and retain the return location only when exposed by the server', async () => {
+  const returnTo = { pathname: '/options/1/positions/10' };
+  const view = await mount('../src/components/OptionOfferCustomers.jsx', {
+    historyOnly: true, returnTo,
+    customers: [{ id: 'A', name: 'Open', offerId: 101, offerStatus: 4 }, { id: 'B', name: 'Restricted', offerStatus: 5 }],
+  }, async () => assert.fail('Unexpected request'));
+  await view.flush();
+  const link = view.find(node => node.props?.to === '/temp-offers/101');
+  assert.deepEqual(link.props.state, { returnTo });
+  assert.doesNotMatch(JSON.stringify(link), /Restricted/);
 });
 
 test('the customer suggestions start with all sales representatives and still support filtering', async () => {

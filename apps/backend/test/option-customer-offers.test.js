@@ -154,6 +154,16 @@ test('the option audience exposes converted and declined offers for the matching
     /h\.tag_id=m\.TempOfferId AND h\.tag_company_id=m\.CompanyId/);
 });
 
+test('option history exposes an offer link only with the offer detail permissions', async () => {
+  Object.assign(accepted[0], { OfferId: 101, OfferOwner: 'NSC' });
+  Object.assign(accepted[1], { OfferId: 102, OfferOwner: 'MFR' });
+  const list = async (user) => (await loadOptionOfferCustomers(sameDatabase, { active: true, ...user }, owner,
+    { ...position, singleCandidateIndex: null })).customers.map(customer => customer.offerId);
+  assert.deepEqual(await list({ shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), [101, 102]);
+  assert.deepEqual(await list({ shortCode: 'MFR', personNumber: 130, userId: 'm.frank' }), [undefined, 102]);
+  assert.deepEqual(await list({ shortCode: 'KMU', personNumber: 126, userId: 'musah' }), [undefined, undefined]);
+});
+
 test('explicit cross-sales access may display different representatives for filtering', async () => {
   customerScope.userGroup = 'GR04';
   customerScope.shortCode = ' adm ';

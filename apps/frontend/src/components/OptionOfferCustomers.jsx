@@ -9,7 +9,9 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import { Link } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
@@ -247,7 +249,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, historyOnly = false, sendEnabled, onQueued }) {
+export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, historyOnly = false, returnTo, sendEnabled, onQueued }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
@@ -280,36 +282,44 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
       {error && <Alert severity="error">{error}</Alert>}
       {!loading && !error && (visible.length ? (
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
-          {visible.map(customer => (
-            <Box component="li" key={customer.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
-              {!readOnly && !historyOnly && <Checkbox size="small" disabled={!canSelect(customer)}
-                checked={canSelect(customer) && selection.includes(customer.id)}
-                inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
-                onChange={event => {
-                  const checked = event.target.checked;
-                  setSelection(previous => checked ? [...previous, customer.id] : previous.filter(id => id !== customer.id));
-                }}
-              />}
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
-                {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
-                  {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
-                </Typography> : null}
-              </Box>
-              {customer.offerStatus === 4 && <Tooltip title={t('temp_offer_status_converted')}>
-                <CheckIcon color="success" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_converted')} />
-              </Tooltip>}
-              {customer.offerStatus === 5 && <Tooltip title={t('temp_offer_status_not_interested')}>
-                <CloseIcon color="error" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_not_interested')} />
-              </Tooltip>}
-              {!customer.offerStatus && (customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
-                <Box sx={{ width: 40, display: 'flex', justifyContent: 'center' }}>
-                  <HourglassEmptyIcon color="primary" fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
+          {visible.map(customer => {
+            const offerLink = historyOnly && customer.offerId ? {
+              component: Link, to: `/temp-offers/${customer.offerId}`, state: { returnTo },
+            } : null;
+            return <Box component="li" key={customer.id}>
+              <Box {...offerLink} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40,
+                ...(offerLink && { color: 'inherit', textDecoration: 'none', '&:hover': { bgcolor: 'action.hover' } }),
+              }}>
+                {!readOnly && !historyOnly && <Checkbox size="small" disabled={!canSelect(customer)}
+                  checked={canSelect(customer) && selection.includes(customer.id)}
+                  inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
+                  onChange={event => {
+                    const checked = event.target.checked;
+                    setSelection(previous => checked ? [...previous, customer.id] : previous.filter(id => id !== customer.id));
+                  }}
+                />}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
+                  {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
+                    {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
+                  </Typography> : null}
                 </Box>
-              </Tooltip>}
-              {!customer.offerStatus && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
-            </Box>
-          ))}
+                {customer.offerStatus === 4 && <Tooltip title={t('temp_offer_status_converted')}>
+                  <CheckIcon color="success" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_converted')} />
+                </Tooltip>}
+                {customer.offerStatus === 5 && <Tooltip title={t('temp_offer_status_not_interested')}>
+                  <CloseIcon color="error" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_not_interested')} />
+                </Tooltip>}
+                {!customer.offerStatus && (customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
+                  <Box sx={{ width: 40, display: 'flex', justifyContent: 'center' }}>
+                    <HourglassEmptyIcon color="primary" fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
+                  </Box>
+                </Tooltip>}
+                {!customer.offerStatus && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
+                {offerLink && <ChevronRightIcon fontSize="small" color="action" />}
+              </Box>
+            </Box>;
+          })}
         </Stack>
       ) : <Typography variant="body2" color="text.secondary">{t('option_offer_no_customers')}</Typography>)}
       {!readOnly && dialogOpen && chosen.length > 0 && <OptionOfferDialog

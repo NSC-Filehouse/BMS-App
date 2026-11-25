@@ -36,6 +36,7 @@ const {
   insert,
   read,
 } = require('../offers/storage');
+const { canViewAllOffers } = require('../offers/read-access');
 const { synchronizeReservations } = require('../offers/reservations');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
 const { procurementSchemaReady, loadOrderProcurement } = require('../db/linked-procurement');
@@ -54,17 +55,6 @@ const query = async (sql, params = []) => ({
 });
 const owner = (req) => req.userIdentity.shortCode;
 const offerOwnerFilter = (req) => hasExecutiveAccess(req.userIdentity) ? null : owner(req);
-const offerReadAccess = [
-  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
-  { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
-];
-const canViewAllOffers = ({ userIdentity }) => hasExecutiveAccess(userIdentity) || (
-  userIdentity?.active === true && offerReadAccess.some(identity => (
-    userIdentity.shortCode?.trim().toUpperCase() === identity.shortCode
-    && Number(userIdentity.personNumber) === identity.personNumber
-    && userIdentity.userId?.trim().toLowerCase() === identity.userId
-  ))
-);
 const offerReadOwnerFilter = (req) => canViewAllOffers(req) ? null : owner(req);
 function notFound() {
   throw createHttpError(404, 'Angebot nicht gefunden.', {

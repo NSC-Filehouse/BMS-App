@@ -162,6 +162,7 @@ export default function OptionDetail() {
 
 export function OptionPositionDetails({ offer, position, supplierField, purchaseControls, audienceEndpoint, audienceKey, articleIndex }) {
   const { t, lang } = useI18n();
+  const location = useLocation();
   const query = articleIndex ? `?${new URLSearchParams({ articleIndex })}` : '';
   const requestKey = audienceKey ? JSON.stringify([audienceKey, query]) : '';
   const [audienceResult, setAudienceResult] = React.useState(null);
@@ -248,6 +249,6 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
     )}
-    {recordedOffers.length > 0 && <OptionOfferCustomers historyOnly customers={recordedOffers} />}
+    {recordedOffers.length > 0 && <OptionOfferCustomers historyOnly customers={recordedOffers} returnTo={createReturnTo(location)} />}
   </>;
 }
