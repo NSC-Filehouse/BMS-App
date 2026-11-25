@@ -292,7 +292,7 @@ test('an already saved option purchase links once without sending it or inheriti
   procurementEnabled = true;
   const requestId = '35f27c04-0b5f-4367-9f79-2ec0259a5331';
   purchases.push({ id: 100, positionId: 200, companyId: 3, owner: 'NSC', requestId, status: 0,
-    amount: 100, unit: 'kg', articleIndex: 'A1', optionPositionId: 9, packagingType: 'Sackware', packagingTypeId: 1 });
+    amount: 100, unit: 'kg', articleIndex: 'A1', purchasePrice: 1300, optionPositionId: 9, packagingType: 'Sackware', packagingTypeId: 1 });
   const position = { ...payload().positions[0], articleIndex: 'A1', beNumber: '', warehouseId: '', savedPurchasePositionId: 200 };
   const input = payload({ incotermId: 2, procurementRequestId: requestId, positions: [position] });
   await assert.rejects(request('post', { ...input, positions: [{ ...position, amountInKg: 101 }] }), { status: 409 });
@@ -303,6 +303,7 @@ test('an already saved option purchase links once without sending it or inheriti
   assert.equal(order.ta_delivery_type_id, 2);
   assert.equal(order.ta_delivery_address_id, 51);
   assert.equal(savedPositions[0].tap_purchase_position_id, 200);
+  assert.equal(savedPositions[0].tap_ep, 1300);
   assert.equal(savedPositions[0].tap_option_position_id, 9);
   assert.equal(savedPositions[0].tap_be_number, '');
   assert.equal(purchases[0].orderPositionId, savedPositions[0].tap_id);
@@ -324,7 +325,7 @@ test('an offer conversion links multiple separately saved purchases once and ret
   const requestIds = ['35f27c04-0b5f-4367-9f79-2ec0259a5331', '35f27c04-0b5f-4367-9f79-2ec0259a5332'];
   for (const [index, requestId] of requestIds.entries()) {
     purchases.push({ id: 100 + index, positionId: 200 + index, companyId: 3, owner: 'NSC', requestId, status: 0,
-      amount: 100, unit: 'kg', articleIndex: 'A1', optionPositionId: null, packagingType: 'Sackware', packagingTypeId: 1 });
+      amount: 100, unit: 'kg', articleIndex: 'A1', purchasePrice: 1300 + index, optionPositionId: null, packagingType: 'Sackware', packagingTypeId: 1 });
   }
   const input = payload({
     incotermId: 2, offerSourceId: sourceOffer.id, offerSourceVersion: sourceOffer.version, procurementRequestId: requestIds[0],
@@ -338,6 +339,7 @@ test('an offer conversion links multiple separately saved purchases once and ret
   assert.deepEqual(sourceOfferPositions.map((line) => line.orderPositionId), [1, 2]);
   assert.deepEqual(purchases.map((p) => [p.orderPositionId, p.status]), [[1, 0], [2, 0]]);
   assert.deepEqual(savedPositions.map((line) => line.tap_purchase_position_id), [200, 201]);
+  assert.deepEqual(savedPositions.map((line) => line.tap_ep), [1300, 1301]);
   assert.equal((await request('post', input)).data.id, created.data.id);
   await request('delete');
   assert.deepEqual(purchases.map((p) => p.orderPositionId), [null, null]);

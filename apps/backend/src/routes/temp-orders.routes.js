@@ -1789,7 +1789,7 @@ async function completeLinkedProcurement(req, order, companyId, { handoff = true
 async function lockSavedPurchase(query, position, companyId, user) {
   const [purchase] = (await query(`
     SELECT pp.tbp_id AS id, pp.tbp_order_position_id AS linkedOrderPositionId,
-      pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit,
+      pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit, pp.tbp_purchase_price AS purchasePrice,
       pp.OptionPositionID AS optionPositionId, b.tb_packaging_type AS packagingType, b.tb_packaging_type_id AS packagingTypeId
     FROM ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK)
     JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp WITH (UPDLOCK,HOLDLOCK) ON pp.tbp_tb_id=b.tb_id
@@ -1799,7 +1799,8 @@ async function lockSavedPurchase(query, position, companyId, user) {
   if (!purchase || purchase.linkedOrderPositionId != null
     || (!position.offerPositionId && !purchase.optionPositionId)
     || asText(purchase.articleIndex).toLowerCase() !== position.articleIndex.toLowerCase()
-    || asText(purchase.unit).toLowerCase() !== 'kg' || Number(purchase.amount) !== position.amountInKg) {
+    || asText(purchase.unit).toLowerCase() !== 'kg' || Number(purchase.amount) !== position.amountInKg
+    || asInt(purchase.purchasePrice, 0) <= 0) {
     throw createHttpError(409, 'Die gespeicherte Bestellposition ist nicht mehr verfügbar oder Artikel und Menge wurden geändert.', {
       code: 'PROCUREMENT_SAVED_PURCHASE_CHANGED',
     });
@@ -2220,7 +2221,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.amountInKg,
         pos.warehouseId,
         pos.salePricePerKg,
-        pos.costPricePerKg,
+        purchasePositionId ? asInt((savedPurchase || purchase.positions[0]).purchasePrice) : pos.costPricePerKg,
         pos.reservationInKg,
         pos.reservationDate,
         ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
@@ -2976,6 +2977,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
       ${hasColumn(positionCols, 'tap_offer_position_id') ? 'p.[tap_offer_position_id]' : 'NULL'} AS offerPositionId,
       ${hasColumn(positionCols, 'tap_purchase_position_id') ? 'p.[tap_purchase_position_id]' : 'NULL'} AS purchasePositionId,
       p.[tap_amount_in_kg] AS amountInKg,
+      p.[tap_ep] AS costPrice,
       p.[tap_wpz_id] AS wpzId,
       p.[tap_wpz_original] AS wpzOriginal,
       p.[tap_wpz_comment] AS wpzComment,
@@ -3011,8 +3013,8 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     const deliveryDate = raw?.deliveryDate ? new Date(raw.deliveryDate) : (body?.deliveryDate ? new Date(body.deliveryDate) : null);
     const amountInKg = asInt(raw?.amountInKg, 0);
     const salePricePerKg = asSalePrice(raw?.salePricePerKg ?? raw?.pricePerKg);
-    const costPricePerKg = asInt(raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     const stored = storedPositionsById.get(Number(raw?.id));
+    const costPricePerKg = asInt(stored?.purchasePositionId ? stored.costPrice : raw?.costPricePerKg ?? raw?.epPerKg ?? raw?.ep ?? 0, 0);
     const awaitingPurchase = Boolean(stored?.purchasePositionId && !stored.beNumber);
     if ((!beNumber || !warehouseId) && !awaitingPurchase) {
       throw createHttpError(400, 'Missing position keys: beNumber and warehouseId.', { code: 'MISSING_RESERVATION_KEYS' });

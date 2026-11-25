@@ -2631,7 +2631,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                               label={t('product_price')}
                               value={x.costPrice ?? ''}
                               onChange={(e) => setPositions((prev) => prev.map((p, i) => (i === idx ? { ...p, costPrice: e.target.value } : p)))}
-                              inputProps={{ min: 0.01, step: 'any' }}
+                              inputProps={{ min: 0.01, step: 'any', readOnly: Boolean(x.procurement || x.savedPurchasePositionId || x.purchasePositionId) }}
                               size="small"
                             />
                           </Box>
