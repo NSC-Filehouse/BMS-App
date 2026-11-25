@@ -710,7 +710,12 @@ export default function TempOrderDetail() {
         >
           {creditLimitPreview ? (
             <>
-              <Button variant="outlined" onClick={() => finalizeOrder(false)} disabled={finalizing}>
+              <Button
+                variant="outlined"
+                onClick={() => finalizeOrder(false)}
+                disabled={finalizing}
+                sx={{ whiteSpace: 'pre-line' }}
+              >
                 {finalizing ? t('temp_order_sending_bms') : t('credit_limit_no_send')}
               </Button>
               <Button
