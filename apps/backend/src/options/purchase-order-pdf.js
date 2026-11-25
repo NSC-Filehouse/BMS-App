@@ -204,7 +204,7 @@ async function renderPurchaseOptionPdf(order, snapshots, { sample = false } = {}
     const columns = [LEFT + 13, 368, RIGHT - 13];
     const rows = [
       ['Menge', source.amount && `${source.amount} angeboten`, `${kg(line.amount)} bestellt`],
-      ['Preis', source.price, `${price.format(line.purchasePrice)} ${line.currency}/t`],
+      ['Preis', source.price, `${price.format(line.purchasePrice)} ${order.currency || line.currency || 'EUR'}/t`],
       ['Verpackung', source.packaging, order.packagingType],
       ['Incoterm', source.incoterm, order.deliveryTermText],
     ];
@@ -273,7 +273,13 @@ async function renderPurchaseOptionPdf(order, snapshots, { sample = false } = {}
     heading('Logistik');
     fields([['Gewünschter Liefertermin', displayDate(line.requestedDeliveryDate)],
       ['Verladehinweis laut Option', source.loadingNote]]);
-    if (order.loadingLocationChanged) paragraph('Ladeort der Bestellung', order.loadingLocationText);
+    if (order.addressId || order.loadingLocationChanged) paragraph('Liefer-/Abholadresse der Bestellung', order.loadingLocationText);
+    for (const [label, value] of [
+      ['Lager', order.warehouseId], ['Referenz', order.reference], ['Lager bei Strecke', line.placeAtSupplier],
+      ['Abholreferenz', line.pickupReference], ['Bemerkung für die Verfügbarkeitsliste', line.availabilityNote],
+    ]) {
+      if (value) paragraph(label, value);
+    }
     paragraph('Weitere Angebotskonditionen', source.terms);
   }
 

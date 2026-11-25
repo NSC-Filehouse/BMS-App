@@ -42,7 +42,24 @@ const procurementNotification = {
   tableName: 'tbl_Temp_Auftrag', name: 'ta_procurement_notified_at', typeName: 'datetime2',
   max_length: 8, precision: 27, scale: 7, is_nullable: true, is_identity: false, is_computed: false,
 };
-const additionalColumns = [...optionDeliveryColumns, procurementNotification];
+const purchaseOrderColumns = [
+  ['tbl_Temp_Bestellung', 'tb_supplier_contact_id', 0],
+  ['tbl_Temp_Bestellung', 'tb_warehouse_id', 6],
+  ['tbl_Temp_Bestellung', 'tb_address_customer_id', 10],
+  ['tbl_Temp_Bestellung', 'tb_address_id', 0],
+  ['tbl_Temp_Bestellung', 'tb_reference', 100],
+  ['tbl_Temp_Bestellung', 'tb_currency', 3],
+  ['tbl_Temp_Best_Position', 'tbp_place_at_supplier', 25],
+  ['tbl_Temp_Best_Position', 'tbp_pickup_reference', 25],
+  ['tbl_Temp_Best_Position', 'tbp_availability_note', 255],
+].map(([tableName, name, length]) => ({
+  tableName, name, typeName: length ? 'nvarchar' : 'int', max_length: length ? 2 * length : 4,
+  precision: length ? 0 : 10, scale: 0, is_nullable: true, is_identity: false, is_computed: false,
+  collation_name: length ? 'Latin1_General_CI_AS' : null,
+}));
+const articleColumn = schema.columns.find(item => item.tableName === 'tbl_Temp_Best_Position' && item.name === 'tbp_article');
+if (articleColumn) articleColumn.max_length = 150;
+const additionalColumns = [...optionDeliveryColumns, procurementNotification, ...purchaseOrderColumns];
 for (const column of additionalColumns) {
   if (!schema.columns.some(existing => existing.tableName === column.tableName && existing.name === column.name)) {
     schema.columns.push(column);
@@ -146,6 +163,11 @@ for (const column of additionalColumns) {
   sql += ' IF COL_LENGTH(' + table + ',' + name + ') IS NULL\n  ' + execute(ddl) + '\n';
 }
 sql+=addOptionOfferSchema.offerMailUpgrade;
+sql+=`
+ IF OBJECT_ID(N'BMSApp.CK_TempBestPosition_ArticleIndex',N'C') IS NULL
+        ALTER TABLE BMSApp.tbl_Temp_Best_Position WITH CHECK ADD CONSTRAINT CK_TempBestPosition_ArticleIndex
+        CHECK (tbp_article_index IS NOT NULL AND LEN(LTRIM(RTRIM(tbp_article_index)))>0);
+`;
 // Keep the compatibility manifest inside the one executable SQL file. It
 // contains schema metadata only; no environment names, accounts or row data.
 const expected=[...schema.columns,...(missingContact?contactSchema:[])].map(c=>({table:c.tableName,column:c.name,type:c.typeName,length:c.max_length,precision:c.precision,scale:c.scale,nullable:c.is_nullable,identity:c.is_identity,computed:c.is_computed,collation:c.collation_name}));

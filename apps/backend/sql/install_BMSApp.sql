@@ -532,7 +532,10 @@ BEGIN TRY
     [tbp_tb_id] [int] NOT NULL,
     [tbp_line_no] [int] NOT NULL,
     [tbp_article_index] [nvarchar](100) COLLATE Latin1_General_CI_AS NULL,
-    [tbp_article] [nvarchar](500) COLLATE Latin1_General_CI_AS NOT NULL,
+    [tbp_article] [nvarchar](75) COLLATE Latin1_General_CI_AS NOT NULL,
+    [tbp_place_at_supplier] [nvarchar](25) COLLATE Latin1_General_CI_AS NULL,
+    [tbp_pickup_reference] [nvarchar](25) COLLATE Latin1_General_CI_AS NULL,
+    [tbp_availability_note] [nvarchar](255) COLLATE Latin1_General_CI_AS NULL,
     [tbp_amount] [decimal](18,3) NOT NULL,
     [tbp_unit] [nvarchar](20) COLLATE Latin1_General_CI_AS NOT NULL,
     [tbp_purchase_price] [decimal](18,4) NOT NULL,
@@ -570,6 +573,12 @@ BEGIN TRY
     [tb_supplier_name] [nvarchar](255) COLLATE Latin1_General_CI_AS NOT NULL,
     [tb_supplier_address] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
     [tb_supplier_contact] [nvarchar](255) COLLATE Latin1_General_CI_AS NULL,
+    [tb_supplier_contact_id] [int] NULL,
+    [tb_warehouse_id] [nvarchar](6) COLLATE Latin1_General_CI_AS NULL,
+    [tb_address_customer_id] [nvarchar](10) COLLATE Latin1_General_CI_AS NULL,
+    [tb_address_id] [int] NULL,
+    [tb_reference] [nvarchar](100) COLLATE Latin1_General_CI_AS NULL,
+    [tb_currency] [nvarchar](3) COLLATE Latin1_General_CI_AS NULL,
     [tb_payment_condition_changed] [bit] NOT NULL CONSTRAINT [DF_tbl_Temp_Bestellung_payment_changed] DEFAULT ((0)),
     [tb_payment_condition_id] [int] NULL,
     [tb_payment_condition_text] [nvarchar](1000) COLLATE Latin1_General_CI_AS NULL,
@@ -1178,6 +1187,29 @@ BEGIN TRY
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_order_position_id') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_order_position_id] [int] NULL;');
 
+ -- Add the structured ERP fields before checking an existing installation.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_supplier_contact_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_supplier_contact_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_warehouse_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_warehouse_id] [nvarchar](6) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_address_customer_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_address_customer_id] [nvarchar](10) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_address_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_address_id] [int] NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_reference') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_reference] [nvarchar](100) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung',N'tb_currency') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung] ADD [tb_currency] [nvarchar](3) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_place_at_supplier') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_place_at_supplier] [nvarchar](25) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_pickup_reference') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_pickup_reference] [nvarchar](25) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_availability_note') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_availability_note] [nvarchar](255) COLLATE Latin1_General_CI_AS NULL;');
+ IF OBJECT_ID(N'BMSApp.CK_TempBestPosition_ArticleIndex',N'C') IS NULL
+        ALTER TABLE BMSApp.tbl_Temp_Best_Position WITH CHECK ADD CONSTRAINT CK_TempBestPosition_ArticleIndex
+        CHECK (tbp_article_index IS NOT NULL AND LEN(LTRIM(RTRIM(tbp_article_index)))>0);
+
  -- Preserve the original option data with each generated purchase attachment.
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Bestellung_Anhang',N'tba_OptionSnapshot') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Bestellung_Anhang] ADD [tba_OptionSnapshot] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL;');
@@ -1557,7 +1589,10 @@ BEGIN TRY
 {"table":"tbl_Temp_Best_Position","column":"tbp_tb_id","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Best_Position","column":"tbp_line_no","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Best_Position","column":"tbp_article_index","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
-{"table":"tbl_Temp_Best_Position","column":"tbp_article","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Best_Position","column":"tbp_article","type":"nvarchar","length":150,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Best_Position","column":"tbp_place_at_supplier","type":"nvarchar","length":50,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Best_Position","column":"tbp_pickup_reference","type":"nvarchar","length":50,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Best_Position","column":"tbp_availability_note","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Best_Position","column":"tbp_amount","type":"decimal","length":9,"precision":18,"scale":3,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Best_Position","column":"tbp_unit","type":"nvarchar","length":40,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Best_Position","column":"tbp_purchase_price","type":"decimal","length":9,"precision":18,"scale":4,"nullable":false,"identity":false,"computed":false,"collation":null},
@@ -1585,6 +1620,12 @@ BEGIN TRY
 {"table":"tbl_Temp_Bestellung","column":"tb_supplier_name","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Bestellung","column":"tb_supplier_address","type":"nvarchar","length":2000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Bestellung","column":"tb_supplier_contact","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Bestellung","column":"tb_supplier_contact_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Bestellung","column":"tb_warehouse_id","type":"nvarchar","length":12,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Bestellung","column":"tb_address_customer_id","type":"nvarchar","length":20,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Bestellung","column":"tb_address_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"tbl_Temp_Bestellung","column":"tb_reference","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Bestellung","column":"tb_currency","type":"nvarchar","length":6,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Bestellung","column":"tb_payment_condition_changed","type":"bit","length":1,"precision":1,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Bestellung","column":"tb_payment_condition_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Bestellung","column":"tb_payment_condition_text","type":"nvarchar","length":2000,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},

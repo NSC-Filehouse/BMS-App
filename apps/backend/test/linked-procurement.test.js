@@ -30,16 +30,17 @@ test('the single-position fallback requires a matching active article on an unam
   assert.equal(selectBmsPosition({ ...purchase, purchaseLineCount: 2 }, [{ beNumber: 'BE-1', articleIndex: 'A' }]), null);
 });
 
-test('the background check binds the exact returned lot and sends a single ready notification', async () => {
+test('the background check binds the exact USD lot and EUR cost and sends a single ready notification', async () => {
   const purchase = {
     id: 1, purchaseId: 42, purchasePositionId: 11, purchaseStatus: 1, purchaseLineCount: 2,
     bmsPurchaseIndex: 'BE', bmsPositionId: 'BE-2', supplierId: 'SUP', articleIndex: 'A',
-    purchaseArticleIndex: 'A', amountInKg: 16000, beNumber: '', warehouseId: '',
+    purchaseArticleIndex: 'A', amountInKg: 16000, beNumber: '', warehouseId: '', purchaseCurrency: 'USD',
   };
   let stockKg = 8000;
   let notified = false;
   let pushes = 0;
   let orderStatus = 0;
+  let euroCost;
   const identity = { active: true, shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', email: 'nsc@example.test' };
   const database = { firmaId: 3 };
   const dependencies = {
@@ -47,7 +48,10 @@ test('the background check binds the exact returned lot and sends a single ready
     '../logger': { warn(message) { throw new Error(message); } },
     './access': {
       async runSQLQueryAccess(_database, sql, params) {
-        if (sql.includes('COALESCE(p.beP_Storno')) return [{ beNumber: 'BE-1', articleIndex: 'A' }, { beNumber: 'BE-2', articleIndex: 'A' }];
+        if (sql.includes('COALESCE(p.beP_Storno')) return [
+          { beNumber: 'BE-1', articleIndex: 'A', euroCostPrice: 700 },
+          { beNumber: 'BE-2', articleIndex: 'A', euroCostPrice: euroCost },
+        ];
         assert.equal(params[1], 'BE-2');
         return [{ beNumber: 'BE-2', warehouseId: 'L1', packaging: 'Sackware' }];
       },
@@ -77,6 +81,8 @@ test('the background check binds the exact returned lot and sends a single ready
           if (sql.includes('SELECT tap_id AS id')) return { rows: purchase.beNumber ? [{ ...purchase }] : [] };
           if (sql.includes('SET tap_be_number=')) {
             [purchase.beNumber, purchase.warehouseId] = params;
+            assert.match(sql, /tap_ep=COALESCE/);
+            assert.equal(params.at(-4), 911);
             return { rows: [] };
           }
           if (sql.includes('SET ta_procurement_notified_at=')) {
@@ -107,6 +113,10 @@ test('the background check binds the exact returned lot and sends a single ready
   assert.equal(pushes, 0);
 
   stockKg = 17000;
+  await fixture.exports.runLinkedProcurement();
+  assert.equal(purchase.beNumber, '');
+  assert.equal(pushes, 0);
+  euroCost = 911.25;
   await fixture.exports.runLinkedProcurement();
   assert.equal(purchase.beNumber, 'BE-2');
   assert.equal(purchase.warehouseId, 'L1');

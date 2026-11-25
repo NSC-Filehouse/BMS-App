@@ -53,9 +53,17 @@ test('incompatible installations abort atomically instead of altering or deletin
  const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
  assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,789);
+ assert.equal(manifest.length,800);
  assert.equal(new Set(manifest.map(c=>c.table)).size,45);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
+ const purchaseOrderColumns = manifest.filter(c => ['tb_supplier_contact_id','tb_warehouse_id','tb_address_customer_id',
+  'tb_address_id','tb_reference','tb_currency','tbp_place_at_supplier','tbp_pickup_reference','tbp_availability_note'].includes(c.column));
+ assert.deepEqual(Object.fromEntries(purchaseOrderColumns.map(c => [c.column, c.type === 'nvarchar' ? c.length / 2 : c.type])), {
+  tb_supplier_contact_id: 'int', tb_warehouse_id: 6, tb_address_customer_id: 10, tb_address_id: 'int',
+  tb_reference: 100, tb_currency: 3, tbp_place_at_supplier: 25, tbp_pickup_reference: 25, tbp_availability_note: 255,
+ });
+ assert.equal(manifest.find(c => c.column === 'tbp_article').length,150);
+ assert.match(sql,/CHECK \(tbp_article_index IS NOT NULL AND LEN\(LTRIM\(RTRIM\(tbp_article_index\)\)\)>0\)/);
  const pdf=manifest.find(c=>c.table==='tbl_Temp_Angebot' && c.column==='tag_offer_pdf');
  assert.deepEqual([pdf.type,pdf.length,pdf.nullable],['varbinary',-1,true]);
  const snapshot=manifest.find(c=>c.table==='tbl_Temp_Bestellung_Anhang' && c.column==='tba_OptionSnapshot');

@@ -63,7 +63,31 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
   const paymentConditionText = paymentConditionId ? await loadPurchasePaymentText(paymentConditionId, lang) : '';
   const names = contacts.map((contact) => ({ ...contact, name: [contact.salutation, contact.firstName, contact.lastName].map(text).filter(Boolean).join(' ') })).filter((contact) => contact.name);
   const contact = names.find((item) => Number(item.ranking) === 1) || (names.length === 1 ? names[0] : null);
-  return { paymentConditionId, paymentConditionText, deliveryTermText: text(row.deliveryTermText), supplierContact: contact?.name || '', contacts: names };
+  return { paymentConditionId, paymentConditionText, deliveryTermText: text(row.deliveryTermText),
+    supplierContact: contact?.name || '', supplierContactId: contact?.id ?? null, contacts: names };
+}
+
+async function loadPurchaseWarehouses(database, warehouseId = '') {
+  const rows = await runSQLQueryAccess(database, `
+    SELECT w.kdLa_LagerID AS id, w.kdLa_Strecke AS isDirect, w.kdLa_Kurz AS label,
+      w.kdLa_KdNR AS customerId, w.kdLa_KdNR2 AS alternateCustomerId,
+      k.kd_Name1 AS customerName, k2.kd_Name1 AS alternateCustomerName
+    FROM dbo.tblKun_Lager w
+    LEFT JOIN dbo.tblKunden k ON k.kd_KdNR=w.kdLa_KdNR
+    LEFT JOIN dbo.tblKunden k2 ON k2.kd_KdNR=w.kdLa_KdNR2
+    ${warehouseId ? 'WHERE w.kdLa_LagerID=?' : ''}
+    ORDER BY w.kdLa_Strecke DESC, w.kdLa_Kurz, w.kdLa_LagerID`, warehouseId ? [warehouseId] : []);
+  return rows.map(row => {
+    const customerId = text(row.customerId);
+    const alternateCustomerId = text(row.alternateCustomerId);
+    const owners = [
+      { id: customerId, name: text(row.customerName) },
+      { id: alternateCustomerId, name: text(row.alternateCustomerName) },
+    ].filter(owner => owner.id && owner.name);
+    return { id: text(row.id), label: text(row.label), isDirect: Boolean(row.isDirect),
+      defaultOwnerId: customerId === alternateCustomerId && owners.length ? customerId : '',
+      owners: [...new Map(owners.map(owner => [owner.id, owner])).values()] };
+  });
 }
 
 async function loadLatestPurchase(database, supplierId, articleIndex) {
@@ -73,7 +97,8 @@ async function loadLatestPurchase(database, supplierId, articleIndex) {
       [a].[agA_Artikelname] AS masterArticleName,
       [a].[agA_Artikelname_Lieferant] AS supplierArticleName, [p].[beP_Artikel] AS lastPurchaseArticle,
       [b].[be_Verpackung] AS originalPackagingType,
-      COALESCE([p].[beP_EK_EU], [p].[beP_EK_DM]) AS lastPurchasePrice,
+      COALESCE([p].[beP_EK_EU], CASE WHEN ISNULL(NULLIF(RTRIM([b].[be_BasisValuta]), N''), N'EUR') = N'EUR'
+        THEN [p].[beP_EK_DM] END) AS lastPurchasePrice,
       [p].[beP_Lieferdatum] AS lastDeliveryDate, [b].[be_Bestelldatum] AS lastOrderDate,
       COALESCE(NULLIF(LTRIM(RTRIM([b].[be_AdresseAbhol])), N''),
         NULLIF(LTRIM(RTRIM([b].[be_AdresseSP_Abhol])), N'')) AS loadingLocationText
@@ -135,4 +160,4 @@ function findPackaging(options, value, id) {
     || options.find((option) => option.aliases.some((alias) => packagingKey(alias) === packagingKey(value)));
 }
 
-module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions,loadPurchasePackagingOptions,purchaseTruckLoadKg, loadSupplierTerms, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };
+module.exports = { enrichPurchaseArticleNames, loadPurchaseOptions,loadPurchasePackagingOptions,purchaseTruckLoadKg, loadSupplierTerms, loadPurchaseWarehouses, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, commonLoadingLocations, findPackaging, packagingKey };

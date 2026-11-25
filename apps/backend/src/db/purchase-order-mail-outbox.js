@@ -40,6 +40,9 @@ async function loadOrder(orderId) {
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     SELECT [tb_id] AS id, [tb_company_id] AS companyId, [tb_supplier_id] AS supplierId,
       [tb_supplier_name] AS supplierName, [tb_supplier_contact] AS supplierContact,
+      [tb_supplier_contact_id] AS supplierContactId, [tb_warehouse_id] AS warehouseId,
+      [tb_address_customer_id] AS addressCustomerId, [tb_address_id] AS addressId,
+      [tb_reference] AS reference, [tb_currency] AS currency,
       [tb_payment_condition_id] AS paymentConditionId, [tb_payment_condition_text] AS paymentConditionText,
       [tb_delivery_term_text] AS deliveryTermText, [tb_loading_location_text] AS loadingLocationText,
       [tb_packaging_type] AS packagingType, [tb_comment] AS comment, [tb_bestellindex] AS bmsPurchaseOrderNumber,
@@ -53,6 +56,8 @@ async function loadOrder(orderId) {
     SELECT [tbp_id] AS id, [tbp_line_no] AS [lineNo], [tbp_article_index] AS articleIndex,
       [tbp_article] AS article, [tbp_amount] AS amount, [tbp_unit] AS unit,
       [tbp_purchase_price] AS purchasePrice, [tbp_currency] AS currency,
+      [tbp_place_at_supplier] AS placeAtSupplier, [tbp_pickup_reference] AS pickupReference,
+      [tbp_availability_note] AS availabilityNote,
       [tbp_requested_delivery_date] AS requestedDeliveryDate, [tbp_reserved_for] AS reservedFor,
       [tbp_comment] AS comment, [tbp_original_packaging_type] AS originalPackagingType,
       [tbp_packaging_type_changed] AS packagingTypeChanged,

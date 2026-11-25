@@ -193,11 +193,13 @@ export function purchaseFieldErrors(order) {
   return {
     packagingTypeId: !order.packagingTypeId,
     deliveryTermId: !order.deliveryTermId,
-    loadingLocationText: !String(order.loadingLocationText || '').trim(),
+    warehouseId: !order.warehouseId,
+    addressId: !order.addressCustomerId || !order.addressId,
     articleType: new Set((order.positions || []).map(purchaseArticleKey)).size > 1,
     positions: (order.positions || []).map((item) => {
       const date = String(item.requestedDeliveryDate || '').slice(0, 10);
       return {
+        articleIndex: !String(item.articleIndex || '').trim(),
         amount: !Number.isFinite(Number(item.amount)) || !(Number(item.amount) > 0),
         purchasePrice: String(item.purchasePrice ?? '').trim() === '' || !Number.isFinite(Number(item.purchasePrice)) || Number(item.purchasePrice) < 0,
         requestedDeliveryDate: !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date,
@@ -218,10 +220,12 @@ export function purchaseMissingFields(order) {
   const missing = [];
   if (errors.packagingTypeId) missing.push('Verpackungsart');
   if (errors.deliveryTermId) missing.push('Incoterm');
-  if (errors.loadingLocationText) missing.push('Ladeort');
+  if (errors.warehouseId) missing.push('Lager');
+  if (errors.addressId) missing.push('Liefer-/Abholadresse');
   if (errors.articleType) missing.push('Nur eine Artikelart pro Bestellung');
   if (!order.positions?.length) missing.push('Positionen');
   errors.positions.forEach((item, index) => {
+    if (item.articleIndex) missing.push(`Artikelindex Position ${index + 1}`);
     if (item.amount) missing.push(`Menge Position ${index + 1}`);
     if (item.purchasePrice) missing.push(`EK Position ${index + 1}`);
     if (item.requestedDeliveryDate) missing.push(`Liefertermin Position ${index + 1}`);

@@ -1140,6 +1140,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
               savedPurchaseId: x.savedPurchase.savedPurchaseId,
               savedPurchasePositionId: x.savedPurchase.savedPurchasePositionId,
               purchaseRequestId: x.savedPurchase.purchaseRequestId,
+              purchaseCurrency: x.savedPurchase.purchaseCurrency,
               selectedStockKey: '',
             }),
           } : {}),
@@ -1152,7 +1153,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
           articleChanged: Boolean(x.articleChanged),
           amountInKg: x.amountInKg,
           price: x.salePrice ?? x.price ?? '',
-          costPrice: x.savedPurchase?.costPrice ?? x.costPrice ?? x.ep ?? null,
+          costPrice: x.savedPurchase?.purchaseCurrency === 'USD' ? null : x.savedPurchase?.costPrice ?? x.costPrice ?? x.ep ?? null,
           originalPackagingType: x.savedPurchase?.originalPackagingType || '',
           originalPackagingTypeId: x.savedPurchase?.originalPackagingTypeId ?? x.originalPackagingTypeId ?? null,
           packagingTypeChanged: false,
@@ -1186,6 +1187,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
             savedPurchaseId: x.savedPurchaseId,
             savedPurchasePositionId: x.savedPurchasePositionId,
             purchaseRequestId: x.purchaseRequestId,
+            purchaseCurrency: x.purchaseCurrency,
             optionSupplier: x.optionSupplier,
             beNumber: x.beNumber,
             warehouseId: x.warehouseId,
@@ -1264,8 +1266,8 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
       .map((position) => {
         const original = positions.find((line) => line.offerPositionId && line.offerPositionId === position.offerPositionId);
         if (original?.savedPurchasePositionId) {
-          const { savedPurchaseId, savedPurchasePositionId, purchaseRequestId, amountInKg, costPrice, originalPackagingType, originalPackagingTypeId } = original;
-          return { ...position, savedPurchaseId, savedPurchasePositionId, purchaseRequestId, amountInKg, costPrice,
+          const { savedPurchaseId, savedPurchasePositionId, purchaseRequestId, purchaseCurrency, amountInKg, costPrice, originalPackagingType, originalPackagingTypeId } = original;
+          return { ...position, savedPurchaseId, savedPurchasePositionId, purchaseRequestId, purchaseCurrency, amountInKg, costPrice,
             originalPackagingType, originalPackagingTypeId, procurement: null, beNumber: '', warehouseId: '', selectedStockKey: '',
             reservationInKg: null, reservationDate: null, wpzId: null };
         }
@@ -1839,7 +1841,9 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
       if (!isValidSalePrice(pos.price)) {
         messages.push(`${pos.article || pos.beNumber}: ${t('validation_sale_price_nonnegative')}`);
       }
-      if ((!fromOption || onPurchase || pos.selectedStockKey) && (!Number.isFinite(costPrice) || costPrice <= 0)) {
+      const awaitingEuroCost = !pos.beNumber && (pos.purchasePositionId
+        || pos.procurement?.header.currency === 'USD' || pos.purchaseCurrency === 'USD');
+      if (!awaitingEuroCost && (!fromOption || onPurchase || pos.selectedStockKey) && (!Number.isFinite(costPrice) || costPrice <= 0)) {
         messages.push(`${pos.article || pos.beNumber}: ${t(fromOption || pos.savedPurchasePositionId ? 'procurement_option_cost_required' : 'validation_price_positive')}`);
       }
       const wpz = getPositionWpzPayload(pos);
@@ -2679,7 +2683,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
             ...position, procurement, beNumber: '', warehouseId: '', selectedStockKey: '',
             originalPackagingType: procurement.header.packagingType,
             originalPackagingTypeId: procurement.header.packagingTypeId,
-            costPrice: Number(procurement.position.purchasePrice) > 0 ? Number(procurement.position.purchasePrice) : position.costPrice,
+            costPrice: procurement.header.currency === 'USD' ? null : Number(procurement.position.purchasePrice),
           } : position));
           setProcurementKey(null);
         }}

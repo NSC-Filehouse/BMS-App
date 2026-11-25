@@ -11,7 +11,8 @@ const { appTableSql } = require('../db/app-tables');
 const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
   loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
-const { loadPurchaseOptions, loadSupplierTerms, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
+const { loadPurchaseOptions, loadSupplierTerms, loadPurchaseWarehouses, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
+const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { procurementSchemaReady, assertProcurementAccess, loadPurchaseOrderLinks } = require('../db/linked-procurement');
 const { loadHolidayRows } = require('../db/holidays');
 const {
@@ -76,6 +77,12 @@ function mapOrder(row, positions = []) {
     supplierName: asText(row.supplierName),
     supplierAddress: asText(row.supplierAddress),
     supplierContact: asText(row.supplierContact),
+    supplierContactId: asNumber(row.supplierContactId),
+    warehouseId: asText(row.warehouseId),
+    addressCustomerId: asText(row.addressCustomerId),
+    addressId: asNumber(row.addressId),
+    reference: asText(row.reference),
+    currency: asText(row.currency) || asText(positions[0]?.currency) || 'EUR',
     paymentConditionChanged: Boolean(row.paymentConditionChanged),
     paymentConditionId: row.paymentConditionId === null || row.paymentConditionId === undefined ? null : Number(row.paymentConditionId),
     paymentConditionText: asText(row.paymentConditionText),
@@ -109,7 +116,10 @@ function mapOrder(row, positions = []) {
       amount: asNumber(position.amount, 0) * (/^(t|to|tonne[n]?)$/i.test(asText(position.unit)) ? 1000 : 1),
       unit: 'kg',
       purchasePrice: asNumber(position.purchasePrice, 0),
-      currency: asText(position.currency) || 'EUR',
+      currency: asText(row.currency || position.currency) || 'EUR',
+      placeAtSupplier: asText(position.placeAtSupplier),
+      pickupReference: asText(position.pickupReference),
+      availabilityNote: asText(position.availabilityNote),
       requestedDeliveryDate: asDate(position.requestedDeliveryDate),
       reservedFor: asText(position.reservedFor),
       comment: asText(position.comment),
@@ -135,6 +145,12 @@ function orderSelectSql() {
       [tb_supplier_name] AS supplierName,
       [tb_supplier_address] AS supplierAddress,
       [tb_supplier_contact] AS supplierContact,
+      [tb_supplier_contact_id] AS supplierContactId,
+      [tb_warehouse_id] AS warehouseId,
+      [tb_address_customer_id] AS addressCustomerId,
+      [tb_address_id] AS addressId,
+      [tb_reference] AS reference,
+      [tb_currency] AS currency,
       [tb_payment_condition_changed] AS paymentConditionChanged,
       [tb_payment_condition_id] AS paymentConditionId,
       [tb_payment_condition_text] AS paymentConditionText,
@@ -174,6 +190,9 @@ async function loadPositions(orderId, query = null) {
       [tbp_unit] AS unit,
       [tbp_purchase_price] AS purchasePrice,
       [tbp_currency] AS currency,
+      [tbp_place_at_supplier] AS placeAtSupplier,
+      [tbp_pickup_reference] AS pickupReference,
+      [tbp_availability_note] AS availabilityNote,
       [tbp_requested_delivery_date] AS requestedDeliveryDate,
       [tbp_reserved_for] AS reservedFor,
       [tbp_comment] AS comment,
@@ -278,25 +297,59 @@ async function assertSupplier(database, supplierId, accessScope) {
   return customer;
 }
 
-async function resolveLoadingAddress(database, body) {
-  if (body?.loadingLocationSource === 'manual') {
-    const text = asText(body?.loadingLocationText);
-    if (!text || text.length>1000) throw createHttpError(400,'Bitte einen Ladeort mit höchstens 1000 Zeichen eingeben.',{code:'LOADING_LOCATION_REQUIRED'});
-    return { address:null,text,id:null,source:'manual',changed:true };
+function purchaseText(value, maxLength, field) {
+  const text = asText(value);
+  if (text.length > maxLength) {
+    throw createHttpError(400, `${field} darf höchstens ${maxLength} Zeichen haben.`, { code: 'PURCHASE_FIELD_TOO_LONG', field, maxLength });
   }
-  const context = await loadPurchaseLoadingContext(database, body?.supplierId, (body?.positions || []).map((p) => asText(p.articleIndex)));
-  const rawId = asText(body?.loadingLocationId);
-  const requestedText = asText(body?.loadingLocationText);
-  let address = rawId ? context.addresses.find((item) => String(item.id) === rawId) || null : null;
-  if (!address && requestedText) {
-    const normalized = requestedText.toLocaleLowerCase('de-DE');
-    address = context.addresses.find((item) => String(item.text || '').trim().toLocaleLowerCase('de-DE') === normalized) || null;
+  return text || null;
+}
+
+function purchaseArticleText(value) {
+  return asText(value).slice(0, 75).replace(/[\uD800-\uDBFF]$/, '').trimEnd();
+}
+
+function purchaseCurrency(value) {
+  const currency = asText(value).toUpperCase() || 'EUR';
+  if (!['EUR', 'USD'].includes(currency)) {
+    throw createHttpError(400, 'Bitte EUR oder USD als Bestellwährung auswählen.', { code: 'PURCHASE_CURRENCY_INVALID' });
   }
-  if (!address) throw createHttpError(400, 'Bitte einen Ladeort dieses Lieferanten wählen oder einen neuen Ladeort eingeben.', { code: 'LOADING_LOCATION_REQUIRED' });
-  const text = asText(address.text) || asText(body?.loadingLocationText);
-  if (!text) throw createHttpError(400, 'Die ausgewählte Lieferadresse hat keinen lesbaren Ladeort.', { code: 'LOADING_LOCATION_REQUIRED' });
-  const id = null;
-  return { context, address, text, id, source: address.source || context.source, changed:false };
+  return currency;
+}
+
+async function loadPurchaseAddressChoices(req, { supplierId, warehouseId, addressCustomerId, deliveryTermText }, accessScope) {
+  const [warehouse] = warehouseId ? await loadPurchaseWarehouses(req.database, warehouseId) : [];
+  if (!warehouse || warehouse.id !== warehouseId) {
+    throw createHttpError(400, 'Bitte ein Lager aus dem Lagerstamm des Mandanten auswählen.', { code: 'PURCHASE_WAREHOUSE_REQUIRED' });
+  }
+  const customerId = purchaseText(addressCustomerId, 10, 'Adress-Kundennummer');
+  const validOwner = customerId && (/^(FCA|EXW)\b/i.test(deliveryTermText)
+    ? customerId === supplierId
+    : warehouse.isDirect
+      ? await loadVisibleCustomer(req.database, customerId, accessScope)
+      : warehouse.owners.some(owner => owner.id === customerId));
+  if (!validOwner) {
+    throw createHttpError(400, 'Bitte einen gültigen Adressinhaber für diese Lieferung oder Abholung auswählen.', { code: 'PURCHASE_ADDRESS_OWNER_INVALID' });
+  }
+  return { warehouse, customerId, addresses: await loadCustomerDeliveryAddresses(req.database, customerId) };
+}
+
+async function resolvePurchaseAddress(req, body, accessScope) {
+  const { warehouse, customerId, addresses } = await loadPurchaseAddressChoices(req, body, accessScope);
+  const address = addresses.find(item => item.id === asText(body.addressId));
+  if (!address?.text) {
+    throw createHttpError(400, 'Bitte eine Liefer- oder Abholadresse aus dem Stamm auswählen.', { code: 'PURCHASE_ADDRESS_REQUIRED' });
+  }
+  return { warehouseId: warehouse.id, customerId, id: Number(address.id), address, text: address.text };
+}
+
+function resolveSupplierContact(terms, value) {
+  if (!asText(value)) return null;
+  const contact = terms.contacts.find(item => String(item.id) === asText(value));
+  if (!contact) {
+    throw createHttpError(400, 'Bitte einen Ansprechpartner dieses Lieferanten auswählen.', { code: 'PURCHASE_SUPPLIER_CONTACT_INVALID' });
+  }
+  return contact;
 }
 
 function normalizePositions(rawPositions) {
@@ -317,12 +370,14 @@ function normalizePositions(rawPositions) {
     if (!requestedDeliveryDate) throw createHttpError(400, `Position ${index + 1} benötigt ein gültiges Lieferdatum.`, { code: 'PURCHASE_DELIVERY_DATE_REQUIRED', lineNo: index + 1 });
     return {
       id: asNumber(item?.id),
-      articleIndex: asText(item?.articleIndex) || null,
+      articleIndex: asText(item?.articleIndex),
       article,
       amount: ['t', 'to', 'tonne', 'tonnen'].includes(unit) ? amount * 1000 : amount,
       unit: 'kg',
       purchasePrice: price,
-      currency: 'EUR',
+      placeAtSupplier: purchaseText(item?.placeAtSupplier, 25, 'Lager bei Strecke'),
+      pickupReference: purchaseText(item?.pickupReference, 25, 'Abholreferenz'),
+      availabilityNote: purchaseText(item?.availabilityNote, 255, 'Bemerkung für die Verfügbarkeitsliste'),
       requestedDeliveryDate,
       reservedFor: asText(item?.reservedFor) || null,
       comment: asText(item?.comment) || null,
@@ -390,7 +445,9 @@ router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asy
   const scope = await getCustomerAccessScope(req.userIdentity, req.database);
   const supplier = await assertSupplier(req.database, supplierId, scope);
   const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
-  const [options, defaults] = await Promise.all([loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang)]);
+  const [options, defaults, warehouses] = await Promise.all([
+    loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang), loadPurchaseWarehouses(req.database),
+  ]);
   const supplierAddress = {
     name: asText(supplier.kd_Name1) || asText(supplier.kd_Name2),
     street: asText(supplier.kd_Strasse),
@@ -398,7 +455,21 @@ router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asy
     city: asText(supplier.kd_Ort),
     countryCode: asText(supplier.kd_LK),
   };
-  sendEnvelope(res, { data: { ...options, defaults, supplierAddress } });
+  sendEnvelope(res, { data: { ...options, defaults, supplierAddress, warehouses } });
+}));
+
+router.get('/purchase-order-addresses', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const supplierId = asText(req.query?.supplierId);
+  await assertSupplier(req.database, supplierId, scope);
+  const { incoterms } = await loadPurchaseOptions(req.database, req.header('x-lang') === 'en' ? 'en' : 'de');
+  const incoterm = incoterms.find(item => item.id === Number(req.query?.deliveryTermId));
+  if (!incoterm) throw createHttpError(400, 'Bitte eine gültige Lieferbedingung auswählen.', { code: 'PURCHASE_HEADER_INVALID' });
+  const { addresses } = await loadPurchaseAddressChoices(req, {
+    supplierId, warehouseId: asText(req.query?.warehouseId), addressCustomerId: req.query?.addressCustomerId,
+    deliveryTermText: incoterm.text,
+  }, scope);
+  sendEnvelope(res, { data: addresses });
 }));
 
 router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
@@ -421,6 +492,10 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
   const incoterm = options.incoterms.find((item) => Number(item.id) === Number(req.body?.deliveryTermId));
   if (!packaging || !incoterm) throw createHttpError(400, 'Bitte Verpackungsart und Incoterm auswählen.', { code: 'PURCHASE_HEADER_INVALID' });
   const positions = normalizePositions(rawPositions);
+  const currency = purchaseCurrency(req.body?.currency);
+  const reference = purchaseText(req.body?.reference, 100, 'Referenz');
+  const contact = resolveSupplierContact(terms, req.body?.supplierContactId);
+  const catalogArticle = await assertPurchaseArticle(req.database, positions[0].articleIndex);
   const latestByArticle = new Map();
   for (const position of positions) {
     if (!position.articleIndex) throw createHttpError(400, 'Artikelindex fehlt.', { code: 'PURCHASE_POSITION_INVALID' });
@@ -433,7 +508,7 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
       const source = await loadOptionPosition(position.optionId,position.optionPositionId,null,{identity:req.userIdentity});
       await validateOptionSupplier(req.database,source,supplierId);
       const article = await validateOptionArticle(req.database,source,position);
-      position.article = source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName;
+      position.article = purchaseArticleText(source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName);
       position.optionSourceChanged = source.sourceVersion;
       position.originalPackagingType = stored?.originalPackagingType || source.opp_Verpackung || source.op_Verpackung || source.packagingText || null;
       const originalOption = findPackaging(options.packagingTypes,position.originalPackagingType);
@@ -447,11 +522,7 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
       if (!pilotFeaturesForIdentity(req.userIdentity).linkedProcurement) {
         throw createHttpError(400, 'Der Artikel gehört nicht zum gewählten Lieferanten.', { code: 'PURCHASE_POSITION_INVALID' });
       }
-      const [catalogArticle] = await runSQLQueryAccess(req.database, `
-        SELECT [agA_Artikelname] AS article FROM [dbo].[tblArt_Artikel] WHERE [agA_Artikelindex]=? AND COALESCE([agA_Deaktiv],0)=0
-      `, [position.articleIndex]);
-      if (!catalogArticle?.article) throw createHttpError(422, 'Artikel im Stamm nicht gefunden.', { code: 'PURCHASE_POSITION_INVALID' });
-      position.article = asText(catalogArticle.article);
+      position.article = purchaseArticleText(catalogArticle.article);
       position.originalPackagingType = stored?.originalPackagingType || null;
       position.originalPackagingTypeId = stored?.originalPackagingTypeId || null;
       position.packagingTypeChanged = Boolean(position.originalPackagingType && packagingKey(packaging.text) !== packagingKey(position.originalPackagingType));
@@ -459,7 +530,7 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
     }
     const original = stored?.originalPackagingType || (stored ? existing?.packagingType : latest.originalPackagingType);
     const originalOption = findPackaging(options.packagingTypes, original);
-    position.article = asText(latest.article);
+    position.article = purchaseArticleText(latest.article || catalogArticle.article);
     position.originalPackagingType = asText(original) || null;
     position.originalPackagingTypeId = originalOption?.id || null;
     position.packagingTypeChanged = originalOption ? packaging.id !== originalOption.id : packagingKey(packaging.text) !== packagingKey(original);
@@ -477,22 +548,34 @@ async function preparePurchase(req, supplierId, rawPositions, existing = null, s
     }
     payment = { paymentConditionId, paymentConditionText, paymentConditionChanged: true };
   }
-  const loading = await resolveLoadingAddress(req.database, { ...req.body, supplierId, positions });
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const loading = await resolvePurchaseAddress(req, { ...req.body, supplierId, deliveryTermText: incoterm.text }, scope);
   await validateWorkingDates(positions, loading.address);
-  return { positions, loading, packaging, incoterm, payment };
+  return { positions, loading, packaging, incoterm, payment, currency, reference, contact };
 }
 
-async function insertPurchasePositions(query, id, positions, user, now, createdBy = user, createdAt = now) {
+async function assertPurchaseArticle(database, articleIndex) {
+  if (!articleIndex) throw createHttpError(400, 'Artikelindex fehlt.', { code: 'PURCHASE_POSITION_INVALID' });
+  const [article] = await runSQLQueryAccess(database, `
+    SELECT [agA_Artikelname] AS article FROM [dbo].[tblArt_Artikel]
+    WHERE [agA_Artikelindex]=? AND COALESCE([agA_Deaktiv],0)=0
+  `, [articleIndex]);
+  if (!article?.article) throw createHttpError(422, 'Aktiver Artikel im Stamm nicht gefunden.', { code: 'PURCHASE_POSITION_INVALID' });
+  return article;
+}
+
+async function insertPurchasePositions(query, id, positions, currency, user, now, createdBy = user, createdAt = now) {
   for (let i = 0; i < positions.length; i += 1) {
     const p = positions[i];
     await query(`INSERT INTO ${TEMP_PURCHASE_POSITION_TABLE} (
       [tbp_tb_id],[tbp_line_no],[tbp_article_index],[tbp_article],[tbp_amount],[tbp_unit],[tbp_purchase_price],[tbp_currency],
       [tbp_requested_delivery_date],[tbp_reserved_for],[tbp_comment],[tbp_original_packaging_type],[tbp_original_packaging_type_id],[tbp_packaging_type_changed],
       [tbp_created_by],[tbp_create_date],[tbp_last_modified_by],[tbp_last_modified_date],
-      [OptionID],[OptionPositionID],[tbp_option_mfi_acknowledged]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, p.currency, p.requestedDeliveryDate, p.reservedFor, p.comment,
+      [OptionID],[OptionPositionID],[tbp_option_mfi_acknowledged],[tbp_place_at_supplier],[tbp_pickup_reference],[tbp_availability_note])
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, i + 1, p.articleIndex, p.article, p.amount, p.unit, p.purchasePrice, currency, p.requestedDeliveryDate, p.reservedFor, p.comment,
       p.originalPackagingType, p.originalPackagingTypeId, p.packagingTypeChanged ? 1 : 0, createdBy, createdAt, user, now,
-      p.optionId,p.optionPositionId,p.acknowledgeUnverifiedMfi ? 1 : 0]);
+      p.optionId,p.optionPositionId,p.acknowledgeUnverifiedMfi ? 1 : 0,p.placeAtSupplier,p.pickupReference,p.availabilityNote]);
   }
 }
 
@@ -592,7 +675,8 @@ async function preparePurchaseDraft(req) {
 }
 
 async function savePurchaseDraft(query, req, draft) {
-  const { positions, loading, packaging, incoterm, payment, supplier, supplierId, companyId, user, clientRequestId, now } = draft;
+  const { positions, loading, packaging, incoterm, payment, supplier, supplierId, companyId, user, clientRequestId, now,
+    currency, reference, contact } = draft;
   const attachmentInput = normalizeAttachmentInput(req);
   if (attachmentInput.removeAttachmentIds.length) throw createHttpError(400, 'Eine neue Bestellung hat noch keine gespeicherten Anhänge.');
   const sources = await assertOptionQuantities(query,positions,null,packaging.text,req.userIdentity);
@@ -600,14 +684,16 @@ async function savePurchaseDraft(query, req, draft) {
     [tb_company_id],[tb_client_request_id],[tb_supplier_id],[tb_supplier_name],[tb_supplier_address],[tb_supplier_contact],
     [tb_payment_condition_changed],[tb_payment_condition_id],[tb_payment_condition_text],[tb_delivery_term_id],[tb_delivery_term_text],
     [tb_packaging_type],[tb_packaging_type_id],[tb_loading_location_source],[tb_loading_location_id],[tb_loading_location_text],[tb_loading_location_changed],
-    [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date])
-    OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
+    [tb_comment],[tb_status],[tb_created_by],[tb_create_date],[tb_last_modified_by],[tb_last_modified_date],
+    [tb_supplier_contact_id],[tb_warehouse_id],[tb_address_customer_id],[tb_address_id],[tb_reference],[tb_currency])
+    OUTPUT INSERTED.[tb_id] AS id VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?)`,
   [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
-    [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), asText(req.body?.supplierContact) || null,
-    payment.paymentConditionChanged ? 1 : 0, payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0,
-    asText(req.body?.comment) || null, user, now, user, now]);
+    [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), contact?.name || null,
+    payment.paymentConditionChanged ? 1 : 0, payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id,
+    'master', loading.id, loading.text, 0, asText(req.body?.comment) || null, user, now, user, now,
+    contact?.id ?? null, loading.warehouseId, loading.customerId, loading.id, reference, currency]);
   const id = result.rows[0].id;
-  await insertPurchasePositions(query, id, positions, user, now);
+  await insertPurchasePositions(query, id, positions, currency, user, now);
   const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
   const order = mapOrder(saved.rows[0], await loadPositions(id, query));
   if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user, now });
@@ -658,7 +744,8 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
   }
   await assertSupplier(req.database, existing.supplierId, scope);
   const storedPositions = await loadPositions(id);
-  const { positions, loading, packaging, incoterm, payment } = await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
+  const { positions, loading, packaging, incoterm, payment, currency, reference, contact } =
+    await preparePurchase(req, existing.supplierId, req.body?.positions, existing, storedPositions);
   const attachmentInput = normalizeAttachmentInput(req);
   const now = new Date().toISOString();
   const checkProcurement = await procurementSchemaReady();
@@ -666,11 +753,17 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
     const locked = await query(`SELECT [tb_status] AS status FROM ${TEMP_PURCHASE_ORDER_TABLE} WITH (UPDLOCK,HOLDLOCK) WHERE [tb_id]=? AND [tb_company_id]=?`, [id, companyId]);
     if (!locked.rows[0] || !isEditable(normalizeStatus(locked.rows[0].status))) throw createHttpError(409, 'Diese Bestellung ist nicht mehr bearbeitbar.', { code: 'PURCHASE_ORDER_LOCKED' });
     const sources = await assertOptionQuantities(query,positions,id,packaging.text,req.userIdentity);
-    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=?,[tb_payment_condition_id]=?,[tb_payment_condition_text]=?,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
-      [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?
-      WHERE [tb_id]=? AND [tb_company_id]=?`, [asText(req.body?.supplierContact) || null, payment.paymentConditionChanged ? 1 : 0,
-      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id, loading.source, loading.id, loading.text,loading.changed?1:0, asText(req.body?.comment) || null, user, now, id, companyId]);
     const linked = checkProcurement ? await linkedPurchasePositions(query, id) : [];
+    if (linked.length && currency !== (asText(existing.currency || storedPositions[0]?.currency) || 'EUR')) {
+      throw createHttpError(409, 'Die Währung einer bereits mit einem Auftrag verknüpften Bestellung kann nicht geändert werden.', { code: 'PURCHASE_CURRENCY_LINKED' });
+    }
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_supplier_contact]=?,[tb_payment_condition_changed]=?,[tb_payment_condition_id]=?,[tb_payment_condition_text]=?,[tb_delivery_term_id]=?,[tb_delivery_term_text]=?,
+      [tb_packaging_type]=?,[tb_packaging_type_id]=?,[tb_loading_location_source]=?,[tb_loading_location_id]=?,[tb_loading_location_text]=?,[tb_loading_location_changed]=?,[tb_comment]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?,
+      [tb_supplier_contact_id]=?,[tb_warehouse_id]=?,[tb_address_customer_id]=?,[tb_address_id]=?,[tb_reference]=?,[tb_currency]=?
+      WHERE [tb_id]=? AND [tb_company_id]=?`, [contact?.name || null, payment.paymentConditionChanged ? 1 : 0,
+      payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id,
+      'master', loading.id, loading.text, 0, asText(req.body?.comment) || null, user, now,
+      contact?.id ?? null, loading.warehouseId, loading.customerId, loading.id, reference, currency, id, companyId]);
     if (linked.length) {
       assertProcurementAccess(req.userIdentity);
       const byId = new Map(positions.map((position) => [Number(position.id), position]));
@@ -683,14 +776,16 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
       for (const position of positions) {
         await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET tbp_article=?,tbp_purchase_price=?,
           tbp_requested_delivery_date=?,tbp_reserved_for=?,tbp_comment=?,tbp_packaging_type_changed=?,
-          tbp_option_mfi_acknowledged=?,tbp_last_modified_by=?,tbp_last_modified_date=?
+          tbp_option_mfi_acknowledged=?,tbp_last_modified_by=?,tbp_last_modified_date=?,
+          tbp_currency=?,tbp_place_at_supplier=?,tbp_pickup_reference=?,tbp_availability_note=?
           WHERE tbp_id=? AND tbp_tb_id=?`,
         [position.article, position.purchasePrice, position.requestedDeliveryDate, position.reservedFor,
-          position.comment, position.packagingTypeChanged ? 1 : 0, position.acknowledgeUnverifiedMfi ? 1 : 0, user, now, position.id, id]);
+          position.comment, position.packagingTypeChanged ? 1 : 0, position.acknowledgeUnverifiedMfi ? 1 : 0, user, now,
+          currency, position.placeAtSupplier, position.pickupReference, position.availabilityNote, position.id, id]);
       }
     } else {
       await query(`DELETE FROM ${TEMP_PURCHASE_POSITION_TABLE} WHERE [tbp_tb_id]=?`, [id]);
-      await insertPurchasePositions(query, id, positions, user, now, existing.createdBy, existing.createdAt);
+      await insertPurchasePositions(query, id, positions, currency, user, now, existing.createdBy, existing.createdAt);
     }
     await savePurchaseOrderAttachments(query, { orderId: id, ...attachmentInput, user, now });
     const saved = await query(`${orderSelectSql()} WHERE [tb_id]=?`, [id]);
@@ -732,6 +827,14 @@ async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false
     if (linkedOnly && !linked.length) return { mapped: mapOrder(row, positions), alreadyFinalized: true };
     if ((draftOnly && normalizeStatus(row.status) !== STATUS.DRAFT)
       || [STATUS.APP_FINALIZED, STATUS.CS_ACCEPTED].includes(normalizeStatus(row.status))) return { mapped: await withPurchaseOrderAttachments(mapOrder(row, positions), query), alreadyFinalized: true };
+    const currency = purchaseCurrency(row.currency || positions[0]?.currency);
+    const loading = await resolvePurchaseAddress(req, row, accessScope);
+    if (row.supplierContactId) {
+      resolveSupplierContact(await loadSupplierTerms(req.database, row.supplierId), row.supplierContactId);
+    }
+    for (const articleIndex of new Set(positions.map(position => position.articleIndex))) {
+      await assertPurchaseArticle(req.database, articleIndex);
+    }
     for (const position of positions.filter(line => line.optionId!=null)) {
       const source = await loadOptionPosition(position.optionId,position.optionPositionId,null,{identity:req.userIdentity});
       await validateOptionSupplier(req.database,source,row.supplierId);
@@ -741,17 +844,18 @@ async function finalizePurchase(req, id, { draftOnly = false, linkedOnly = false
     const sources = await assertOptionQuantities(query,positions,id,row.packagingType,req.userIdentity);
     const namedPositions = await enrichPurchaseArticleNames(req.database, row.supplierId, positions);
     for (const position of namedPositions) {
+      position.article = purchaseArticleText(position.article);
       const stored = positions.find(item => item.id === position.id);
       if (stored.article !== position.article) await query(`UPDATE ${TEMP_PURCHASE_POSITION_TABLE} SET [tbp_article]=?,[tbp_last_modified_by]=?,[tbp_last_modified_date]=? WHERE [tbp_id]=? AND [tbp_tb_id]=?`,
         [position.article, userShortCode, now, position.id, id]);
       Object.assign(stored, position);
     }
     normalizePositions(positions);
-    const loading = await resolveLoadingAddress(req.database, { ...row, positions });
     await validateWorkingDates(positions, loading.address);
-    const order = mapOrder({ ...row, status: STATUS.APP_FINALIZED, returnComment: '', completedBy: userShortCode, closingDate: now, lastModifiedBy: userShortCode, lastModifiedAt: now }, positions);
+    const order = mapOrder({ ...row, currency, loadingLocationText: loading.text, status: STATUS.APP_FINALIZED, returnComment: '', completedBy: userShortCode, closingDate: now, lastModifiedBy: userShortCode, lastModifiedAt: now }, positions);
     if (sources.size) await syncPurchaseOptionPdf(query, { order, sources, user: userShortCode, now });
-    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_status]=1,[tb_return_comment]=NULL,[tb_completed_by]=?,[tb_closing_date]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=? WHERE [tb_id]=? AND [tb_company_id]=? AND [tb_status] IN (0,3)`, [userShortCode, now, userShortCode, now, id, companyId]);
+    await query(`UPDATE ${TEMP_PURCHASE_ORDER_TABLE} SET [tb_status]=1,[tb_return_comment]=NULL,[tb_completed_by]=?,[tb_closing_date]=?,[tb_last_modified_by]=?,[tb_last_modified_date]=?,[tb_currency]=?,[tb_loading_location_text]=? WHERE [tb_id]=? AND [tb_company_id]=? AND [tb_status] IN (0,3)`,
+      [userShortCode, now, userShortCode, now, currency, loading.text, id, companyId]);
     return { mapped: await withPurchaseOrderAttachments(order, query), alreadyFinalized: false };
   });
   const mapped = finalized.mapped;

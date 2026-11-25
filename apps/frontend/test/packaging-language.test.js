@@ -273,7 +273,7 @@ test('the purchase-first editor saves the fixed option line and opens the custom
     assert.equal(request.body.get('clientRequestId'), clientRequestId);
     assert.equal(request.body.get('supplierId'), supplier.id);
     assert.equal(JSON.parse(request.body.get('positions'))[0].articleIndex, 'A1');
-    return { data: { id: 27, clientRequestId, packagingType: 'Sackware', packagingTypeId: 78,
+    return { data: { id: 27, clientRequestId, packagingType: 'Sackware', packagingTypeId: 78, currency: 'USD',
       supplierId: supplier.id, deliveryTermId: 2, loadingLocationText: 'Supplier pickup', paymentConditionId: 10,
       positions: [{ id: 38, optionId: 1, optionPositionId: 10, articleIndex: 'A1', amount: 12000, purchasePrice: 1755 }],
     } };
@@ -294,7 +294,7 @@ test('the purchase-first editor saves the fixed option line and opens the custom
   assert.equal(path, '/temp-orders/new');
   assert.deepEqual(options.state.procurementOption, {
     optionId: 1, optionPositionId: 10, savedPurchaseId: 27, savedPurchasePositionId: 38, purchaseRequestId: clientRequestId,
-    articleIndex: 'A1', article: 'Grade', amountInKg: 12000, price: '', costPrice: 1755,
+    articleIndex: 'A1', article: 'Grade', amountInKg: 12000, price: '', costPrice: null, purchaseCurrency: 'USD',
     originalPackagingType: 'Sackware', originalPackagingTypeId: 78,
   });
 });
@@ -584,22 +584,28 @@ test('purchase editor and totals use English labels and preserve positions durin
   assert.ok(summary.text().includes('Total amount'));
 });
 
-test('a missing loading location opens an editable form prefilled from the supplier address', async () => {
+test('a purchase pickup loads its supplier addresses and selects a unique technical ID', async () => {
+  let order = { supplierId: 'LF', warehouseId: 'LG0000', deliveryTermId: 1, deliveryTermText: 'FCA' };
+  const editor = await mount('../src/components/PurchaseOrderDeliveryFields.jsx', {
+    warehouses: [{ id: 'LG0000', label: 'Strecke', isDirect: true, owners: [] }],
+    order, update: (apply) => {
+      order = apply(order);
+      editor.updateProps({ order });
+    },
+  }, async (path) => {
+    const query = new URLSearchParams(path.split('?')[1]);
+    assert.equal(query.get('addressCustomerId'), 'LF');
+    assert.equal(query.get('warehouseId'), 'LG0000');
+    return { data: [{ id: '39', text: 'Stammadresse' }] };
+  });
+  await editor.flush();
+  assert.equal(editor.field('Abholadresse').props.value, '39');
+  assert.equal(order.addressCustomerId, 'LF');
+  assert.equal(order.loadingLocationText, 'Stammadresse');
+});
+
+test('the loading location dialog still supports entering an optional offer loading location', async () => {
   const address = { name: 'Supplier', street: 'Plant 1', postalCode: '01234', city: 'Werkstadt', countryCode: 'D' };
-  const initialOrder = { supplierId: 'LF', positions: [{ lineId: 'one', optionId: 1, articleIndex: 'A' }] };
-  for (const locations of [[], [{ id: 'saved', text: 'Existing loading location' }]]) {
-    const editor = await mount('../src/components/PurchaseOrderEditor.jsx', { initialOrder, isNew: true }, async (path) => {
-      if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices('de'), incoterms: [], defaults: {}, supplierAddress: address } };
-      if (path.startsWith('/purchase-order-loading-locations')) return { data: locations };
-      if (path === '/temp-orders/payment-texts') return { data: [] };
-      throw new Error(path);
-    });
-    await editor.flush();
-    editor.find((node) => node.props['aria-label'] === 'Neuen Ladeort hinzufügen').props.onClick();
-    await editor.flush();
-    const dialog = editor.find((node) => Object.hasOwn(node.props, 'initialAddress'));
-    assert.deepEqual(dialog.props.initialAddress, locations.length ? undefined : address);
-  }
   const dialog = await mount('../src/components/LoadingLocationDialog.jsx', { initialAddress: address }, async (path) => {
     assert.equal(path, '/delivery-address-country-types');
     return { data: [{ id: 'D', isoAlpha2: 'DE', name: 'Deutschland' }, { id: 'B', isoAlpha2: 'BE', name: 'Belgien' }] };
@@ -619,7 +625,8 @@ test('a missing loading location opens an editable form prefilled from the suppl
 test('a server-rejected non-working delivery date marks the matching field until corrected', async () => {
   const initialOrder = {
     supplierId: 'LF', packagingTypeId: 78, packagingType: 'Sackware', deliveryTermId: 1,
-    loadingLocationText: 'Warehouse', loadingLocationSource: 'manual', paymentConditionText: '30 Tage',
+    warehouseId: 'LG0000', addressCustomerId: 'LF', addressId: 39,
+    loadingLocationText: 'Warehouse', paymentConditionText: '30 Tage',
     positions: ['2026-11-28', '2026-11-30'].map((requestedDeliveryDate, index) => ({
       lineId: String(index), optionId: 1, articleIndex: 'A', article: 'Grade', amount: 1000, purchasePrice: 50,
       requestedDeliveryDate,

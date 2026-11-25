@@ -255,7 +255,7 @@ test('coupled creation stores an explicit VL remainder, both references and one 
     ...base, articleIndex: 'A1', beNumber: '', warehouseId: '', amountInKg: 100,
     procurement: {
       header: { supplierId: 'S1' },
-      position: { articleIndex: 'A1', optionPositionId: 9, amount: 60 },
+      position: { articleIndex: 'A1', optionPositionId: 9, amount: 60, purchasePrice: 900 },
       stock: { beNumber: base.beNumber, warehouseId: base.warehouseId },
     },
   };

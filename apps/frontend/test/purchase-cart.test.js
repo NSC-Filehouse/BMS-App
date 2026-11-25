@@ -110,7 +110,7 @@ test('counts every copied line and calculates the net amount from EUR per tonne'
   assert.ok(purchaseMissingFields({ packagingTypeId: 79, deliveryTermId: 1, loadingLocationText: 'Ort', positions: [{ amount: 1, purchasePrice: '', requestedDeliveryDate: '2026-02-31' }] }).includes('EK Position 1'));
   assert.ok(purchaseMissingFields({ positions: [{ amount: 1, purchasePrice: 0, requestedDeliveryDate: '2026-02-31' }] }).includes('Liefertermin Position 1'));
   const errors = purchaseFieldErrors({ positions: [{ articleIndex: 'A', amount: '', purchasePrice: '', requestedDeliveryDate: '' }] });
-  assert.deepEqual(errors.positions[0], { amount: true, purchasePrice: true, requestedDeliveryDate: true });
+  assert.deepEqual(errors.positions[0], { articleIndex: false, amount: true, purchasePrice: true, requestedDeliveryDate: true });
   assert.equal(purchaseFieldErrors({ positions: [item('A'), item('B')] }).articleType, true);
 });
 

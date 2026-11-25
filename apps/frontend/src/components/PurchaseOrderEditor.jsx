@@ -1,14 +1,11 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, Card, CardContent, CircularProgress, IconButton, MenuItem, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import UndoIcon from '@mui/icons-material/Undo';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from './PurchaseOrderActions.jsx';
-import CompactAddressOption from './CompactAddressOption.jsx';
-import LoadingLocationDialog from './LoadingLocationDialog.jsx';
-import {loadingLocationParts} from '../utils/loadingLocationDisplay.js';
+import PurchaseOrderDeliveryFields from './PurchaseOrderDeliveryFields.jsx';
 import { apiRequest } from '../api/client.js';
 import { findIncotermByCode } from '../utils/incoterm.js';
 import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
@@ -21,15 +18,14 @@ const same = (a, b) => String(a || '').trim().toLocaleLowerCase('de-DE') === Str
 export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, isNew = false, onChange, onSave, onSend, savedForHandoff = false, onContinue, onDelete, saving, locked = false, linkedSetup = false, linkedOrder = false, allowFirstPurchase = false, stockHint, fixedPosition = false, fixedQuantity = false, optionQuantityFields, supplierSelection }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';
-  const [order, setOrder] = React.useState(() => initialOrder.paymentConditionText
-    ? initialOrder : { ...initialOrder, paymentConditionId: null });
-  const [options, setOptions] = React.useState({ packagingTypes: [], incoterms: [] });
-  const [locations, setLocations] = React.useState([]);
+  const [order, setOrder] = React.useState(() => ({
+    ...initialOrder, currency: initialOrder.currency || 'EUR',
+    paymentConditionId: initialOrder.paymentConditionText ? initialOrder.paymentConditionId : null,
+  }));
+  const [options, setOptions] = React.useState({ packagingTypes: [], incoterms: [], warehouses: [] });
   const [history, setHistory] = React.useState({});
   const [loading, setLoading] = React.useState(true);
-  const [locationsLoading, setLocationsLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [locationError, setLocationError] = React.useState('');
   const [paymentTexts, setPaymentTexts] = React.useState([]);
   const [paymentTextsLoading, setPaymentTextsLoading] = React.useState(false);
   const [paymentTextsError, setPaymentTextsError] = React.useState('');
@@ -38,10 +34,6 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const [rejectedDeliveryDate, setRejectedDeliveryDate] = React.useState(null);
   const editorRef = React.useRef(null);
   const locationSignature = JSON.stringify([...new Set(order.positions.map((p) => p.articleIndex).filter(Boolean))].sort());
-  const manualLocation=order.loadingLocationSource==='manual';
-  const [newLocationOpen,setNewLocationOpen]=React.useState(false);
-  const [newLocations,setNewLocations]=React.useState([]);
-  const [showLocationDetails,setShowLocationDetails]=React.useState(false);
   const update = React.useCallback((fn) => setOrder((previous) => typeof fn === 'function' ? fn(previous) : { ...previous, ...fn }), []);
   React.useEffect(() => { onChange?.(order); }, [order, onChange]);
 
@@ -64,7 +56,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           || data.incoterms.find((p) => same(p.text, deliveryTermText))
           || (isOptionPurchase ? findIncotermByCode(data.incoterms, deliveryTermText) : null);
         const useDefaultPayment = isNew && !previous.paymentConditionChanged;
-        return { ...previous, supplierContact: previous.supplierContact ?? data.defaults.supplierContact,
+        return { ...previous, supplierContactId: previous.supplierContactId ?? (isNew ? data.defaults.supplierContactId : null),
           paymentConditionId: useDefaultPayment
             ? (data.defaults.paymentConditionText ? data.defaults.paymentConditionId : null) : previous.paymentConditionId,
           paymentConditionText: useDefaultPayment ? data.defaults.paymentConditionText : previous.paymentConditionText,
@@ -91,20 +83,6 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   React.useEffect(() => {
     let alive = true;
     const ids = JSON.parse(locationSignature);
-    setLocationsLoading(true); setLocationError('');
-    const query = new URLSearchParams({ supplierId: order.supplierId });
-    ids.forEach((id) => query.append('articleIndex', id));
-    apiRequest(`/purchase-order-loading-locations?${query}`).then((response) => {
-      if (!alive) return;
-      const next = response.data || [];
-      setLocations(next);
-      if (locked) return;
-      update((previous) => {
-        if(previous.loadingLocationSource==='manual')return previous;
-        const selected = next.find((p) => same(p.text, previous.loadingLocationText)) || (isNew ? next[0] : null);
-        return { ...previous, loadingLocationId: '', loadingLocationText: selected?.text || '',loadingLocationSource:'supplier_order_history' };
-      });
-    }).catch((e) => alive && setLocationError(e.message)).finally(() => alive && setLocationsLoading(false));
     const initialHistory = {};
     // The same latest-purchase record supplies both historical hints.
     Promise.all(ids.map(async (id) => {
@@ -122,7 +100,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         ...p, article: p.optionId!=null?p.article:initialHistory[p.articleIndex]?.article || p.article,
         masterArticleName: initialHistory[p.articleIndex]?.masterArticleName || p.masterArticleName,
       })) }));
-    }).catch((e) => alive && setLocationError(e.message));
+    }).catch((e) => alive && setError(e.message));
     return () => { alive = false; };
   }, [isNew, locationSignature, order.supplierId, locked, linkedSetup, allowFirstPurchase, update]);
 
@@ -139,10 +117,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     if (files.length) update((previous) => ({ ...previous, hadPendingAttachments: false, pendingAttachmentFiles: [...(previous.pendingAttachmentFiles || []), ...files] }));
     event.target.value = '';
   };
-  const locationOptions=[...locations,...newLocations.filter(item=>!locations.some(existing=>same(existing.text,item.text)))];
-  if(manualLocation && order.loadingLocationText && !locationOptions.some(item=>same(item.text,order.loadingLocationText)))
-    locationOptions.push({id:`manual:${order.loadingLocationText}`,text:order.loadingLocationText,source:'manual'});
-  const contacts=[...new Set((options.defaults?.contacts || []).map(contact=>contact.name).filter(Boolean))];
+  const contacts = options.defaults?.contacts || [];
   const removePosition = (lineId) => {
     if (disabled) return;
     if (order.positions.length === 1 && onDelete) { void onDelete(); return; }
@@ -174,8 +149,6 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     <input ref={attachmentInputRef} type="file" accept=".pdf,image/*,.heic,.heif" multiple hidden onChange={handleAttachmentPick} disabled={disabled} />
     {restoredFilesMissing && <Alert severity="info">{t('temp_order_draft_attachment_hint')}</Alert>}
     {error && <Alert severity="error">{error}</Alert>}
-    {locationError && <Alert severity="error">{locationError}</Alert>}
-    {!locationsLoading && !locationError && !locations.length && order.positions.length > 0 && !manualLocation && <Alert severity="info">{t('purchase_no_loading_history')}</Alert>}
     <Card sx={{ minWidth: 0 }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
       {!linkedSetup && <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0, mt: -0.5 }}>
         <Typography variant="body2" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{t('temp_order_attachment_label')}</Typography>
@@ -202,10 +175,10 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       </Box>}
       <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{order.supplierName || order.supplierId}</Typography>
       {supplierSelection}
-      <Autocomplete freeSolo forcePopupIcon options={contacts} value={order.supplierContact || null} inputValue={order.supplierContact || ''}
+      <Autocomplete options={contacts} value={contacts.find(item => String(item.id) === String(order.supplierContactId)) || null}
         disabled={disabled || loading} noOptionsText={t('purchase_no_contact')}
-        onChange={(_event,value)=>update({supplierContact:value || ''})}
-        onInputChange={(_event,value,reason)=>{if(reason==='input'||reason==='clear')update({supplierContact:value});}}
+        getOptionLabel={item => item.name + ' · ' + item.id} isOptionEqualToValue={(a, b) => a.id === b.id}
+        onChange={(_event, value) => update({ supplierContactId: value?.id ?? '', supplierContact: value?.name || '' })}
         renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
         {selectPayment ? <TextField label={t('payment_terms_label')} select size="small" value={order.paymentConditionId || ''}
@@ -221,27 +194,22 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         </TextField> : <TextField label={t('payment_terms_label')} size="small" value={order.paymentConditionText} InputProps={{ readOnly: true }} />}
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
-          update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '' });
+          update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '',
+            addressCustomerId: '', addressCustomerName: '', addressId: '', loadingLocationText: '' });
         }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.deliveryTermId && !options.incoterms.some(p=>String(p.id)===String(order.deliveryTermId)) &&
             <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || t('purchase_saved_incoterm')}</MenuItem>}
           {options.incoterms.map((p) => <MenuItem key={p.id} value={p.id}>{p.text}</MenuItem>)}</TextField>
-        <Box sx={{display:'grid',gap:0.5,minWidth:0}}><Box sx={{display:'flex',gap:1,alignItems:'center',minWidth:0}}><TextField label={t('purchase_loading_location')} required select size="small" error={attempted && fieldErrors.loadingLocationText} value={order.loadingLocationText || ''} disabled={disabled || locationsLoading}
-          sx={{flex:1,minWidth:0,'& .MuiSelect-select':{minWidth:0,overflow:'hidden'}}}
-          SelectProps={{renderValue:value=><CompactAddressOption {...loadingLocationParts(value)} />,classes:{select:'address-select'},MenuProps:{MenuListProps:{className:'address-select-list'},PaperProps:{sx:{maxHeight:320}}}}}
-          onChange={(e) => {
-          setShowLocationDetails(false);
-          const selected=locationOptions.find(item=>same(item.text,e.target.value));
-          update({ loadingLocationId: '', loadingLocationText: e.target.value,loadingLocationSource:selected?.source==='manual'?'manual':'supplier_order_history' });
-        }}>
-          <MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
-          {order.loadingLocationText && !locationOptions.some(p=>p.text===order.loadingLocationText) &&
-            <MenuItem value={order.loadingLocationText} disabled><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
-          {locationOptions.map((p) => <MenuItem key={p.id} value={p.text} divider sx={{py:1,minWidth:0}}><CompactAddressOption {...loadingLocationParts(p.text)} /></MenuItem>)}
-        </TextField><IconButton size="small" color="primary" aria-label={t('purchase_add_loading_location')} title={t('purchase_add_loading_location')} disabled={disabled || loading || locationsLoading} onClick={()=>setNewLocationOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton></Box>
-        {order.loadingLocationText && <Button size="small" sx={{justifySelf:'start',textTransform:'none'}} onClick={()=>setShowLocationDetails(value=>!value)} aria-expanded={showLocationDetails}>{showLocationDetails?t('purchase_hide_address'):t('purchase_show_address')}</Button>}
-        {showLocationDetails && <Typography variant="caption" sx={{whiteSpace:'pre-line',overflowWrap:'anywhere'}}>{order.loadingLocationText}</Typography>}
-        </Box>
+        <PurchaseOrderDeliveryFields order={order} warehouses={options.warehouses || []} update={update}
+          disabled={disabled || loading} attempted={attempted} />
+        <TextField label={lang === 'en' ? 'Reference' : 'Referenz'} size="small" value={order.reference || ''}
+          onChange={event => update({ reference: event.target.value })} disabled={disabled} inputProps={{ maxLength: 100 }} />
+        <TextField label={lang === 'en' ? 'Currency' : 'Währung'} size="small" select value={order.currency}
+          onChange={event => update(previous => ({ ...previous, currency: event.target.value,
+            positions: previous.positions.map(position => ({ ...position, purchasePrice: '' })) }))}
+          disabled={disabled || linkedOrder}>
+          <MenuItem value="EUR">EUR</MenuItem><MenuItem value="USD">USD</MenuItem>
+        </TextField>
         <TextField label={t('packaging_type_label')} required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
@@ -254,16 +222,16 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <TextField label={t('wpz_option_other')} multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     {optionQuantityFields}
-    <PurchaseOrderSummary positions={order.positions} />
+    <PurchaseOrderSummary positions={order.positions} currency={order.currency} />
     {order.positions.map((p, index) => {
       const last = history[p.articleIndex] || p;
       const errors = fieldErrors.positions[index];
       const deliveryDate = String(p.requestedDeliveryDate || '').slice(0, 10);
       const isRejectedDate = rejectedDeliveryDate?.date === deliveryDate
         && rejectedDeliveryDate.loadingLocationText === order.loadingLocationText;
-      return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && fieldErrors.articleType ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
+      return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && (errors.articleIndex || fieldErrors.articleType) ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-          <Typography variant="subtitle1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{p.article}</Typography>
+          <Typography variant="subtitle1" title={p.article} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{String(p.article || '').slice(0, 75)}</Typography>
           {!fixedPosition && <IconButton size="small" color="primary" aria-label={t('purchase_copy_position')} disabled={disabled || linkedSetup || linkedOrder} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>}
           {!fixedPosition && <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled || linkedSetup || linkedOrder} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>}
         </Box>
@@ -274,29 +242,28 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, alignItems: 'end' }}>
           <TextField label={t('purchase_quantity_kg')} required type="number" size="small" error={attempted && errors.amount} value={p.amount} onChange={(e) => patchPosition(p.lineId, { amount: e.target.value, amountTouched: true })} disabled={disabled || linkedOrder} InputProps={{ readOnly: fixedQuantity }} helperText={stockHint} inputProps={{ min: linkedSetup || fixedPosition ? 1 : 0.001, step: linkedSetup || fixedPosition ? 1 : 0.001 }} />
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
-            <TextField fullWidth label={t('purchase_price_input')} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
+            <TextField fullWidth label={t('purchase_price_input', { currency: order.currency })} required type="number" size="small" error={attempted && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>
             <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={isRejectedDate || (attempted && errors.requestedDeliveryDate)} value={deliveryDate} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
         </Box>
         <TextField label={t('purchase_reserved_for')} size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
         <TextField label={t('purchase_position_note')} size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
+        <TextField label={lang === 'en' ? 'Location at supplier' : 'Lager bei Strecke'} size="small" value={p.placeAtSupplier || ''}
+          onChange={event => patchPosition(p.lineId, { placeAtSupplier: event.target.value })} disabled={disabled} inputProps={{ maxLength: 25 }} />
+        <TextField label={lang === 'en' ? 'Pickup reference' : 'Abholreferenz'} size="small" value={p.pickupReference || ''}
+          onChange={event => patchPosition(p.lineId, { pickupReference: event.target.value })} disabled={disabled} inputProps={{ maxLength: 25 }} />
+        <TextField label={lang === 'en' ? 'Availability note' : 'Bemerkung für die Verfügbarkeitsliste'} size="small" value={p.availabilityNote || ''}
+          onChange={event => patchPosition(p.lineId, { availabilityNote: event.target.value })} disabled={disabled} inputProps={{ maxLength: 255 }} />
       </CardContent></Card>;
     })}
     {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type') : t('purchase_missing_fields')}</Alert>}
     <PurchaseOrderActions>
       {!onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{linkedSetup || fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>}
-      <Button variant={onSend ? 'outlined' : 'contained'} onClick={() => submit()} disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{saving ? <CircularProgress size={20} /> : savedForHandoff ? t('purchase_continue_to_order') : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : onSend ? t('save_label') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
+      <Button variant={onSend ? 'outlined' : 'contained'} onClick={() => submit()} disabled={saving || (!locked && (loading || Boolean(error)))}>{saving ? <CircularProgress size={20} /> : savedForHandoff ? t('purchase_continue_to_order') : locked ? t('purchase_retry_save') : linkedSetup ? t('procurement_confirm') : onSend ? t('save_label') : isNew ? t('purchase_save_draft') : t('save_label')}</Button>
       {onSend && <Button variant="contained" onClick={() => submit(onSend)}
-        disabled={saving || (!locked && (loading || locationsLoading || Boolean(error || locationError)))}>{t('temp_order_send_to_bms')}</Button>}
+        disabled={saving || (!locked && (loading || Boolean(error)))}>{t('temp_order_send_to_bms')}</Button>}
       {onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{t('back_label')}</Button>}
       {!isNew && onDelete && <Button variant="outlined" color="error" onClick={onDelete} disabled={disabled}>{t('delete_label')}</Button>}
     </PurchaseOrderActions>
-    {newLocationOpen && <LoadingLocationDialog
-      initialAddress={!locationError && !locations.length && !order.loadingLocationText ? options.supplierAddress : undefined}
-      onClose={()=>setNewLocationOpen(false)} onConfirm={text=>{
-      setNewLocations(previous=>previous.some(item=>same(item.text,text))?previous:[...previous,{id:`manual:${text}`,text,source:'manual'}]);
-      update({loadingLocationId:'',loadingLocationText:text,loadingLocationSource:'manual'});
-      setShowLocationDetails(false);setNewLocationOpen(false);
-    }} />}
   </Box>;
 }

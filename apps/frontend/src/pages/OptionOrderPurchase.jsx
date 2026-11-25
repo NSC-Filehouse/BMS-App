@@ -150,7 +150,8 @@ export function PurchaseForOrder({ state, offerPosition, onPurchaseSaved, onBack
           optionId: saved.optionId, optionPositionId: saved.optionPositionId,
           savedPurchaseId: data.id, savedPurchasePositionId: saved.id, purchaseRequestId: data.clientRequestId,
           articleIndex: saved.articleIndex, article: option.article, amountInKg: saved.amount, price: '',
-          costPrice: saved.purchasePrice, originalPackagingType: data.packagingType, originalPackagingTypeId: data.packagingTypeId,
+          costPrice: data.currency === 'USD' ? null : saved.purchasePrice, purchaseCurrency: data.currency,
+          originalPackagingType: data.packagingType, originalPackagingTypeId: data.packagingTypeId,
       };
       if (onPurchaseSaved) {
         onPurchaseSaved(purchasedLine);

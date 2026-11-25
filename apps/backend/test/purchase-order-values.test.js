@@ -38,6 +38,7 @@ test('supplier terms load contacts and translate the last order payment conditio
     paymentConditionText: '30 days',
     deliveryTermText: 'FCA',
     supplierContact: 'Sam Taylor',
+    supplierContactId: 23,
     contacts: [{ ...contact, name: 'Sam Taylor' }],
   });
 });

@@ -99,7 +99,11 @@ export default function TempPurchaseOrderDetail() {
       {item.returnComment && <InfoRow label="Nacharbeit" value={item.returnComment} />}
       <InfoRow label="Zahlungsziel" value={item.paymentConditionText} />
       <InfoRow label="Incoterm" value={item.deliveryTermText} />
-      <InfoRow label="Ladeort" value={item.loadingLocationText} />
+      <InfoRow label="Lager" value={item.warehouseId} />
+      <InfoRow label={item.addressId ? 'Liefer-/Abholadresse' : 'Bisheriger Ladeort'} value={item.loadingLocationText} />
+      <InfoRow label="Adressinhaber" value={item.addressCustomerId} />
+      <InfoRow label="Referenz" value={item.reference} />
+      <InfoRow label="Währung" value={item.currency} />
       <InfoRow label="Verpackungsart" value={item.packagingType} />
       <InfoRow label="Sonstiges" value={item.comment} />
       <Divider sx={{ my: 2 }} />
@@ -110,7 +114,7 @@ export default function TempPurchaseOrderDetail() {
           <Button size="small" startIcon={<DownloadIcon />} disabled={attachmentDownloading === String(attachment.id)} onClick={() => downloadAttachment(attachment)}>{t('temp_order_attachment_download')}</Button>
         </Box>)}
       </Box> : <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('temp_order_attachment_none')}</Typography>}
-      <PurchaseOrderSummary positions={item.positions} />
+      <PurchaseOrderSummary positions={item.positions} currency={item.currency} />
       <Box sx={{ display: 'grid', gap: 1, mt: 1.25, minWidth: 0 }}>
         {(item.positions || []).map((p, index) => <Box key={p.id} sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1.5, p: 1.25, display: 'grid', gap: 0.35, minWidth: 0, overflowWrap: 'anywhere' }}>
           <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {p.article || '–'}</Typography>
@@ -119,6 +123,9 @@ export default function TempPurchaseOrderDetail() {
           <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex || '–'}</Typography>
           <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>
           <Typography variant="caption" color="text.secondary">Menge: {formatPurchaseNumber(p.amount)} kg · EK: {formatPurchasePrice(p.purchasePrice, p.currency)}</Typography>
+          {p.placeAtSupplier && <InfoRow label="Lager bei Strecke" value={p.placeAtSupplier} />}
+          {p.pickupReference && <InfoRow label="Abholreferenz" value={p.pickupReference} />}
+          {p.availabilityNote && <InfoRow label="Bemerkung für die Verfügbarkeitsliste" value={p.availabilityNote} />}
           <Typography variant="caption" color="text.secondary">Ursprüngliche Verpackung: {p.originalPackagingType || item.packagingType || '–'}<br />Verpackung geändert: {p.packagingTypeChanged ? 'Ja' : 'Nein'}</Typography>
           {p.reservedFor && <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>Reserviert für: {p.reservedFor}</Typography>}
           {p.comment && <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>Positionshinweis: {p.comment}</Typography>}

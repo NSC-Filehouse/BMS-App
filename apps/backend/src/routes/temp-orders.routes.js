@@ -760,7 +760,7 @@ function validateFinalOrder(order, positions) {
     || !position?.deliveryDate
     || Number(position?.amountInKg) <= 0
     || asSalePrice(position?.price) === null
-    || Number(position?.costPrice) <= 0
+    || (!position?.pendingPurchaseId && Number(position?.costPrice) <= 0)
   ));
   if (invalidPosition) {
     throw createHttpError(400, 'Final order contains an incomplete position.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -1790,7 +1790,8 @@ async function lockSavedPurchase(query, position, companyId, user) {
   const [purchase] = (await query(`
     SELECT pp.tbp_id AS id, pp.tbp_order_position_id AS linkedOrderPositionId,
       pp.tbp_article_index AS articleIndex, pp.tbp_amount AS amount, pp.tbp_unit AS unit, pp.tbp_purchase_price AS purchasePrice,
-      pp.OptionPositionID AS optionPositionId, b.tb_packaging_type AS packagingType, b.tb_packaging_type_id AS packagingTypeId
+      pp.OptionPositionID AS optionPositionId, b.tb_packaging_type AS packagingType, b.tb_packaging_type_id AS packagingTypeId,
+      COALESCE(b.tb_currency,pp.tbp_currency,N'EUR') AS currency
     FROM ${PROCUREMENT_PURCHASES} b WITH (UPDLOCK,HOLDLOCK)
     JOIN ${PROCUREMENT_PURCHASE_POSITIONS} pp WITH (UPDLOCK,HOLDLOCK) ON pp.tbp_tb_id=b.tb_id
     WHERE pp.tbp_id=? AND b.tb_company_id=? AND b.tb_created_by=? AND b.tb_client_request_id=?
@@ -1963,7 +1964,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     if (conversion && raw?.offerPositionId && !Number.isInteger(Number(raw.amountInKg))) {
       throw createHttpError(400, 'Angebotspositionen benötigen eine Menge in ganzen Kilogramm.', { code: 'OFFER_ORDER_WHOLE_KG_REQUIRED' });
     }
-    if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg === null || (!raw?.procurement && savedPurchasePositionId === null && costPricePerKg <= 0)) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     if (savedPurchasePositionId !== null) {
@@ -1990,6 +1991,9 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       });
       const purchaseDraft = await preparePurchaseDraft(purchaseRequest);
       const purchase = purchaseDraft.positions[0];
+      if (asInt(purchase.purchasePrice) <= 0) {
+        throw createHttpError(400, 'Die verknüpfte Bestellung benötigt einen positiven Einkaufspreis.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
+      }
       if (asText(raw.articleIndex).toLowerCase() !== asText(purchase.articleIndex).toLowerCase()) {
         throw createHttpError(409, 'Auftrag und Bestellung müssen denselben Artikel verwenden.', { code: 'PROCUREMENT_ARTICLE_MISMATCH' });
       }
@@ -2221,7 +2225,10 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
         pos.amountInKg,
         pos.warehouseId,
         pos.salePricePerKg,
-        purchasePositionId ? asInt((savedPurchase || purchase.positions[0]).purchasePrice) : pos.costPricePerKg,
+        purchasePositionId
+          ? ((savedPurchase?.currency || pos.purchaseDraft?.currency || 'EUR') === 'EUR'
+            ? asInt((savedPurchase || purchase.positions[0]).purchasePrice) : 0)
+          : pos.costPricePerKg,
         pos.reservationInKg,
         pos.reservationDate,
         ...(hasPositionDeliveryDate ? [pos.deliveryDate] : []),
@@ -3022,7 +3029,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     if (!deliveryDate || Number.isNaN(deliveryDate.getTime())) {
       throw createHttpError(400, 'Invalid delivery date.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
-    if (amountInKg <= 0 || salePricePerKg === null || costPricePerKg <= 0) {
+    if (amountInKg <= 0 || salePricePerKg === null || (!awaitingPurchase && costPricePerKg <= 0)) {
       throw createHttpError(400, 'Invalid position amount or price.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
     }
     if (awaitingPurchase) {

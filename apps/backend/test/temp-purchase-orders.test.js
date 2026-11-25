@@ -95,8 +95,13 @@ function fixture(options = {}) {
     throw new Error(`Unexpected SQL ${sql}`);
   };
   const values = {
-    loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }], incoterms: [{ id: 1, text: 'FCA' }] }),
+    loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }],
+      incoterms: [{ id: 1, text: 'FCA' }, { id: 2, text: 'DAP' }] }),
     loadSupplierTerms: async () => options.supplierTerms || ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
+    loadPurchaseWarehouses: async (_database, id) => [
+      { id: 'LG0001', isDirect: false, owners: [{ id: '43', name: 'Lagerkunde' }] },
+      { id: 'LG0000', isDirect: true, owners: [] },
+    ].filter(warehouse => !id || warehouse.id === id),
     loadPurchasePaymentText: async (id) => ({ 17: '30 Tage', 19: '14 Tage netto' })[id] || '',
     loadLatestPurchase: async (_db, _supplier, article) => article === 'A' ? { article: 'Neuester Name', originalPackagingType: 'Sackware' } : null,
     enrichPurchaseArticleNames: async (_db, _supplier, positions) => positions.map(p => ({ ...p, article: p.article === 'Unsere Bezeichnung' ? 'Neuester Name' : p.article, masterArticleName: 'Unsere Bezeichnung' })),
@@ -109,7 +114,9 @@ function fixture(options = {}) {
     '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
     '../middlewares/pilot-feature.middleware': options.routing ? require('../src/middlewares/pilot-feature.middleware') : { requirePilotFeature: () => () => {} },
     '../db/access': {
-      runSQLQueryAccess: async () => [{ ok: 1 }], runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows,
+      runSQLQueryAccess: async (_database, sql) => sql.includes('tblArt_Artikel')
+        ? (options.inactiveArticle ? [] : [{ article: 'Stammartikel' }]) : [{ ok: 1 }],
+      runSQLQuerySqlServer: async (_database, sql, params) => (await query(sql, params)).rows,
       withSqlTransaction: async (_db, work) => {
         const arrays = [headers, lines, mails, csMails, attachments];
         const before = structuredClone(arrays);
@@ -119,6 +126,11 @@ function fixture(options = {}) {
     '../db/app-tables': { appTableSql: (name) => name === 'tempPurchaseOrder' ? 'orders' : name === 'tempPurchaseOrderPosition' ? 'positions' : name },
     '../db/customer-access': { getCustomerAccessScope: async () => ({ isFullAccess: options.fullAccess !== false }), loadVisibleCustomer: async () => options.supplier || ({ kd_Name1: 'Lieferant' }) },
     '../db/purchase-order-values': values, '../db/holidays': {}, '../delivery-calendar': require('../src/delivery-calendar'),
+    '../db/delivery-addresses': { loadCustomerDeliveryAddresses: async (_database, id) => ({
+      42: [{ id: '11', text: 'Hamburg' }, { id: '12', text: 'Werk B' }],
+      43: [{ id: '13', text: 'Lageradresse' }],
+      44: [{ id: '14', text: 'Kundenadresse' }],
+    }[id] || []) },
     '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: options.queueCsMail || (async () => ({ queued: true })) },
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
     '../db/timeline': { appendTimelineEntries: async (entries) => timeline.push(...entries) },
@@ -220,7 +232,7 @@ test('ordinary users reach the delivery calendar and other routes mounted after 
 test('every purchase route still rejects ordinary users before accessing data', async () => {
   const f = fixture({ routing: true });
   const routes = f.router.stack.filter((layer) => layer.route).map((layer) => layer.route);
-  assert.equal(routes.length, 10);
+  assert.equal(routes.length, 11);
   for (const route of routes) {
     const url = route.path.replace(/:[^/]+/g, '1');
     for (const method of Object.keys(route.methods)) {
@@ -243,7 +255,8 @@ test('verified pilot users can still load purchase options', async () => {
 });
 
 const body = () => ({ supplierId: '42', clientRequestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', packagingTypeId: 79, deliveryTermId: 1, paymentConditionText: 'Manipuliert', paymentConditionId: 999,
-  loadingLocationText: 'Hamburg', positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
+  warehouseId: 'LG0001', addressCustomerId: '42', addressId: 11,
+  positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
 
 test('a missing supplier payment term can be filled from the validated catalog on draft save and edit', async () => {
   const f = fixture({ supplierTerms: { paymentConditionId: null, paymentConditionText: '' } });
@@ -479,28 +492,56 @@ test('legacy internal article names are replaced before hand-off and remain supp
   assert.equal(f.timeline[0].product, 'Neuester Name');
 });
 
-test('rejects a location outside the supplier/article selection before creating anything', async () => {
+test('rejects historical free text and pickup addresses owned by another customer', async () => {
   const f = fixture();
-  await assert.rejects(f.request({ ...body(), loadingLocationText: 'Fremder Ort' }), /Ladeort.*Lieferanten/);
+  await assert.rejects(f.request({ ...body(), addressId: null, loadingLocationText: 'Fremder Ort' }), /Adresse.*Stamm/i);
+  await assert.rejects(f.request({ ...body(), addressCustomerId: '43' }), /Adressinhaber/);
   assert.equal(f.headers.length, 0);
 });
 
-test('all historical pickup choices remain valid through create, edit and finalize for repeated article positions', async () => {
-  const f = fixture({ locations: [{ id: 'Hamburg', text: 'Hamburg' }, { id: 'Werk B', text: 'Werk B' }] });
+test('structured pickup address and USD fields survive create, edit and finalize for repeated article positions', async () => {
+  const f = fixture({ supplierTerms: { paymentConditionId: 17, paymentConditionText: '30 Tage',
+    contacts: [{ id: 109, name: 'Einkauf' }] } });
   const input = body();
-  input.loadingLocationText = 'Werk B';
+  Object.assign(input, { addressId: 12, supplierContactId: 109, currency: 'USD', reference: 'Abruf' });
+  Object.assign(input.positions[0], { placeAtSupplier: 'Feluy', pickupReference: 'AB-123', availabilityNote: 'August Volume' });
   input.positions.push({ ...input.positions[0] });
   const created = (await f.request(input)).data;
   assert.equal(created.loadingLocationText, 'Werk B');
-  assert.equal(created.loadingLocationId, null);
+  assert.equal(created.addressId, 12);
+  assert.equal(created.supplierContact, 'Einkauf');
+  assert.equal(created.supplierContactId, 109);
   assert.equal(created.positions.length, 2);
-  const edited = (await f.request({ ...created, loadingLocationText: 'Hamburg' }, 'put', '/temp-purchase-orders/:id')).data;
+  const edited = (await f.request({ ...created, addressId: 11 }, 'put', '/temp-purchase-orders/:id')).data;
   assert.equal(edited.loadingLocationText, 'Hamburg');
   const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
   assert.equal(sent.status, 1);
   assert.equal(sent.loadingLocationText, 'Hamburg');
+  assert.equal(sent.currency, 'USD');
+  assert.equal(sent.reference, 'Abruf');
+  assert.equal(sent.positions[0].currency, 'USD');
+  assert.equal(sent.positions[0].placeAtSupplier, 'Feluy');
+  assert.equal(sent.positions[0].pickupReference, 'AB-123');
+  assert.equal(sent.positions[1].availabilityNote, 'August Volume');
 });
 
+test('a warehouse delivery uses its warehouse account and a direct delivery can use the visible customer', async () => {
+  const warehouse = { ...body(), deliveryTermId: 2, addressCustomerId: '43', addressId: 13 };
+  const f = fixture();
+  const stored = (await f.request(warehouse)).data;
+  assert.equal(stored.loadingLocationText, 'Lageradresse');
+  assert.equal(stored.currency, 'EUR');
+  await assert.rejects(fixture().request({ ...warehouse, addressCustomerId: '44', addressId: 14 }), /Adressinhaber/);
+  const direct = (await fixture().request({ ...warehouse, warehouseId: 'LG0000', addressCustomerId: '44', addressId: 14 })).data;
+  assert.equal(direct.loadingLocationText, 'Kundenadresse');
+});
+
+test('enforces the active ERP master article and position field lengths on save', async () => {
+  await assert.rejects(fixture({ inactiveArticle: true }).request(body()), /Artikel im Stamm/);
+  const input = body();
+  input.positions[0].pickupReference = 'x'.repeat(26);
+  await assert.rejects(fixture().request(input), /25 Zeichen/);
+});
 
 test('DELETE removes the whole draft and both outboxes in one locked transaction and can be retried', async () => {
   const f = fixture(); const input = body(); input.positions.push({ ...input.positions[0] });
@@ -550,12 +591,12 @@ test('purchase creation period filters mirror today and Monday-based week filter
 test('option reference survives create, copy, edit, detail and hand-off without a historical purchase',async()=>{
   const options = {};
   const f=fixture(options);const input=body();
-  input.loadingLocationSource='manual';input.loadingLocationText='Neues Werk\n12345 Musterstadt';
+  input.addressId=12;
   input.positions=[{...input.positions[0],articleIndex:'NEW',optionId:7,optionPositionId:11,supplierConfirmed:true,articleConfirmed:true,amount:1000}];
   const created=(await f.request(input, 'post', '/temp-purchase-orders', { files: [file()] })).data;
   assert.equal(created.positions[0].optionId,7);assert.equal(created.positions[0].optionPositionId,11);
-  assert.equal(created.positions[0].article,'Optionsmaterial');assert.equal(created.loadingLocationSource,'manual');
-  assert.equal(created.loadingLocationId,null);assert.equal(created.loadingLocationChanged,true);
+  assert.equal(created.positions[0].article,'Optionsmaterial');assert.equal(created.loadingLocationSource,'master');
+  assert.equal(created.addressId,12);assert.equal(created.loadingLocationChanged,false);
   assert.deepEqual(created.attachments.map((attachment) => attachment.fileName), ['Option.pdf', 'Prüfung.pdf']);
   const [generated] = created.attachments;
   assert.equal(generated.isOptionPdf, true);

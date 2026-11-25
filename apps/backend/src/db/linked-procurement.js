@@ -61,6 +61,7 @@ const linkRowsSql = `
          pp.tbp_id AS purchasePositionId, pp.tbp_bms_position_id AS bmsPositionId,
          pp.tbp_article_index AS purchaseArticleIndex, b.tb_id AS purchaseId,
          b.tb_status AS purchaseStatus, b.tb_bestellindex AS bmsPurchaseIndex, b.tb_supplier_id AS supplierId,
+         COALESCE(b.tb_currency,pp.tbp_currency,N'EUR') AS purchaseCurrency,
          (SELECT COUNT(*) FROM ${purchasePositions} sibling WHERE sibling.tbp_tb_id=b.tb_id) AS purchaseLineCount
   ${linksFromSql}
   WHERE p.tap_ta_id=? AND o.ta_company_id=?
@@ -121,15 +122,18 @@ function selectBmsPosition(line, erpPositions) {
 async function resolveStock(database, line) {
   if (!text(line.bmsPurchaseIndex) || !text(line.supplierId)) return [];
   const erp = await runSQLQueryAccess(database, `
-    SELECT p.beP_BEposID AS beNumber, p.beP_Artikelindex AS articleIndex, COALESCE(p.beP_Storno,0) AS cancelled
+    SELECT p.beP_BEposID AS beNumber, p.beP_Artikelindex AS articleIndex,
+      p.beP_EK_EU AS euroCostPrice, COALESCE(p.beP_Storno,0) AS cancelled
     FROM dbo.tblBest_Position p JOIN dbo.tblBestellung b ON b.be_Bestellindex=p.beP_Bestellindex
     WHERE b.be_Bestellindex=? AND LTRIM(RTRIM(b.be_KdNr))=?
   `, [line.bmsPurchaseIndex, line.supplierId]);
   const beNumber = selectBmsPosition(line, erp);
   if (!beNumber) return [];
+  const euroCostPrice = Math.round(Number(erp.find(row => text(row.beNumber) === beNumber)?.euroCostPrice));
+  if (line.purchaseCurrency === 'USD' && (!Number.isFinite(euroCostPrice) || euroCostPrice <= 0)) return [];
   const mandant = parseMandantIdFromBeNumber(beNumber);
   if (mandant !== null && mandant !== Number(database.firmaId)) return [];
-  return runSQLQueryAccess(database, `
+  const stock = await runSQLQueryAccess(database, `
     SELECT v.[Bestell-Pos] AS beNumber,v.bePL_LagerID AS warehouseId,v.Artikel AS article,
            v.beP_VLbemerkung AS about,v.beP_MFIgemessen AS mfiMeasured,v.beP_MFI AS mfi,
            b.be_Verpackung AS packaging, wpz.id AS wpzId
@@ -140,6 +144,7 @@ async function resolveStock(database, line) {
     WHERE v.[Bestell-Pos]=? AND UPPER(LTRIM(RTRIM(v.Einheit)))='KG' AND NULLIF(v.bePL_LagerID,'') IS NOT NULL
     ORDER BY v.bePL_LagerID
   `, [line.bmsPurchaseIndex, beNumber]);
+  return stock.map(row => ({ ...row, euroCostPrice: line.purchaseCurrency === 'USD' ? euroCostPrice : null }));
 }
 
 async function reconcileOrder(database, orderId, userShortCode) {
@@ -172,13 +177,13 @@ async function reconcileOrder(database, orderId, userShortCode) {
         }
         await query(`
           UPDATE ${positions} SET tap_be_number=?,tap_warehouse=?,tap_about=?,tap_mfi=?,tap_wpz_id=?,
-            tap_wpz_original=?,tap_Verpackungsart=?,tap_Verpackungsart_Gewechselt=?,
+            tap_wpz_original=?,tap_Verpackungsart=?,tap_Verpackungsart_Gewechselt=?,tap_ep=COALESCE(?,tap_ep),
             tap_LastModifiedDate=SYSUTCDATETIME(),tap_LastModifiedBy=?
           WHERE tap_id=? AND tap_purchase_position_id=? AND tap_be_number=''
         `, [stock.beNumber, stock.warehouseId, text(stock.about) || null, text(stock.mfiMeasured ?? stock.mfi),
           stock.wpzId || null, stock.wpzId ? 1 : null, text(stock.packaging) || null,
           text(stock.packaging) && text(stock.packaging).toLowerCase() !== text(order.packaging).toLowerCase() ? 1 : 0,
-          userShortCode, line.id, line.purchasePositionId]);
+          stock.euroCostPrice, userShortCode, line.id, line.purchasePositionId]);
         Object.assign(line, { beNumber: stock.beNumber, warehouseId: stock.warehouseId });
         stockRows.push(trial.at(-1));
         break;
