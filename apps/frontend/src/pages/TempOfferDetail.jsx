@@ -152,9 +152,14 @@ export default function TempOfferDetail() {
         >
           <ArrowBackIcon />
         </DisclosureBackButton>
-        <Typography variant="h5">
+        <Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
           {en ? 'Offer' : 'Angebot'} {offer?.bmsOfferNumber || `AN-${id}`}
         </Typography>
+        {offer?.pdfReady && (
+          <Button variant="outlined" sx={{ flexShrink: 0, whiteSpace: 'nowrap' }} disabled={pdfLoading} onClick={downloadPdf}>
+            {t('offer_download_pdf')}
+          </Button>
+        )}
       </Box>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -288,11 +293,6 @@ export default function TempOfferDetail() {
                 minWidth: 0,
               }}
             >
-              {offer.pdfReady && (
-                <Button variant="outlined" disabled={pdfLoading} onClick={downloadPdf}>
-                  {t('offer_download_pdf')}
-                </Button>
-              )}
               {editable && !offer.generated && (
                 <Button
                   variant="contained"
