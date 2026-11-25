@@ -30,8 +30,11 @@ import {
   blankOffer,
   changeOfferCustomer,
   copyOffer,
+  defaultOfferQuantityKg,
   newOfferPosition,
 } from '../utils/offers.js';
+import { findOptionOfferIncoterm } from '../utils/incoterm.js';
+import { isValidSalePrice } from '../utils/salePrice.js';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import OfferCustomerPicker from '../components/OfferCustomerPicker.jsx';
 import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
@@ -48,6 +51,8 @@ const dates = (o) => ({
     reserveUntil: p.reserveUntil ? String(p.reserveUntil).slice(0, 10) : '',
   })),
 });
+
+const validOfferQuantity = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
 export default function TempOfferEditor() {
   const { id } = useParams();
   const location = useLocation();
@@ -58,10 +63,12 @@ export default function TempOfferEditor() {
   const copyId = location.state?.copyFrom;
   const initialCustomer = location.state?.customerId;
   const supplierArticle = location.state?.supplierArticle;
+  const fromSupplierArticle = !id && !copyId && supplierArticle?.mandant === mandant;
   const returnTo = location.state?.returnTo;
   const [form, setForm] = React.useState(blankOffer);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [supplierValidationAttempt, setSupplierValidationAttempt] = React.useState(0);
   const [error, setError] = React.useState('');
   const [options, setOptions] = React.useState({
     payments: [],
@@ -102,9 +109,10 @@ export default function TempOfferEditor() {
         : copyId
           ? dates(copyOffer((await apiRequest(`/temp-offers/${copyId}`)).data))
           : blankOffer();
-      if (!id && !copyId && supplierArticle?.mandant === mandant) {
+      if (fromSupplierArticle) {
         next.positions = [{
-          ...newOfferPosition(supplierArticle),
+          ...newOfferPosition({ ...supplierArticle, unit: 'KG' }),
+          quantity: defaultOfferQuantityKg,
           sourceSupplierId: supplierArticle.sourceSupplierId,
         }];
       }
@@ -114,6 +122,7 @@ export default function TempOfferEditor() {
       }
       if (!next.deliveryTermsId) {
         const incoterm =
+          (fromSupplierArticle ? findOptionOfferIncoterm(opts.incoterms) : null) ||
           opts.incoterms.find((i) => /^FCA\b/i.test(i.text)) ||
           opts.incoterms[0];
         next = {
@@ -166,7 +175,7 @@ export default function TempOfferEditor() {
     return () => {
       active = false;
     };
-  }, [id, copyId, initialCustomer, mandant, navigate, supplierArticle]);
+  }, [id, copyId, initialCustomer, mandant, navigate, supplierArticle, fromSupplierArticle]);
   // Refresh choices independently so a language change never resets the draft.
   React.useEffect(() => {
     setOptionsError('');
@@ -260,6 +269,12 @@ export default function TempOfferEditor() {
     );
   async function save(e) {
     e.preventDefault();
+    if (form.positions.some(position => position.sourceSupplierId
+      && (!validOfferQuantity(position.quantity) || !isValidSalePrice(position.price)))) {
+      setSupplierValidationAttempt(attempt => attempt + 1);
+      setError(t('offer_supplier_quantity_price_required'));
+      return;
+    }
     if (isFca && !String(form.deliveryAddress || '').trim()) {
       setError(t('validation_pickup_address_required'));
       return;
@@ -680,6 +695,10 @@ export default function TempOfferEditor() {
                 <OfferPositionEditor
                   key={p.lineKey}
                   position={p}
+                  defaultExpanded={Boolean(!id && p.sourceSupplierId)}
+                  validationAttempt={supplierValidationAttempt}
+                  quantityError={Boolean(supplierValidationAttempt && p.sourceSupplierId && !validOfferQuantity(p.quantity))}
+                  priceError={Boolean(supplierValidationAttempt && p.sourceSupplierId && !isValidSalePrice(p.price))}
                   onChange={(values) =>
                     patch({
                       positions: form.positions.map((x, j) =>

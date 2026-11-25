@@ -1,6 +1,8 @@
 import { createCustomerOperationId as createId } from './customerCreation.js';
 import { TEMP_ORDER_STATUS_LABEL_KEYS } from './tempOrderStatus.js';
 
+export const defaultOfferQuantityKg = '24750';
+
 const offerStatusLabelKeys = {
   ...TEMP_ORDER_STATUS_LABEL_KEYS,
   4: 'temp_offer_status_converted',

@@ -17,11 +17,11 @@ import { useI18n } from '../utils/i18n.jsx';
 import { findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
 import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
 import { isValidSalePrice } from '../utils/salePrice.js';
+import { defaultOfferQuantityKg } from '../utils/offers.js';
 import CompactAddressOption from './CompactAddressOption.jsx';
 import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import SaleMarginHint from './SaleMarginHint.jsx';
 
-const defaultQuantityKg = '24750';
 const emptyDraft = Object.freeze({});
 
 function selectedContact(draft) {
@@ -36,7 +36,7 @@ function offerValues(customerId, draft, defaultTerm, incoterms, loadingLocation)
   const contact = selectedContact(draft);
   return {
     customerId, contactId: contact?.id, hasEmail: Boolean(contact?.hasEmail),
-    salePrice: draft.salePrice ?? '', quantityKg: draft.quantityKg ?? defaultQuantityKg,
+    salePrice: draft.salePrice ?? '', quantityKg: draft.quantityKg ?? defaultOfferQuantityKg,
     incotermId: term?.id, isFca: isFcaIncoterm(term?.text),
     pickup: isFcaIncoterm(term?.text) ? (draft.pickup ?? loadingLocation ?? '') : '',
   };
@@ -182,7 +182,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   const maxQuantity = stock && Number.isFinite(position.remainingKg) ? position.remainingKg : null;
   const defaultTerm = findOptionOfferIncoterm(incoterms);
   const values = customers.map(customer => offerValues(customer.id, {
-    quantityKg: stock && maxQuantity > 0 ? String(Math.min(Number(defaultQuantityKg), maxQuantity)) : undefined,
+    quantityKg: stock && maxQuantity > 0 ? String(Math.min(Number(defaultOfferQuantityKg), maxQuantity)) : undefined,
     ...drafts[customer.id],
   }, defaultTerm, incoterms, loadingLocation));
   const needsPickup = values.some(row => row.isFca);

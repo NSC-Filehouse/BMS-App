@@ -1495,7 +1495,7 @@ export default function CustomerDetail() {
                 state: {
                   supplierArticle: {
                     mandant: getMandant(), sourceSupplierId: article.sourceSupplierId || id, articleIndex: article.articleIndex,
-                    article: article.masterArticleName || article.article, unit: article.unit,
+                    article: article.masterArticleName || article.article,
                   },
                   returnTo: supplierArticleReturnTo(supplierArticleState),
                 },

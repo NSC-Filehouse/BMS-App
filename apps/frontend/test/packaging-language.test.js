@@ -148,6 +148,29 @@ test('an open offer reloads English choices without resetting packaging, comment
   assert.equal(view.calls.filter(call => call.path === '/temp-offers/meta').length, 2);
 });
 
+test('a supplier article opens the offer position with the option quantity and editable sale price', async () => {
+  const view = await mount('../src/pages/TempOfferEditor.jsx', {}, async (path) => {
+    if (path === '/me') return { userId: 1 };
+    if (path === '/temp-offers/meta') return { data: { payments: [], packagingTypes: [], incoterms: [
+      { id: 1, text: 'FCA' }, { id: 2, text: 'CFR' },
+    ] } };
+    throw new Error(path);
+  }, {}, 'default', { supplierArticle: { mandant: '10', sourceSupplierId: 'LF1', articleIndex: 'A', article: 'Grade' } });
+  await view.flush();
+  const position = view.find(node => node.props?.position?.articleIndex === 'A').props;
+  assert.equal(position.defaultExpanded, true);
+  assert.equal(position.position.quantity, '24750');
+  assert.equal(position.position.price, '');
+  assert.equal(position.position.sourceSupplierId, 'LF1');
+  assert.equal(view.field('Incoterm').props.value, 2);
+  await view.find(node => node.props.onSubmit).props.onSubmit({ preventDefault() {} });
+  await view.flush();
+  assert.match(view.text(), /Bitte Menge in kg und VK je Tonne/);
+  assert.equal(view.find(node => node.props?.position?.articleIndex === 'A').props.priceError, true);
+  assert.equal(view.find(node => node.props?.position?.articleIndex === 'A').props.quantityError, false);
+  assert.equal(view.calls.some(call => call.path === '/temp-offers'), false);
+});
+
 const renderPurchaseDetails = ({ supplierField, purchaseControls, article }) => [
   supplierField, purchaseControls, { type: 'Details', props: { article } },
 ];

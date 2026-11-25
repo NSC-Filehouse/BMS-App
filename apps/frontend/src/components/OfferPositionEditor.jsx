@@ -22,7 +22,7 @@ import SaleMarginHint from './SaleMarginHint.jsx';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 
-export function OfferPositionFields({ position: p, onChange }) {
+export function OfferPositionFields({ position: p, onChange, quantityError, priceError }) {
   const { t, lang } = useI18n();
   const field = (key, label, extra = {}) => (
     <TextField
@@ -70,10 +70,12 @@ export function OfferPositionFields({ position: p, onChange }) {
         {field(
           'quantity',
           /^kg$/i.test(p.unit)
-            ? t('product_amount')
+            ? t('option_offer_quantity_kg')
             : `${t('product_amount')} (${p.unit})`,
           {
             type: 'number',
+            error: quantityError,
+            required: true,
             inputProps: { min: 0.001, step: 'any' },
           },
         )}
@@ -81,9 +83,10 @@ export function OfferPositionFields({ position: p, onChange }) {
           {field(
             'price',
             /^kg$/i.test(p.unit)
-              ? t('order_sale_price')
+              ? t('order_sale_price_per_tonne')
               : `${lang === 'en' ? 'Sales price' : 'Verkaufspreis'} / ${p.priceBasis} ${p.unit}`,
-            { type: 'number', inputProps: { min: 0, step: 'any' } },
+            { type: 'number', error: priceError, required: true,
+              inputProps: { min: 0, step: 'any' } },
           )}
           <SaleMarginHint
             amountInKg={
@@ -113,10 +116,18 @@ export default function OfferPositionEditor({
   position: p,
   onChange,
   onRemove,
+  defaultExpanded = false,
+  quantityError = false,
+  priceError = false,
+  validationAttempt = 0,
 }) {
   const { t, lang } = useI18n();
   const en = lang === 'en';
   const [editing, setEditing] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
+  React.useEffect(() => {
+    if (validationAttempt && (quantityError || priceError)) setExpanded(true);
+  }, [validationAttempt, quantityError, priceError]);
   const [article, setArticle] = React.useState(p.article);
   const [stocks, setStocks] = React.useState([]);
   const [error, setError] = React.useState('');
@@ -157,7 +168,7 @@ export default function OfferPositionEditor({
           ...stocks,
         ];
   return (
-    <Accordion disableGutters>
+    <Accordion disableGutters expanded={expanded} onChange={(_event, open) => setExpanded(open)}>
       <AccordionSummary
         expandIcon={<ExpandCollapseIndicator accordion />}
         sx={{ minWidth: 0, '& .MuiAccordionSummary-content': { minWidth: 0 } }}
@@ -269,7 +280,7 @@ export default function OfferPositionEditor({
         </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ display: 'grid', gap: 1.1, minWidth: 0 }}>
-        <OfferPositionFields position={p} onChange={onChange} />
+        <OfferPositionFields position={p} onChange={onChange} quantityError={quantityError} priceError={priceError} />
         <FormControlLabel
           sx={{ m: 0 }}
           control={
