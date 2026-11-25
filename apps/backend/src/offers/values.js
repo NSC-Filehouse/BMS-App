@@ -127,6 +127,8 @@ function normalize(body = {}) {
       reserve: p.reserve === true,
       beNumber: p.reserve ? text(p.beNumber, 17) : null,
       warehouseId: p.reserve ? text(p.warehouseId, 6) : null,
+      sourceSupplierId: text(p.sourceSupplierId, 50) || null,
+      sourceBeNumber: text(p.sourceBeNumber, 17) || null,
       reserveQuantity: p.reserve ? number(p.reserveQuantity) : null,
       reserveUntil: p.reserve ? date(p.reserveUntil, true) : null,
     };

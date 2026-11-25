@@ -36,6 +36,8 @@ const positionFields = {
   reserve: 'tagp_reserve',
   beNumber: 'tagp_be_number',
   warehouseId: 'tagp_warehouse_id',
+  sourceSupplierId: 'tagp_source_supplier_id',
+  sourceBeNumber: 'tagp_source_be_number',
   reserveQuantity: 'tagp_reserve_quantity',
   reserveUntil: 'tagp_reserve_until',
 };

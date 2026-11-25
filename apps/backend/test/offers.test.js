@@ -273,7 +273,8 @@ async function fixture(t) {
     throw new Error(`Unexpected SQL: ${sql}`);
   };
   const conversion = loadWithMocks(path.resolve(__dirname, '../src/offers/order-conversion.js'), {
-    '../db/access': { runSQLQueryAccess: async () => state.stock },
+    '../db/access': { runSQLQueryAccess: async (_database, sql, params) =>
+      sql.includes('FROM OPENJSON(?)') ? (state.resolveSuppliers?.(JSON.parse(params[0])) || []) : state.stock },
     '../db/temp-order-planning': {
       ...require('../src/db/temp-order-planning'),
       loadTempOrderPlanning: async () => new Map(),
@@ -457,6 +458,7 @@ test('only NSC can open a scoped order draft, which retains prices and leaves in
   const body = input();
   body.customerReference = 'K-422';
   body.positions[0] = { ...body.positions[0], quantity: 11, unit: 't', priceBasis: 1 };
+  body.positions[1] = { ...body.positions[1], sourceSupplierId: 'LF42' };
   const created = await call('/temp-offers', 'POST', body);
   assert.equal(created.status, 201);
   const url = `/temp-offers/${created.json.data.id}/order-draft`;
@@ -473,6 +475,12 @@ test('only NSC can open a scoped order draft, which retains prices and leaves in
     { articleIndex: 'A', beNumber: '0-02-26-001-01', warehouseId: 'A1', amount: 12000, costPrice: 1975 },
     { articleIndex: 'A', beNumber: '13-02-26-001-01', warehouseId: 'A1', amount: 25000, costPrice: 1975 },
   ];
+  state.resolveSuppliers = (sources) => {
+    assert.deepEqual(JSON.parse(JSON.stringify(sources)), [{
+      id: created.json.data.positions[1].id, articleIndex: 'A', sourceSupplierId: 'LF42', beNumber: null,
+    }]);
+    return [{ positionId: sources[0].id, id: 'LF42', name: 'Lieferant', city: 'Köln' }];
+  };
   const result = await call(url);
   assert.equal(result.status, 200);
   assert.equal(result.json.data.clientReferenceId, '100');
@@ -485,6 +493,7 @@ test('only NSC can open a scoped order draft, which retains prices and leaves in
   assert.equal(stocked.requiresPurchase, false);
   assert.equal(shortage.beNumber, undefined);
   assert.equal(shortage.requiresPurchase, true);
+  assert.deepEqual(shortage.optionSupplier, { id: 'LF42', name: 'Lieferant', city: 'Köln' });
   assert.deepEqual(shortage.candidates.map((candidate) => candidate.beNumber), [state.stock[0].beNumber]);
   assert.equal(state.positions.some((position) => position.tagp_order_position_id), false);
 });

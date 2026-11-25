@@ -55,7 +55,7 @@ async function readOfferForOrder(query, req, offerId, owner, locked = false) {
   if (Number(schema?.sourcesReady) === 1 && positions.length) {
     const rows = (await query(`
       SELECT p.tagp_id AS id, COALESCE(p.tagp_option_position_id, legacy.optionPositionId) AS optionPositionId,
-             op.opp_op_id AS optionId
+             op.opp_op_id AS optionId, stock.beNumber AS stockSourceBeNumber
       FROM ${P} p
       OUTER APPLY (
         SELECT CASE WHEN COUNT(DISTINCT m.OptionPositionId)=1 THEN MIN(m.OptionPositionId) END AS optionPositionId
@@ -63,13 +63,23 @@ async function readOfferForOrder(query, req, offerId, owner, locked = false) {
         WHERE m.TempOfferId=p.tagp_offer_id AND m.CompanyId=? AND m.ArticleIndex=p.tagp_article_index
         AND (SELECT COUNT(*) FROM ${P} x WHERE x.tagp_offer_id=p.tagp_offer_id)=1
       ) legacy
+      OUTER APPLY (
+        SELECT CASE WHEN COUNT(DISTINCT JSON_VALUE(d.OfferJson, '$.stockOrderPosition'))=1
+          THEN MIN(JSON_VALUE(d.OfferJson, '$.stockOrderPosition')) END AS beNumber
+        FROM ${offerMail} m
+        JOIN BMSApp.OptionOfferDocument d ON d.OptionOfferMailId=m.Id
+        WHERE m.TempOfferId=p.tagp_offer_id AND m.CompanyId=? AND m.ArticleIndex=p.tagp_article_index
+          AND m.StockPositionKey IS NOT NULL
+          AND (SELECT COUNT(*) FROM ${P} x WHERE x.tagp_offer_id=p.tagp_offer_id)=1
+      ) stock
       LEFT JOIN ${appTableSql('optionPositions')} op ON op.opp_id=COALESCE(p.tagp_option_position_id,legacy.optionPositionId)
       WHERE p.tagp_offer_id=?
-    `, [req.database.firmaId, offer.id])).rows;
+    `, [req.database.firmaId, req.database.firmaId, offer.id])).rows;
     const sources = new Map(rows.map((row) => [Number(row.id), row]));
     for (const position of positions) {
       const source = sources.get(Number(position.id));
       if (source?.optionId) Object.assign(position, { optionId: source.optionId, optionPositionId: source.optionPositionId });
+      if (!position.sourceBeNumber && source?.stockSourceBeNumber) position.sourceBeNumber = source.stockSourceBeNumber;
     }
   }
   return { ...offer, positions };
@@ -97,6 +107,27 @@ function orderConversionInput(req, body, positions) {
     throw createHttpError(400, 'Ungültige Angebots- oder Positionsreferenz.', { code: 'INVALID_OFFER_ORDER_SOURCE' });
   }
   return { offerId: Number(offerId), version, positionIds: ids.map((id) => Number(id) || null) };
+}
+
+async function resolveOfferSuppliers(database, sources) {
+  if (!sources.length) return new Map();
+  const rows = await runSQLQueryAccess(database, `
+    SELECT DISTINCT src.id AS positionId, k.kd_KdNR AS id,
+      COALESCE(NULLIF(k.kd_Name1,N''), NULLIF(k.kd_Name2,N''), k.kd_KdNR) AS name, k.kd_Ort AS city
+    FROM OPENJSON(?) WITH (id int, articleIndex nvarchar(50), beNumber nvarchar(17), sourceSupplierId nvarchar(50)) src
+    JOIN dbo.tblBest_Position p ON p.beP_Artikelindex=src.articleIndex
+      AND (src.sourceSupplierId IS NOT NULL OR p.beP_BEposID=src.beNumber)
+    JOIN dbo.tblBestellung b ON b.be_Bestellindex=p.beP_Bestellindex
+      AND (src.sourceSupplierId IS NULL OR b.be_KdNr=src.sourceSupplierId)
+    JOIN dbo.tblKunden k ON k.kd_KdNR=b.be_KdNr
+    WHERE CONCAT(k.kd_Name1,N' ',k.kd_Name2) NOT LIKE N'%gelöscht%'
+  `, [JSON.stringify(sources)]);
+  const matches = new Map();
+  for (const { positionId, id, name, city } of rows) {
+    const key = Number(positionId);
+    matches.set(key, matches.has(key) ? null : { id: text(id), name, city });
+  }
+  return matches;
 }
 
 async function assertOrderConversion(query, req, conversion, customerId, positions) {
@@ -248,6 +279,16 @@ async function prepareOfferOrder(req, offer) {
       requiresPurchase: Boolean(text(position.articleIndex)) && Number.isSafeInteger(amountInKg) && amountInKg > 0 && sufficient.length === 0,
     };
   });
+  const purchaseSources = new Set(positions.filter((position) => position.requiresPurchase && !position.optionPositionId)
+    .map((position) => Number(position.offerPositionId)));
+  const suppliers = await resolveOfferSuppliers(req.database, offer.positions.filter((position) =>
+    purchaseSources.has(Number(position.id)) && (position.sourceSupplierId || position.sourceBeNumber || position.beNumber))
+    .map(({ id, articleIndex, sourceSupplierId, sourceBeNumber, beNumber }) =>
+      ({ id, articleIndex, sourceSupplierId, beNumber: sourceBeNumber || beNumber })));
+  for (const position of positions) {
+    const supplier = suppliers.get(Number(position.offerPositionId));
+    if (supplier) position.optionSupplier = supplier;
+  }
   return {
     version: offer.version,
     clientReferenceId: offer.customerId, clientName: offer.customerName, clientAddress: offer.customerAddress,

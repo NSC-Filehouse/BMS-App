@@ -57,6 +57,7 @@ export default function TempOfferEditor() {
   const mandant = getMandant();
   const copyId = location.state?.copyFrom;
   const initialCustomer = location.state?.customerId;
+  const supplierArticle = location.state?.supplierArticle;
   const returnTo = location.state?.returnTo;
   const [form, setForm] = React.useState(blankOffer);
   const [loading, setLoading] = React.useState(true);
@@ -101,6 +102,12 @@ export default function TempOfferEditor() {
         : copyId
           ? dates(copyOffer((await apiRequest(`/temp-offers/${copyId}`)).data))
           : blankOffer();
+      if (!id && !copyId && supplierArticle?.mandant === mandant) {
+        next.positions = [{
+          ...newOfferPosition(supplierArticle),
+          sourceSupplierId: supplierArticle.sourceSupplierId,
+        }];
+      }
       if (id && ![0, 3].includes(next.status)) {
         navigate(`/temp-offers/${id}`, { replace: true, state: { returnTo } });
         return;
@@ -159,7 +166,7 @@ export default function TempOfferEditor() {
     return () => {
       active = false;
     };
-  }, [id, copyId, initialCustomer, mandant, navigate]);
+  }, [id, copyId, initialCustomer, mandant, navigate, supplierArticle]);
   // Refresh choices independently so a language change never resets the draft.
   React.useEffect(() => {
     setOptionsError('');

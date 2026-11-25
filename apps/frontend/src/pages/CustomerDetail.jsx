@@ -1490,7 +1490,16 @@ export default function CustomerDetail() {
               loading={docs.purchasedArticles.loading} error={docs.purchasedArticles.error}
               onLoad={() => loadDocSection('purchasedArticles', purchasedArticlesEndpoint)}
               initialState={location.state?.supplierArticleState} canPurchase={canCreatePurchaseOrder}
-              onPurchase={addSupplierArticles} onSales={addSupplierVlPositions} />}
+              onPurchase={addSupplierArticles} onSales={addSupplierVlPositions}
+              onOffer={features.offers ? (article, supplierArticleState) => navigate('/temp-offers/new', {
+                state: {
+                  supplierArticle: {
+                    mandant: getMandant(), sourceSupplierId: article.sourceSupplierId || id, articleIndex: article.articleIndex,
+                    article: article.masterArticleName || article.article, unit: article.unit,
+                  },
+                  returnTo: supplierArticleReturnTo(supplierArticleState),
+                },
+              }) : undefined} />}
             {!isSupplier && <Accordion expanded={docs.purchasedArticles.expanded} onChange={onToggleSection('purchasedArticles', purchasedArticlesEndpoint)}>
               <AccordionSummary expandIcon={<ExpandCollapseIndicator accordion />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0, pr: 0.5 }}>

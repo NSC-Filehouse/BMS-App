@@ -347,6 +347,8 @@ BEGIN TRY
     [tagp_reserve] [bit] NOT NULL,
     [tagp_be_number] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL,
     [tagp_warehouse_id] [nvarchar](6) COLLATE Latin1_General_CI_AS NULL,
+    [tagp_source_supplier_id] [nvarchar](50) COLLATE Latin1_General_CI_AS NULL,
+    [tagp_source_be_number] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL,
     [tagp_reserve_quantity] [decimal](18,3) NULL,
     [tagp_reserve_until] [date] NULL,
     [tagp_reservation_version] [binary](8) NULL,
@@ -1153,6 +1155,10 @@ BEGIN TRY
  END;
 
  -- Add optional position links to existing installations before checking their columns.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Ang_Position',N'tagp_source_supplier_id') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] ADD [tagp_source_supplier_id] [nvarchar](50) COLLATE Latin1_General_CI_AS NULL;');
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Ang_Position',N'tagp_source_be_number') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Ang_Position] ADD [tagp_source_be_number] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Best_Position',N'tbp_bms_position_id') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Best_Position] ADD [tbp_bms_position_id] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Auftrag',N'ta_procurement_request_id') IS NULL
@@ -1413,6 +1419,8 @@ BEGIN TRY
 {"table":"tbl_Temp_Ang_Position","column":"tagp_reserve","type":"bit","length":1,"precision":1,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_be_number","type":"nvarchar","length":34,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_warehouse_id","type":"nvarchar","length":12,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Ang_Position","column":"tagp_source_supplier_id","type":"nvarchar","length":100,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Ang_Position","column":"tagp_source_be_number","type":"nvarchar","length":34,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_reserve_quantity","type":"decimal","length":9,"precision":18,"scale":3,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_reserve_until","type":"date","length":3,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Ang_Position","column":"tagp_reservation_version","type":"binary","length":8,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},

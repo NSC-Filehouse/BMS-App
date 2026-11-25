@@ -103,6 +103,7 @@ async function createGeneratedTempOffer(query, offer, header) {
     lineNo: 1, lineKey: randomUUID(), articleIndex: offer.articleIndex, article: offer.article.slice(0, 75),
     masterArticle: offer.article.slice(0, 75), quantity: offer.quantityKg, unit: 'KG', price: offer.salePrice,
     priceBasis: 1000, costPrice: offer.costPrice || 0, wpzOriginal: true, wpzComment: 'Original verwenden', reserve: false,
+    sourceBeNumber: offer.stockOrderPosition || null,
   }, {
     tagp_offer_id: id, tagp_description: offer.batch ? `Charge ${offer.batch}` : null,
     ...(Number(sourceSchema?.ready) === 1 ? { tagp_option_position_id: optionPositionId } : {}),

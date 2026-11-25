@@ -1705,7 +1705,8 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       [p].[beP_EK_DM] AS purchasePricePerTonneDm,
       [p].[beP_Lieferdatum] AS deliveryDate,
       [b].[be_Bestelldatum] AS orderDate,
-      [b].[be_Bestellindex] AS orderIndex
+      [b].[be_Bestellindex] AS orderIndex,
+      [b].[be_KdNr] AS sourceSupplierId
     FROM [dbo].[tblBest_Position] [p]
     INNER JOIN [dbo].[tblBestellung] [b]
       ON [b].[be_Bestellindex] = [p].[beP_Bestellindex]
@@ -1836,6 +1837,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
         existing.lastOrderDate = orderDate;
         existing.purchasePricePerTonne = purchasePricePerTonne;
         existing.orderIndex = toText(row.orderIndex);
+        existing.sourceSupplierId = toText(row.sourceSupplierId);
       }
       groupByArticleKey.set(childKey, groupEntry);
       if (articleIndex && !groupByArticleIndex.has(articleIndex)) groupByArticleIndex.set(articleIndex, groupEntry);
@@ -1859,6 +1861,7 @@ router.get('/customers/:id/procured-articles', requireMandant, asyncHandler(asyn
       deliveryDate: row.deliveryDate || null,
       purchasePricePerTonne,
       orderIndex: toText(row.orderIndex),
+      sourceSupplierId: toText(row.sourceSupplierId),
       availablePositions: [],
     };
     groupEntry.articleMap.set(childKey, child);

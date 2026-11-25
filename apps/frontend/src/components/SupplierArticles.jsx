@@ -2,11 +2,12 @@ import React from 'react';
 import { BackAwareAccordion as Accordion, useBackDisclosure } from './DisclosureBack.jsx';
 import { AccordionDetails, AccordionSummary, Alert, Box, ButtonBase, Checkbox, CircularProgress, Collapse, IconButton, TextField, Typography } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import ExpandCollapseIndicator from './ExpandCollapseIndicator.jsx';
 import { getPurchaseCartItems, purchaseArticleKey, PURCHASE_CART_CHANGED } from '../utils/purchaseCart.js';
 import { supplierArticleList, selectedSupplierVlPositions, supplierVlPositionKey } from '../utils/supplierArticles.js';
 
-export default function SupplierArticles({ groups, loaded, loading, error, onLoad, onPurchase, onSales, canPurchase, initialState }) {
+export default function SupplierArticles({ groups, loaded, loading, error, onLoad, onPurchase, onSales, onOffer, canPurchase, initialState }) {
   const [query, setQuery] = React.useState(initialState?.query || '');
   const [expanded, setExpanded] = React.useState(typeof initialState?.expanded === 'boolean' ? initialState.expanded : Boolean(initialState?.expanded?.vl || initialState?.expanded?.other));
   const [working, setWorking] = React.useState(false);
@@ -52,6 +53,11 @@ export default function SupplierArticles({ groups, loaded, loading, error, onLoa
           return <Box key={article.key} sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 0.75 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="body2" sx={{ flex: 1, minWidth: 0, py: 0.75, overflowWrap: 'anywhere' }}>{article.article}</Typography>
+            {onOffer && <IconButton size="small" color="primary" disabled={working || !article.articleIndex}
+              title="Angebot erstellen" aria-label={`Angebot für ${article.article} erstellen`}
+              onClick={() => onOffer(article, { query, expanded, expandedVl: [...expandedVl], selectedVl: [...selectedVl], scrollTop: window.scrollY })}>
+              <DescriptionOutlinedIcon fontSize="small" />
+            </IconButton>}
             {canPurchase && <IconButton size="small" color={cartKeys.has(article.key) ? 'success' : 'primary'} disabled={working || !article.articleIndex}
               title={cartKeys.has(article.key) ? 'Bereits im Bestellwarenkorb – öffnen' : 'Beim Lieferanten bestellen'} onClick={() => action('purchase', article)} aria-label={`${article.article} zum Bestellwarenkorb`}><ShoppingCartIcon fontSize="small" /></IconButton>}
           </Box>

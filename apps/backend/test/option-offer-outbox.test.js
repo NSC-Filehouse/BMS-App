@@ -113,7 +113,7 @@ test('a manual offer preview includes the ERP PDF and XML for every linked posit
 });
 
 test('submitting an option or a VL position creates a temp offer, one line and one linked mail job together', async () => {
-  for (const source of [{ positionId: 17, packagingId: 34 }, { stockPositionKey: 'stock-key', stockOrderPosition: 'BE-2' }]) {
+  for (const source of [{ positionId: 17, packagingId: 34 }, { stockPositionKey: 'stock-key', stockOrderPosition: 'BE-2', stockStorageId: 'L1' }]) {
     calls.length = 0;
     await queueOptionOffers({ firmaId: 3 }, [{
       ...offer, ...source, companyId: 3, messageKey: '0e1b73bb-c7fa-4690-a2cc-26509408d076',
@@ -125,6 +125,9 @@ test('submitting an option or a VL position creates a temp offer, one line and o
     assert.equal(inserts.length, 4);
     assert.match(inserts[0].sql, /tbl_Temp_Angebot.*\[tag_status\]/);
     assert.match(inserts[1].sql, /tbl_Temp_Ang_Position/);
+    const positionColumns = inserts[1].sql.split('OUTPUT')[0].match(/\[tagp_\w+\]/g);
+    assert.equal(inserts[1].params[positionColumns.indexOf('[tagp_source_be_number]')], source.stockOrderPosition ?? null);
+    assert.equal(inserts[1].params[positionColumns.indexOf('[tagp_be_number]')], null);
     assert.deepEqual(inserts[2].params.slice(0, 5), [3, source.positionId ?? null, source.stockPositionKey ?? null, 81, '100']);
     assert.match(inserts[3].sql, /OptionOfferDocument/);
   }
