@@ -433,6 +433,23 @@ test('option details reload customers for the selected article and discard late 
   assert.deepEqual(audience().customers, [{ id: 'C+2' }]);
 });
 
+test('option details show customer offers separately without a resolved article', async () => {
+  const recorded = [{ id: 'A', offerStatus: 4 }, { id: 'B', offerStatus: 5 }, { id: 'C', sent: true }];
+  const view = await mount('../src/pages/OptionDetail.jsx', {
+    offer: { id: 1, positions: [] }, position: { id: 10 },
+    audienceEndpoint: '/options/1/positions/10/offer-customers', audienceKey: 'position-10',
+  }, async path => ({ data: path.includes('articleIndex')
+    ? { article: { index: 'D' }, customers: [...recorded, { id: 'D' }] }
+    : { article: null, customers: recorded } }), {}, 'OptionPositionDetails');
+  const history = () => view.find(node => node.props?.historyOnly).props.customers;
+  await view.flush();
+  assert.deepEqual(history(), recorded);
+  view.updateProps({ articleIndex: 'D' });
+  await view.flush();
+  assert.deepEqual(history(), recorded);
+  assert.deepEqual(view.find(node => node.props?.query === '?articleIndex=D').props.customers, [{ id: 'D' }]);
+});
+
 test('the customer suggestions start with all sales representatives and still support filtering', async () => {
   const view = await mount('../src/components/OptionOfferCustomers.jsx', {
     customers: [{ id: 'A', name: 'Kunde Eins', salesCode: 'ADM' }, { id: 'B', name: 'Kunde Zwei', salesCode: 'AD2',

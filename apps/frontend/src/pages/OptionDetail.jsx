@@ -153,8 +153,8 @@ export default function OptionDetail() {
       onCustomerOrder={features.linkedProcurement ? startOrder : undefined} checkingStock={checkingStock}
       renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails
         offer={offer} position={position} supplierField={supplierField} purchaseControls={purchaseControls}
-        audienceEndpoint={`${endpoint}/offer-customers`} audienceKey={articlePending ? '' : audienceKey}
-        articleIndex={article?.articleIndex}
+        audienceEndpoint={`${endpoint}/offer-customers`} audienceKey={audienceKey}
+        articleIndex={articlePending ? undefined : article?.articleIndex}
       />} />}
     <Dialog open={deleteConfirm} onClose={deleting?undefined:()=>setDeleteConfirm(false)}><DialogTitle>Option wirklich löschen?</DialogTitle><DialogContent>{offer?.positions?.[0] && optionPositionTitle(offer.positions[0])}<Typography variant="body2" sx={{mt:1}}>Es wird nur diese Optionsposition entfernt.</Typography></DialogContent><DialogActions><Button autoFocus disabled={deleting} onClick={()=>setDeleteConfirm(false)}>Abbrechen</Button><Button color="error" disabled={deleting} onClick={deleteOption}>Option löschen</Button></DialogActions></Dialog>
   </Box>;
@@ -168,20 +168,22 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
   const [audienceRevision, setAudienceRevision] = React.useState(0);
   const audience = audienceResult?.key === requestKey ? audienceResult : null;
   const matchedArticle = audience?.matched === false ? null : audience?.article;
+  const recordedOffers = requestKey && audienceResult?.scope === audienceKey
+    ? (audienceResult.customers ?? []).filter(customer => customer.offerStatus || customer.queued || customer.sent || customer.failed)
+    : [];
 
   React.useEffect(() => {
     if (!requestKey) return undefined;
     const controller = new AbortController();
-    setAudienceResult(previous => previous?.key === requestKey ? previous : null);
     apiRequest(`${audienceEndpoint}${query}`, { signal: controller.signal })
       .then(response => {
-        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, ...response.data });
+        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, scope: audienceKey, ...response.data });
       })
       .catch(cause => {
         if (!controller.signal.aborted) setAudienceResult({ key: requestKey, error: cause.message || t('loading_error') });
       });
     return () => controller.abort();
-  }, [requestKey, audienceEndpoint, query, audienceRevision, t]);
+  }, [requestKey, audienceKey, audienceEndpoint, query, audienceRevision, t]);
 
   React.useEffect(() => {
     if (!audience?.customers?.some(customer => customer.queued)) return undefined;
@@ -239,11 +241,13 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
     </CardContent></Card>
     {requestKey && (audience?.article || !audience || audience.error) && (
       <OptionOfferCustomers key={JSON.stringify([requestKey, audience?.article?.index])}
-        customers={audience?.customers ?? []} salesFilter={audience?.salesFilter}
+        customers={(audience?.customers ?? []).filter(customer => !customer.offerStatus && !customer.queued && !customer.sent
+          && !(customer.failed && customer.readOnly))} salesFilter={audience?.salesFilter}
         position={position} loadingLocation={offer.loadingLocation}
         loading={!audience} error={audience?.error} endpoint={audienceEndpoint} query={query}
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
     )}
+    {recordedOffers.length > 0 && <OptionOfferCustomers historyOnly customers={recordedOffers} />}
   </>;
 }

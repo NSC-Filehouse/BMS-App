@@ -23,6 +23,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     }
     if (sql.includes('dbo.tblKun_Ansprech')) return [{ customerId: 'B', id: 71, name: 'Musterkontakt', email: 'b@example.invalid', language: 'de' }];
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
+    if (sql.includes('j.[value]=k.kd_KdNR')) return invoices.filter(row => JSON.parse(params[0]).includes(row.id));
     if (sql.includes('OPENJSON')) return candidates;
     assert.match(sql, /a\.agA_Artikelindex=\?/);
     return target?.articleIndex === params[0] ? [target] : [];
@@ -164,13 +165,23 @@ test('explicit cross-sales access may display different representatives for filt
 });
 
 test('a stale automatic match, an altered catalog article or an incompatible assignment has no audience', async () => {
+  accepted = [];
   const empty = { article: null, customers: [] };
   assert.deepEqual(await loadOptionOfferCustomers(sameDatabase, {}, owner, { ...position, matchProcessingStatus: 'updating' }), empty);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
   target = { ...catalogArticle, description: 'Updated catalog record' };
   assert.deepEqual(await loadOptionOfferCustomers(sameDatabase, {}, owner, position), empty);
   target = { ...catalogArticle, articleName: 'PP Copo NT MFI 1 - 2 natur' };
   assert.deepEqual(await loadOptionOfferCustomers(sameDatabase, {}, owner, { ...position, articleIndex: 'A-PP' }), empty);
+  assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
+});
+
+test('existing option offers are visible without any article match', async () => {
+  accepted[0].OfferStatus = 5;
+  const result = await loadOptionOfferCustomers(sameDatabase, {}, owner, { ...position, singleCandidateIndex: null });
+  assert.equal(result.article, null);
+  assert.deepEqual(result.customers.map(({ id, offerStatus, queued, readOnly }) => [id, offerStatus, queued, readOnly]),
+    [['A', 5, false, true], ['B', undefined, true, true]]);
   assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
 });
 
@@ -215,6 +226,7 @@ test('a shared option uses an unambiguous compatible article from the active cat
   assert.equal(purchases.params[0], 'B-PP');
   assert.deepEqual(calls.find(call => call.sql.includes('OptionOfferMailOutbox')).params, [8, 41]);
   candidates.push({ ...catalogArticle, articleIndex: 'D-PP' });
+  accepted = [];
   assert.deepEqual(await loadOptionOfferCustomers(foreignDatabase, {}, owner, position), { article: null, customers: [] });
   target = candidates.at(-1);
   const selected = await loadOptionOfferCustomers(foreignDatabase, {}, owner, position, 'D-PP');

@@ -247,7 +247,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, sendEnabled, onQueued }) {
+export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, historyOnly = false, sendEnabled, onQueued }) {
   const { t } = useI18n();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
@@ -263,8 +263,8 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
   return <Card component="section" aria-labelledby={titleId} sx={{ mb: 1.5 }}>
     <CardContent sx={{ '&:last-child': { pb: 1.5 } }}>
       <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-        <Typography id={titleId} variant="subtitle1" component="h2">{t('option_offer_customers')}</Typography>
-        {!readOnly && <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
+        <Typography id={titleId} variant="subtitle1" component="h2">{t(historyOnly ? 'option_offer_history' : 'option_offer_customers')}</Typography>
+        {!readOnly && !historyOnly && <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
           <MailOutlineIcon sx={{ fontSize: 26 }} />
         </IconButton>}
       </Stack>
@@ -282,7 +282,7 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {visible.map(customer => (
             <Box component="li" key={customer.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
-              {!readOnly && <Checkbox size="small" disabled={!canSelect(customer)}
+              {!readOnly && !historyOnly && <Checkbox size="small" disabled={!canSelect(customer)}
                 checked={canSelect(customer) && selection.includes(customer.id)}
                 inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
                 onChange={event => {

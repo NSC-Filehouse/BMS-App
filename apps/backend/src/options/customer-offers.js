@@ -45,7 +45,7 @@ async function resolveOfferArticle(database, offer, position) {
   return article;
 }
 
-async function loadArticleCustomers(database, userIdentity, articleIndex, group) {
+async function loadArticleCustomers(database, userIdentity, articleIndex, group, customerIds) {
   const scope = group ? { isFullAccess: true, userGroup: 'BMS_APP_FULL_ACCESS' } : await getCustomerAccessScope(userIdentity, database);
   const { whereSql, params } = buildCustomerScopeFilter(scope, 'k');
   const canFilterSales = ['BMS_APP_FULL_ACCESS', 'AD01', 'GR04'].includes(scope.userGroup);
@@ -56,7 +56,9 @@ async function loadArticleCustomers(database, userIdentity, articleIndex, group)
     SELECT k.kd_KdNR AS id, k.kd_Name1 AS name, k.kd_Name2 AS name2, k.kd_Aussendienst AS salesCode
       ${group ? ', k.kd_UST_Ident_Nr AS vat' : ''}
     FROM dbo.tblKunden k
-    WHERE COALESCE(k.kd_InterCompany, 0) = 0 AND EXISTS (
+    WHERE COALESCE(k.kd_InterCompany, 0) = 0 AND ${customerIds ? `EXISTS (
+      SELECT 1 FROM OPENJSON(?) j WHERE j.[value]=k.kd_KdNR
+    )` : `EXISTS (
       SELECT 1 FROM dbo.tblRechnung r
       JOIN dbo.tblRech_Position p ON p.reP_RGnummer = r.re_RgNummer
       WHERE r.re_KdNr = k.kd_KdNR AND r.re_Auftragsstatus = N'Rechnung'
@@ -64,11 +66,11 @@ async function loadArticleCustomers(database, userIdentity, articleIndex, group)
           SELECT a.agA_Artikelindex FROM dbo.tblArt_Artikel a WHERE LTRIM(RTRIM(a.agA_Artikelname)) = ?
         )` : 'p.reP_Artikelindex = ?'}
         AND p.reP_Anzahl > 0 AND COALESCE(p.reP_Preisgutschrift, 0) = 0
-    )
+    )`}
     ${whereSql ? `AND (${whereSql})` : ''}
     ${canFilterSales ? '' : "AND UPPER(LTRIM(RTRIM(k.kd_Aussendienst))) = ?"}
     ORDER BY k.kd_Name1, k.kd_Name2, k.kd_KdNR
-  `, [group?.articleName || articleIndex, ...params, ...(canFilterSales ? [] : [salesCode])]), group?.mandants || loadOwnMandantNames()]);
+  `, [customerIds ? JSON.stringify(customerIds) : group?.articleName || articleIndex, ...params, ...(canFilterSales ? [] : [salesCode])]), group?.mandants || loadOwnMandantNames()]);
   const legalNames = new Set(mandants.map(row => nameKey(row.legalName)).filter(Boolean));
   const displayNames = new Set(mandants.map(row => nameKey(row.name)).filter(Boolean));
   const customers = [];
@@ -168,24 +170,31 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers) 
 
 async function loadCustomerOfferAudience(database, userIdentity, article, sourceId, { group = false } = {}) {
   const articleIndex = text(article?.articleIndex);
-  if (!articleIndex) return { article: null, customers: [] };
   const [{ customers, salesFilter }, statuses] = await Promise.all([
-    loadArticleCustomers(database, userIdentity, articleIndex),
+    articleIndex ? loadArticleCustomers(database, userIdentity, articleIndex) : { customers: [] },
     loadOfferCustomerStatuses(Number(database.firmaId), sourceId),
   ]);
-  const matchedArticle = { index: articleIndex, name: text(article.articleName) };
-  const localCustomers = customers.map(customer => {
+  const matchedArticle = articleIndex ? { index: articleIndex, name: text(article.articleName) } : null;
+  const withStatus = customer => {
     const record = statuses.get(customer.id.toUpperCase());
     const status = text(record?.Status);
     const offerStatus = Number(record?.OfferStatus);
     return { ...customer, sent: status === 'sent', queued: Boolean(status && !['sent', 'failed'].includes(status)),
       failed: status === 'failed', ...([4, 5].includes(offerStatus) ? { offerStatus } : {}) };
-  });
+  };
+  const localCustomers = customers.map(withStatus);
+  const known = new Set(customers.map(customer => customer.id.toUpperCase()));
+  const missing = typeof sourceId === 'number' ? [...statuses.keys()].filter(id => !known.has(id)) : [];
+  const history = missing.length ? await loadArticleCustomers(database, userIdentity, '', null, missing) : null;
+  const recorded = (history?.customers || []).map(customer => ({ ...withStatus(customer), readOnly: true }));
+  if (!matchedArticle) {
+    return recorded.length ? { article: null, customers: recorded, salesFilter: history.salesFilter } : { article: null, customers: [] };
+  }
   if (group && canSeeGroupBuyers(userIdentity)) {
     return { article: matchedArticle, salesFilter: { ...salesFilter, enabled: true },
-      customers: await loadGroupBuyers(database, userIdentity, matchedArticle, localCustomers) };
+      customers: [...await loadGroupBuyers(database, userIdentity, matchedArticle, localCustomers), ...recorded] };
   }
-  return { article: matchedArticle, salesFilter, customers: localCustomers };
+  return { article: matchedArticle, salesFilter, customers: [...localCustomers, ...recorded] };
 }
 
 async function loadOfferContacts(database, customerIds) {

@@ -39,7 +39,7 @@ async function buildCustomerOfferSubmissions(req, position, loadAudience) {
     throw invalid('Für Ihren Außendienst-Zugang fehlen gültige Absenderdaten.');
   }
   const eligible = await loadAudience();
-  const buyers = new Map(eligible.customers.map(customer => [customerKey(customer.id), customer]));
+  const buyers = new Map(eligible.customers.filter(customer => !customer.readOnly).map(customer => [customerKey(customer.id), customer]));
   if (!eligible.article || customerIds.some(id => !buyers.has(id))) {
     throw invalid('Mindestens ein Kunde ist für dieses Angebot nicht verfügbar.', 'OPTION_OFFER_CUSTOMER_UNAVAILABLE');
   }
