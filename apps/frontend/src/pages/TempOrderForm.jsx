@@ -54,7 +54,6 @@ import { isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switc
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
-import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
 import { PurchaseForOrder } from './OptionOrderPurchase.jsx';
 import { isTempOrderEditableStatus, normalizeTempOrderStatus } from '../utils/tempOrderStatus.js';
 import {
@@ -277,7 +276,6 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
   const [offerStockByPosition, setOfferStockByPosition] = React.useState({});
   const [procurementStock, setProcurementStock] = React.useState({});
   const [procurementKey, setProcurementKey] = React.useState(null);
-  const [pickProcurementArticle, setPickProcurementArticle] = React.useState(false);
   const procurementRequest = React.useRef(null);
   const loadedOfferRef = React.useRef('');
   const [saving, setSaving] = React.useState(false);
@@ -311,6 +309,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
   const linkedOrder = isEdit && positions.some((position) => position.purchasePositionId);
   const needsPurchase = !isEdit && positions.some((position) => position.procurement);
   const hasSavedPurchase = !isEdit && positions.some((position) => position.savedPurchasePositionId);
+  const canSelectProcurementArticle = features.linkedProcurement && !isEdit && !hasSavedPurchase;
   const procurementLine = procurementKey ? positions.find((position) => position.clientKey === procurementKey) : null;
   const nextPurchase = !isEdit && features.linkedProcurement && positions.find((position) => {
     if ((!position.procurementArticle && !position.procurement) || position.savedPurchasePositionId) return false;
@@ -387,6 +386,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
     return exists ? addPosOptions : [addPosProduct, ...addPosOptions];
   }, [addPosOptions, addPosProduct]);
   const addPosAvailableAmount = React.useMemo(() => {
+    if (addPosProduct?.procurementArticle) return null;
     const backendAvailable = Number(addPosProduct?.availableAmount);
     if (Number.isFinite(backendAvailable)) return Math.max(backendAvailable, 0);
     const total = Number(addPosProduct?.amount);
@@ -1566,6 +1566,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
 
   React.useEffect(() => {
     if (!addPosOpen) return undefined;
+    const controller = new AbortController();
     const h = setTimeout(async () => {
       const q = addPosQuery.trim();
       if (!q) {
@@ -1573,14 +1574,28 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
         return;
       }
       try {
-        const res = await apiRequest(`/products?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=article&dir=ASC`);
-        setAddPosOptions(res?.data || []);
+        const requests = [apiRequest(`/products?page=1&pageSize=20&q=${encodeURIComponent(q)}&sort=article&dir=ASC`,
+          { signal: controller.signal })];
+        if (canSelectProcurementArticle) {
+          requests.push(apiRequest('/temp-offers/article-groups?' + new URLSearchParams({ q, page: '1', pageSize: '40' }),
+            { signal: controller.signal }));
+        }
+        const [stock, catalog] = await Promise.all(requests);
+        if (controller.signal.aborted) return;
+        const catalogArticles = (catalog?.data || []).flatMap(group => group.positions || []).map(article => ({
+          ...article, id: 'catalog:' + article.articleIndex, procurementArticle: true,
+        }));
+        setAddPosOptions([...(stock?.data || []), ...catalogArticles]);
+        setAddPosError('');
       } catch {
-        setAddPosOptions([]);
+        if (!controller.signal.aborted) {
+          setAddPosOptions([]);
+          setAddPosError(t('loading_error'));
+        }
       }
     }, 300);
-    return () => clearTimeout(h);
-  }, [addPosOpen, addPosQuery]);
+    return () => { clearTimeout(h); controller.abort(); };
+  }, [addPosOpen, addPosQuery, canSelectProcurementArticle, t]);
 
   React.useEffect(() => {
     const h = setTimeout(async () => {
@@ -2438,9 +2453,6 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                   <Typography variant="subtitle2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     {t('order_positions_count')}: {positions.length}
                   </Typography>
-                  {features.linkedProcurement && !isEdit && !hasSavedPurchase && <Button size="small" onClick={() => setPickProcurementArticle(true)}>
-                    {t('procurement_add_article')}
-                  </Button>}
                   {isPositionsMode && !linkedOrder && (
                     <IconButton
                       size="small"
@@ -2704,14 +2716,6 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
         </Card>
       )}
 
-      {pickProcurementArticle && <OfferArticlePicker open onClose={() => setPickProcurementArticle(false)} onAdd={(articles) => {
-        setPositions((previous) => [...previous, ...articles.map((article) => ({
-          clientKey: createClientPositionKey(article.articleIndex), procurementArticle: true,
-          articleIndex: article.articleIndex, article: article.article, amountInKg: '', price: '', costPrice: article.costPrice ?? '',
-          ...createPositionDefaults({ deliveryDate: tomorrow(), deliveryDateAuto: true }),
-        }))]);
-        setPickProcurementArticle(false);
-      }} />}
       <Dialog open={validationOpen} onClose={() => setValidationOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t('validation_dialog_title')}</DialogTitle>
         <DialogContent>
@@ -2857,9 +2861,11 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
           <Autocomplete
             options={addPosOptionsWithSelection}
             value={addPosProduct}
+            filterOptions={options => options}
             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
             getOptionLabel={(opt) => String(opt?.article || '')}
             getOptionDisabled={(option) => {
+              if (option.procurementArticle) return false;
               const available = Number(option?.availableAmount);
               if (Number.isFinite(available)) return available <= 0;
               return Math.max(Number(option?.amount || 0) - Number(option?.reserved || 0), 0) <= 0;
@@ -2870,7 +2876,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
               const available = Number.isFinite(backendAvailable)
                 ? Math.max(backendAvailable, 0)
                 : Math.max(Number(value?.amount || 0) - Number(value?.reserved || 0), 0);
-              setAddPosQty(value && Number.isFinite(available) ? String(available) : '');
+              setAddPosQty(value && !value.procurementArticle && Number.isFinite(available) ? String(available) : '');
               setAddPosSalePrice('');
               setAddPosWpzId(null);
               setAddPosWpzOriginal(true);
@@ -2878,7 +2884,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
               setAddPosOriginalPackagingType('');
               setAddPosOriginalPackagingTypeId(null);
               addPosPackagingBeNumberRef.current = String(value?.beNumber || '').trim();
-              if (value?.id) {
+              if (value?.id && !value.procurementArticle) {
                 void loadOriginalPackagingInfo(value.beNumber).then((originalPackagingInfo) => {
                   if (addPosPackagingBeNumberRef.current === String(value.beNumber || '').trim()) {
                     setAddPosOriginalPackagingType(originalPackagingInfo.text);
@@ -2916,7 +2922,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                   {String(option?.article || '')}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary', width: '100%', textAlign: 'left' }}>
-                  {`${String(option?.warehouse || '-')}; ${Number.isFinite(Number(option?.availableAmount))
+                  {option.procurementArticle ? t('procurement_article_catalog') : `${String(option?.warehouse || '-')}; ${Number.isFinite(Number(option?.availableAmount))
                     ? Number(option.availableAmount)
                     : (option?.amount ?? '-')} ${String(option?.unit || 'kg')}; ${t('product_price')}: ${formatPrice(option?.acquisitionPrice)}`}
                 </Typography>
@@ -2929,15 +2935,15 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
             label={t('product_amount')}
             value={addPosQty}
             onChange={(e) => setAddPosQty(e.target.value)}
-            inputProps={{ min: 1, step: 'any' }}
+            inputProps={{ min: 1, step: addPosProduct?.procurementArticle ? 1 : 'any' }}
             fullWidth
           />
-          <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
+          {!addPosProduct?.procurementArticle && <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
             {addPosAvailableAmount === null
               ? `${t('product_available_now')}: -`
               : `${t('product_available_now')}: ${addPosAvailableAmount} ${String(addPosProduct?.unit || 'kg')}`}
-          </Typography>
-          {addPosProduct && (
+          </Typography>}
+          {addPosProduct && !addPosProduct.procurementArticle && (
             <Typography variant="caption" sx={{ color: 'text.secondary', mt: -0.5 }}>
               {t('product_price')}: {formatPrice(addPosProduct.acquisitionPrice)}
             </Typography>
@@ -2950,8 +2956,9 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
             inputProps={{ min: 0, step: 'any' }}
             fullWidth
           />
-          <SaleMarginHint amountInKg={addPosQty} salePrice={addPosSalePrice} costPrice={addPosProduct?.acquisitionPrice} />
-          {addPosProduct && (
+          <SaleMarginHint amountInKg={addPosQty} salePrice={addPosSalePrice}
+            costPrice={addPosProduct?.procurementArticle ? addPosProduct.costPrice : addPosProduct?.acquisitionPrice} />
+          {addPosProduct && !addPosProduct.procurementArticle && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {t('original_packaging_type_label')}: {addPosOriginalPackagingType || '-'}
             </Typography>
@@ -2983,7 +2990,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
               fullWidth
             />
           </Box>
-          {addPosProduct && (
+          {addPosProduct && !addPosProduct.procurementArticle && (
             <WpzCommentField
               wpzId={addPosWpzId}
               wpzOriginal={addPosWpzOriginal}
@@ -3012,8 +3019,12 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                 setAddPosError(t('validation_amount_positive'));
                 return;
               }
-              const price = Number(product.acquisitionPrice);
-              if (!Number.isFinite(price) || price <= 0) {
+              if (product.procurementArticle && !Number.isSafeInteger(qty)) {
+                setAddPosError(t('offer_order_whole_kg'));
+                return;
+              }
+              const price = product.procurementArticle ? product.costPrice ?? '' : Number(product.acquisitionPrice);
+              if (!product.procurementArticle && (!Number.isFinite(price) || price <= 0)) {
                 setAddPosError(t('validation_price_positive'));
                 return;
               }
@@ -3034,7 +3045,8 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                 ...prev,
                 {
                   id: null,
-                  clientKey: createClientPositionKey(product.beNumber),
+                  clientKey: createClientPositionKey(product.beNumber || product.articleIndex),
+                  procurementArticle: Boolean(product.procurementArticle),
                   beNumber: String(product.beNumber || '').trim(),
                   warehouseId: String(product.storageId || '').trim(),
                   articleIndex: product.articleIndex || '',
