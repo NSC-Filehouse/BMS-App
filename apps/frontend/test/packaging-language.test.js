@@ -632,6 +632,30 @@ test('a purchase pickup loads its supplier addresses and selects a unique techni
   assert.equal(editor.field('Abholadresse').props.value, '39');
   assert.equal(order.addressCustomerId, 'LF');
   assert.equal(order.loadingLocationText, 'Stammadresse');
+  const warehouseOption = editor.find(node => node.type === 'MenuItem' && node.props.value === 'LG0000');
+  assert.deepEqual(warehouseOption.props.children, ['Strecke']);
+});
+
+test('purchase contact dropdown displays the name while retaining the technical contact ID', async () => {
+  const contact = { id: 8117, name: 'Mr. Amaury De Coninck' };
+  let changed;
+  const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
+    initialOrder: { supplierId: 'LF', supplierContactId: contact.id, paymentConditionText: '30 Tage', positions: [] },
+    onChange: order => { changed = order; },
+  }, async path => {
+    if (path.startsWith('/purchase-order-options')) {
+      return { data: { packagingTypes: [], incoterms: [], warehouses: [], defaults: { contacts: [contact] } } };
+    }
+    throw new Error(path);
+  });
+  await view.flush();
+  const dropdown = view.find(node => node.props.getOptionLabel && node.props.options?.[0]?.id === contact.id);
+  assert.equal(dropdown.props.getOptionLabel(contact), contact.name);
+  assert.equal(dropdown.props.value.id, 8117);
+  dropdown.props.onChange(null, contact);
+  await view.flush();
+  assert.equal(changed.supplierContactId, 8117);
+  assert.equal(changed.supplierContact, contact.name);
 });
 
 test('the loading location dialog still supports entering an optional offer loading location', async () => {

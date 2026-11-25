@@ -67,16 +67,26 @@ async function loadSupplierTerms(database, supplierId, lang = 'de') {
     supplierContact: contact?.name || '', supplierContactId: contact?.id ?? null, contacts: names };
 }
 
-async function loadPurchaseWarehouses(database, warehouseId = '') {
+async function loadPurchaseWarehouses(database, supplierId, warehouseId = '') {
+  const supplier = text(supplierId);
+  if (!supplier) return [];
   const rows = await runSQLQueryAccess(database, `
-    SELECT w.kdLa_LagerID AS id, w.kdLa_Strecke AS isDirect, w.kdLa_Kurz AS label,
+    SELECT w.kdLa_LagerID AS id, w.kdLa_Strecke AS isDirect,
+      COALESCE(NULLIF(LTRIM(RTRIM(w.kdLa_Kurz)),N''),
+        NULLIF(LTRIM(RTRIM(CONCAT(w.kdLa_Name1,N' ',w.kdLa_Ort))),N'')) AS label,
       w.kdLa_KdNR AS customerId, w.kdLa_KdNR2 AS alternateCustomerId,
       k.kd_Name1 AS customerName, k2.kd_Name1 AS alternateCustomerName
     FROM dbo.tblKun_Lager w
     LEFT JOIN dbo.tblKunden k ON k.kd_KdNR=w.kdLa_KdNR
     LEFT JOIN dbo.tblKunden k2 ON k2.kd_KdNR=w.kdLa_KdNR2
-    ${warehouseId ? 'WHERE w.kdLa_LagerID=?' : ''}
-    ORDER BY w.kdLa_Strecke DESC, w.kdLa_Kurz, w.kdLa_LagerID`, warehouseId ? [warehouseId] : []);
+    WHERE (w.kdLa_Strecke=1 OR w.kdLa_KdNR=? OR w.kdLa_KdNR2=? OR EXISTS (
+      SELECT 1 FROM dbo.tblBestellung b
+      JOIN dbo.tblBest_Position p ON p.beP_Bestellindex=b.be_Bestellindex
+      JOIN dbo.tblBest_Pos_Lager stock ON stock.bePL_BEposID=p.beP_BEposID
+      WHERE b.be_KdNr=? AND stock.bePL_LagerID=w.kdLa_LagerID AND COALESCE(p.beP_Storno,0)<>1
+    )) ${warehouseId ? 'AND w.kdLa_LagerID=?' : ''}
+    ORDER BY w.kdLa_Strecke DESC, w.kdLa_Kurz, w.kdLa_LagerID`,
+  [supplier, supplier, supplier, ...(warehouseId ? [warehouseId] : [])]);
   return rows.map(row => {
     const customerId = text(row.customerId);
     const alternateCustomerId = text(row.alternateCustomerId);

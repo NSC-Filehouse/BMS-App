@@ -187,7 +187,7 @@ export function PurchaseForOrder({ state, offerPosition, directPosition, stockLo
       options={supplier && !supplierChoices.some((row) => row.id === supplier.id) ? [supplier, ...supplierChoices] : supplierChoices}
       value={supplier} disabled={saving || locked} openOnFocus filterOptions={(rows) => rows}
       loading={query.length >= 2 && !supplierResults && !searchError} noOptionsText={t('suppliers_search_empty')}
-      getOptionKey={(row) => row.id} getOptionLabel={(row) => [row.name, row.city, row.id].filter(Boolean).join(' · ')}
+      getOptionKey={(row) => row.id} getOptionLabel={(row) => [row.name, row.city].filter(Boolean).join(' · ')}
       isOptionEqualToValue={(a, b) => a.id === b.id}
       onInputChange={(_event, value, reason) => {
         if (reason !== 'input' && reason !== 'clear') return;

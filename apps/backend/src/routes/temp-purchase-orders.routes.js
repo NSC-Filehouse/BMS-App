@@ -321,9 +321,9 @@ function purchaseCurrency(value) {
 }
 
 async function loadPurchaseAddressChoices(req, { supplierId, warehouseId, addressCustomerId, deliveryTermText }, accessScope) {
-  const [warehouse] = warehouseId ? await loadPurchaseWarehouses(req.database, warehouseId) : [];
+  const [warehouse] = warehouseId ? await loadPurchaseWarehouses(req.database, supplierId, warehouseId) : [];
   if (!warehouse || warehouse.id !== warehouseId) {
-    throw createHttpError(400, 'Bitte ein Lager aus dem Lagerstamm des Mandanten auswählen.', { code: 'PURCHASE_WAREHOUSE_REQUIRED' });
+    throw createHttpError(400, 'Bitte ein Lager dieses Lieferanten oder das Streckenlager auswählen.', { code: 'PURCHASE_WAREHOUSE_REQUIRED' });
   }
   const customerId = purchaseText(addressCustomerId, 10, 'Adress-Kundennummer');
   const validOwner = customerId && (/^(FCA|EXW)\b/i.test(deliveryTermText)
@@ -457,7 +457,7 @@ router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asy
   const supplier = await assertSupplier(req.database, supplierId, scope);
   const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
   const [options, defaults, warehouses] = await Promise.all([
-    loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang), loadPurchaseWarehouses(req.database),
+    loadPurchaseOptions(req.database, lang), loadSupplierTerms(req.database, supplierId, lang), loadPurchaseWarehouses(req.database, supplierId),
   ]);
   const supplierAddress = {
     name: asText(supplier.kd_Name1) || asText(supplier.kd_Name2),

@@ -124,7 +124,7 @@ function fixture(options = {}) {
     loadPurchaseOptions: async () => ({ packagingTypes: [{ id: 79, text: 'Siloware', aliases: ['Siloware'] }],
       incoterms: [{ id: 1, text: 'FCA' }, { id: 2, text: 'DAP' }] }),
     loadSupplierTerms: async () => options.supplierTerms || ({ paymentConditionId: 17, paymentConditionText: '30 Tage' }),
-    loadPurchaseWarehouses: async (_database, id) => [
+    loadPurchaseWarehouses: async (_database, supplierId, id) => [
       { id: 'LG0001', isDirect: false, owners: [{ id: '43', name: 'Lagerkunde' }] },
       { id: 'LG0000', isDirect: true, owners: [] },
     ].filter(warehouse => !id || warehouse.id === id),
@@ -524,6 +524,7 @@ test('legacy internal article names are replaced before hand-off and remain supp
 
 test('rejects historical free text and pickup addresses owned by another customer', async () => {
   const f = fixture();
+  await assert.rejects(f.request({ ...body(), warehouseId: 'FOREIGN' }), /Lager dieses Lieferanten/);
   await assert.rejects(f.request({ ...body(), addressId: null, loadingLocationText: 'Fremder Ort' }), /Adresse.*Stamm/i);
   await assert.rejects(f.request({ ...body(), addressCustomerId: '43' }), /Adressinhaber/);
   assert.equal(f.headers.length, 0);

@@ -177,7 +177,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       {supplierSelection}
       <Autocomplete options={contacts} value={contacts.find(item => String(item.id) === String(order.supplierContactId)) || null}
         disabled={disabled || loading} noOptionsText={t('purchase_no_contact')}
-        getOptionLabel={item => item.name + ' · ' + item.id} isOptionEqualToValue={(a, b) => a.id === b.id}
+        getOptionLabel={item => item.name} isOptionEqualToValue={(a, b) => a.id === b.id}
         onChange={(_event, value) => update({ supplierContactId: value?.id ?? '', supplierContact: value?.name || '' })}
         renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>

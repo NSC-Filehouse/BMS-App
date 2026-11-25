@@ -25,7 +25,7 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
       const query = new URLSearchParams({ q: customerQuery.trim(), includeInactive: '1', pageSize: '15' });
       apiRequest('/customers?' + query, { signal: controller.signal }).then(({ data }) => {
         if (!controller.signal.aborted) setCustomers((data || []).map(row => ({
-          id: String(row.kd_KdNR), name: row.kd_Name1 || row.kd_Name2 || row.kd_KdNR,
+          id: String(row.kd_KdNR), name: [row.kd_Name1, row.kd_Name2, row.kd_Ort].filter(Boolean).join(' · '),
         })));
       }).catch(error => { if (!controller.signal.aborted) setCustomerError(error.message); });
     }, 200);
@@ -47,6 +47,7 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
         const saved = previous.addressCustomerId === customerId && entries.find(item => item.id === String(previous.addressId));
         const selected = saved || (entries.length === 1 ? entries[0] : null);
         return { ...previous, addressCustomerId: customerId, addressId: selected?.id || '',
+          addressCustomerName: previous.addressCustomerName || selected?.name1 || '',
           loadingLocationText: selected?.text || previous.loadingLocationText || '' };
       });
     }).catch(error => {
@@ -60,7 +61,7 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
 
   const chooseOwner = owner => update({ addressCustomerId: owner?.id || '', addressCustomerName: owner?.name || '', addressId: '', loadingLocationText: '' });
   const chosenCustomer = customerId ? (customers.find(item => item.id === customerId)
-    || { id: customerId, name: order.addressCustomerName || customerId }) : null;
+    || { id: customerId, name: order.addressCustomerName || '' }) : null;
   const ownerLabel = en ? 'Address belongs to' : 'Adressinhaber';
   const addressLabel = pickup ? (en ? 'Pickup address' : 'Abholadresse') : (en ? 'Delivery address' : 'Lieferadresse');
   const addressContext = Boolean(warehouse && deliveryTermId && customerId);
@@ -74,16 +75,16 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
           addressCustomerName: '', addressId: '', loadingLocationText: '' });
       }}>
       <MenuItem value="" disabled>{en ? 'Select warehouse' : 'Lager auswählen'}</MenuItem>
-      {warehouses.map(item => <MenuItem key={item.id} value={item.id}>{item.id} · {item.label || item.id}</MenuItem>)}
+      {warehouses.map(item => <MenuItem key={item.id} value={item.id}>{item.label || (item.isDirect ? (en ? 'Direct shipment' : 'Strecke') : (en ? 'Warehouse' : 'Lager'))}</MenuItem>)}
     </TextField>
     {warehouse && !pickup && !direct && <TextField select required size="small" label={ownerLabel}
       disabled={disabled || !deliveryTermId} value={customerId} error={attempted && !customerId}
       onChange={event => chooseOwner(warehouse.owners.find(item => item.id === event.target.value))}>
       <MenuItem value="" disabled>{en ? 'Select address owner' : 'Adressinhaber auswählen'}</MenuItem>
-      {warehouse.owners.map(owner => <MenuItem key={owner.id} value={owner.id}>{owner.name} · {owner.id}</MenuItem>)}
+      {warehouse.owners.map(owner => <MenuItem key={owner.id} value={owner.id}>{owner.name}</MenuItem>)}
     </TextField>}
     {direct && <Autocomplete options={customers} value={chosenCustomer} disabled={disabled || !deliveryTermId}
-      getOptionLabel={item => item.name === item.id ? item.id : `${item.name} · ${item.id}`}
+      getOptionLabel={item => item.name}
       filterOptions={items => items} isOptionEqualToValue={(a, b) => a.id === b.id}
       onInputChange={(_event, value, reason) => {
         if (reason !== 'input') return;
