@@ -408,7 +408,7 @@ router.get(
         return { id, procurementStatus: procurement?.status ?? null };
       }));
     }
-    row.canMarkNotInterested = ownOffer && !row.generated && !row.orders?.length && notInterestedSourceStatuses.includes(row.status);
+    row.canMarkNotInterested = ownOffer && !row.orders?.length && notInterestedSourceStatuses.includes(row.status);
     sendEnvelope(res, { data: row });
   }),
 );
@@ -420,19 +420,11 @@ router.post(
     const id = offerId(req);
     const companyId = req.database.firmaId;
     const createdBy = owner(req);
-    const mailSchemaReady = await offerMailSchemaReady();
     const row = await withSqlTransaction(config.sql.database, async ({ query: tx }) => {
       const current = await read(tx, id, companyId, createdBy, true);
       if (!current) notFound();
       requireVersion(current, req.body?.version);
       await assertOfferPositionsEditable(tx, id);
-      if (mailSchemaReady) {
-        const generated = (await tx(`
-          SELECT 1 AS generated FROM BMSApp.OptionOfferMailOutbox
-          WHERE TempOfferId=? AND CompanyId=? AND (OptionPositionId IS NOT NULL OR StockPositionKey IS NOT NULL)
-        `, [id, companyId])).rows.length > 0;
-        if (generated) notFound();
-      }
       if (!notInterestedSourceStatuses.includes(current.status)) {
         throw createHttpError(409, 'Der Angebotsstatus kann nicht auf „Kunde hat kein Interesse“ geändert werden.', {
           code: 'OFFER_NOT_ELIGIBLE',

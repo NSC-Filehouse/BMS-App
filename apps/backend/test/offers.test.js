@@ -442,9 +442,7 @@ test('manual release enqueues a verified recipient and the detail serves only th
   assert.equal((await call(`${url}/not-interested`, 'POST', current, { 'x-test-user': 'OBA' })).status, 404);
   assert.equal((await call(`${url}/not-interested`, 'POST', body)).status, 409);
   state.mail[0].generated = true;
-  assert.equal((await call(url)).json.data.canMarkNotInterested, false);
-  assert.equal((await call(`${url}/not-interested`, 'POST', current)).status, 404);
-  state.mail[0].generated = false;
+  assert.equal((await call(url)).json.data.canMarkNotInterested, true);
   const declined = await call(`${url}/not-interested`, 'POST', current);
   assert.equal(declined.json.data.status, 5);
   assert.equal((await call(url)).json.data.canMarkNotInterested, false);
