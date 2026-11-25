@@ -303,8 +303,8 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                 <CloseIcon color="error" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_not_interested')} />
               </Tooltip>}
               {!customer.offerStatus && (customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
-                <Box sx={{ width: 40, display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
-                  <HourglassEmptyIcon fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
+                <Box sx={{ width: 40, display: 'flex', justifyContent: 'center' }}>
+                  <HourglassEmptyIcon color="primary" fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
                 </Box>
               </Tooltip>}
               {!customer.offerStatus && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
