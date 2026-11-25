@@ -281,11 +281,8 @@ export default function TempOfferDetail() {
             </Box>
             <Box
               sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: 'repeat(2,minmax(0,1fr))',
-                  md: 'repeat(4,max-content)',
-                },
+                display: 'flex',
+                flexWrap: 'wrap',
                 gap: 1,
                 mt: 2,
                 minWidth: 0,
@@ -333,6 +330,23 @@ export default function TempOfferDetail() {
                   {t('delete_label')}
                 </Button>
               )}
+              {offer.canMarkNotInterested && (
+                <Button variant="outlined" disabled={busy} onClick={() => setAction('not-interested')}>
+                  {t('offer_not_interested')}
+                </Button>
+              )}
+              {features.offerToOrder && !offer.readOnly && offer.status !== 4 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  disabled={busy || offer.status === 1}
+                  onClick={() => navigate(`/temp-offers/${encodeURIComponent(offer.id)}/order/new`, {
+                    state: { returnTo: createReturnTo(location, state) },
+                  })}
+                >
+                  {t('offer_convert_to_order')}
+                </Button>
+              )}
             </Box>
             {offer.orders?.length > 0 && <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 1 }}>
               {offer.orders.map((order) => <Box key={order.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -342,27 +356,6 @@ export default function TempOfferDetail() {
                 {order.procurementStatus && <Typography variant="caption">{t('procurement_status_' + order.procurementStatus)}</Typography>}
               </Box>)}
             </Box>}
-            {(offer.canMarkNotInterested || (features.offerToOrder && !offer.readOnly && offer.status !== 4)) && (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
-                {offer.canMarkNotInterested && (
-                  <Button variant="outlined" disabled={busy} onClick={() => setAction('not-interested')}>
-                    {t('offer_not_interested')}
-                  </Button>
-                )}
-                {features.offerToOrder && !offer.readOnly && offer.status !== 4 && (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    disabled={busy || offer.status === 1}
-                    onClick={() => navigate(`/temp-offers/${encodeURIComponent(offer.id)}/order/new`, {
-                      state: { returnTo: createReturnTo(location, state) },
-                    })}
-                  >
-                    {t('offer_convert_to_order')}
-                  </Button>
-                )}
-              </Box>
-            )}
           </CardContent>
         </Card>
       )}
