@@ -209,7 +209,7 @@ async function deliverOffer(client, row) {
     if (row.status !== 'submitted') {
       const document = readTempOfferDocument(row, offer);
       const positions = await run(`
-        SELECT p.tagp_line_no AS lineNo, p.tagp_article_index AS articleIndex, p.tagp_article AS article,
+        SELECT p.tagp_line_no AS [lineNo], p.tagp_article_index AS articleIndex, p.tagp_article AS article,
           p.tagp_quantity AS quantity, p.tagp_unit AS unit, p.tagp_price AS price, p.tagp_price_basis AS priceBasis,
           p.tagp_total AS total, p.tagp_description AS description, p.tagp_alternative_text AS alternativeText,
           p.tagp_delivery_date AS deliveryDate, p.tagp_delivery_text AS deliveryText, p.tagp_valuta_date AS valutaDate
