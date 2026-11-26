@@ -34,6 +34,46 @@ async function resolveArticleNameRule(database, sourceMandantId, position) {
   return { article: article && !checkMfi(position, article).blocked && !checkMaterial(position, article).blocked ? article : null };
 }
 
+async function loadArticleNameConfirmation(database, position) {
+  const key = optionNameKey(position.articleName);
+  if (!key || !position.id) return null;
+  const [row] = await runSQLQuerySqlServer(config.sql.database, `
+    IF OBJECT_ID(N'BMSApp.OptionArticleNameRuleMandant', N'U') IS NOT NULL
+      SELECT ArticleIndex AS articleIndex FROM BMSApp.OptionArticleNameRuleMandant
+      WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?) AND MandantId=? AND SourcePositionId=?`,
+  [isTestMandant(database), key, Number(database.firmaId), Number(position.id)]);
+  return row ? String(row.articleIndex) : null;
+}
+
+async function revokeArticleNameConfirmation(database, optionId, positionId, selection, identity) {
+  const source = await withSqlTransaction(config.sql.database, async ({ query }) => {
+    const current = await loadOptionPosition(optionId, positionId, query, { identity, lock: true });
+    const test = isTestMandant(database);
+    const key = optionNameKey(current.articleName);
+    if (!key || key !== optionNameKey(selection.optionArticleName) || test !== isTestMandant({ firmaId: current.sourceMandantId })) {
+      throw createHttpError(409, 'Die Optionszuordnung wurde geändert. Bitte die Option erneut laden.', { code: 'OPTION_CHANGED' });
+    }
+    // Serialize confirmation and revocation of the same shared name rule.
+    await query(`SELECT 1 FROM BMSApp.OptionArticleNameRule WITH (UPDLOCK, HOLDLOCK)
+      WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?)`, [test, key]);
+    const result = await query(`DELETE FROM BMSApp.OptionArticleNameRuleMandant
+      WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?) AND MandantId=? AND SourcePositionId=? AND ArticleIndex=?`,
+    [test, key, Number(database.firmaId), Number(current.opp_id), selection.articleIndex.trim()]);
+    if (!result.rowsAffected[0]) {
+      const [remaining] = (await query(`SELECT SourcePositionId FROM BMSApp.OptionArticleNameRuleMandant
+        WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?) AND MandantId=?`, [test, key, Number(database.firmaId)])).rows;
+      if (remaining) throw createHttpError(409, 'Die Optionszuordnung wurde geändert. Bitte die Option erneut laden.', { code: 'OPTION_CHANGED' });
+      return current;
+    }
+    await query(`DELETE FROM BMSApp.OptionArticleNameRule WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?)
+      AND NOT EXISTS (SELECT 1 FROM BMSApp.OptionArticleNameRuleMandant WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?))`,
+    [test, key, test, key]);
+    return current;
+  });
+  const rule = await resolveArticleNameRule(database, source.sourceMandantId, source);
+  return rule?.article ? { articleIndex: String(rule.article.articleIndex), articleName: rule.article.articleName } : null;
+}
+
 async function confirmArticleNameRule(database, optionId, positionId, selection, identity, actor) {
   const source = await loadOptionPosition(optionId, positionId, null, { identity });
   const test = isTestMandant(database);
@@ -62,7 +102,7 @@ async function confirmArticleNameRule(database, optionId, positionId, selection,
       throw createHttpError(503, 'Das Speichern von Artikelregeln ist noch nicht verfügbar.', { code: 'OPTION_ARTICLE_RULE_NOT_READY' });
     }
     const rule = await query(`SELECT 1 FROM BMSApp.OptionArticleNameRule WITH (UPDLOCK, HOLDLOCK)
-      WHERE IsTest=? AND OptionNameKey=?`, [test, key]);
+      WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?)`, [test, key]);
     if (!rule.rows.length) {
       await query(`INSERT BMSApp.OptionArticleNameRule (IsTest, OptionNameKey, OptionName, ArticleName, CreatedBy)
         VALUES (?, ?, ?, ?, ?)`, [test, key, source.articleName, article.articleName, actor]);
@@ -88,4 +128,4 @@ async function confirmArticleNameRule(database, optionId, positionId, selection,
   return { articleIndex: index, articleName: article.articleName };
 }
 
-module.exports = { resolveArticleNameRule, confirmArticleNameRule };
+module.exports = { resolveArticleNameRule, confirmArticleNameRule, loadArticleNameConfirmation, revokeArticleNameConfirmation };

@@ -463,24 +463,33 @@ test('the preselected article can be confirmed immediately and is kept for order
   const renderDetails = props => ({ type: 'Details', props: { children: [props.purchaseControls] } });
   const view = await mount('../src/components/OptionPurchaseControls.jsx', {
     enabled: true, offer: { id: 1 }, position, renderDetails,
-    onArticleConfirmed: matchedArticle => view.updateProps({ position: { ...position, matchedArticle } }),
+    onArticleConfirmed: (matchedArticle, articleConfirmationIndex) => view.updateProps({ position: { ...position, matchedArticle, articleConfirmationIndex } }),
   }, async (path, _lang, options) => {
     if (path.includes('/suppliers?')) return { data: [{ id: 'SUP', name: 'Supplier' }] };
     if (path.includes('/articles?')) return { data: [target, proposal] };
     assert.match(path, /\/article-confirmation$/);
     assert.equal(options.method, 'POST');
-    assert.deepEqual(JSON.parse(options.body), { confirmed: true, articleIndex: 'LOCAL-99', optionArticleName: 'Supplier grade' });
-    return { data: target };
+    const { confirmed } = JSON.parse(options.body);
+    assert.deepEqual(JSON.parse(options.body), { confirmed, articleIndex: 'LOCAL-99', optionArticleName: 'Supplier grade' });
+    return { data: confirmed ? target : null };
   });
   await view.flush();
   assert.equal(view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled).props.value, target);
-  await view.find(node => node.type === 'Button' && node.props.children.includes('Hiermit committe ich den Artikel')).props.onClick();
+  const checkbox = () => view.find(node => node.type === 'FormControlLabel' && node.props.label === 'Hiermit committe ich den Artikel').props.control.props;
+  assert.equal(checkbox().checked, false);
+  assert.equal(view.calls.some(call => call.path.endsWith('/article-confirmation')), false);
+  await checkbox().onChange(null, true);
   await view.flush();
   assert.throws(() => view.find(node => node.type === 'Autocomplete'), /Expected element not found/);
-  assert.doesNotMatch(view.text(), /Hiermit committe|Artikel suchen/);
+  assert.equal(checkbox().checked, true);
+  assert.doesNotMatch(view.text(), /Artikel suchen/);
   view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen')).props.onClick();
   await view.flush();
   assert.deepEqual(view.find(node => node.props?.supplierEditable).props.article, target);
+  await checkbox().onChange(null, false);
+  await view.flush();
+  assert.equal(checkbox().checked, false);
+  assert.equal(view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled).props.value, target);
 
   const detail = await mount('../src/pages/OptionDetail.jsx', {
     offer: { id: 1, positions: [] }, position: { ...position, matchedArticle: target },

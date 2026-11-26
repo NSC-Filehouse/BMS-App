@@ -1,7 +1,6 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Button, IconButton, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Checkbox, FormControlLabel, IconButton, TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import CheckIcon from '@mui/icons-material/Check';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { optionArticleBlocked } from '../utils/optionDisplay.js';
@@ -27,6 +26,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const [selectedArticle, setSelectedArticle] = React.useState(null);
   const matchedArticle = position.matchedArticle;
   const article = matchedArticle ?? selectedArticle;
+  const confirmationIndex = position.articleConfirmationIndex;
   const [confirmingArticle, setConfirmingArticle] = React.useState(false);
   const [articleConfirmationError, setArticleConfirmationError] = React.useState('');
   const confirmationRequest = React.useRef(null);
@@ -106,7 +106,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     setArticleConfirmationError('');
   }
 
-  async function confirmArticle() {
+  async function changeArticleConfirmation(confirmed) {
     if (confirmationRequest.current) return;
     const controller = new AbortController();
     confirmationRequest.current = controller;
@@ -116,9 +116,9 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
       const { data } = await apiRequest(`${base}/article-confirmation`, {
         method: 'POST',
         signal: controller.signal,
-        body: JSON.stringify({ confirmed: true, articleIndex: article.articleIndex, optionArticleName: position.articleName }),
+        body: JSON.stringify({ confirmed, articleIndex: confirmed ? article.articleIndex : confirmationIndex, optionArticleName: position.articleName }),
       });
-      if (!controller.signal.aborted) onArticleConfirmed(data);
+      if (!controller.signal.aborted) onArticleConfirmed(data, confirmed ? data.articleIndex : null);
     } catch (cause) {
       if (!controller.signal.aborted) setArticleConfirmationError(cause.message);
     } finally {
@@ -223,11 +223,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
           aria-expanded={searchOpen} aria-controls={searchOpen ? searchId : undefined}
           onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></IconButton>
       </Box>
-      {article && <Button size="small" endIcon={<CheckIcon />} sx={{ justifySelf: 'start', textTransform: 'none' }}
-        disabled={confirmingArticle || position.expired || optionArticleBlocked(article)} onClick={confirmArticle}>
-        {t('option_commit_article')}
-      </Button>}
-      {articleConfirmationError && <Alert severity="error">{articleConfirmationError}</Alert>}
       {!searchOpen && articles?.length === 0 && <Typography variant="body2" color="text.secondary">{t('purchase_no_article')}</Typography>}
       {searchOpen && <Box id={searchId}>
         {searchError && <Alert severity="error">{searchError}</Alert>}
@@ -252,6 +247,15 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
           renderInput={params => <TextField {...params} autoFocus size="small"
             label={t('purchase_article_search')} placeholder={t('purchase_article_query')} />} />
       </Box>}
+    </Box>}
+    {enabled && (confirmationIndex || (!matchedArticle && article)) && <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+      <FormControlLabel labelPlacement="start" label={t('option_commit_article')}
+        sx={{ m: 0, pl: 1, justifySelf: 'start', bgcolor: '#e4effa', borderRadius: 1,
+          '& .MuiFormControlLabel-label': { color: '#000', typography: 'body2' } }}
+        control={<Checkbox size="small" checked={Boolean(confirmationIndex)}
+          disabled={confirmingArticle || position.expired || (!confirmationIndex && optionArticleBlocked(article))}
+          onChange={(_event, checked) => changeArticleConfirmation(checked)} />} />
+      {articleConfirmationError && <Alert severity="error">{articleConfirmationError}</Alert>}
     </Box>}
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
       <Button variant="contained" disabled sx={{ '&.Mui-disabled': { bgcolor: 'grey.100', color: 'text.secondary' } }}>{t('option_counter_option')}</Button>

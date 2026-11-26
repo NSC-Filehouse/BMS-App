@@ -9,7 +9,7 @@ const { optionPriceNeedsReview } = require('../options/price-plausibility');
 const { createPackagingDisplay } = require('../options/packaging-display');
 const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const {resolveSupplierContact}=require('../options/supplier-contacts');
-const { confirmArticleNameRule } = require('../options/article-name-rules');
+const { confirmArticleNameRule, revokeArticleNameConfirmation } = require('../options/article-name-rules');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
@@ -48,14 +48,14 @@ router.get(`${base}/articles`, ...guard, asyncHandler(async (req,res) => {
   sendEnvelope(res,{data,meta});
 }));
 router.post(`${base}/article-confirmation`, ...guard, asyncHandler(async (req, res) => {
-  const { articleIndex, optionArticleName } = req.body || {};
-  if (req.body?.confirmed !== true || typeof articleIndex !== 'string' || !articleIndex.trim() || articleIndex.length > 50
+  const { articleIndex, optionArticleName, confirmed } = req.body || {};
+  if (typeof confirmed !== 'boolean' || typeof articleIndex !== 'string' || !articleIndex.trim() || articleIndex.length > 50
     || typeof optionArticleName !== 'string' || !optionArticleName.trim() || optionArticleName.length > 500) {
     throw createHttpError(422, 'Bitte die Artikelzuordnung ausdrücklich bestätigen.', { code: 'OPTION_ARTICLE_CONFIRMATION_REQUIRED' });
   }
   const actor = String(req.userIdentity?.shortCode || req.userEmail || 'APP').slice(0, 100);
-  const data = await confirmArticleNameRule(req.database, req.params.id, req.params.positionId,
-    { articleIndex, optionArticleName }, req.userIdentity, actor);
+  const changeRule = confirmed ? confirmArticleNameRule : revokeArticleNameConfirmation;
+  const data = await changeRule(req.database, req.params.id, req.params.positionId, { articleIndex, optionArticleName }, req.userIdentity, actor);
   sendEnvelope(res, { data });
 }));
 router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {

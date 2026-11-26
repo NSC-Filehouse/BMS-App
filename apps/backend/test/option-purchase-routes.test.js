@@ -53,6 +53,10 @@ const deps={
       articleConfirmations.push({ mandant: database.firmaId, id, positionId, selection, actor });
       return { articleIndex: selection.articleIndex, articleName: 'Target article' };
     },
+    revokeArticleNameConfirmation: async (database, id, positionId, selection) => {
+      articleConfirmations.push({ revoked: true, mandant: database.firmaId, id, positionId, selection });
+      return null;
+    },
   },
 };
 new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/routes/option-purchases.routes.js'),'utf8'))(name=>{assert.ok(name in deps,name);return deps[name];},mod);
@@ -85,6 +89,10 @@ test('only an explicit article confirmation saves the active mandant ID used for
   assert.deepEqual(articleConfirmations, [{ mandant: 10, id: '1', positionId: '10', selection, actor: 'NSC' }]);
   const purchase = await select({ ...choice(), articleIndex: data.articleIndex });
   assert.equal((await purchase.json()).data.position.articleIndex, 'TARGET');
+  const revoke = await confirm({ ...selection, confirmed: false });
+  assert.equal(revoke.status, 200);
+  assert.equal((await revoke.json()).data, null);
+  assert.deepEqual(articleConfirmations.at(-1), { revoked: true, mandant: 10, id: '1', positionId: '10', selection });
 });
 
 test('purchase preview translates offered packaging alternatives while retaining the source',async()=>{

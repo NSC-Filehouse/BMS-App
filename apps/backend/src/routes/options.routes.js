@@ -8,6 +8,7 @@ const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { resolveOfferArticle, loadOptionOfferCustomers } = require('../options/customer-offers');
+const { loadArticleNameConfirmation } = require('../options/article-name-rules');
 const { buildOfferSubmissions } = require('../options/offer-submission');
 const { offerMailSendEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
 const { loadOptionPosition, supplierCandidates } = require('../options/purchase-source');
@@ -41,9 +42,12 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const offer=offers[0],positionId=positiveId(req.params.positionId);
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- const [detail, article] = await Promise.all([enrichOptionContactPhone(req.database,offer),resolveOfferArticle(req.database,offer,position)]);
+ const [detail, article, confirmationIndex] = await Promise.all([
+   enrichOptionContactPhone(req.database,offer), resolveOfferArticle(req.database,offer,position), loadArticleNameConfirmation(req.database,position),
+ ]);
  const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = position;
  publicPosition.matchedArticle = article ? { articleIndex: String(article.articleIndex), articleName: article.articleName } : null;
+ if (confirmationIndex) publicPosition.articleConfirmationIndex = confirmationIndex;
  sendEnvelope(res,{data:{...detail,positions:[publicPosition],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
 async function loadOfferPositionForCustomers(req) {

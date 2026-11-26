@@ -151,10 +151,10 @@ export default function OptionDetail() {
       enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
       onCustomerOrder={features.linkedProcurement ? startOrder : undefined} checkingStock={checkingStock}
-      onArticleConfirmed={matchedArticle => {
+      onArticleConfirmed={(matchedArticle, articleConfirmationIndex) => {
         if (getMandant() !== mandant) return;
         setOffer(current => current?.id === offer.id ? {
-          ...current, positions: current.positions.map(row => row.id === position.id ? { ...row, matchedArticle } : row),
+          ...current, positions: current.positions.map(row => row.id === position.id ? { ...row, matchedArticle, articleConfirmationIndex } : row),
         } : current);
       }}
       renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails

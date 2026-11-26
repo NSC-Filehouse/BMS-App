@@ -52,6 +52,8 @@ async function resolveOfferArticle(database, offer, position) {
   if (!article || checkMfi(position, article).blocked || checkMaterial(position, article).blocked) return null;
 
   const candidate = await storedCandidate(database, position, index);
+  // The last reader snapshot may still reference a name rule that was removed.
+  if (candidate?.reason === 'Artikelname manuell bestätigt') return null;
   if (!candidate || candidate.conflicts?.length || (candidate.articleHash && candidate.articleHash !== articleHash(article))) return null;
   return article;
 }

@@ -222,6 +222,11 @@ test('a stale automatic match, an altered catalog article or an incompatible ass
   assert.equal(calls.some(call => call.sql.includes('dbo.tblRechnung')), false);
 });
 
+test('a removed name rule cannot match through an earlier OptionReader snapshot', async () => {
+  stored = { ...stored, reason: 'Artikelname manuell bestätigt' };
+  assert.equal(await resolveOfferArticle(sameDatabase, owner, position), null);
+});
+
 test('existing option offers are visible without any article match', async () => {
   accepted[0].OfferStatus = 5;
   const result = await loadOptionOfferCustomers(sameDatabase, {}, owner, { ...position, singleCandidateIndex: null });
