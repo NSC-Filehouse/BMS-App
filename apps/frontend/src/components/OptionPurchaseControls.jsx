@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, IconButton, TextField, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import CheckIcon from '@mui/icons-material/Check';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { optionArticleBlocked } from '../utils/optionDisplay.js';
@@ -8,7 +9,7 @@ import OptionPurchaseDialog from './OptionPurchaseDialog.jsx';
 
 const listboxProps = { sx: { '& .MuiAutocomplete-option': { overflowWrap: 'anywhere' } } };
 
-export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails, onCustomerOrder, checkingStock }) {
+export default function OptionPurchaseControls({ enabled, offer, position, preferredSupplierId, returnTo, renderDetails, onCustomerOrder, checkingStock, onArticleConfirmed }) {
   const { t } = useI18n();
   const base = `/options/${offer.id}/positions/${position.id}/purchase`;
   const [suppliers, setSuppliers] = React.useState(null);
@@ -23,7 +24,13 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const [supplierResults, setSupplierResults] = React.useState(null);
   const [supplierSearchError, setSupplierSearchError] = React.useState('');
   const [articles, setArticles] = React.useState(null);
-  const [article, setArticle] = React.useState(null);
+  const [selectedArticle, setSelectedArticle] = React.useState(null);
+  const matchedArticle = position.matchedArticle;
+  const article = matchedArticle ?? selectedArticle;
+  const [articleChosen, setArticleChosen] = React.useState(false);
+  const [confirmingArticle, setConfirmingArticle] = React.useState(false);
+  const [articleConfirmationError, setArticleConfirmationError] = React.useState('');
+  const confirmationRequest = React.useRef(null);
   const [articleError, setArticleError] = React.useState('');
   const [searchOpen, setSearchOpen] = React.useState(false);
   const searchId = React.useId();
@@ -32,6 +39,8 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const [searchError, setSearchError] = React.useState('');
   const query = articleQuery.trim();
   const [purchaseOpen, setPurchaseOpen] = React.useState(false);
+
+  React.useEffect(() => () => confirmationRequest.current?.abort(), []);
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -64,20 +73,20 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   }, [base, enabled, supplierQuery, supplierSearchOpen]);
 
   React.useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || matchedArticle) return;
     const controller = new AbortController();
     apiRequest(`${base}/articles?q=`, { signal: controller.signal }).then(({ data = [] }) => {
       if (controller.signal.aborted) return;
       setArticles(rows => rows ? [...data, ...rows.filter(row => !data.some(match => match.articleIndex === row.articleIndex))] : data);
-      setArticle(current => current ?? data.find(row => !optionArticleBlocked(row)) ?? null);
+      setSelectedArticle(current => current ?? data.find(row => !optionArticleBlocked(row)) ?? null);
     }).catch(cause => {
       if (!controller.signal.aborted) setArticleError(cause.message);
     });
     return () => controller.abort();
-  }, [base, enabled]);
+  }, [base, enabled, matchedArticle]);
 
   React.useEffect(() => {
-    if (!enabled || !searchOpen || query.length < 2) return;
+    if (!enabled || matchedArticle || !searchOpen || query.length < 2) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       apiRequest(`${base}/articles?${new URLSearchParams({ q: query })}`, { signal: controller.signal })
@@ -91,7 +100,34 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
       clearTimeout(timer);
       controller.abort();
     };
-  }, [base, enabled, query, searchOpen]);
+  }, [base, enabled, matchedArticle, query, searchOpen]);
+
+  function chooseArticle(value) {
+    setSelectedArticle(value);
+    setArticleChosen(Boolean(value));
+    setArticleConfirmationError('');
+  }
+
+  async function confirmArticle() {
+    if (confirmationRequest.current) return;
+    const controller = new AbortController();
+    confirmationRequest.current = controller;
+    setConfirmingArticle(true);
+    setArticleConfirmationError('');
+    try {
+      const { data } = await apiRequest(`${base}/article-confirmation`, {
+        method: 'POST',
+        signal: controller.signal,
+        body: JSON.stringify({ confirmed: true, articleIndex: article.articleIndex, optionArticleName: position.articleName }),
+      });
+      if (!controller.signal.aborted) onArticleConfirmed(data);
+    } catch (cause) {
+      if (!controller.signal.aborted) setArticleConfirmationError(cause.message);
+    } finally {
+      confirmationRequest.current = null;
+      if (!controller.signal.aborted) setConfirmingArticle(false);
+    }
+  }
 
   function closeSearch() {
     setSearchOpen(false);
@@ -172,27 +208,32 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
     </Box> : null;
 
   const purchaseControls = <>
-    {enabled && <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
+    {enabled && !matchedArticle && <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
       {articleError && <Alert severity="error">{articleError}</Alert>}
       {(position.assignmentMfiCheck?.blocked || position.assignmentMaterialCheck?.blocked) && !article &&
         <Alert severity="warning">{t('purchase_review_article_assignment')}</Alert>}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-        <Autocomplete {...articleOptions} options={articles ?? []} value={article} sx={{ flex: 1, minWidth: 0 }}
+        <Autocomplete {...articleOptions} options={articles ?? []} value={article} sx={{ flex: 1, minWidth: 0 }} disabled={confirmingArticle}
           ListboxProps={listboxProps}
           loading={!articles && !articleError}
           noOptionsText={t('purchase_no_article_search')}
-          onChange={(_event, value) => setArticle(value)}
+          onChange={(_event, value) => chooseArticle(value)}
           renderInput={params => <TextField {...params}
             inputProps={{ ...params.inputProps, title: article?.articleName }}
             label={t('product_article')} placeholder={t('purchase_select_article')} required size="small" />} />
-        <IconButton aria-label={t('purchase_search_article')} title={t('purchase_search_article')}
+        <IconButton aria-label={t('purchase_search_article')} title={t('purchase_search_article')} disabled={confirmingArticle}
           aria-expanded={searchOpen} aria-controls={searchOpen ? searchId : undefined}
           onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></IconButton>
       </Box>
+      {articleChosen && article && <Button size="small" endIcon={<CheckIcon />} sx={{ justifySelf: 'start', textTransform: 'none' }}
+        disabled={confirmingArticle || position.expired || optionArticleBlocked(article)} onClick={confirmArticle}>
+        {t('option_commit_article')}
+      </Button>}
+      {articleConfirmationError && <Alert severity="error">{articleConfirmationError}</Alert>}
       {!searchOpen && articles?.length === 0 && <Typography variant="body2" color="text.secondary">{t('purchase_no_article')}</Typography>}
       {searchOpen && <Box id={searchId}>
         {searchError && <Alert severity="error">{searchError}</Alert>}
-        <Autocomplete {...articleOptions} options={searchResults ?? []} value={null} inputValue={articleQuery}
+        <Autocomplete {...articleOptions} options={searchResults ?? []} value={null} inputValue={articleQuery} disabled={confirmingArticle}
           openOnFocus filterOptions={rows => rows} ListboxProps={listboxProps}
           loading={query.length >= 2 && !searchResults && !searchError}
           noOptionsText={t(query.length < 2 ? 'purchase_article_search_minimum' : 'purchase_article_search_empty')}
@@ -207,7 +248,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
           onChange={(_event, value) => {
             if (!value) return;
             setArticles(rows => rows?.some(row => row.articleIndex === value.articleIndex) ? rows : [...(rows ?? []), value]);
-            setArticle(value);
+            chooseArticle(value);
             closeSearch();
           }}
           renderInput={params => <TextField {...params} autoFocus size="small"
@@ -219,7 +260,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
       {onCustomerOrder && <Button variant="outlined" sx={{ display: 'none' }} onClick={() => onCustomerOrder(article, supplier)}
         disabled={checkingStock || !article || optionArticleBlocked(article)}>{t('procurement_customer_order')}</Button>}
       <Button variant="contained" onClick={() => setPurchaseOpen(true)}
-        disabled={!enabled || !supplier || !article || optionArticleBlocked(article) || position.remainingKg === 0}>{t('purchase_order_action')}</Button>
+        disabled={!enabled || confirmingArticle || !supplier || !article || optionArticleBlocked(article) || position.remainingKg === 0}>{t('purchase_order_action')}</Button>
     </Box>
     {enabled && purchaseOpen && <OptionPurchaseDialog offer={offer} position={position} preferredSupplierId={preferredSupplierId}
       supplier={supplier} supplierEditable={Boolean(automaticSupplier)} article={article} returnTo={returnTo} onClose={() => setPurchaseOpen(false)} />}

@@ -15,6 +15,8 @@ Alle Tabellen liegen im Schema `BMSApp` und werden durch
 | `DailyVlMailOutbox` | Versandaufträge für die tägliche Verfügbarkeitsliste. |
 | `DeliveryAddressOperation` | Vorgangsstatus und Wiederholungssicherung der Lieferadressanlage. |
 | `OrderMailOutbox` | Versandaufträge und Wiederholungen für Auftragsmails. |
+| `OptionArticleNameRule` | Bestätigte mandantenübergreifende Zuordnung eines Optionsnamens zum BMS-Artikelnamen. |
+| `OptionArticleNameRuleMandant` | Bestätigter Artikelindex je Namensregel und Mandant. |
 | `OptionOfferDocument` | Angebotsdaten und BMS-Originalausgabe für den persönlichen Versand. |
 | `OptionOfferMailOutbox` | Versandstatus je Mandant, Optionsposition und Kunde für persönliche Optionsangebote. |
 | `OrderReminderState` | Erinnerungszustände für noch nicht übergebene App-Aufträge. |

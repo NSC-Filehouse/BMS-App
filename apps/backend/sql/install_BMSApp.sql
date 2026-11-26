@@ -1237,6 +1237,31 @@ BEGIN TRY
  END;
 
  -- Fail before adding constraints/indexes to incompatible existing tables.
+ IF OBJECT_ID(N'BMSApp.OptionArticleNameRule', N'U') IS NULL
+   CREATE TABLE [BMSApp].[OptionArticleNameRule] (
+     IsTest BIT NOT NULL,
+     OptionNameKey CHAR(64) COLLATE Latin1_General_100_BIN2 NOT NULL,
+     OptionName NVARCHAR(500) COLLATE Latin1_General_CI_AS NOT NULL,
+     ArticleName NVARCHAR(500) COLLATE Latin1_General_CI_AS NOT NULL,
+     CreatedBy NVARCHAR(100) COLLATE Latin1_General_CI_AS NOT NULL,
+     CreatedAt DATETIME2(7) NOT NULL CONSTRAINT DF_OptionArticleNameRule_CreatedAt DEFAULT SYSUTCDATETIME(),
+     CONSTRAINT PK_OptionArticleNameRule PRIMARY KEY (IsTest, OptionNameKey)
+   );
+
+ IF OBJECT_ID(N'BMSApp.OptionArticleNameRuleMandant', N'U') IS NULL
+   CREATE TABLE [BMSApp].[OptionArticleNameRuleMandant] (
+     IsTest BIT NOT NULL,
+     OptionNameKey CHAR(64) COLLATE Latin1_General_100_BIN2 NOT NULL,
+     MandantId INT NOT NULL,
+     ArticleIndex NVARCHAR(50) COLLATE Latin1_General_CI_AS NOT NULL,
+     SourcePositionId INT NOT NULL,
+     ConfirmedBy NVARCHAR(100) COLLATE Latin1_General_CI_AS NOT NULL,
+     ConfirmedAt DATETIME2(7) NOT NULL CONSTRAINT DF_OptionArticleNameRuleMandant_ConfirmedAt DEFAULT SYSUTCDATETIME(),
+     CONSTRAINT PK_OptionArticleNameRuleMandant PRIMARY KEY (IsTest, OptionNameKey, MandantId),
+     CONSTRAINT FK_OptionArticleNameRuleMandant_Rule FOREIGN KEY (IsTest, OptionNameKey)
+       REFERENCES BMSApp.OptionArticleNameRule (IsTest, OptionNameKey)
+   );
+
  DECLARE @expectedColumns NVARCHAR(MAX)=N'[
 {"table":"CreditLimitMailOutbox","column":"clm_ID","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
 {"table":"CreditLimitMailOutbox","column":"clm_CompanyID","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
@@ -2037,7 +2062,20 @@ BEGIN TRY
 {"table":"tbl_Temp_Best_Position","column":"tbp_order_position_id","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Angebot","column":"tag_offer_pdf","type":"varbinary","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"OptionOfferMailOutbox","column":"StockPositionKey","type":"nvarchar","length":128,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
-{"table":"OptionOfferMailOutbox","column":"TempOfferId","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null}
+{"table":"OptionOfferMailOutbox","column":"TempOfferId","type":"int","length":4,"precision":10,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRule","column":"IsTest","type":"bit","length":1,"precision":1,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRule","column":"OptionNameKey","type":"char","length":64,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_100_BIN2"},
+{"table":"OptionArticleNameRule","column":"OptionName","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRule","column":"ArticleName","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRule","column":"CreatedBy","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRule","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRuleMandant","column":"IsTest","type":"bit","length":1,"precision":1,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRuleMandant","column":"OptionNameKey","type":"char","length":64,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_100_BIN2"},
+{"table":"OptionArticleNameRuleMandant","column":"MandantId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRuleMandant","column":"ArticleIndex","type":"nvarchar","length":100,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRuleMandant","column":"SourcePositionId","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
+{"table":"OptionArticleNameRuleMandant","column":"ConfirmedBy","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRuleMandant","column":"ConfirmedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null}
 ]';
  IF EXISTS (
   SELECT e.tableName,e.columnName,e.typeName,e.maxLength,e.precisionValue,e.scaleValue,e.nullableValue,e.identityValue,e.computedValue,e.collationName
@@ -2338,7 +2376,7 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[OptionOfferMailOutbox] WITH CHECK ADD CONSTRAINT [FK_OptionOfferMailOutbox_TempOffer] FOREIGN KEY ([TempOfferId]) REFERENCES [BMSApp].[tbl_Temp_Angebot] ([tag_id]);');
 
  COMMIT TRANSACTION;
- SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,45 AS expectedTables,N'installed' AS result;
+ SELECT DB_NAME() AS databaseName,N'BMSApp' AS schemaName,47 AS expectedTables,N'installed' AS result;
 END TRY
 BEGIN CATCH
  IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;

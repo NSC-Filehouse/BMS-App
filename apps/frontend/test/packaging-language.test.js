@@ -454,6 +454,42 @@ test('the first selectable article is preselected and a resolved supplier appear
   }
 });
 
+test('explicit article confirmation hides the selector and keeps the confirmed article for ordering', async () => {
+  const position = { id: 10, articleName: 'Supplier grade', matchedArticle: null };
+  const proposal = { articleIndex: 'OTHER', articleName: 'Other proposal' };
+  const target = { articleIndex: 'LOCAL-99', articleName: 'Local article' };
+  const renderDetails = props => ({ type: 'Details', props: { children: [props.purchaseControls] } });
+  const view = await mount('../src/components/OptionPurchaseControls.jsx', {
+    enabled: true, offer: { id: 1 }, position, renderDetails,
+    onArticleConfirmed: matchedArticle => view.updateProps({ position: { ...position, matchedArticle } }),
+  }, async (path, _lang, options) => {
+    if (path.includes('/suppliers?')) return { data: [{ id: 'SUP', name: 'Supplier' }] };
+    if (path.includes('/articles?')) return { data: [proposal, target] };
+    assert.match(path, /\/article-confirmation$/);
+    assert.equal(options.method, 'POST');
+    assert.deepEqual(JSON.parse(options.body), { confirmed: true, articleIndex: 'LOCAL-99', optionArticleName: 'Supplier grade' });
+    return { data: target };
+  });
+  await view.flush();
+  assert.doesNotMatch(view.text(), /Hiermit committe/);
+  view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled).props.onChange(null, target);
+  await view.flush();
+  await view.find(node => node.type === 'Button' && node.props.children.includes('Hiermit committe ich den Artikel')).props.onClick();
+  await view.flush();
+  assert.throws(() => view.find(node => node.type === 'Autocomplete'), /Expected element not found/);
+  assert.doesNotMatch(view.text(), /Hiermit committe|Artikel suchen/);
+  view.find(node => node.type === 'Button' && node.props.children.includes('Bestellen')).props.onClick();
+  await view.flush();
+  assert.deepEqual(view.find(node => node.props?.supplierEditable).props.article, target);
+
+  const detail = await mount('../src/pages/OptionDetail.jsx', {
+    offer: { id: 1, positions: [] }, position: { ...position, matchedArticle: target },
+  }, async () => assert.fail('The resolved article is already present in the detail response'), {}, 'OptionPositionDetails');
+  await detail.flush();
+  assert.ok(detail.find(node => node.props?.titleAccess === 'Passender Artikel gefunden'));
+  assert.ok(detail.find(node => node.props?.variant === 'caption' && node.props.children.includes('Local article')));
+});
+
 test('option details reload customers for the selected article and discard late results', async () => {
   const endpoint = '/options/1/positions/10/offer-customers';
   const responseFor = index => ({ data: { article: { index }, matched: false, customers: [{ id: index }] } });

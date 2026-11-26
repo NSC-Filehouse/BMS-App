@@ -7,7 +7,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require(
 const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
 const { loadOptionSource, sourceFileType } = require('../options/source');
-const { loadOptionOfferCustomers } = require('../options/customer-offers');
+const { resolveOfferArticle, loadOptionOfferCustomers } = require('../options/customer-offers');
 const { buildOfferSubmissions } = require('../options/offer-submission');
 const { offerMailSendEnabled, queueOptionOffers } = require('../db/option-offer-outbox');
 const { loadOptionPosition, supplierCandidates } = require('../options/purchase-source');
@@ -37,12 +37,14 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
 router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
- const offers=await loadOffers(null,{optionId:positiveId(req.params.id),identity:req.userIdentity});
+ const offers=await loadOffers(null,{optionId:positiveId(req.params.id),includeMatchInputs:true,identity:req.userIdentity});
  const offer=offers[0],positionId=positiveId(req.params.positionId);
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- const detail=await enrichOptionContactPhone(req.database,offer);
- sendEnvelope(res,{data:{...detail,positions:[position],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
+ const [detail, article] = await Promise.all([enrichOptionContactPhone(req.database,offer),resolveOfferArticle(req.database,offer,position)]);
+ const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = position;
+ publicPosition.matchedArticle = article ? { articleIndex: String(article.articleIndex), articleName: article.articleName } : null;
+ sendEnvelope(res,{data:{...detail,positions:[publicPosition],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
 async function loadOfferPositionForCustomers(req) {
  const optionId = positiveId(req.params.id);

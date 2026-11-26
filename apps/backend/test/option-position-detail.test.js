@@ -27,8 +27,9 @@ test('both detail endpoints enrich the offer phone in the active tenant',async()
  assert.deepEqual(contactLookups,[3,3]);
 });
 test('a position detail contains only that position and rejects a wrong parent',async()=>{
+ Object.assign(offers[0].positions[0],{sourceMeasurementsJson:'{}',singleCandidateIndex:'INTERNAL'});
  const response=await fetch(`${base}/options/621/positions/1895`);assert.equal(response.status,200);
- assert.deepEqual((await response.json()).data.positions,[{id:1895}]);
+ assert.deepEqual((await response.json()).data.positions,[{id:1895,matchedArticle:null}]);
  assert.equal((await fetch(`${base}/options/622/positions/1895`)).status,404);
 });
 test('deletion requires confirmation and affects only the selected position',async()=>{

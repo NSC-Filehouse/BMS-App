@@ -5,7 +5,7 @@ const path=require('node:path');
 const express=require('express');
 const {createHttpError}=require('../src/utils');
 let identity={shortCode:'NSC',personNumber:227,userId:'n.schroeder',active:true};
-let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false;
+let price=987,expired=false,remainingKg=10000,quantityRequests=[],truckOffer=false, articleConfirmations=[];
 const contactRows=[{id:41,name:'Herr Source Contact',firstName:'Source',lastName:'Contact',email:'source@borealisgroup.com',ranking:2},{id:42,name:'Other Contact',email:'other@borealisgroup.com',ranking:1}];
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',opp_Verpackungsart_id:78,packagingSource:'original',packagingEvidence:'25kg bags',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const incoterms = {
@@ -48,6 +48,12 @@ const deps={
   '../options/packaging-display':require('../src/options/packaging-display'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
   '../options/supplier-contacts':require('../src/options/supplier-contacts'),
+  '../options/article-name-rules': {
+    confirmArticleNameRule: async (database, id, positionId, selection, _identity, actor) => {
+      articleConfirmations.push({ mandant: database.firmaId, id, positionId, selection, actor });
+      return { articleIndex: selection.articleIndex, articleName: 'Target article' };
+    },
+  },
 };
 new Function('require','module',fs.readFileSync(path.join(__dirname,'../src/routes/option-purchases.routes.js'),'utf8'))(name=>{assert.ok(name in deps,name);return deps[name];},mod);
 const app=express();app.use(express.json());app.use(mod.exports);app.use((e,req,res,next)=>res.status(e.status||500).json({error:{message:e.message,code:e.details?.code}}));
@@ -63,6 +69,22 @@ test('one supplier or article never replaces explicit selection',async()=>{
   assert.equal((await fetch(`${base}/articles`)).status,200);
   assert.equal((await select({...choice(),supplierConfirmed:false})).status,422);
   assert.equal((await select({...choice(),articleConfirmed:false})).status,422);
+});
+
+test('only an explicit article confirmation saves the active mandant ID used for purchasing', async () => {
+  articleConfirmations = [];
+  const confirm = body => fetch(`${base}/article-confirmation`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const selection = { articleIndex: 'TARGET', optionArticleName: 'Supplier grade' };
+  assert.equal((await confirm(selection)).status, 422);
+  assert.deepEqual(articleConfirmations, []);
+  const response = await confirm({ ...selection, confirmed: true });
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.deepEqual(articleConfirmations, [{ mandant: 10, id: '1', positionId: '10', selection, actor: 'NSC' }]);
+  const purchase = await select({ ...choice(), articleIndex: data.articleIndex });
+  assert.equal((await purchase.json()).data.position.articleIndex, 'TARGET');
 });
 
 test('purchase preview translates offered packaging alternatives while retaining the source',async()=>{

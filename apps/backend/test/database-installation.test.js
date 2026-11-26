@@ -6,7 +6,7 @@ const sql=fs.readFileSync(path.join(sqlDirectory,'install_BMSApp.sql'),'utf8');
 const tables=[...sql.matchAll(/CREATE TABLE \[BMSApp\]\.\[([^\]]+)\]/g)].map(m=>m[1]);
 const requiredTables=[
  'ContactCreationOperation','CreditLimitMailOutbox','CreditLimitRequestState','CustomerCreation','CustomerCreationMandant','CustomerCreationRollback','CustomerCreationSnapshot','DailyVlMailOutbox','DeliveryAddressOperation',
- 'OptionOfferDocument','OptionOfferMailOutbox','OrderMailOutbox','OrderReminderState','PurchaseOrderCsMailOutbox','PurchaseOrderMailOutbox','PushMandantSetting','PushSubscription',
+ 'OptionArticleNameRule','OptionArticleNameRuleMandant','OptionOfferDocument','OptionOfferMailOutbox','OrderMailOutbox','OrderReminderState','PurchaseOrderCsMailOutbox','PurchaseOrderMailOutbox','PushMandantSetting','PushSubscription',
  'tbl_Temp_Aktivitaet','tbl_Temp_Ang_Position','tbl_Temp_Angebot','tbl_Temp_Auf_Position','tbl_Temp_Auftrag','tbl_Temp_Auftrag_Anhang','tbl_Temp_Best_Position','tbl_Temp_Bestellung','tbl_Temp_Bestellung_Anhang',
  'tblOptionen','tblOptionenAbgleich','tblOptionenAbgleichAuftrag','tblOptionenArtikelKandidaten','tblOptionenArtikelMapping','tblOptionenLieferantenKonto','tblOptionenLieferantenRegel',
  'tblOptionenMailEreignis','tblOptionenMailVerarbeitung','tblOptionenPositionen','tblOptionenReaderLaufzeit','tblOptionenReaderSteuerung',
@@ -53,8 +53,8 @@ test('incompatible installations abort atomically instead of altering or deletin
  const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
  assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,800);
- assert.equal(new Set(manifest.map(c=>c.table)).size,45);
+ assert.equal(manifest.length,813);
+ assert.equal(new Set(manifest.map(c=>c.table)).size,47);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
  const purchaseOrderColumns = manifest.filter(c => ['tb_supplier_contact_id','tb_warehouse_id','tb_address_customer_id',
   'tb_address_id','tb_reference','tb_currency','tbp_place_at_supplier','tbp_pickup_reference','tbp_availability_note'].includes(c.column));

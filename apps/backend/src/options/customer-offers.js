@@ -6,6 +6,7 @@ const { createHttpError } = require('../utils');
 const { articleByIndex, storedCandidate } = require('./matching-service');
 const { exactNameCandidates, validateOptionArticle } = require('./purchase-source');
 const { articleHash } = require('./matching-contract');
+const { resolveArticleNameRule } = require('./article-name-rules');
 const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
 const { hasExecutiveAccess } = require('../executive-access');
@@ -25,7 +26,16 @@ function canSeeGroupBuyers(identity) {
 }
 
 async function resolveOfferArticle(database, offer, position) {
-  if (Number(database.firmaId) !== Number(offer.sourceMandantId)) {
+  const local = Number(database.firmaId) === Number(offer.sourceMandantId);
+  const assignedIndex = local ? text(position.articleIndex) : '';
+  if (assignedIndex) {
+    const article = await articleByIndex(database, assignedIndex);
+    if (article && !checkMfi(position, article).blocked && !checkMaterial(position, article).blocked) return article;
+  }
+  const rule = await resolveArticleNameRule(database, offer.sourceMandantId, position);
+  if (rule) return rule.article;
+
+  if (!local) {
     const names = [position.articleName, position.internalArticleName].map(text).filter(Boolean);
     if (!names.length) return null;
     const candidates = (await exactNameCandidates(database, position, names, { all: true }))
@@ -33,14 +43,12 @@ async function resolveOfferArticle(database, offer, position) {
     return candidates.length === 1 ? candidates[0] : null;
   }
 
-  const assignedIndex = text(position.articleIndex);
-  if (!assignedIndex && position.matchProcessingStatus !== 'ready') return null;
-  const index = assignedIndex || text(position.suggestedArticleIndex) || text(position.singleCandidateIndex);
+  if (assignedIndex || position.matchProcessingStatus !== 'ready') return null;
+  const index = text(position.suggestedArticleIndex) || text(position.singleCandidateIndex);
   if (!index) return null;
 
   const article = await articleByIndex(database, index);
   if (!article || checkMfi(position, article).blocked || checkMaterial(position, article).blocked) return null;
-  if (assignedIndex) return article;
 
   const candidate = await storedCandidate(database, position, index);
   if (!candidate || candidate.conflicts?.length || (candidate.articleHash && candidate.articleHash !== articleHash(article))) return null;
@@ -222,4 +230,4 @@ async function loadOfferContacts(database, customerIds) {
   }));
 }
 
-module.exports = { loadOptionOfferCustomers, loadCustomerOfferAudience, loadOfferContacts };
+module.exports = { resolveOfferArticle, loadOptionOfferCustomers, loadCustomerOfferAudience, loadOfferContacts };

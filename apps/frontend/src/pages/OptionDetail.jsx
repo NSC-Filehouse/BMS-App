@@ -151,6 +151,12 @@ export default function OptionDetail() {
       enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
       onCustomerOrder={features.linkedProcurement ? startOrder : undefined} checkingStock={checkingStock}
+      onArticleConfirmed={matchedArticle => {
+        if (getMandant() !== mandant) return;
+        setOffer(current => current?.id === offer.id ? {
+          ...current, positions: current.positions.map(row => row.id === position.id ? { ...row, matchedArticle } : row),
+        } : current);
+      }}
       renderDetails={({ supplierField, purchaseControls, article, articlePending }) => <OptionPositionDetails
         offer={offer} position={position} supplierField={supplierField} purchaseControls={purchaseControls}
         audienceEndpoint={`${endpoint}/offer-customers`} audienceKey={audienceKey}
@@ -168,7 +174,8 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
   const [audienceResult, setAudienceResult] = React.useState(null);
   const [audienceRevision, setAudienceRevision] = React.useState(0);
   const audience = audienceResult?.key === requestKey ? audienceResult : null;
-  const matchedArticle = audience?.matched === false ? null : audience?.article;
+  const matchedArticleName = position.matchedArticle?.articleName
+    ?? (position.matchedArticle === undefined && audience?.matched !== false ? audience?.article?.name : null);
   const recordedOffers = requestKey && audienceResult?.scope === audienceKey
     ? (audienceResult.customers ?? []).filter(customer => customer.offerStatus || customer.queued || customer.sent || customer.failed)
     : [];
@@ -220,13 +227,13 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
         {position.expired && <Alert severity="warning" sx={{ mb: 1 }}>{lang === 'en' ? 'Expired – for information only' : 'Abgelaufen – nur zur Information'}</Alert>}
         <Typography variant="h6" sx={{ overflowWrap: 'anywhere' }}>
           {optionPositionTitle(position)}
-          {matchedArticle && <CheckIcon
+          {matchedArticleName && <CheckIcon
             color="success" fontSize="small" titleAccess={t('option_article_found')}
             sx={{ verticalAlign: 'text-bottom', ml: 0.75 }}
           />}
         </Typography>
-        {(matchedArticle?.name || position.singleCandidateName) && <Typography variant="caption" color="text.secondary">
-          {matchedArticle?.name || position.singleCandidateName}
+        {matchedArticleName && <Typography variant="caption" color="text.secondary">
+          {matchedArticleName}
         </Typography>}
         <Typography variant="h6" sx={{ my: 1 }}>{optionPrice(position, t)}</Typography>
         <InfoRow label={t('option_delivery_term')} value={position.deliveryTermDisplay ?? optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />

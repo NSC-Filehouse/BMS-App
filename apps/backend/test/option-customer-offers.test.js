@@ -12,6 +12,7 @@ let accepted;
 let customerScope;
 let mandants;
 let foreignInvoices;
+let nameRule;
 
 require.cache[require.resolve('../src/db/access')] = { exports: {
   withSqlTransaction: async () => assert.fail('Customer offer lookup must be read-only'),
@@ -25,12 +26,14 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
     if (sql.includes('j.[value]=k.kd_KdNR')) return invoices.filter(row => JSON.parse(params[0]).includes(row.id));
     if (sql.includes('OPENJSON')) return candidates;
+    if (sql.includes("ESCAPE N'~'")) return candidates;
     assert.match(sql, /a\.agA_Artikelindex=\?/);
     return target?.articleIndex === params[0] ? [target] : [];
   },
   runSQLQuerySqlServer: async (database, sql, params) => {
     calls.push({ database, sql, params });
     if (sql.includes('[md_FirmaName]')) return mandants;
+    if (sql.includes('OptionArticleNameRule')) return nameRule ? [nameRule] : [];
     if (sql.includes('tblOptionenArtikelKandidaten')) {
       return stored ? [{ oak_DatenJson: JSON.stringify(stored), oak_oab_id: 25 }] : [];
     }
@@ -42,7 +45,7 @@ require.cache[require.resolve('../src/db/customer-access')] = { exports: {
   getCustomerAccessScope: async () => customerScope,
   buildCustomerScopeFilter: () => ({ whereSql: '', params: [] }),
 } };
-const { loadOptionOfferCustomers, loadCustomerOfferAudience } = require('../src/options/customer-offers');
+const { resolveOfferArticle, loadOptionOfferCustomers, loadCustomerOfferAudience } = require('../src/options/customer-offers');
 const { buildOfferSubmissions, buildCustomerOfferSubmissions } = require('../src/options/offer-submission');
 
 const owner = { sourceMandantId: 3 };
@@ -55,6 +58,7 @@ const position = {
 
 test.beforeEach(() => {
   calls.length = 0;
+  nameRule = null;
   target = catalogArticle;
   candidates = [];
   stored = { ...catalogArticle, articleHash: articleHash(catalogArticle) };
@@ -63,6 +67,21 @@ test.beforeEach(() => {
   accepted = [{ CustomerNumber: 'a', Status: 'sent' }, { CustomerNumber: 'b', Status: 'submitted' }];
   mandants = [];
   foreignInvoices = [];
+});
+
+test('a global name rule resolves the catalog ID of the active mandant even before its snapshot', async () => {
+  nameRule = { articleName: catalogArticle.articleName, articleIndex: null };
+  candidates = [{ ...catalogArticle, articleIndex: 'OTHER-MANDANT' }];
+  const unresolved = { ...position, matchProcessingStatus: 'pending' };
+  assert.equal((await resolveOfferArticle(foreignDatabase, owner, unresolved)).articleIndex, 'OTHER-MANDANT');
+  assert.equal(calls.find(call => call.sql.includes('OptionArticleNameRule')).params[0], 8);
+  candidates.push({ ...catalogArticle, articleIndex: 'DUPLICATE' });
+  assert.equal(await resolveOfferArticle(foreignDatabase, owner, unresolved), null);
+
+  nameRule.articleIndex = 'LOCAL-OVERRIDE';
+  target = { ...catalogArticle, articleIndex: 'LOCAL-OVERRIDE', articleName: 'PP Copo NT MFI 10 - 14,9 natur Sondername' };
+  assert.equal((await resolveOfferArticle(foreignDatabase, owner, unresolved)).articleIndex, 'LOCAL-OVERRIDE');
+  assert.equal(await resolveOfferArticle(foreignDatabase, owner, { ...unresolved, mfi: 50 }), null);
 });
 
 test('group buyers require a selected identity, merge matching buyers and keep foreign accounts read-only', async () => {
