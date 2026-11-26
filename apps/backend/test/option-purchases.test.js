@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { offeredQuantityKg,quantityAvailability,fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('../src/options/purchase-quantity');
 
-function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={}}={}) {
+function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={},articleCandidates=[]}={}) {
   const calls=[];
   const source={opp_id:10,opp_op_id:1,opp_MengeVonKg:10000,opp_MengeBisKg:25000,sourceMandantId:3,
     supplierName:'Borealis',supplierKey:'borealis',...sourceOverride};
@@ -18,7 +18,9 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
     '../config':{sql:{database:'central'}},'../db/access':{withSqlTransaction:async(_db,work)=>work({query}),runSQLQuerySqlServer:async(_db,sql,params)=>{
       calls.push({sql,params});return [{supplierId:'LF0124',supplierKey:'borealis'}];
     },runSQLQueryAccess:async(_db,sql,params)=>{
-      calls.push({sql,params});return [
+      calls.push({sql,params});
+      if(sql.includes('dbo.tblArt_Artikel'))return articleCandidates;
+      return [
         {id:'LF0124',name:'Borealis Polymers N.V.',city:'Mechelen',hasPurchases:1},
         {id:'99938',name:'Borealis Polyolefine GmbH',city:'Linz',hasPurchases:1},
         {id:'OTHER',name:'Unrelated GmbH',city:'Berlin'},
@@ -27,7 +29,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
     '../executive-access':require('../src/executive-access'),
     './read':{berlinDate:()=> '2026-11-12'},'./supplier-identity':require('../src/options/supplier-identity'),
     './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg',...articleOverride}:null,
-      candidatesFor:async(database,position,options)=>({data:[],database,position,options})},
+      candidatesFor:async(database,position,options)=>({data:articleCandidates,total:articleCandidates.length,database,position,options})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),
     './material-facts':require('../src/options/material-facts'),
     './purchase-quantity':require('../src/options/purchase-quantity'),
@@ -176,6 +178,42 @@ test('all purchase proposals are loaded for both the source and a different acti
   await f.purchaseCandidates({firmaId:10},f.source,{all:true});
   const target=f.calls.find(call=>call.sql.includes('OPENJSON'));
   assert.ok(target);assert.doesNotMatch(target.sql,/OFFSET|FETCH NEXT/);assert.equal(target.params.length,2);
+});
+
+test('automatic purchase proposals omit NT articles for an option without an NT label in either mandant', async () => {
+  const articleCandidates = [
+    { articleIndex: 'REGULAR', articleName: 'LDPE Plant 02' },
+    { articleIndex: 'NT', articleName: 'LDPE NT' },
+    { articleIndex: 'OFFGRADE', articleName: 'LDPE Offgrade' },
+    { articleIndex: 'NTP', articleName: 'LDPE Near-to-Prime' },
+    { articleIndex: 'OFFSPEC', articleName: 'LDPE MFI 7', groupName: 'Off Spec' },
+    { articleIndex: 'OFFLABEL', articleName: 'LDPE MFI 9', description: 'Off-label' },
+  ];
+  const f = fixture({ articleCandidates, sourceOverride: { articleName: 'LDPE Plant 02' } });
+  for (const firmaId of [3, 10]) {
+    const result = await f.purchaseCandidates({ firmaId }, f.source, { all: true });
+    assert.deepEqual(result.data.map(article => article.articleIndex), ['REGULAR']);
+    assert.equal(result.total, 1);
+  }
+  const manual = await f.purchaseCandidates({ firmaId: 3 }, f.source, { q: 'LDPE', all: true });
+  assert.deepEqual(manual.data, articleCandidates);
+});
+
+test('NT labels in the product name, material properties or recorded quality keep NT proposals', async () => {
+  const articleCandidates = [{ articleIndex: 'NT', articleName: 'LDPE NT' }];
+  const f = fixture({ articleCandidates });
+  const labels = [
+    { articleName: 'LDPE near–to–prime' },
+    { quality: 'Off spec' },
+    { qualityNorm: 'NT' },
+    { propertiesText: 'Off-label' },
+    { articleName: 'LDPE Off Grade' },
+  ];
+  for (const label of labels) {
+    const result = await f.purchaseCandidates({ firmaId: 3 }, { ...f.source, ...label }, { all: true });
+    assert.deepEqual(result.data, articleCandidates);
+    assert.equal(result.total, 1);
+  }
 });
 
 test('supplier selection prefers the proven account and rejects unrelated suppliers',async()=>{

@@ -8,7 +8,7 @@ const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity'
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
-const {checkMaterial}=require('./material-facts');
+const { checkMaterial, deriveMaterialFacts, quality } = require('./material-facts');
 const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
 const {loadPurchasePackagingOptions,purchaseTruckLoadKg}=require('../db/purchase-order-values');
 
@@ -160,19 +160,35 @@ async function exactNameCandidates(database, position, names, { page = 1, pageSi
   })).filter(article => !article.materialCheck.blocked);
 }
 
+function hasNtLabel(value) {
+  const label = text(value).replace(/[\u2010-\u2015]/g, '-');
+  return quality(label, 'NT') === 'NT' || /\boff[\s-]*label\b/i.test(label);
+}
+
 async function purchaseCandidates(database, position, { q = '', page = 1, pageSize = 30,all=false } = {}) {
   const input = { ...position,id: Number(position.opp_id), snapshotId: position.opp_AktuellerAbgleichID,
     candidateCount:position.candidateCount,matchVersion:position.matchVersion,matchCalculatedAt:position.matchCalculatedAt,
     mfi: position.mfi,mfiTo: position.mfiTo,mfiTestCondition: position.mfiTestCondition,sourceMeasurementsJson: position.sourceMeasurementsJson };
-  if (q || Number(database.firmaId) === Number(position.sourceMandantId)) {
-    return candidatesFor(database, input, { q, page, pageSize,all });
+  const options = { q, page, pageSize, all };
+  if (q) return candidatesFor(database, input, options);
+
+  const sourceMandant = Number(database.firmaId) === Number(position.sourceMandantId);
+  let result;
+  if (sourceMandant) {
+    result = await candidatesFor(database, input, options);
+  } else {
+    // Only propose article IDs from the active mandant's catalog.
+    const names = [position.opp_Artikelname_Lieferant, position.opp_Artikelname].map(text).filter(Boolean);
+    const data = await exactNameCandidates(database, input, names, options);
+    result = { data, total: data.length };
   }
-  // Source-mandant article indexes are never accepted as target-mandant proposals.
-  // Exact product identities in the active catalog are safe suggestions; further
-  // target articles are available through the existing manual search.
-  const names = [position.opp_Artikelname_Lieferant, position.opp_Artikelname].map(text).filter(Boolean);
-  const data = await exactNameCandidates(database, input, names, { page, pageSize, all });
-  return { data,total:data.length };
+
+  const optionLabels = [position.articleName, position.quality, position.qualityNorm, position.propertiesText];
+  if (optionLabels.some(hasNtLabel) || deriveMaterialFacts(input).quality.value === 'NT') return result;
+
+  const data = result.data.filter(article =>
+    ![article.articleName, article.supplierArticleName, article.description, article.groupName].some(hasNtLabel));
+  return { ...result, data, total: all || !sourceMandant ? data.length : result.total };
 }
 
 async function validateOptionArticle(database, position, line) {
