@@ -9,20 +9,21 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
-import { Link } from 'react-router-dom';
-import { apiRequest } from '../api/client.js';
+import { Link, useNavigate } from 'react-router-dom';
+import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
 import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
 import { isValidSalePrice } from '../utils/salePrice.js';
 import { defaultOfferQuantityKg } from '../utils/offers.js';
+import { hasRecordedOffer } from '../utils/optionDisplay.js';
 import CompactAddressOption from './CompactAddressOption.jsx';
 import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import SaleMarginHint from './SaleMarginHint.jsx';
 
 const emptyDraft = Object.freeze({});
+const OptionPdfDialog = React.lazy(() => import('./OptionPdfDialog.jsx'));
 
 function selectedContact(draft) {
   const contacts = draft.contacts || [];
@@ -249,24 +250,51 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   </Dialog>;
 }
 
-export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, historyOnly = false, returnTo, sendEnabled, onQueued }) {
-  const { t } = useI18n();
+export default function OptionOfferCustomers({ customers, salesFilter, position, loadingLocation, loading, error, endpoint, query = '', stock = false, readOnly = false, returnTo, sendEnabled, onQueued }) {
+  const { t, lang } = useI18n();
+  const navigate = useNavigate();
   const titleId = React.useId();
   const [selection, setSelection] = React.useState([]);
   const [salesCode, setSalesCode] = React.useState('');
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [offerPdf, setOfferPdf] = React.useState(null);
+  const [offerOpenError, setOfferOpenError] = React.useState('');
+  const pdfRequest = React.useRef(null);
+  React.useEffect(() => () => pdfRequest.current?.abort(), []);
+
+  async function openOffer(event, offerId) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    pdfRequest.current?.abort();
+    const controller = new AbortController();
+    pdfRequest.current = controller;
+    setOfferOpenError('');
+    try {
+      const blob = await apiRequestBlob(`/temp-offers/${offerId}/pdf`, { signal: controller.signal });
+      if (!controller.signal.aborted) setOfferPdf({ id: offerId, blob });
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      if (cause.code === 'OFFER_PDF_NOT_READY') navigate(`/temp-offers/${offerId}`, { state: { returnTo } });
+      else setOfferOpenError(cause.message || t('loading_error'));
+    } finally {
+      if (pdfRequest.current === controller) pdfRequest.current = null;
+    }
+  }
+
   const customerSalesCodes = customer => customer.assignments?.map(assignment => assignment.salesCode) ?? [customer.salesCode];
   const salesCodes = [...new Set(customers.flatMap(customerSalesCodes).filter(Boolean))].sort();
   const filter = salesFilter?.enabled && salesCodes.includes(salesCode) ? salesCode : '';
-  const visible = filter ? customers.filter(customer => customerSalesCodes(customer).includes(filter)) : customers;
-  const canSelect = customer => !customer.readOnly && !customer.sent && !customer.queued && !customer.offerStatus;
+  const visible = customers.filter(customer => (!loading && !error || !stock && hasRecordedOffer(customer))
+    && (!filter || customerSalesCodes(customer).includes(filter) || !stock && hasRecordedOffer(customer)));
+  if (!stock) visible.sort((a, b) => a.name.localeCompare(b.name, lang));
+  const canSelect = customer => !loading && !error && !customer.readOnly && !customer.sent && !customer.queued && !customer.offerStatus;
   const chosen = visible.filter(customer => canSelect(customer) && selection.includes(customer.id));
 
   return <Card component="section" aria-labelledby={titleId} sx={{ mb: 1.5 }}>
     <CardContent sx={{ '&:last-child': { pb: 1.5 } }}>
       <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-        <Typography id={titleId} variant="subtitle1" component="h2">{t(historyOnly ? 'option_offer_history' : 'option_offer_customers')}</Typography>
-        {!readOnly && !historyOnly && <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
+        <Typography id={titleId} variant="subtitle1" component="h2">{t('option_offer_customers')}</Typography>
+        {!readOnly && <IconButton color="primary" aria-label={t('option_offer_open')} disabled={!chosen.length} onClick={() => setDialogOpen(true)}>
           <MailOutlineIcon sx={{ fontSize: 26 }} />
         </IconButton>}
       </Stack>
@@ -280,17 +308,23 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
       </TextField>}
       {loading && <CircularProgress size={20} />}
       {error && <Alert severity="error">{error}</Alert>}
-      {!loading && !error && (visible.length ? (
+      {offerOpenError && <Alert severity="error">{offerOpenError}</Alert>}
+      {visible.length ? (
         <Stack component="ul" divider={<Divider component="li" />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {visible.map(customer => {
-            const offerLink = historyOnly && customer.offerId ? {
-              component: Link, to: `/temp-offers/${customer.offerId}`, state: { returnTo },
-            } : null;
+            const status = customer.offerStatus === 4 ? { Icon: CheckIcon, color: 'success', label: 'temp_offer_status_converted' }
+              : customer.offerStatus === 5 ? { Icon: CloseIcon, color: 'error', label: 'temp_offer_status_not_interested' }
+              : customer.sent || customer.queued ? { Icon: HourglassEmptyIcon, color: 'primary', label: customer.queued ? 'option_offer_queued' : 'option_offer_sent' }
+              : null;
+            const statusIcon = status && <Tooltip title={t(status.label)}>
+              <Box sx={{ width: 40, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                <status.Icon color={status.color} fontSize="small" titleAccess={t(status.label)} />
+              </Box>
+            </Tooltip>;
             return <Box component="li" key={customer.id}>
-              <Box {...offerLink} sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40,
-                ...(offerLink && { color: 'inherit', textDecoration: 'none', '&:hover': { bgcolor: 'action.hover' } }),
-              }}>
-                {!readOnly && !historyOnly && <Checkbox size="small" disabled={!canSelect(customer)}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
+                {!stock && statusIcon}
+                {!readOnly && (stock || !status) && <Checkbox size="small" disabled={!canSelect(customer)}
                   checked={canSelect(customer) && selection.includes(customer.id)}
                   inputProps={{ 'aria-label': t('option_offer_select_customer', { name: customer.name }) }}
                   onChange={event => {
@@ -300,32 +334,29 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                 />}
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
+                  {!stock && customer.offerId && <Typography component={Link} variant="caption" color="primary.main" display="block"
+                    to={`/temp-offers/${customer.offerId}`} state={{ returnTo }} onClick={event => openOffer(event, customer.offerId)}>
+                    {customer.offerId}
+                  </Typography>}
                   {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
                     {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
                   </Typography> : null}
+                  {!stock && !status && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
                 </Box>
-                {customer.offerStatus === 4 && <Tooltip title={t('temp_offer_status_converted')}>
-                  <CheckIcon color="success" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_converted')} />
-                </Tooltip>}
-                {customer.offerStatus === 5 && <Tooltip title={t('temp_offer_status_not_interested')}>
-                  <CloseIcon color="error" fontSize="small" sx={{ width: 40 }} titleAccess={t('temp_offer_status_not_interested')} />
-                </Tooltip>}
-                {!customer.offerStatus && (customer.sent || customer.queued) && <Tooltip title={customer.queued ? t('option_offer_queued') : ''}>
-                  <Box sx={{ width: 40, display: 'flex', justifyContent: 'center' }}>
-                    <HourglassEmptyIcon color="primary" fontSize="small" titleAccess={customer.queued ? t('option_offer_queued') : undefined} />
-                  </Box>
-                </Tooltip>}
-                {!customer.offerStatus && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
-                {offerLink && <ChevronRightIcon fontSize="small" color="action" />}
+                {stock && statusIcon}
+                {stock && !status && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
               </Box>
             </Box>;
           })}
         </Stack>
-      ) : <Typography variant="body2" color="text.secondary">{t('option_offer_no_customers')}</Typography>)}
+      ) : !loading && !error && <Typography variant="body2" color="text.secondary">{t('option_offer_no_customers')}</Typography>}
       {!readOnly && dialogOpen && chosen.length > 0 && <OptionOfferDialog
         customers={chosen} position={position} loadingLocation={loadingLocation} endpoint={endpoint} query={query} stock={stock}
         sendEnabled={sendEnabled} onQueued={onQueued} onClose={() => setDialogOpen(false)}
       />}
+      {offerPdf && <React.Suspense fallback={<CircularProgress size={20} />}>
+        <OptionPdfDialog key={offerPdf.id} offer={offerPdf} pdfBlob={offerPdf.blob} onClose={() => setOfferPdf(null)} />
+      </React.Suspense>}
     </CardContent>
   </Card>;
 }

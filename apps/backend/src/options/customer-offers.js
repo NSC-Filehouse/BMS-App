@@ -16,6 +16,7 @@ const { pilotFeaturesForIdentity } = require('../pilot-features');
 
 const text = value => String(value ?? '').trim();
 const nameKey = value => text(value).normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const hasRecordedOffer = customer => customer.offerId || customer.offerStatus || customer.sent || customer.queued || customer.failed;
 
 function canSeeGroupBuyers(identity) {
   if (hasExecutiveAccess(identity)) return true;
@@ -55,7 +56,8 @@ async function resolveOfferArticle(database, offer, position) {
   return article;
 }
 
-async function loadArticleCustomers(database, userIdentity, articleIndex, group, customerIds) {
+async function loadArticleCustomers(database, userIdentity, articleIndex, group, customerIds, includeCompanyIdentity = false) {
+  const withIdentity = group || includeCompanyIdentity;
   const scope = group ? { isFullAccess: true, userGroup: 'BMS_APP_FULL_ACCESS' } : await getCustomerAccessScope(userIdentity, database);
   const { whereSql, params } = buildCustomerScopeFilter(scope, 'k');
   const canFilterSales = ['BMS_APP_FULL_ACCESS', 'AD01', 'GR04'].includes(scope.userGroup);
@@ -64,7 +66,7 @@ async function loadArticleCustomers(database, userIdentity, articleIndex, group,
   if (!canFilterSales && !salesCode) return { customers: [], salesFilter };
   const [rows, mandants] = await Promise.all([runSQLQueryAccess(database, `
     SELECT k.kd_KdNR AS id, k.kd_Name1 AS name, k.kd_Name2 AS name2, k.kd_Aussendienst AS salesCode
-      ${group ? ', k.kd_UST_Ident_Nr AS vat' : ''}
+      ${withIdentity ? ', k.kd_UST_Ident_Nr AS vat' : ''}
     FROM dbo.tblKunden k
     WHERE COALESCE(k.kd_InterCompany, 0) = 0 AND ${customerIds ? `EXISTS (
       SELECT 1 FROM OPENJSON(?) j WHERE j.[value]=k.kd_KdNR
@@ -89,9 +91,9 @@ async function loadArticleCustomers(database, userIdentity, articleIndex, group,
     const fullNameKey = nameKey(name);
     if (legalNames.has(nameKey(row.name)) || legalNames.has(fullNameKey) || displayNames.has(fullNameKey)) continue;
     const id = text(row.id);
-    const vat = group ? nameKey(row.vat) : '';
+    const vat = withIdentity ? nameKey(row.vat) : '';
     customers.push({ id, name: name || id, salesCode: text(row.salesCode).toUpperCase(),
-      ...(group && { vat: /^[A-Z]{2}(?=[A-Z0-9]*\d)[A-Z0-9]{6,15}$/.test(vat) ? vat : '',
+      ...(withIdentity && { vat: /^[A-Z]{2}(?=[A-Z0-9]*\d)[A-Z0-9]{6,15}$/.test(vat) ? vat : '',
         companyName: fullNameKey, companyName1: nameKey(row.name) }) });
   }
   return { customers, salesFilter };
@@ -136,10 +138,10 @@ async function loadOptionOfferCustomers(database, userIdentity, offer, position,
   return { ...audience, matched: Boolean(matchedArticle && text(matchedArticle.articleIndex) === audience.article?.index) };
 }
 
-async function loadGroupBuyers(database, userIdentity, article, localCustomers) {
+async function loadGroupBuyers(database, userIdentity, article, localCustomers, recorded) {
   const mandants = await loadOwnMandantNames();
   const localId = Number(database.firmaId);
-  const allowed = new Map(localCustomers.map(customer => [customer.id, customer]));
+  const allowed = new Map(localCustomers.map(customer => [customer.id.toUpperCase(), customer]));
   const localMandant = mandants.find(row => Number(row.firmaId) === localId);
   const sources = [localMandant ?? database, ...mandants.filter(row => Number(row.firmaId) !== localId && text(row.shortName))];
   const batches = await Promise.all(sources.map(async mandant => {
@@ -149,10 +151,11 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers) 
     const target = local ? database : { firmaId: Number(mandant.firmaId), databaseName: `BMS.${shortName}` };
     const { customers } = await loadArticleCustomers(target, userIdentity, article.index,
       { mandants, articleName: local ? '' : article.name });
-    return customers.map(({ vat, companyName, companyName1, ...customer }) => ({ vat, companyName,
+    const entries = local ? [...customers, ...recorded] : customers;
+    return entries.map(({ vat, companyName, companyName1, ...customer }) => ({ vat, companyName,
       accountKey: companyName1 ? JSON.stringify([customer.id.toUpperCase(), companyName1]) : '',
-      customer: { ...customer, ...(local && allowed.get(customer.id)),
-        id: local ? customer.id : `${shortName}:${customer.id}`, readOnly: !local || !allowed.has(customer.id) },
+      customer: { ...customer, ...(local && allowed.get(customer.id.toUpperCase())),
+        id: local ? customer.id : `${shortName}:${customer.id}`, readOnly: !local || !allowed.has(customer.id.toUpperCase()) },
       assignment: { salesCode: customer.salesCode, mandant: shortName },
     }));
   }));
@@ -166,7 +169,7 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers) 
     if (!group) {
       group = { vat, customer, assignments: new Map() };
       groups.push(group);
-    } else if (group.customer.readOnly && !customer.readOnly) {
+    } else if (!hasRecordedOffer(group.customer) && (hasRecordedOffer(customer) || group.customer.readOnly && !customer.readOnly)) {
       group.customer = customer;
     }
     if (vat) { group.vat = vat; byVat.set(vat, group); }
@@ -174,8 +177,15 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers) 
     if (accountKey && !accounts.includes(group)) byAccount.set(accountKey, [...accounts, group]);
     group.assignments.set(JSON.stringify(assignment), assignment);
   }
-  return groups.map(({ customer, assignments }) => ({ ...customer, assignments: [...assignments.values()] }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const combined = groups.map(({ customer, assignments }) => ({ ...customer, assignments: [...assignments.values()] }));
+  const displayed = new Set(combined.map(customer => customer.id.toUpperCase()));
+  // A company can have more than one local account with its own offer.
+  for (const { vat, companyName, companyName1, ...customer } of [...localCustomers.filter(hasRecordedOffer), ...recorded]) {
+    if (displayed.has(customer.id.toUpperCase())) continue;
+    displayed.add(customer.id.toUpperCase());
+    combined.push(customer);
+  }
+  return combined.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
 async function loadCustomerOfferAudience(database, userIdentity, article, sourceId, { group = false } = {}) {
@@ -201,14 +211,15 @@ async function loadCustomerOfferAudience(database, userIdentity, article, source
   const localCustomers = customers.map(withStatus);
   const known = new Set(customers.map(customer => customer.id.toUpperCase()));
   const missing = typeof sourceId === 'number' ? [...statuses.keys()].filter(id => !known.has(id)) : [];
-  const history = missing.length ? await loadArticleCustomers(database, userIdentity, '', null, missing) : null;
+  const groupBuyers = Boolean(matchedArticle && group && canSeeGroupBuyers(userIdentity));
+  const history = missing.length ? await loadArticleCustomers(database, userIdentity, '', null, missing, groupBuyers) : null;
   const recorded = (history?.customers || []).map(customer => ({ ...withStatus(customer), readOnly: true }));
   if (!matchedArticle) {
     return recorded.length ? { article: null, customers: recorded, salesFilter: history.salesFilter } : { article: null, customers: [] };
   }
-  if (group && canSeeGroupBuyers(userIdentity)) {
+  if (groupBuyers) {
     return { article: matchedArticle, salesFilter: { ...salesFilter, enabled: true },
-      customers: [...await loadGroupBuyers(database, userIdentity, matchedArticle, localCustomers), ...recorded] };
+      customers: await loadGroupBuyers(database, userIdentity, matchedArticle, localCustomers, recorded) };
   }
   return { article: matchedArticle, salesFilter, customers: [...localCustomers, ...recorded] };
 }

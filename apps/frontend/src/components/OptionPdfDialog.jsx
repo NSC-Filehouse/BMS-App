@@ -7,7 +7,7 @@ import {useBackDisclosure} from './DisclosureBack.jsx';
 
 // Render inside the App on every browser. Native iOS/Chrome PDF plugins are not
 // involved. Originals stay on the server for the later editing/attachment flow.
-export default function OptionPdfDialog({offer,onClose}) {
+export default function OptionPdfDialog({offer,pdfBlob,onClose}) {
  const small=useMediaQuery(useTheme().breakpoints.down('sm'));
  const [pdf,setPdf]=React.useState(null),[page,setPage]=React.useState(1),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(true);
  const [imageUrl,setImageUrl]=React.useState(''),[width,setWidth]=React.useState(300),[zoom,setZoom]=React.useState(1);
@@ -15,13 +15,13 @@ export default function OptionPdfDialog({offer,onClose}) {
  const usePreview=previewFor===offer.id;
  const sourceIsPreview=React.useRef(false);
  const viewportRef=React.useRef(null),canvasRef=React.useRef(null),xfaRef=React.useRef(null),bytesRef=React.useRef(null),libRef=React.useRef(null);
- const isPdf=offer.sourceFileMime==='application/pdf' || /\.pdf$/i.test(offer.sourceFileName || '');
+ const isPdf=Boolean(pdfBlob) || offer.sourceFileMime==='application/pdf' || /\.pdf$/i.test(offer.sourceFileName || '');
  useBackDisclosure(true,onClose);
  React.useEffect(()=>{
   let active=true,task=null,url='';
   setBusy(true);setError('');setPdf(null);setPage(1);bytesRef.current=null;
   void(async()=>{try{
-   const blob=await apiRequestBlob(`/options/${offer.id}/source/${isPdf && usePreview?'preview':'file'}`);
+   const blob=pdfBlob ?? await apiRequestBlob(`/options/${offer.id}/source/${isPdf && usePreview?'preview':'file'}`);
    if(!active)return;
    if(!isPdf){url=URL.createObjectURL(blob);setImageUrl(url);setBusy(false);return;}
    const lib=await import('pdfjs-dist/legacy/build/pdf.mjs');lib.GlobalWorkerOptions.workerSrc=workerUrl;libRef.current=lib;
@@ -34,11 +34,11 @@ export default function OptionPdfDialog({offer,onClose}) {
    sourceIsPreview.current=usePreview;
    setPdf(loaded);setBusy(false);
   }catch(e){if(active){
-   if(isPdf && !usePreview && e.status!==401 && e.status!==403 && e.code!=='AUTH_REQUIRED')setPreviewFor(offer.id);
+   if(!pdfBlob && isPdf && !usePreview && e.status!==401 && e.status!==403 && e.code!=='AUTH_REQUIRED')setPreviewFor(offer.id);
    else{setBusy(false);setError(e.message || 'PDF konnte nicht geöffnet werden.');}
   }}})();
   return()=>{active=false;if(url)URL.revokeObjectURL(url);if(task)void task.destroy().catch(()=>{});};
- },[offer.id,isPdf,usePreview]);
+ },[offer.id,isPdf,usePreview,pdfBlob]);
  React.useEffect(()=>{
   const target=viewportRef.current;if(!target)return;
   const measure=()=>setWidth(Math.max(220,target.clientWidth-16));measure();
@@ -69,12 +69,12 @@ export default function OptionPdfDialog({offer,onClose}) {
     await renderTask.promise;
    }
   }catch(e){if(!cancelled && e.name!=='RenderingCancelledException'){
-   if(!renderingPreview)setPreviewFor(offer.id);
+   if(!pdfBlob && !renderingPreview)setPreviewFor(offer.id);
    else setError(e.message || 'PDF-Seite konnte nicht angezeigt werden.');
   }}})();
   return()=>{cancelled=true;renderTask?.cancel();};
- },[pdf,page,width,zoom,offer.id]);
- function download(){const url=URL.createObjectURL(new Blob([bytesRef.current],{type:'application/pdf'}));const a=document.createElement('a');a.href=url;a.download=`option-${offer.id}.pdf`;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ },[pdf,page,width,zoom,offer.id,pdfBlob]);
+ function download(){const url=URL.createObjectURL(new Blob([bytesRef.current],{type:'application/pdf'}));const a=document.createElement('a');a.href=url;a.download=`${pdfBlob?'Angebot':'option'}-${offer.id}.pdf`;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),60000);}
  return <Dialog open onClose={onClose} fullScreen={small} fullWidth maxWidth="lg"><DialogTitle>{isPdf?'PDF':'Datei'}</DialogTitle>
   <DialogContent ref={viewportRef} sx={{p:1,minHeight:200,overflow:'auto',bgcolor:'#eee'}}>
    {busy && <Box sx={{p:3,textAlign:'center'}}><CircularProgress /></Box>}

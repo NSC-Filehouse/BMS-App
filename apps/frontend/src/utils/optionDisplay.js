@@ -100,6 +100,8 @@ export function optionPackagingLayout(offer,lang='de') {
 }
 
 export const optionArticleBlocked=article=>Boolean(article?.mfiCheck?.blocked || article?.materialCheck?.blocked);
+
+export const hasRecordedOffer = customer => Boolean(customer.offerId || customer.offerStatus || customer.queued || customer.sent || customer.failed);
 export const optionArticleUnverified=article=>Boolean(article && (!article.mfiCheck?.complete || article.materialCheck && !article.materialCheck.complete));
 
 export function optionPrice(position, t) {

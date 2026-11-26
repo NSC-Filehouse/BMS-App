@@ -35,6 +35,8 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
   };
   const changed = (a, b) => !a || !b || a.length !== b.length || a.some((value, index) => !Object.is(value, b[index]));
   const React = {
+    lazy: () => 'LazyPdfDialog',
+    Suspense: 'Suspense',
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState: state,
     useRef: initial => state(() => ({ current: initial }))[0],
@@ -65,7 +67,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../api/client.js': { apiRequest: (path, options) => {
       calls.push({ path, lang: env.lang });
       return request(path, env.lang, options);
-    } },
+    }, apiRequestBlob: (path, options) => request(path, env.lang, options) },
     '../utils/i18n.jsx': { useI18n: () => ({ lang: env.lang, t }) },
     '../utils/mandant.js': { getMandant: () => '10' },
     '../utils/customerSelection.js': { getSelectedCustomer: () => null },
@@ -525,33 +527,68 @@ test('option details reload customers for the selected article and discard late 
   assert.deepEqual(audience().customers, [{ id: 'C+2' }]);
 });
 
-test('option details show customer offers separately without a resolved article', async () => {
+test('option details use one list and retain offers while the selected article changes', async () => {
   const recorded = [{ id: 'A', offerStatus: 4 }, { id: 'B', offerStatus: 5 }, { id: 'C', sent: true }];
+  let loadNewArticle;
+  const newArticle = new Promise(resolve => { loadNewArticle = resolve; });
   const view = await mount('../src/pages/OptionDetail.jsx', {
     offer: { id: 1, positions: [] }, position: { id: 10 },
     audienceEndpoint: '/options/1/positions/10/offer-customers', audienceKey: 'position-10',
-  }, async path => ({ data: path.includes('articleIndex')
-    ? { article: { index: 'D' }, customers: [...recorded, { id: 'D' }] }
-    : { article: null, customers: recorded } }), {}, 'OptionPositionDetails');
-  const history = () => view.find(node => node.props?.historyOnly).props.customers;
+  }, async path => path.includes('articleIndex') ? newArticle : { data: { article: null, customers: recorded } }, {}, 'OptionPositionDetails');
+  const customers = () => view.find(node => Array.isArray(node.props?.customers)).props.customers;
   await view.flush();
-  assert.deepEqual(history(), recorded);
+  assert.deepEqual(customers(), recorded);
   view.updateProps({ articleIndex: 'D' });
   await view.flush();
-  assert.deepEqual(history(), recorded);
-  assert.deepEqual(view.find(node => node.props?.query === '?articleIndex=D').props.customers, [{ id: 'D' }]);
+  assert.deepEqual(customers(), recorded);
+  loadNewArticle({ data: { article: { index: 'D' }, customers: [...recorded, { id: 'D' }] } });
+  await view.flush();
+  assert.deepEqual(customers(), [...recorded, { id: 'D' }]);
 });
 
-test('recorded offers link to offer details and retain the return location only when exposed by the server', async () => {
+test('the offer ID opens details while PDF is pending and the same link opens the ready PDF', async () => {
   const returnTo = { pathname: '/options/1/positions/10' };
+  const pdf = new Blob(['%PDF'], { type: 'application/pdf' });
+  let pdfReady = false;
   const view = await mount('../src/components/OptionOfferCustomers.jsx', {
-    historyOnly: true, returnTo,
-    customers: [{ id: 'A', name: 'Open', offerId: 101, offerStatus: 4 }, { id: 'B', name: 'Restricted', offerStatus: 5 }],
-  }, async () => assert.fail('Unexpected request'));
+    returnTo,
+    customers: [{ id: 'A', name: 'Open', offerId: 101, queued: true }, { id: 'B', name: 'Restricted', offerStatus: 5 }],
+  }, async path => {
+    assert.equal(path, '/temp-offers/101/pdf');
+    if (!pdfReady) throw Object.assign(new Error('Waiting for PDF'), { code: 'OFFER_PDF_NOT_READY' });
+    return pdf;
+  });
   await view.flush();
   const link = view.find(node => node.props?.to === '/temp-offers/101');
   assert.deepEqual(link.props.state, { returnTo });
-  assert.doesNotMatch(JSON.stringify(link), /Restricted/);
+  assert.deepEqual(link.props.children, [101]);
+  assert.throws(() => view.find(node => node.type === 'Checkbox'), /Expected element not found/);
+  const click = () => link.props.onClick({ preventDefault() {} });
+  await click();
+  assert.deepEqual(view.navigations, [{ path: '/temp-offers/101', options: { state: { returnTo } } }]);
+  pdfReady = true;
+  await click();
+  await view.flush();
+  assert.equal(view.find(node => node.type === 'LazyPdfDialog').props.pdfBlob, pdf);
+  assert.equal(view.navigations.length, 1);
+});
+
+test('recorded offers sort with article buyers and remain visible under the sales filter', async () => {
+  const view = await mount('../src/components/OptionOfferCustomers.jsx', {
+    customers: [{ id: 'Z', name: 'Zeta', salesCode: 'ADM' }, { id: 'B', name: 'Beta', offerId: 11, offerStatus: 4, salesCode: 'TPR' },
+      { id: 'A', name: 'Alpha', salesCode: 'ADM' }], salesFilter: { enabled: true },
+  }, async () => assert.fail('Unexpected request'));
+  await view.flush();
+  const list = () => view.find(node => node.props?.component === 'ul').props.children.flat().map(row => row.props.key);
+  assert.deepEqual(list(), ['A', 'B', 'Z']);
+  view.field('Außendienst').props.onChange({ target: { value: 'ADM' } });
+  await view.flush();
+  assert.deepEqual(list(), ['A', 'B', 'Z']);
+  const beta = view.find(node => node.props?.component === 'li' && node.props.key === 'B');
+  const [status, checkbox, label] = beta.props.children[0].props.children;
+  assert.equal(status.props.title, 'In einen Auftrag übernommen');
+  assert.equal(checkbox, false);
+  assert.match(JSON.stringify(label), /Beta/);
 });
 
 test('the customer suggestions start with all sales representatives and still support filtering', async () => {

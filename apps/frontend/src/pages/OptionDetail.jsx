@@ -15,7 +15,7 @@ import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 import { getMandant } from '../utils/mandant.js';
 import { createPurchaseLineId } from '../utils/purchaseCart.js';
-import { optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
+import { hasRecordedOffer, optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
 function InfoRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null;
@@ -171,13 +171,14 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
   const location = useLocation();
   const query = articleIndex ? `?${new URLSearchParams({ articleIndex })}` : '';
   const requestKey = audienceKey ? JSON.stringify([audienceKey, query]) : '';
+  const offerScope = JSON.stringify([getMandant(), audienceEndpoint]);
   const [audienceResult, setAudienceResult] = React.useState(null);
   const [audienceRevision, setAudienceRevision] = React.useState(0);
   const audience = audienceResult?.key === requestKey ? audienceResult : null;
   const matchedArticleName = position.matchedArticle?.articleName
     ?? (position.matchedArticle === undefined && audience?.matched !== false ? audience?.article?.name : null);
-  const recordedOffers = requestKey && audienceResult?.scope === audienceKey
-    ? (audienceResult.customers ?? []).filter(customer => customer.offerStatus || customer.queued || customer.sent || customer.failed)
+  const recordedOffers = requestKey && audienceResult?.scope === offerScope
+    ? (audienceResult.customers ?? []).filter(hasRecordedOffer)
     : [];
 
   React.useEffect(() => {
@@ -185,13 +186,16 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
     const controller = new AbortController();
     apiRequest(`${audienceEndpoint}${query}`, { signal: controller.signal })
       .then(response => {
-        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, scope: audienceKey, ...response.data });
+        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, scope: offerScope, ...response.data });
       })
       .catch(cause => {
-        if (!controller.signal.aborted) setAudienceResult({ key: requestKey, error: cause.message || t('loading_error') });
+        if (!controller.signal.aborted) setAudienceResult(previous => ({ key: requestKey, scope: offerScope,
+          customers: previous?.scope === offerScope ? (previous.customers ?? []).filter(hasRecordedOffer) : [],
+          error: cause.message || t('loading_error'),
+        }));
       });
     return () => controller.abort();
-  }, [requestKey, audienceKey, audienceEndpoint, query, audienceRevision, t]);
+  }, [requestKey, offerScope, audienceEndpoint, query, audienceRevision, t]);
 
   React.useEffect(() => {
     if (!audience?.customers?.some(customer => customer.queued)) return undefined;
@@ -247,15 +251,14 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
         {purchaseControls}
       </Box>
     </CardContent></Card>
-    {requestKey && (audience?.article || !audience || audience.error) && (
+    {requestKey && (audience?.article || !audience || audience.error || recordedOffers.length > 0) && (
       <OptionOfferCustomers key={JSON.stringify([requestKey, audience?.article?.index])}
-        customers={(audience?.customers ?? []).filter(customer => !customer.offerStatus && !customer.queued && !customer.sent
-          && !(customer.failed && customer.readOnly))} salesFilter={audience?.salesFilter}
+        customers={audience?.customers ?? recordedOffers} salesFilter={audience?.salesFilter}
+        readOnly={!audience?.article} returnTo={createReturnTo(location)}
         position={position} loadingLocation={offer.loadingLocation}
         loading={!audience} error={audience?.error} endpoint={audienceEndpoint} query={query}
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}
       />
     )}
-    {recordedOffers.length > 0 && <OptionOfferCustomers historyOnly customers={recordedOffers} returnTo={createReturnTo(location)} />}
   </>;
 }

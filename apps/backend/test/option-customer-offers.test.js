@@ -13,6 +13,7 @@ let customerScope;
 let mandants;
 let foreignInvoices;
 let nameRule;
+let recordedAccounts;
 
 require.cache[require.resolve('../src/db/access')] = { exports: {
   withSqlTransaction: async () => assert.fail('Customer offer lookup must be read-only'),
@@ -24,7 +25,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
     }
     if (sql.includes('dbo.tblKun_Ansprech')) return [{ customerId: 'B', id: 71, name: 'Musterkontakt', email: 'b@example.invalid', language: 'de' }];
     if (sql.includes('dbo.tblLieferbedingungen')) return [{ id: 29, text: 'FCA / Frei Frachtführer' }];
-    if (sql.includes('j.[value]=k.kd_KdNR')) return invoices.filter(row => JSON.parse(params[0]).includes(row.id));
+    if (sql.includes('j.[value]=k.kd_KdNR')) return [...invoices, ...recordedAccounts].filter(row => JSON.parse(params[0]).includes(row.id));
     if (sql.includes('OPENJSON')) return candidates;
     if (sql.includes("ESCAPE N'~'")) return candidates;
     assert.match(sql, /a\.agA_Artikelindex=\?/);
@@ -67,6 +68,7 @@ test.beforeEach(() => {
   accepted = [{ CustomerNumber: 'a', Status: 'sent' }, { CustomerNumber: 'b', Status: 'submitted' }];
   mandants = [];
   foreignInvoices = [];
+  recordedAccounts = [];
 });
 
 test('a global name rule resolves the catalog ID of the active mandant even before its snapshot', async () => {
@@ -117,6 +119,21 @@ test('a stock offer uses the exact stock key and the same customer scope without
   assert.deepEqual(buyerQuery.params, ['A-PP', 'ADM']);
   assert.match(statusQuery.sql, /m\.OptionPositionId IS NULL AND m\.StockPositionKey/);
   assert.deepEqual(statusQuery.params, [3, stockPositionKey]);
+});
+
+test('an existing option offer is merged with another mandant buyer after switching articles', async () => {
+  mandants = [{ firmaId: 3, shortName: 'FRU' }, { firmaId: 5, shortName: 'POL' }];
+  const identity = { active: true, personNumber: 130, shortCode: 'MFR', userId: 'm.frank' };
+  invoices = [{ id: 'Z', name: 'Zeta', salesCode: 'ADM' }];
+  recordedAccounts = [{ id: 'B', name: 'Beta', vat: 'DE123456789', salesCode: 'ADM' }];
+  foreignInvoices = [{ id: 'FOREIGN', name: 'Beta GmbH', vat: 'DE123456789', salesCode: 'TPR' }];
+  accepted = [{ CustomerNumber: 'B', Status: 'sent', OfferId: 101, OfferOwner: 'MFR' }];
+  const { customers } = await loadCustomerOfferAudience(sameDatabase, identity, catalogArticle, 41, { group: true });
+  assert.deepEqual(customers.map(customer => customer.id), ['B', 'Z']);
+  assert.equal(customers[0].offerId, 101);
+  assert.equal(customers[0].readOnly, true);
+  assert.deepEqual(customers[0].assignments, [{ salesCode: 'ADM', mandant: 'FRU' }, { salesCode: 'TPR', mandant: 'POL' }]);
+  assert.equal(Object.hasOwn(customers[0], 'vat'), false);
 });
 
 test('options and stock exclude intercompany customers and exact company names from the full mandant directory', async () => {
