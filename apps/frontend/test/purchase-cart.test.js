@@ -14,9 +14,9 @@ test('delivery allocations subtract all added amounts from the first and preserv
   const deliveries = [{ date: '2026-12-01', note: 'A' }, { amount: '300000', date: '2026-12-02', note: 'B' }, { amount: '200000', date: '2026-12-03', note: 'C' }];
   assert.deepEqual(purchaseDeliveryAmounts(sources, deliveries), [900000000, 300000000, 200000000]);
   assert.deepEqual(purchaseDeliveryAmounts(sources, deliveries.slice(0, 2)), [1100000000, 300000000]);
-  assert.equal(planPurchaseDeliveries(sources, [...deliveries, { amount: 999999 }], 23500), null);
+  assert.equal(planPurchaseDeliveries(sources, [...deliveries, { amount: 999999 }], 23375), null);
   let id = 0;
-  for (const capacity of [25000, 24750, 23500]) {
+  for (const capacity of [25000, 24750, 23375]) {
     const plan = planPurchaseDeliveries(sources, deliveries, capacity);
     const positions = allocatePurchaseDeliveries(plan, () => `new-${++id}`);
     assert.equal(new Set(positions.map(position => position.lineId)).size, positions.length);

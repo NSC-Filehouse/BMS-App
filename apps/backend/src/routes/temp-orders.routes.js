@@ -3,7 +3,7 @@ const multer = require('multer');
 const config = require('../config');
 const { loadPackagingTypes } = require('../db/packaging-types');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
-const { requireMandant } = require('../middlewares/mandant.middleware');
+const { requireMandant, requireMandantRead } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { getUserIdentityByShortCode } = require('../db/users');
@@ -43,7 +43,8 @@ const { preparePurchaseDraft, savePurchaseDraft, finalizePurchase } = require('.
 const { assertProcurementAccess, procurementSchemaReady, loadOrderProcurement,
   loadOrderProcurementLines, loadOrderProcurementStatuses } = require('../db/linked-procurement');
 const { PURCHASE_RESERVATION_STATUS, removePurchaseReservation } = require('../db/purchase-order-reservation');
-const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { canReadProcurement } = require('../pilot-features');
+const { hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const PROCUREMENT_PURCHASE_POSITIONS = appTableSql('tempPurchaseOrderPosition');
 const PROCUREMENT_PURCHASES = appTableSql('tempPurchaseOrder');
 const { orderConversionInput, assertOrderConversion, linkOfferPosition, markOfferConverted, unlinkOfferPositions, prepareOfferOrder } = require('../offers/order-conversion');
@@ -1275,7 +1276,7 @@ router.get('/temp-orders/procurement/stock', requireMandant, asyncHandler(async 
   sendEnvelope(res, { data: candidates });
 }));
 
-router.post('/temp-orders/pickup-addresses', requireMandant, asyncHandler(async (req, res) => {
+router.post('/temp-orders/pickup-addresses', requireMandantRead, asyncHandler(async (req, res) => {
   const positions = req.body?.positions;
   if (!Array.isArray(positions) || !positions.length || positions.length > 500) {
     throw createHttpError(400, 'Bitte 1 bis 500 Positionen für den Ladeort angeben.', { code: 'INVALID_TEMP_ORDER_PAYLOAD' });
@@ -1345,7 +1346,7 @@ router.get('/temp-orders/incoterms', requireMandant, asyncHandler(async (req, re
 
 router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1452,7 +1453,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
   const orderIds = (rows || []).map((row) => row.id);
   const [summariesByOrderId, procurementByOrderId] = await Promise.all([
     loadPositionSummariesForOrders(orderIds),
-    orderIds.length && pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await procurementSchemaReady()
+    orderIds.length && canReadProcurement(req.userIdentity) && await procurementSchemaReady()
       ? loadOrderProcurementStatuses(orderIds, companyId) : new Map(),
   ]);
 
@@ -1498,7 +1499,7 @@ router.get('/temp-orders', requireMandant, asyncHandler(async (req, res) => {
 
 router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1540,9 +1541,12 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
         mapTempOrderWithPositions(row, await loadOrderPositions(row.ta_id)),
         row.ta_id,
       ),
+      ...(req.database.readOnly || (hasDelegatedAkiReadAccess(userIdentity)
+        && asText(row.ta_CreatedBy).toUpperCase() !== userShortCode.toUpperCase()
+        && !(await getCustomerAccessScope(userIdentity, req.database)).isFullAccess) ? { readOnly: true } : {}),
       mail: await loadOrderMailState(row.ta_id),
       customerRequirements,
-      ...(pilotFeaturesForIdentity(userIdentity).linkedProcurement && await procurementSchemaReady()
+      ...(canReadProcurement(userIdentity) && await procurementSchemaReady()
         ? { procurement: await loadOrderProcurement(id, companyId) } : {}),
     },
     meta: { mandant: req.mandant, id },
@@ -1552,7 +1556,7 @@ router.get('/temp-orders/:id', requireMandant, asyncHandler(async (req, res) => 
 
 router.get('/temp-orders/:id/order-pdf', requireMandant, asyncHandler(async (req, res, next) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1631,7 +1635,7 @@ router.get('/temp-orders/:id/order-pdf', requireMandant, asyncHandler(async (req
 
 router.get('/temp-orders/:id/be-pdf/:beNumber', requireMandant, asyncHandler(async (req, res, next) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1696,7 +1700,7 @@ router.get('/temp-orders/:id/be-pdf/:beNumber', requireMandant, asyncHandler(asy
 
 router.get('/temp-orders/:id/attachments/:attachmentId', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -1738,7 +1742,7 @@ router.get('/temp-orders/:id/attachments/:attachmentId', requireMandant, asyncHa
 // Preserve the former single-attachment URL for clients that still use it.
 router.get('/temp-orders/:id/attachment', requireMandant, asyncHandler(async (req, res) => {
   const userIdentity = req.userIdentity;
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(userIdentity.shortCode);
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
@@ -2291,7 +2295,7 @@ router.get('/temp-orders/:id/credit-limit-preview', requireMandant, asyncHandler
   if (!userShortCode) {
     throw createHttpError(403, 'Missing Mitarbeiterkuerzel (ma_Kuerzel) for current user.', { code: 'MISSING_USER_SHORT_CODE' });
   }
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const ownerFilter = buildTempOrderOwnerFilter(userShortCode, accessScope.isFullAccess);
   const companyId = Number(req.database?.firmaId || 0);
   const id = Number(req.params.id);

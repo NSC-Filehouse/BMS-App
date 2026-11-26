@@ -1,18 +1,19 @@
 const { createHash } = require('node:crypto');
 const { createHttpError } = require('./utils');
 const { hasExecutiveAccess, isTestMandant } = require('./executive-access');
+const { AKI, hasDelegatedAkiReadAccess } = require('./aki-read-access');
 
 // Match the active FX identity on all three fields so a reused short code does
 // not grant developer access to customer creation in every tenant.
 const CUSTOMER_CREATION_DEVELOPERS = [
-  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
+  AKI,
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
 // Rollback is a higher-risk capability than customer creation. Keep its
 // allowlist separate and limit it to these exact active developer identities.
 const CUSTOMER_ROLLBACK_DEVELOPERS = [
-  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
+  AKI,
   { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
@@ -29,7 +30,7 @@ function canCreateCustomer(identity, database, settings) {
   const shortCode = String(identity?.shortCode || '').trim().toUpperCase();
   const companyId = Number(database?.firmaId);
   const mandant = String(database?.shortName || '').trim().toUpperCase();
-  if (settings.enabled !== true || identity?.active !== true
+  if (database?.readOnly || settings.enabled !== true || identity?.active !== true
     || !Number.isSafeInteger(companyId) || companyId < 0
     || !Boolean(text(identity.shortCode)) || !Boolean(text(identity.userId))
     || !/^[A-Z0-9]{1,10}$/.test(mandant)) return false;
@@ -60,7 +61,11 @@ function isCustomerRollbackDeveloper(identity) {
   ));
 }
 function canRollbackCustomer(identity, database) {
+  if (database?.readOnly) return false;
   return hasExecutiveAccess(identity) ? Boolean(database) && !isTestMandant(database) : isCustomerRollbackDeveloper(identity);
+}
+function canViewAppCreatedCustomers(identity, database) {
+  return canRollbackCustomer(identity, database) || hasDelegatedAkiReadAccess(identity);
 }
 function assertCanRollbackCustomer(identity, database) {
   if (!canRollbackCustomer(identity, database)) {
@@ -183,6 +188,7 @@ module.exports = {
   canCreateCustomer,
   assertCanCreateCustomer,
   canRollbackCustomer,
+  canViewAppCreatedCustomers,
   isCustomerRollbackDeveloper,
   assertCanRollbackCustomer,
   isCustomerRollbackPreviewExecutable,

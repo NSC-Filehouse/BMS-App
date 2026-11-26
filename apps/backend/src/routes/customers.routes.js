@@ -33,7 +33,7 @@ const {
 const { setCustomerContactRanking } = require('../db/customer-contact-ranking');
 const { resolveCustomerOrderRequirements } = require('../db/customer-order-requirements');
 const customerCreationHistory = require('../db/customer-creation-history');
-const { assertCanRollbackCustomer, UUID: DELIVERY_ADDRESS_UUID } = require('../customer-creation-policy');
+const { canViewAppCreatedCustomers, UUID: DELIVERY_ADDRESS_UUID } = require('../customer-creation-policy');
 const {
   getConfiguredBaseFilePath,
   resolveLatestOrderPdf,
@@ -258,7 +258,7 @@ async function requireVisibleCustomer(req, customerId, accessScope = null) {
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
 
-  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const customer = await loadVisibleCustomer(req.database, id, scope);
   if (!customer) {
     throw createHttpError(404, `customers not found: ${id}`, { code: 'CUSTOMER_NOT_FOUND', id });
@@ -272,7 +272,7 @@ async function requireVisibleCustomerOrSupplier(req, customerId, accessScope = n
     throw createHttpError(400, 'Missing customer id.', { code: 'INVALID_CUSTOMER_ID' });
   }
 
-  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = accessScope || await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const customer = await loadVisibleCustomer(req.database, id, scope);
   if (customer) return { customer, canManageSupplier: true };
 
@@ -636,14 +636,16 @@ async function loadReminderStageTextMap(database, ids, lang) {
 
 // LIST (all columns from dbo.tblKunden)
 router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const reminderOnly = String(req.query.reminderOnly || '').trim() === '1';
   const includeInactive = String(req.query.includeInactive || '').trim() === '1';
   const supplierOnly = String(req.query.supplierOnly || '').trim() === '1';
   const appCreatedOnly = String(req.query.appCreated || '').trim() === '1';
   let appCreatedMetadata = [];
   if (appCreatedOnly) {
-    assertCanRollbackCustomer(req.userIdentity, req.database);
+    if (!canViewAppCreatedCustomers(req.userIdentity, req.database)) {
+      throw createHttpError(403, 'Die App-Kundenliste ist nicht freigegeben.', { code: 'CUSTOMER_ROLLBACK_FORBIDDEN' });
+    }
     if (supplierOnly) throw createHttpError(400, 'Der App-Anlagenfilter ist nur in der Kundenansicht verfügbar.', { code: 'CUSTOMER_CREATION_FILTER_INVALID' });
     appCreatedMetadata = await customerCreationHistory.loadAppCreatedCustomers(req.database.shortName, req.userIdentity);
   }
@@ -758,7 +760,7 @@ router.get('/customers', requireMandant, asyncHandler(async (req, res) => {
 }));
 
 router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const { whereSql, params } = buildWhereClause('', 'name', {
     customerAccess: accessScope.customerAccess,
     customerAlias: 'k',
@@ -786,7 +788,7 @@ router.get('/customers/reminders-summary', requireMandant, asyncHandler(async (r
 // DETAIL (all columns from dbo.tblKunden)
 router.get('/customers/:id', requireMandant, asyncHandler(async (req, res) => {
   const id = toText(req.params.id);
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const visibleCustomer = await requireVisibleCustomerOrSupplier(req, id, accessScope);
   const item = visibleCustomer.customer;
   const supplierContext = await loadSupplierContext(req.database, id);

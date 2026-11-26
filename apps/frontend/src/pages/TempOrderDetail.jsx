@@ -139,7 +139,7 @@ export default function TempOrderDetail() {
   }, []);
 
   const orderStatus = normalizeTempOrderStatus(item?.orderStatus, item?.completed);
-  const orderIsEditable = item ? isTempOrderEditableStatus(orderStatus, item.completed) : false;
+  const orderIsEditable = item && !item.readOnly && isTempOrderEditableStatus(orderStatus, item.completed);
   const orderIsFinalized = item ? isTempOrderFinalizedStatus(orderStatus, item.completed) : false;
   const procurement = item?.procurement;
   const awaitingProcurement = procurement && procurement.status !== 'ready';

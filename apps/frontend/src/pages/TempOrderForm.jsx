@@ -1005,7 +1005,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
           setServerModifiedAt(String(d.lastModifiedDate || ''));
           setDraftOriginalModifiedAt(String(d.lastModifiedDate || ''));
           const loadedStatus = normalizeTempOrderStatus(d.orderStatus, d.completed);
-          if (!isTempOrderEditableStatus(loadedStatus, d.completed)) {
+          if (d.readOnly || !isTempOrderEditableStatus(loadedStatus, d.completed)) {
             navigate(`/temp-orders/${encodeURIComponent(id)}`, {
               replace: true,
               state: location.state?.afterSaveReturnTo

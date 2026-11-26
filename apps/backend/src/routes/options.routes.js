@@ -20,8 +20,11 @@ const { checkMfi } = require('../options/mfi-compatibility');
 const {checkMaterial}=require('../options/material-facts');
 const { appTableSql } = require('../db/app-tables');
 const { excludeTestMandantSql } = require('../executive-access');
+const { pilotFeaturesForIdentity } = require('../pilot-features');
 const router = express.Router();
 const OPTIONS = appTableSql('options'), POSITIONS = appTableSql('optionPositions');
+const optionActionsReadOnly = req => Boolean(req.database.readOnly)
+ || !pilotFeaturesForIdentity(req.userIdentity, { readOnly: false }).options;
 function positiveId(value) {
  const id=Number(value);
  if(!Number.isSafeInteger(id)||id<1)throw createHttpError(400,'Ungültige ID.',{code:'INVALID_ID'});
@@ -34,7 +37,7 @@ router.get('/options/:id',requireMandant,requirePilotFeature('options'),asyncHan
  const offers=await loadOffers(null,{optionId:positiveId(req.params.id),identity:req.userIdentity});
  if(!offers.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  const offer=await enrichOptionContactPhone(req.database,offers[0]);
- sendEnvelope(res,{data:{...offer,readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},
+ sendEnvelope(res,{data:{...offer,readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId),actionsReadOnly:optionActionsReadOnly(req)},
   meta:{mandant:req.mandant,viewMandantId:offers[0].sourceMandantId,sharedOptions:true}});
 }));
 router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
@@ -48,7 +51,7 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = position;
  publicPosition.matchedArticle = article ? { articleIndex: String(article.articleIndex), articleName: article.articleName } : null;
  if (confirmationIndex) publicPosition.articleConfirmationIndex = confirmationIndex;
- sendEnvelope(res,{data:{...detail,positions:[publicPosition],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId)},meta:{mandant:req.mandant,sharedOptions:true}});
+ sendEnvelope(res,{data:{...detail,positions:[publicPosition],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId),actionsReadOnly:optionActionsReadOnly(req)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
 async function loadOfferPositionForCustomers(req) {
  const optionId = positiveId(req.params.id);
@@ -64,7 +67,7 @@ router.get(offerCustomerPath, ...offerCustomerGuard, asyncHandler(async (req, re
  const { offer, position } = await loadOfferPositionForCustomers(req);
  res.set('Cache-Control', 'private, no-store');
  const audience = await loadOptionOfferCustomers(req.database, req.userIdentity, offer, position, req.query.articleIndex, { group: true });
- sendEnvelope(res, { data: { ...audience, sendEnabled: await offerMailSendEnabled() }, meta: { mandant: req.mandant } });
+ sendEnvelope(res, { data: { ...audience, sendEnabled: !optionActionsReadOnly(req) && await offerMailSendEnabled() }, meta: { mandant: req.mandant } });
 }));
 router.get(`${offerCustomerPath}/pickup-locations`, ...offerCustomerGuard, asyncHandler(async (req, res) => {
  const position = await loadOptionPosition(positiveId(req.params.id), positiveId(req.params.positionId), null, { identity: req.userIdentity });

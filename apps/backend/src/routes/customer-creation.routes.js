@@ -8,6 +8,7 @@ const {
   canCreateCustomer,
   assertCanCreateCustomer,
   canRollbackCustomer,
+  canViewAppCreatedCustomers,
   assertCanRollbackCustomer,
   normalizeCreationRequest,
 } = require('../customer-creation-policy');
@@ -39,8 +40,8 @@ router.get('/customer-creation/capabilities', requireMandant, asyncHandler(async
   sendEnvelope(res, { data: {
     allowed: canCreateCustomer(req.userIdentity, req.database, settings()),
     writeEnabled: settings().writeEnabled,
-    canViewAppCreated: rollbackAllowed,
-    canPreviewRollback: rollbackAllowed && apiReady(),
+    canViewAppCreated: canViewAppCreatedCustomers(req.userIdentity, req.database),
+    canPreviewRollback: canViewAppCreatedCustomers(req.userIdentity, req.database) && apiReady(),
     canRollback: rollbackAllowed && apiReady() && settings().writeEnabled,
   } });
 }));
@@ -83,14 +84,15 @@ router.get('/customer-creation/operations/:id', requireMandant, asyncHandler(asy
 }));
 
 router.get('/customer-creation/operations/:id/rueckbau-vorschau', requireMandant, asyncHandler(async (req, res) => {
-  allowRollback(req);
+  const canWrite = canRollbackCustomer(req.userIdentity, req.database);
+  if (!canViewAppCreatedCustomers(req.userIdentity, req.database)) allowRollback(req);
   if (!UUID.test(req.params.id)) throw createHttpError(400, 'Ungültige Vorgangs-ID.', { code: 'CUSTOMER_CREATION_KEY_INVALID' });
   const target = await history.loadRollbackTarget(req.params.id, req.database.shortName, req.userIdentity);
   if (!target) throw createHttpError(404, 'Für diesen Mandanten wurde kein rückbaubarer App-Anlagevorgang gefunden.', { code: 'CUSTOMER_ROLLBACK_NOT_FOUND' });
   const resumable = await history.loadLatestResumableRollback(target.operationId);
   if (resumable) {
     sendEnvelope(res, { data: {
-      rollbackId: resumable.rollbackId,
+      rollbackId: canWrite ? resumable.rollbackId : null,
       operationId: target.operationId,
       preview: resumable.preview,
       reason: resumable.reason,
@@ -102,6 +104,10 @@ router.get('/customer-creation/operations/:id/rueckbau-vorschau', requireMandant
   if (response.status !== 200) throwApiProblem(response);
   if (!response.data || typeof response.data !== 'object') {
     throw createHttpError(502, 'Die Kunden-API hat keine gültige Rückbauvorschau geliefert.', { code: 'CUSTOMER_ROLLBACK_PREVIEW_INVALID' });
+  }
+  if (!canWrite) {
+    sendEnvelope(res, { data: { rollbackId: null, operationId: target.operationId, preview: response.data } });
+    return;
   }
   const rollbackId = require('node:crypto').randomUUID();
   await history.saveRollbackPreview({

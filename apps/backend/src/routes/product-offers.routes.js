@@ -21,7 +21,7 @@ module.exports = function registerProductOffers(router, loadProductDetail) {
       : undefined;
     const loadAudience = () => loadCustomerOfferAudience(database, req.userIdentity, item, stockPositionKey, { group: !action });
     res.set('Cache-Control', 'private, no-store');
-    return { item, readOnly: readOnly || !stockPositionKey, stockPositionKey, loadAudience };
+    return { item, readOnly: readOnly || Boolean(req.database.readOnly) || !stockPositionKey, stockPositionKey, loadAudience };
   }
 
   router.get(path, requireMandant, asyncHandler(async (req, res) => {

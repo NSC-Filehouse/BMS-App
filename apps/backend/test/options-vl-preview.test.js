@@ -13,8 +13,10 @@ const position = { id: 602, articleName: 'LDPE near to prime', mfi: 3, expired: 
   quantityMinKg: null, quantityMaxKg: null, quantityUnit: 'truckload', quantityMin: 1, quantityMax: 1 };
 const currentPosition = { ...position, id: 604, articleName: 'LDPE current option', mfi: 4, expired: false, validUntil: '2026-12-01' };
 const offers = [{ id: 197, sourceMandantId: 3, supplierName: 'Longfield', supplierKey: 'longfield', positions: [position, currentPosition] }];
+const mockMandant = (req, res, next) => { Object.assign(req, { userIdentity: identity, database: databases[0], mandant: 'Mandant 3' }); next(); };
 require.cache[require.resolve('../src/middlewares/mandant.middleware')] = { exports: {
-  requireMandant: (req, res, next) => { Object.assign(req, { userIdentity: identity, database: databases[0], mandant: 'Mandant 3' }); next(); },
+  requireMandant: mockMandant,
+  requireMandantRead: mockMandant,
 } };
 require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQueryAccess: async (database, sql, params) => {

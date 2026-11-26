@@ -1,5 +1,6 @@
 const config = require('../config');
 const { runSQLQuerySqlServer } = require('./access');
+const { hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const { hasExecutiveAccess, isTestMandant, isHiddenMandant } = require('../executive-access');
 
 // Keep this aligned with the current frontend mandant exclusion list. These
@@ -29,7 +30,7 @@ function normalizeMandant(row) {
 
 function canViewTestMandant(identity) {
   const shortCode = normalizeShortCode(identity?.shortCode ?? identity);
-  return TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode);
+  return TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode) || hasDelegatedAkiReadAccess(identity);
 }
 
 function isHiddenCustomerDetailEmployee(value) {

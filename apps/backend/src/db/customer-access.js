@@ -2,6 +2,7 @@ const config = require('../config');
 const { runSQLQueryFx, runSQLQueryAccess } = require('./access');
 const { getUserIdentityByEmail } = require('./users');
 const { hasExecutiveAccess } = require('../executive-access');
+const { hasDelegatedAkiReadAccess } = require('../aki-read-access');
 
 const FILEHOUSE_TEST_MAIN_COMPANY_ID = 3;
 const CUSTOMER_ACCESS_SCOPE_TTL_MS = 5 * 60 * 1000;
@@ -163,7 +164,7 @@ function setCachedScope(key, value) {
   });
 }
 
-async function getCustomerAccessScope(identityOrEmail, database) {
+async function getCustomerAccessScope(identityOrEmail, database, { readOnly = false } = {}) {
   const userIdentity = identityOrEmail && typeof identityOrEmail === 'object'
     ? identityOrEmail
     : await getUserIdentityByEmail(identityOrEmail);
@@ -177,7 +178,7 @@ async function getCustomerAccessScope(identityOrEmail, database) {
   const isMainTenant = Number.isFinite(activeCompanyId)
     && Number.isFinite(mainCompanyId)
     && activeCompanyId === mainCompanyId;
-  const isAppFullAccess = isAppFullAccessUser(userIdentity);
+  const isAppFullAccess = isAppFullAccessUser(userIdentity) || (readOnly && hasDelegatedAkiReadAccess(userIdentity));
 
   if (isMainTenant || isAppFullAccess) {
     return {

@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
-const { requireMandant } = require('../middlewares/mandant.middleware');
+const { requireMandant, assertWritableMandant } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getDatabaseConnectionForIdentityById } = require('../db/databases');
 const { getCustomerAccessScope } = require('../db/customer-access');
@@ -34,7 +34,9 @@ async function resolveSourceDatabase(req, rawMandantId, beNumber = '') {
     throw createHttpError(400, `Invalid mandant id: ${rawMandantId}`, { code: 'MANDANT_ID_INVALID' });
   }
   if (Number(req.database?.firmaId) === sourceMandantId) return req.database;
-  return getDatabaseConnectionForIdentityById(req.userIdentity, sourceMandantId);
+  const database = await getDatabaseConnectionForIdentityById(req.userIdentity, sourceMandantId);
+  if (req.method !== 'GET' && req.method !== 'HEAD') assertWritableMandant(database);
+  return database;
 }
 
 function normalizeDir(dir) {
@@ -246,8 +248,8 @@ router.get('/orders/:id', requireMandant, asyncHandler(async (req, res) => {
     warehouse: row.warehouse || null,
     warehouseId: row.warehouseId || null,
     sourceMandantId: sourceDatabase?.firmaId ?? null,
-    canEdit: accessScope.isFullAccess
-      || String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase(),
+    canEdit: !sourceDatabase.readOnly && (accessScope.isFullAccess
+      || String(row.reservedBy || '').trim().toLowerCase() === userShortCode.toLowerCase()),
   };
 
   sendEnvelope(res, {

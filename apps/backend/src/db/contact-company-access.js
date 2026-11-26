@@ -4,7 +4,7 @@ const {pilotFeaturesForIdentity}=require('../pilot-features');
 const {createHttpError}=require('../utils');
 
 async function requireContactCompany(req,id,requireVisibleCustomerOrSupplier){
- const purchasing=pilotFeaturesForIdentity(req.userIdentity).purchaseOrders;
+ const purchasing=pilotFeaturesForIdentity(req.userIdentity, { readOnly: false }).purchaseOrders;
  try{
   const visible=await requireVisibleCustomerOrSupplier(req,id);
   if(!visible.canManageSupplier && !purchasing)

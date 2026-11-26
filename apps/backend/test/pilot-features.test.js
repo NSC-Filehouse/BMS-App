@@ -12,9 +12,19 @@ test('pilot features belong to the three verified employee identities', () => {
   }
 });
 
-test('Kevin Musah receives offers, offer conversion and linked purchasing', () => {
-  assert.deepEqual(pilotFeaturesForIdentity({ shortCode: 'KMU', personNumber: 126, userId: 'Musah', active: true }), {
-    offers: true, offerToOrder: true, linkedProcurement: true, purchaseOrders: true, options: true, optionsVlPreview: false, forecast: false, frupackGroupVl: false,
+test('PBO and KMU see the same pilot sections as AKI while keeping their existing action permissions', () => {
+  const aki = { shortCode: 'AKI', personNumber: 1, userId: 'kimaz', active: true };
+  const pbo = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: true, mainCompanyId: 3 };
+  const kmu = { shortCode: 'KMU', personNumber: 126, userId: 'musah', active: true, mainCompanyId: 3 };
+  const expected = pilotFeaturesForIdentity(aki);
+  assert.deepEqual(pilotFeaturesForIdentity(kmu), expected);
+  assert.deepEqual(pilotFeaturesForIdentity(pbo), { ...expected, offerToOrder: false, linkedProcurement: false });
+  assert.deepEqual(pilotFeaturesForIdentity(pbo, { readOnly: false }), {
+    offers: false, offerToOrder: false, linkedProcurement: false, purchaseOrders: false, options: false,
+    optionsVlPreview: false, forecast: false, frupackGroupVl: true,
+  });
+  assert.deepEqual(pilotFeaturesForIdentity(kmu, { readOnly: false }), {
+    ...expected, optionsVlPreview: false, forecast: false,
   });
 });
 
@@ -25,6 +35,8 @@ test('a matching short code alone never opens pilot features', () => {
     { shortCode: 'NSC', personNumber: 228, userId: 'n.schroeder', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'other', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: false },
+    { shortCode: 'PBO', personNumber: 81, userId: 'other', active: true },
+    { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: false },
     { shortCode: 'KMU', personNumber: 127, userId: 'musah', active: true },
     { shortCode: 'KMU', personNumber: 126, userId: 'other', active: true },
     { shortCode: 'KMU', personNumber: 126, userId: 'musah', active: false },

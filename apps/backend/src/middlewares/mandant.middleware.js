@@ -3,7 +3,13 @@ const { getDatabaseConnectionForIdentity } = require('../db/databases');
 const { getUserIdentityFromRequestContext } = require('../db/users');
 const { getUserContextFromRequest } = require('../user-context');
 
-const requireMandant = asyncHandler(async (req, res, next) => {
+function assertWritableMandant(database) {
+  if (database?.readOnly) {
+    throw createHttpError(403, 'Dieser Mandant ist nur zur Ansicht freigegeben.', { code: 'MANDANT_READ_ONLY' });
+  }
+}
+
+const requireMandantRead = asyncHandler(async (req, res, next) => {
   const user = getUserContextFromRequest(req);
   const identity = await getUserIdentityFromRequestContext(user);
 
@@ -24,4 +30,14 @@ const requireMandant = asyncHandler(async (req, res, next) => {
   next();
 });
 
-module.exports = { requireMandant };
+const requireMandant = (req, res, next) => requireMandantRead(req, res, (error) => {
+  if (error) return next(error);
+  try {
+    if (req.method !== 'GET' && req.method !== 'HEAD') assertWritableMandant(req.database);
+    return next();
+  } catch (writeError) {
+    return next(writeError);
+  }
+});
+
+module.exports = { requireMandant, requireMandantRead, assertWritableMandant };

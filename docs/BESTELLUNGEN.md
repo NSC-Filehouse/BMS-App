@@ -61,7 +61,7 @@ Bei dieser manuellen Adresse bleiben die technischen Adress-IDs leer.
 Über den Positionen stehen die geschätzte LKW-Anzahl und die Schaltflächen
 „Alle Löschen“ und „Aufteilen“. Der Reset behält die erste Position mit den
 Einstiegsvorgaben und leert den Liefertermin. Im Aufteilungsdialog stehen
-25.000, 24.750 und 23.500 kg je LKW zur Wahl. Weitere Lieferungen ziehen ihre
+25.000, 24.750 und 23.375 kg je LKW zur Wahl. Weitere Lieferungen ziehen ihre
 Teilmengen von der ersten Lieferung ab. Die App übernimmt je Lieferung den
 Termin und die VL-Bemerkung in die erzeugten LKW-Positionen.
 

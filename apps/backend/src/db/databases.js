@@ -3,6 +3,7 @@ const logger = require('../logger');
 const { createHttpError } = require('../utils');
 const { canConnectToDatabase, runSQLQueryFx, runSQLQuerySqlServer } = require('./access');
 const { getUserIdentityByEmail } = require('./users');
+const { AKI, hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const { hasExecutiveAccess, isTestMandant, isHiddenMandant } = require('../executive-access');
 
 const mandantsCache = new Map();
@@ -217,7 +218,7 @@ async function getMandantsForUser(email) {
   if (cached) return cached;
 
   const identity = await getUserIdentityByEmail(normalizedEmail);
-  if (hasExecutiveAccess(identity)) return getMandantsForIdentity(identity);
+  if (hasExecutiveAccess(identity) || hasDelegatedAkiReadAccess(identity)) return getMandantsForIdentity(identity);
   const loaded = await loadMandantsForIdentity(identity);
   setCachedMandants(normalizedEmail, loaded);
   return loaded;
@@ -226,6 +227,7 @@ async function getMandantsForUser(email) {
 function getIdentityMandantsCacheKey(identity) {
   const personNumber = String(identity?.personNumber || '').trim();
   if (hasExecutiveAccess(identity)) return `executive:${personNumber}`;
+  if (hasDelegatedAkiReadAccess(identity)) return `aki-read:${personNumber}`;
   if (personNumber) return `person:${personNumber}`;
 
   const userId = String(identity?.userId || '').trim().toLowerCase();
@@ -243,9 +245,15 @@ async function loadMandantsForIdentity(identity) {
     ? await queryMandantsForFilehouse()
     : await queryMandantsForIdentity(identity);
 
-  const normalized = (rows || [])
+  const delegatedRows = hasDelegatedAkiReadAccess(identity) && !isFilehouseEmail(normalizedEmail)
+    ? await queryMandantsForIdentity(AKI)
+    : [];
+  const ownIds = new Set((rows || []).map(row => Number(row.firmaId ?? row.md_FirmaID)));
+  const normalized = [...(rows || []), ...delegatedRows.filter(row => !ownIds.has(Number(row.firmaId ?? row.md_FirmaID)))
+    .map(row => ({ ...row, readOnly: true }))]
     .map((row) => ({
       firmaId: row.firmaId ?? row.md_FirmaID ?? null,
+      ...(row.readOnly ? { readOnly: true } : {}),
       name: String(row.firma || row.md_Firma || '').trim(),
       shortName: String(row.firmaKurz || row.md_FirmaKurz || '').trim().toUpperCase(),
     }))
@@ -351,6 +359,7 @@ async function getDatabaseConnectionForMandantMatch(match, requestedMandant) {
     name: match.name,
     shortName: match.shortName,
     firmaId: match.firmaId,
+    ...(match.readOnly ? { readOnly: true } : {}),
   };
 }
 

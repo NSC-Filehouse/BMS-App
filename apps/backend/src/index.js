@@ -28,6 +28,7 @@ const { runSQLQuerySqlServer } = require('./db/access');
 const { getUserIdentityFromRequestContext } = require('./db/users');
 const { pilotFeaturesForIdentity } = require('./pilot-features');
 const { hasExecutiveAccess } = require('./executive-access');
+const { hasDelegatedAkiReadAccess } = require('./aki-read-access');
 const { startOrderMailOutboxWorker } = require('./db/order-mail-outbox');
 const { startCreditLimitMailOutboxWorker } = require('./db/credit-limit-request-outbox');
 const { startLinkedProcurementWorker } = require('./db/linked-procurement');
@@ -91,6 +92,7 @@ app.get(`${config.apiBasePath}/me`, async (req, res) => {
       userId: identity?.userId || null,
       identityResolved: true,
       executiveAccess: hasExecutiveAccess(identity),
+      akiReadAccess: hasDelegatedAkiReadAccess(identity),
       features: pilotFeaturesForIdentity(identity),
     });
   } catch {

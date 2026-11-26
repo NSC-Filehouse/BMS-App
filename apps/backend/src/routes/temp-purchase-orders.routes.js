@@ -4,7 +4,8 @@ const config = require('../config');
 const logger = require('../logger');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
 const { requireMandant } = require('../middlewares/mandant.middleware');
-const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { pilotFeaturesForIdentity, canReadProcurement } = require('../pilot-features');
+const { hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { appTableSql } = require('../db/app-tables');
@@ -464,7 +465,7 @@ async function deletePurchaseForUser(id, companyId, userShortCode, isFullAccess)
 }
 
 router.get('/purchase-order-loading-locations', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const supplierId = asText(req.query?.supplierId);
   await assertSupplier(req.database, supplierId, accessScope);
   const ids = Array.isArray(req.query?.articleIndex) ? req.query.articleIndex : [req.query?.articleIndex].filter(Boolean);
@@ -474,7 +475,7 @@ router.get('/purchase-order-loading-locations', requirePurchaseOrders, requireMa
 
 router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.query?.supplierId);
-  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const supplier = await assertSupplier(req.database, supplierId, scope);
   const lang = req.header('x-lang') === 'en' ? 'en' : 'de';
   const [options, defaults, warehouses] = await Promise.all([
@@ -491,7 +492,7 @@ router.get('/purchase-order-options', requirePurchaseOrders, requireMandant, asy
 }));
 
 router.get('/purchase-order-addresses', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
-  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const supplierId = asText(req.query?.supplierId);
   await assertSupplier(req.database, supplierId, scope);
   const { incoterms } = await loadPurchaseOptions(req.database, req.header('x-lang') === 'en' ? 'en' : 'de');
@@ -540,7 +541,7 @@ router.get('/purchase-order-addresses', requirePurchaseOrders, requireMandant, a
 router.get('/customers/:supplierId/procured-articles/:articleIndex/purchase-defaults', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const supplierId = asText(req.params.supplierId);
   const articleIndex = asText(req.params.articleIndex);
-  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const supplier = await assertSupplier(req.database, supplierId, scope);
   const source = await loadLatestPurchase(req.database, supplierId, articleIndex);
   if (!source) throw createHttpError(404, 'Für diesen Artikel gibt es keinen Einkauf bei diesem Lieferanten.', { code: 'PURCHASE_ARTICLE_NOT_FOUND' });
@@ -646,7 +647,7 @@ async function insertPurchasePositions(query, id, positions, currency, user, now
 }
 
 router.get('/temp-purchase-orders', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const userShortCode = asText(req.userIdentity?.shortCode);
   const companyId = Number(req.database?.firmaId || 0);
   const { page, pageSize } = parseListParams(req.query, { page: 1, pageSize: 20, sort: 'createdAt', dir: 'DESC' });
@@ -700,11 +701,17 @@ router.get('/temp-purchase-orders', requirePurchaseOrders, requireMandant, async
 router.get('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const companyId = Number(req.database?.firmaId || 0);
-  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const accessScope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const row = await loadOrderForUser(id, companyId, asText(req.userIdentity?.shortCode), accessScope.isFullAccess);
   if (!row) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   const data = await withPurchaseOrderAttachments(mapOrder(row, await enrichPurchaseArticleNames(req.database, row.supplierId, await loadPositions(row.id))));
-  if (pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await procurementSchemaReady()) {
+  if (req.database.readOnly || !pilotFeaturesForIdentity(req.userIdentity, { readOnly: false }).purchaseOrders
+    || (hasDelegatedAkiReadAccess(req.userIdentity)
+      && asText(row.createdBy).toUpperCase() !== asText(req.userIdentity.shortCode).toUpperCase()
+      && !(await getCustomerAccessScope(req.userIdentity, req.database)).isFullAccess)) {
+    data.readOnly = true;
+  }
+  if (canReadProcurement(req.userIdentity) && await procurementSchemaReady()) {
     data.linkedOrderIds = await loadPurchaseOrderLinks(id, companyId);
   }
   sendEnvelope(res, { status: 200, data, meta: { mandant: req.mandant }, error: null });
@@ -716,7 +723,7 @@ router.get('/temp-purchase-orders/:id/attachments/:attachmentId', requirePurchas
   if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(attachmentId) || attachmentId <= 0) {
     throw createHttpError(400, 'Ungültige Bestell- oder Anhangsnummer.');
   }
-  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true });
   const order = await loadOrderForUser(id, Number(req.database?.firmaId || 0), asText(req.userIdentity?.shortCode), scope.isFullAccess);
   if (!order) throw createHttpError(404, 'Bestellung nicht gefunden.', { code: 'RESOURCE_NOT_FOUND' });
   const [attachment] = await loadPurchaseOrderAttachments(id, { includeContent: true, attachmentId });

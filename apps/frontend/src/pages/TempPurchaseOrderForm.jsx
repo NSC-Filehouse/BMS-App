@@ -28,10 +28,15 @@ export default function TempPurchaseOrderForm() {
     let alive = true;
     setOrder(null);
     apiRequest(`/temp-purchase-orders/${encodeURIComponent(id)}`).then((response) => {
-      if (alive) setOrder({ ...response.data, positions: response.data.positions.map((p) => ({ ...p, originalPackagingType: p.originalPackagingType || response.data.packagingType, lineId: String(p.id), amountTouched: true })) });
+      if (!alive) return;
+      if (response.data.readOnly) {
+        navigate(`/temp-purchase-orders/${encodeURIComponent(id)}`, { replace: true, state: location.state });
+        return;
+      }
+      setOrder({ ...response.data, positions: response.data.positions.map((p) => ({ ...p, originalPackagingType: p.originalPackagingType || response.data.packagingType, lineId: String(p.id), amountTouched: true })) });
     }).catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, [id]);
+  }, [id, location.state, navigate]);
   const save = async (values) => {
     setSaving(true); setError('');
     try {

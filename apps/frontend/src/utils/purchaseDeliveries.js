@@ -1,6 +1,6 @@
 import { createPurchaseLineId, planPurchaseTruckLoads, splitPurchaseTruckPositions } from './purchaseCart.js';
 
-export const purchaseTruckLoadChoices = [25000, 24750, 23500];
+export const purchaseTruckLoadChoices = [25000, 24750, 23375];
 
 function grams(value) {
   const scaled = Number(value) * 1000;

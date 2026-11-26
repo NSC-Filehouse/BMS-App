@@ -12,9 +12,9 @@ const queries = [];
 require.cache[accessPath] = { exports: {
   ...require(accessPath),
   canConnectToDatabase: async () => true,
-  runSQLQueryFx: async (_db, sql) => sql.includes('AS userGroup')
+  runSQLQueryFx: async (_db, sql, params) => sql.includes('AS userGroup')
     ? [{ userGroup: 'GR01' }]
-    : [{ firmaId: 0 }, { firmaId: 1 }],
+    : [{ firmaId: 0 }, { firmaId: 1 }, ...(params?.[0] === 1 ? [{ firmaId: 3 }, { firmaId: 18 }] : [])],
   runSQLQuerySqlServer: async (_db, sql, params) => {
     queries.push({ sql, params });
     if (!sql.includes('AS firmaKurz')) return [];
@@ -22,10 +22,12 @@ require.cache[accessPath] = { exports: {
   },
 } };
 const { hasExecutiveAccess } = require('../src/executive-access');
+const { canViewAllOffers } = require('../src/offers/read-access');
+const { assertWritableMandant } = require('../src/middlewares/mandant.middleware');
 const { getMandantsForIdentity, getDatabaseConnectionForIdentity, getDatabaseConnectionForIdentityById } = require('../src/db/databases');
 const { getCustomerAccessScope } = require('../src/db/customer-access');
 const { pilotFeaturesForIdentity } = require('../src/pilot-features');
-const { canCreateCustomer, canRollbackCustomer } = require('../src/customer-creation-policy');
+const { canCreateCustomer, canRollbackCustomer, canViewAppCreatedCustomers } = require('../src/customer-creation-policy');
 const { loadAppCreatedCustomers, loadRollbackTarget } = require('../src/db/customer-creation-history');
 const { loadOffers } = require('../src/options/read');
 const { loadOptionSource } = require('../src/options/source');
@@ -65,6 +67,27 @@ test('the four active executives can use every regular mandant and cannot resolv
   assert.deepEqual((await getMandantsForIdentity(other)).map(row => row.firmaId).sort(), [0, 1]);
   await assert.rejects(getDatabaseConnectionForIdentityById(other, 3), { status: 403 });
   assert.equal((await getCustomerAccessScope(other, regularMandant)).customerAccess.mode, 'all_assigned_innendienst');
+});
+
+test('verified delegates inherit AKI tenant and record visibility without executive write access', async () => {
+  for (const [shortCode, personNumber, userId] of [['PBO', 81, 'bohmbach'], ['KMU', 126, 'musah']]) {
+    const identity = { shortCode, personNumber, userId, mainCompanyId: 1, active: true };
+    assert.equal(hasExecutiveAccess(identity), false);
+    assert.equal(canViewAllOffers({ userIdentity: identity }), true);
+    assert.equal(canViewAllOffers({ userIdentity: { ...identity, userId: 'other' } }), false);
+    const mandants = await getMandantsForIdentity(identity);
+    assert.deepEqual(mandants.map(row => [row.firmaId, Boolean(row.readOnly)]).sort(), [[0, false], [1, false], [3, true]]);
+    const frupack = await getDatabaseConnectionForIdentity(identity, 'Frupack');
+    assert.equal(frupack.readOnly, true);
+    assert.throws(() => assertWritableMandant(frupack), { status: 403, details: { code: 'MANDANT_READ_ONLY' } });
+    assert.doesNotThrow(() => assertWritableMandant(mandants.find(row => row.firmaId === 1)));
+    await assert.rejects(getDatabaseConnectionForIdentityById(identity, 18), { status: 403 });
+    assert.equal((await getCustomerAccessScope(identity, regularMandant, { readOnly: true })).isFullAccess, true);
+    assert.equal((await getCustomerAccessScope(identity, regularMandant)).isFullAccess, false);
+    assert.equal(canViewAppCreatedCustomers(identity, frupack), true);
+    assert.equal(canCreateCustomer(identity, frupack, { enabled: true }), false);
+    assert.equal(canRollbackCustomer(identity, frupack), false);
+  }
 });
 
 test('shared option data and customer rollback targets exclude Test for executives', async () => {

@@ -727,8 +727,8 @@ test('the order shows its planning controls above positions and resets them to o
   assert.equal(current.positions[0].amount, 1400000);
   button('Aufteilen').onClick();
   await view.flush();
-  const planned = purchaseDeliveries.planPurchaseDeliveries(current.positions, [{ date: '2026-12-01' }], 23500);
-  dialog().onApply(purchaseDeliveries.allocatePurchaseDeliveries(planned), 23500);
+  const planned = purchaseDeliveries.planPurchaseDeliveries(current.positions, [{ date: '2026-12-01' }], 23375);
+  dialog().onApply(purchaseDeliveries.allocatePurchaseDeliveries(planned), 23375);
   await view.flush();
   assert.equal(current.positions.length, 60);
   assert.ok(current.positions.every(position => position.requestedDeliveryDate === '2026-12-01'));
@@ -820,8 +820,8 @@ test('the deliveries dialog offers three capacities and waits for dates before a
   const firstQuantity = () => view.field('Menge (kg)').props;
   await view.flush();
   assert.equal(firstQuantity().value, 1400000);
-  assert.deepEqual(view.field('Lademenge je LKW').props.children.flat().map(item => item.props.value), [25000, 24750, 23500]);
-  view.field('Lademenge je LKW').props.onChange({ target: { value: 23500 } });
+  assert.deepEqual(view.field('Lademenge je LKW').props.children.flat().map(item => item.props.value), [25000, 24750, 23375]);
+  view.field('Lademenge je LKW').props.onChange({ target: { value: 23375 } });
   button('Lieferung hinzufügen').onClick();
   await view.flush();
   const second = () => view.find(node => node.type === 'Box' && node.props.children?.[0]?.props?.children?.[0]?.props?.children?.includes('Lieferung 2'));
@@ -837,8 +837,10 @@ test('the deliveries dialog offers three capacities and waits for dates before a
   second().props.children[4].props.onChange({ target: { value: 'VL 2' } });
   await view.flush();
   button('Aufteilen').onClick();
-  assert.equal(applied.load, 23500);
+  assert.equal(applied.load, 23375);
   assert.equal(applied.positions.length, 61);
+  assert.equal(applied.positions[0].amount, 23375);
+  assert.equal(applied.positions.reduce((total, position) => total + position.amount, 0), 1400000);
   assert.ok(applied.positions.slice(39).every(position => position.requestedDeliveryDate === '2026-12-02' && position.availabilityNote === 'VL 2'));
 });
 

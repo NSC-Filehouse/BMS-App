@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope, parseListParams } = require('../utils');
-const { requireMandant } = require('../middlewares/mandant.middleware');
+const { requireMandant, requireMandantRead } = require('../middlewares/mandant.middleware');
 const { runSQLQueryAccess } = require('../db/access');
 const { getDatabaseConnectionForIdentityById, getDatabaseConnectionForCompanyId } = require('../db/databases');
 const {
@@ -602,7 +602,7 @@ router.get('/products/:id/wpz', requireMandant, asyncHandler(async (req, res) =>
 }));
 
 // Refresh cart limits by stable BE/warehouse keys, including sold-out positions.
-router.post('/products/availability', requireMandant, asyncHandler(async (req, res) => {
+router.post('/products/availability', requireMandantRead, asyncHandler(async (req, res) => {
   const positions = req.body?.positions;
   if (!Array.isArray(positions) || positions.length > 100 || positions.some((position) => (
     !asText(position?.beNumber) || !asText(position?.warehouseId)
@@ -617,7 +617,7 @@ router.post('/products/availability', requireMandant, asyncHandler(async (req, r
   }
   const hasCarriedReservation = positions.some((position) => Number(position.reservationInKg) > 0);
   const allowAnyReservation = hasCarriedReservation
-    ? (await getCustomerAccessScope(req.userIdentity, req.database)).isFullAccess
+    ? (await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: true })).isFullAccess
     : false;
   const current = await loadCurrentOrderPositions(req.database, positions, req.userIdentity?.shortCode, { allowAnyReservation });
   const planning = await loadTempOrderPlanning({ companyId: req.database.firmaId, keys: current });

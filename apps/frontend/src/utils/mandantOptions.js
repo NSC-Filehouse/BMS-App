@@ -25,7 +25,8 @@ export function normalizeMandantOption(item) {
 
 export function getSelectableMandants(items, user = null) {
   const shortCode = String(user?.shortCode || '').trim().toUpperCase();
-  const canSelectTestMandant = TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode);
+  const canSelectTestMandant = TEST_MANDANT_ACCESS_SHORT_CODES.has(shortCode)
+    || (user?.identityResolved === true && user?.akiReadAccess === true);
   const executiveAccess = user?.identityResolved === true && user?.executiveAccess === true;
 
   return (Array.isArray(items) ? items : [])

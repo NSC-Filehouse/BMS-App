@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler, createHttpError, sendEnvelope } = require('../utils');
-const { requireMandant } = require('../middlewares/mandant.middleware');
+const { requireMandantRead } = require('../middlewares/mandant.middleware');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const { loadHolidayRows } = require('../db/holidays');
 const {
@@ -27,7 +27,7 @@ function normalizeDates(value) {
   return Array.from(new Set(values.map((item) => String(item || '').trim()).filter(Boolean)));
 }
 
-router.post('/delivery-calendar/check', requireMandant, asyncHandler(async (req, res) => {
+router.post('/delivery-calendar/check', requireMandantRead, asyncHandler(async (req, res) => {
   const dates = normalizeDates(req.body?.dates);
   if (!dates.length || dates.length > 100) {
     throw createHttpError(400, 'Please provide between one and 100 delivery dates.', {

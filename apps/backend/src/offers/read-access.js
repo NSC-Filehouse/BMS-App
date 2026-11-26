@@ -1,18 +1,14 @@
 const { hasExecutiveAccess } = require('../executive-access');
+const { AKI, matchesActiveIdentity, hasDelegatedAkiReadAccess } = require('../aki-read-access');
 
 const offerReadAccess = [
-  { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' },
+  AKI,
   { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
 ];
 
 function canViewAllOffers({ userIdentity }) {
-  return hasExecutiveAccess(userIdentity) || (
-    userIdentity?.active === true && offerReadAccess.some(identity => (
-      userIdentity.shortCode?.trim().toUpperCase() === identity.shortCode
-      && Number(userIdentity.personNumber) === identity.personNumber
-      && userIdentity.userId?.trim().toLowerCase() === identity.userId
-    ))
-  );
+  return hasExecutiveAccess(userIdentity) || hasDelegatedAkiReadAccess(userIdentity)
+    || offerReadAccess.some(account => matchesActiveIdentity(userIdentity, account));
 }
 
 module.exports = { canViewAllOffers };

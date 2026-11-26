@@ -38,10 +38,11 @@ const {
 } = require('../offers/storage');
 const { canViewAllOffers } = require('../offers/read-access');
 const { synchronizeReservations } = require('../offers/reservations');
-const { pilotFeaturesForIdentity } = require('../pilot-features');
+const { pilotFeaturesForIdentity, canReadProcurement } = require('../pilot-features');
 const { procurementSchemaReady, loadOrderProcurement } = require('../db/linked-procurement');
 const { readOfferForOrder, prepareOfferOrder, assertOfferPositionsEditable, loadOfferOrderIds, hasOfferOrderSchema } = require('../offers/order-conversion');
 const { hasExecutiveAccess } = require('../executive-access');
+const { hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const { isFcaIncoterm } = require('../incoterm');
 const { manualOfferMail } = require('../offers/erp-mail');
 const { queueManualOffer, discardManualOfferMail, offerMailSchemaReady, storedPdfSql } = require('../db/option-offer-outbox');
@@ -102,7 +103,7 @@ function pageParams(req) {
   };
 }
 async function customer(req, id) {
-  const scope = await getCustomerAccessScope(req.userIdentity, req.database);
+  const scope = await getCustomerAccessScope(req.userIdentity, req.database, { readOnly: req.method === 'GET' || req.method === 'HEAD' });
   const row = await loadVisibleCustomer(req.database, id, scope);
   if (!row)
     throw createHttpError(404, 'Kunde nicht gefunden oder nicht berechtigt.', {
@@ -378,7 +379,8 @@ router.get(
     );
     if (!row) notFound();
     const ownOffer = text(row.createdBy).toUpperCase() === owner(req).toUpperCase();
-    if (offerOwnerFilter(req) !== null && !ownOffer) row.readOnly = true;
+    if (req.database.readOnly || (offerOwnerFilter(req) !== null && !ownOffer)
+      || !pilotFeaturesForIdentity(req.userIdentity, { readOnly: false }).offers) row.readOnly = true;
     if (Number(row.status) !== 0 && await offerMailSchemaReady()) {
       const [state] = (await query(`
         SELECT CASE WHEN ${offerDownloadPdfSql} THEN 1 ELSE 0 END AS pdfReady,
@@ -390,7 +392,8 @@ router.get(
       row.mailStatus = state?.mailStatus ?? null;
       row.generated = Number(state?.generated) === 1;
     }
-    if (!row.readOnly && pilotFeaturesForIdentity(req.userIdentity).linkedProcurement && await hasOfferOrderSchema(query)) {
+    if (canReadProcurement(req.userIdentity) && (!row.readOnly || hasDelegatedAkiReadAccess(req.userIdentity))
+      && await hasOfferOrderSchema(query)) {
       const ids = await loadOfferOrderIds(query, row.id, req.database.firmaId);
       const linkedSchema = ids.length > 0 && await procurementSchemaReady();
       row.orders = await Promise.all(ids.map(async (id) => {
@@ -398,7 +401,7 @@ router.get(
         return { id, procurementStatus: procurement?.status ?? null };
       }));
     }
-    row.canMarkNotInterested = ownOffer && !row.orders?.length && notInterestedSourceStatuses.includes(row.status);
+    row.canMarkNotInterested = !row.readOnly && ownOffer && !row.orders?.length && notInterestedSourceStatuses.includes(row.status);
     sendEnvelope(res, { data: row });
   }),
 );

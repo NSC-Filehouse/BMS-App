@@ -141,14 +141,14 @@ export default function OptionDetail() {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
       <DisclosureBackButton onClick={() => navigateToReturn(navigate, location.state?.returnTo, '/options')} aria-label={t('back_label')}><ArrowBackIcon /></DisclosureBackButton>
       <Typography variant="h5">{t('option_detail_title')}</Typography>
-      {offer && <Button color="error" disabled={deleting} onClick={()=>setDeleteConfirm(true)} sx={{ ml: 'auto' }}>{t('option_delete')}</Button>}
+      {offer && !offer.actionsReadOnly && <Button color="error" disabled={deleting} onClick={()=>setDeleteConfirm(true)} sx={{ ml: 'auto' }}>{t('option_delete')}</Button>}
     </Box>
     {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>}
     {error && <Alert severity="error">{error}</Alert>}
     {orderStartError && <Alert severity="error">{orderStartError}</Alert>}
     {!loading && !error && offer && position && <OptionPurchaseControls
       key={JSON.stringify([mandant, offer.id, position.id, position.snapshotId, location.state?.optionSupplierId])}
-      enabled={features.purchaseOrders} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
+      enabled={features.purchaseOrders && !offer.actionsReadOnly} offer={offer} position={position} preferredSupplierId={location.state?.optionSupplierId}
       returnTo={createReturnTo(location)}
       onCustomerOrder={features.linkedProcurement ? startOrder : undefined} checkingStock={checkingStock}
       onArticleConfirmed={(matchedArticle, articleConfirmationIndex) => {
@@ -254,7 +254,7 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
     {requestKey && (audience?.article || !audience || audience.error || recordedOffers.length > 0) && (
       <OptionOfferCustomers key={JSON.stringify([requestKey, audience?.article?.index])}
         customers={audience?.customers ?? recordedOffers} salesFilter={audience?.salesFilter}
-        readOnly={!audience?.article} returnTo={createReturnTo(location)}
+        readOnly={offer.actionsReadOnly || !audience?.article} returnTo={createReturnTo(location)}
         position={position} loadingLocation={offer.loadingLocation}
         loading={!audience} error={audience?.error} endpoint={audienceEndpoint} query={query}
         sendEnabled={audience?.sendEnabled} onQueued={offersQueued}

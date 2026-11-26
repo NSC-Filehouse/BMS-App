@@ -186,6 +186,7 @@ function fixture(options = {}) {
     },
   };
   dependencies['../pilot-features'] = require('../src/pilot-features');
+  dependencies['../aki-read-access'] = require('../src/aki-read-access');
   const reservationModule = { exports: {} };
   new Function('require', 'module', fs.readFileSync(path.join(__dirname, '../src/db/purchase-order-reservation.js'), 'utf8'))(
     name => (name === './app-tables' ? dependencies['../db/app-tables'] : dependencies[name]), reservationModule);
@@ -245,7 +246,7 @@ test('ordinary users reach the delivery calendar and other routes mounted after 
   const calendarModule = { exports: {} };
   const dependencies = {
     express: require('express'), '../utils': require('../src/utils'),
-    '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
+    '../middlewares/mandant.middleware': { requireMandantRead(req, res, next) { next(); } },
     '../db/delivery-addresses': {}, '../db/holidays': {}, '../logger': {},
     '../delivery-calendar': require('../src/delivery-calendar'),
   };
@@ -277,6 +278,16 @@ test('every purchase route still rejects ordinary users before accessing data', 
     }
   }
   assert.equal(f.calls.length, 0);
+});
+
+test('PBO can read purchase orders and the purchase pilot still rejects writes', async () => {
+  const f = fixture({ routing: true });
+  const identity = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: true };
+  const result = await routedRequest(f.router, 'GET', '/temp-purchase-orders', identity);
+  assert.equal(result.meta.canViewAll, true);
+  await assert.rejects(routedRequest(f.router, 'POST', '/temp-purchase-orders', identity),
+    error => error.status === 403 && error.details.code === 'PILOT_FEATURE_FORBIDDEN');
+  assert.equal(f.headers.length, 0);
 });
 
 test('verified pilot users can still load purchase options', async () => {

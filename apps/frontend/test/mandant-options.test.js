@@ -24,6 +24,17 @@ test('keeps Test visible for AKI, MFR and NSC', () => {
   }
 });
 
+test('only a verified grant lets PBO or KMU see the same Test mandant as AKI', () => {
+  for (const shortCode of ['PBO', 'KMU']) {
+    assert.deepEqual(getSelectableMandants([testMandant, normalMandant], {
+      shortCode, identityResolved: true, akiReadAccess: true,
+    }), [testMandant, normalMandant]);
+    assert.deepEqual(getSelectableMandants([testMandant, normalMandant], {
+      shortCode, identityResolved: false, akiReadAccess: true,
+    }), [normalMandant]);
+  }
+});
+
 test('only a resolved executive gets every regular mandant including normally hidden ones', (t) => {
   const excluded = { id: 1, name: 'MLHolding', shortName: 'HOL', isMain: false };
   MANDANT_EXCLUDE_IDS.add(excluded.id);

@@ -62,7 +62,7 @@ export default function TempPurchaseOrderDetail() {
     finally { setWorking(false); }
   };
   const back = () => navigateToReturn(navigate, location.state?.returnTo, '/temp-purchase-orders', location.state?.listState ? { listState: location.state.listState } : null);
-  const editable = item && isTempOrderEditableStatus(item.status);
+  const editable = item && !item.readOnly && isTempOrderEditableStatus(item.status);
   return <Box sx={{ maxWidth: 900, width: '100%', minWidth: 0, mx: 'auto' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, minWidth: 0 }}>
       <DisclosureBackButton aria-label="Zurück" onClick={back} disabled={working}><ArrowBackIcon /></DisclosureBackButton>

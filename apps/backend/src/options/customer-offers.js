@@ -10,6 +10,7 @@ const { resolveArticleNameRule } = require('./article-name-rules');
 const { checkMaterial } = require('./material-facts');
 const { checkMfi } = require('./mfi-compatibility');
 const { hasExecutiveAccess } = require('../executive-access');
+const { AKI, matchesActiveIdentity, hasDelegatedAkiReadAccess } = require('../aki-read-access');
 const { H } = require('../offers/storage');
 const { canViewAllOffers } = require('../offers/read-access');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
@@ -18,12 +19,15 @@ const text = value => String(value ?? '').trim();
 const nameKey = value => text(value).normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const hasRecordedOffer = customer => customer.offerId || customer.offerStatus || customer.sent || customer.queued || customer.failed;
 
+const GROUP_BUYER_ACCOUNTS = [
+  AKI,
+  { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' },
+  { shortCode: 'MFR', personNumber: 130, userId: 'm.frank' },
+];
+
 function canSeeGroupBuyers(identity) {
-  if (hasExecutiveAccess(identity)) return true;
-  const allowed = { AKI: [1, 'kimaz'], NSC: [227, 'n.schroeder'], MFR: [130, 'm.frank'] };
-  const match = allowed[text(identity?.shortCode).toUpperCase()];
-  return identity?.active === true && Array.isArray(match) && Number(identity.personNumber) === match[0]
-    && text(identity.userId).toLowerCase() === match[1];
+  return hasExecutiveAccess(identity) || hasDelegatedAkiReadAccess(identity)
+    || GROUP_BUYER_ACCOUNTS.some(account => matchesActiveIdentity(identity, account));
 }
 
 async function resolveOfferArticle(database, offer, position) {
@@ -58,9 +62,9 @@ async function resolveOfferArticle(database, offer, position) {
   return article;
 }
 
-async function loadArticleCustomers(database, userIdentity, articleIndex, group, customerIds, includeCompanyIdentity = false) {
+async function loadArticleCustomers(database, userIdentity, articleIndex, group, customerIds, includeCompanyIdentity = false, readOnly = false) {
   const withIdentity = group || includeCompanyIdentity;
-  const scope = group ? { isFullAccess: true, userGroup: 'BMS_APP_FULL_ACCESS' } : await getCustomerAccessScope(userIdentity, database);
+  const scope = group ? { isFullAccess: true, userGroup: 'BMS_APP_FULL_ACCESS' } : await getCustomerAccessScope(userIdentity, database, { readOnly });
   const { whereSql, params } = buildCustomerScopeFilter(scope, 'k');
   const canFilterSales = ['BMS_APP_FULL_ACCESS', 'AD01', 'GR04'].includes(scope.userGroup);
   const salesCode = text(scope.shortCode).toUpperCase();
@@ -154,12 +158,17 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers, 
     const { customers } = await loadArticleCustomers(target, userIdentity, article.index,
       { mandants, articleName: local ? '' : article.name });
     const entries = local ? [...customers, ...recorded] : customers;
-    return entries.map(({ vat, companyName, companyName1, ...customer }) => ({ vat, companyName,
-      accountKey: companyName1 ? JSON.stringify([customer.id.toUpperCase(), companyName1]) : '',
-      customer: { ...customer, ...(local && allowed.get(customer.id.toUpperCase())),
-        id: local ? customer.id : `${shortName}:${customer.id}`, readOnly: !local || !allowed.has(customer.id.toUpperCase()) },
-      assignment: { salesCode: customer.salesCode, mandant: shortName },
-    }));
+    return entries.map(({ vat, companyName, companyName1, ...customer }) => {
+      const key = customer.id.toUpperCase();
+      const localCustomer = local ? allowed.get(key) : null;
+      return { vat, companyName,
+        accountKey: companyName1 ? JSON.stringify([key, companyName1]) : '',
+        customer: { ...customer, ...localCustomer,
+          id: local ? customer.id : `${shortName}:${customer.id}`,
+          readOnly: !localCustomer || localCustomer.readOnly === true },
+        assignment: { salesCode: customer.salesCode, mandant: shortName },
+      };
+    });
   }));
   const groups = [];
   const byVat = new Map(), byName = new Map(), byAccount = new Map();
@@ -190,10 +199,11 @@ async function loadGroupBuyers(database, userIdentity, article, localCustomers, 
   return combined.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
-async function loadCustomerOfferAudience(database, userIdentity, article, sourceId, { group = false } = {}) {
+async function loadCustomerOfferAudience(database, userIdentity, article, sourceId, { group = false, readOnly = group } = {}) {
   const articleIndex = text(article?.articleIndex);
+  const delegated = readOnly && hasDelegatedAkiReadAccess(userIdentity);
   const [{ customers, salesFilter }, statuses] = await Promise.all([
-    articleIndex ? loadArticleCustomers(database, userIdentity, articleIndex) : { customers: [] },
+    articleIndex ? loadArticleCustomers(database, userIdentity, articleIndex, null, null, false, readOnly) : { customers: [] },
     loadOfferCustomerStatuses(Number(database.firmaId), sourceId),
   ]);
   const matchedArticle = articleIndex ? { index: articleIndex, name: text(article.articleName) } : null;
@@ -210,11 +220,23 @@ async function loadCustomerOfferAudience(database, userIdentity, article, source
       failed: status === 'failed', ...([4, 5].includes(offerStatus) ? { offerStatus } : {}),
       ...(canOpenOffer ? { offerId } : {}) };
   };
-  const localCustomers = customers.map(withStatus);
+  let actionableIds;
+  if (delegated && articleIndex) {
+    if (database.readOnly) {
+      actionableIds = new Set();
+    } else if (!(await getCustomerAccessScope(userIdentity, database)).isFullAccess) {
+      const actionable = await loadArticleCustomers(database, userIdentity, articleIndex);
+      actionableIds = new Set(actionable.customers.map(customer => customer.id));
+    }
+  }
+  const localCustomers = customers.map(customer => ({
+    ...withStatus(customer),
+    ...(actionableIds && !actionableIds.has(customer.id) ? { readOnly: true } : {}),
+  }));
   const known = new Set(customers.map(customer => customer.id.toUpperCase()));
   const missing = typeof sourceId === 'number' ? [...statuses.keys()].filter(id => !known.has(id)) : [];
   const groupBuyers = Boolean(matchedArticle && group && canSeeGroupBuyers(userIdentity));
-  const history = missing.length ? await loadArticleCustomers(database, userIdentity, '', null, missing, groupBuyers) : null;
+  const history = missing.length ? await loadArticleCustomers(database, userIdentity, '', null, missing, groupBuyers, readOnly) : null;
   const recorded = (history?.customers || []).map(customer => ({ ...withStatus(customer), readOnly: true }));
   if (!matchedArticle) {
     return recorded.length ? { article: null, customers: recorded, salesFilter: history.salesFilter } : { article: null, customers: [] };

@@ -199,7 +199,9 @@ test('option history exposes an offer link only with the offer detail permission
     { ...position, singleCandidateIndex: null })).customers.map(customer => customer.offerId);
   assert.deepEqual(await list({ shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder' }), [101, 102]);
   assert.deepEqual(await list({ shortCode: 'MFR', personNumber: 130, userId: 'm.frank' }), [undefined, 102]);
-  assert.deepEqual(await list({ shortCode: 'KMU', personNumber: 126, userId: 'musah' }), [undefined, undefined]);
+  assert.deepEqual(await list({ shortCode: 'KMU', personNumber: 126, userId: 'musah' }), [101, 102]);
+  assert.deepEqual(await list({ shortCode: 'PBO', personNumber: 81, userId: 'bohmbach' }), [101, 102]);
+  assert.deepEqual(await list({ shortCode: 'KMU', personNumber: 126, userId: 'other' }), [undefined, undefined]);
 });
 
 test('explicit cross-sales access may display different representatives for filtering', async () => {
