@@ -4,7 +4,7 @@ const { optionNameKey } = require('../src/options/article-name-rule-contract');
 
 test('confirmation keeps one global name and one independently confirmed article ID per mandant', async () => {
   const articleName = 'LDPE Sample Grade';
-  const source = { opp_id: 15, sourceVersion: 'source-v1', sourceMandantId: 3, articleName: '  Sample   clear ' };
+  const source = { opp_id: 15, sourceVersion: 'source-v1', sourceMandantId: 3, articleName: '  Sample   clear ', supplierName: 'TotalEnergies' };
   const articles = new Map([[3, new Set(['FRU-A'])], [8, new Set(['POL-B', 'POL-C'])]]);
   const rules = [];
   const confirmed = new Map();
@@ -62,18 +62,18 @@ test('confirmation keeps one global name and one independently confirmed article
   assert.deepEqual(await confirm(3, 'FRU-A'), { articleIndex: 'FRU-A', articleName });
   await confirm(3, 'FRU-A');
   assert.equal((await confirm(8, 'POL-B')).articleIndex, 'POL-B');
-  assert.deepEqual(rules, [[false, optionNameKey('sample clear'), source.articleName, articleName, 'NSC']]);
+  assert.deepEqual(rules, [[false, optionNameKey('sample clear', 'totalenergies'), source.articleName, articleName, 'NSC', 'totalenergies']]);
   assert.deepEqual([...confirmed], [[3, 'FRU-A'], [8, 'POL-B']]);
   await assert.rejects(() => confirm(8, 'POL-C'), error => error.details?.code === 'OPTION_ARTICLE_RULE_CONFLICT');
   await assert.rejects(() => confirm(8, 'POL-C', 'old name'), error => error.details?.code === 'OPTION_CHANGED');
   await assert.rejects(() => confirm(0, 'POL-C'), error => error.details?.code === 'OPTION_ARTICLE_RULE_SCOPE');
   const position = { id: 15, articleName: source.articleName };
-  assert.equal(await loadArticleNameConfirmation({ firmaId: 3 }, position), 'FRU-A');
+  assert.equal(await loadArticleNameConfirmation({ firmaId: 3 }, position, source), 'FRU-A');
   const revoke = (firmaId, articleIndex) => revokeArticleNameConfirmation({ firmaId }, 1, 15,
     { articleIndex, optionArticleName: 'sample clear' }, {});
   await assert.rejects(() => revoke(8, 'POL-C'), error => error.details?.code === 'OPTION_CHANGED');
   assert.deepEqual(await revoke(3, 'FRU-A'), { articleIndex: 'FRU-A', articleName });
-  assert.equal(await loadArticleNameConfirmation({ firmaId: 3 }, position), null);
+  assert.equal(await loadArticleNameConfirmation({ firmaId: 3 }, position, source), null);
   assert.equal(rules.length, 1);
   assert.equal(await revoke(8, 'POL-B'), null);
   assert.deepEqual(rules, []);

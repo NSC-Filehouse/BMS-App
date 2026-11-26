@@ -66,9 +66,9 @@ Einkaufshistorie verwenden. Lieferantennachweis ist die bestehende Lieferantenzu
 eine vorhandene Einkaufshistorie oder eine aktive Optionskontenzuordnung im Zielmandanten.
 Damit wird z.B. Borealis LF0124 trotz fehlender Kunden-Lieferanten-Verknüpfung erkannt.
 
-Abholadressen stehen aus dem Lieferantenstamm zur Auswahl. Bei FCA und EXW
-lassen sich neue Ladeorte bereits in „Option bestellen“ oder im Bestellwarenkorb
-über das kleine Plus in einer eigenen
+Der Zwischendialog „Option bestellen“ zeigt den Ladeort aus der Option. Bei FCA
+und EXW können im Bestellwarenkorb Abholadressen aus dem Lieferantenstamm
+ausgewählt oder neue Ladeorte über das kleine Plus in einer eigenen
 Maske erfasst: Firma/Lager, Straße, PLZ, Ort, Land sowie optionale Ladezeiten,
 Kontakt und Hinweise. Die Länderauswahl verwendet dieselben BMS-Länder wie neue
 Lieferadressen bei Aufträgen. Der vollständige Text wird in die Bestellung

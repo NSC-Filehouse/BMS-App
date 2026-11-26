@@ -33,7 +33,7 @@ async function resolveOfferArticle(database, offer, position) {
     const article = await articleByIndex(database, assignedIndex);
     if (article && !checkMfi(position, article).blocked && !checkMaterial(position, article).blocked) return article;
   }
-  const rule = await resolveArticleNameRule(database, offer.sourceMandantId, position);
+  const rule = await resolveArticleNameRule(database, offer.sourceMandantId, position, offer);
   if (rule) return rule.article;
 
   if (!local) {

@@ -74,6 +74,9 @@ test('one supplier or article never replaces explicit selection',async()=>{
   assert.equal((await fetch(`${base}/articles`)).status,200);
   assert.equal((await select({...choice(),supplierConfirmed:false})).status,422);
   assert.equal((await select({...choice(),articleConfirmed:false})).status,422);
+  articleConfirmations = [];
+  assert.equal((await select(choice())).status, 200);
+  assert.deepEqual(articleConfirmations, []);
 });
 
 test('only an explicit article confirmation saves the active mandant ID used for purchasing', async () => {

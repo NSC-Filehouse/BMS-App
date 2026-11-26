@@ -135,6 +135,7 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
     known.add(id);
     return true;
   }).map((item) => ({ ...item, lineId: newId(), defaultsVersion: 2, supplierId: String(item.supplierId),
+    ...(item.optionId != null && { optionDefaultAmount: item.amount, optionDefaultPurchasePrice: item.purchasePrice }),
     amount: item.optionId != null ? item.amount : defaultPurchaseAmount(chosenPackaging || item.originalPackagingType),
     amountTouched: item.optionId != null, unit: 'kg', currency: 'EUR', purchasePrice: item.optionId != null ? item.purchasePrice : '', requestedDeliveryDate: '', reservedFor: '', comment: '',
   }));
@@ -206,9 +207,9 @@ export function packagingKey(value) {
 
 export function defaultPurchaseAmount(packaging) { return packagingKey(packaging) === 'silo' ? 25000 : 24750; }
 
-export function planPurchaseTruckLoads(positions, packaging) {
-  if (!packaging || !positions.length) return null;
-  const capacity = defaultPurchaseAmount(packaging) * 1000;
+export function planPurchaseTruckLoads(positions, packaging, loadKg = packaging ? defaultPurchaseAmount(packaging) : 0, rebalance = false) {
+  if (!loadKg || !positions.length) return null;
+  const capacity = loadKg * 1000;
   const groups = new Map();
   for (const [index, position] of positions.entries()) {
     const { amount, amountTouched, lineId, id, copyOfPositionId, lineNo, ...details } = position;
@@ -229,7 +230,10 @@ export function planPurchaseTruckLoads(positions, packaging) {
   for (const group of groups.values()) {
     const loadCount = Math.ceil(group.grams / capacity);
     count += loadCount;
-    if (group.oversized || group.indexes.length !== loadCount) changes.push({ ...group, loadCount });
+    if (group.oversized || group.indexes.length !== loadCount || (rebalance && group.indexes.some((index, offset) =>
+      Math.round(Number(positions[index].amount) * 1000) !== Math.min(capacity, group.grams - offset * capacity)))) {
+      changes.push({ ...group, loadCount });
+    }
   }
   return { count, capacity, changes };
 }

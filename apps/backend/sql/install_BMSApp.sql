@@ -1242,6 +1242,7 @@ BEGIN TRY
      IsTest BIT NOT NULL,
      OptionNameKey CHAR(64) COLLATE Latin1_General_100_BIN2 NOT NULL,
      OptionName NVARCHAR(500) COLLATE Latin1_General_CI_AS NOT NULL,
+     SupplierKey NVARCHAR(255) COLLATE Latin1_General_CI_AS NULL,
      ArticleName NVARCHAR(500) COLLATE Latin1_General_CI_AS NOT NULL,
      CreatedBy NVARCHAR(100) COLLATE Latin1_General_CI_AS NOT NULL,
      CreatedAt DATETIME2(7) NOT NULL CONSTRAINT DF_OptionArticleNameRule_CreatedAt DEFAULT SYSUTCDATETIME(),
@@ -1261,6 +1262,9 @@ BEGIN TRY
      CONSTRAINT FK_OptionArticleNameRuleMandant_Rule FOREIGN KEY (IsTest, OptionNameKey)
        REFERENCES BMSApp.OptionArticleNameRule (IsTest, OptionNameKey)
    );
+
+ IF COL_LENGTH(N'BMSApp.OptionArticleNameRule', N'SupplierKey') IS NULL
+  ALTER TABLE BMSApp.OptionArticleNameRule ADD SupplierKey NVARCHAR(255) COLLATE Latin1_General_CI_AS NULL;
 
  DECLARE @expectedColumns NVARCHAR(MAX)=N'[
 {"table":"CreditLimitMailOutbox","column":"clm_ID","type":"bigint","length":8,"precision":19,"scale":0,"nullable":false,"identity":true,"computed":false,"collation":null},
@@ -2066,6 +2070,7 @@ BEGIN TRY
 {"table":"OptionArticleNameRule","column":"IsTest","type":"bit","length":1,"precision":1,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"OptionArticleNameRule","column":"OptionNameKey","type":"char","length":64,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_100_BIN2"},
 {"table":"OptionArticleNameRule","column":"OptionName","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"OptionArticleNameRule","column":"SupplierKey","type":"nvarchar","length":510,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"OptionArticleNameRule","column":"ArticleName","type":"nvarchar","length":1000,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"OptionArticleNameRule","column":"CreatedBy","type":"nvarchar","length":200,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"OptionArticleNameRule","column":"CreatedAt","type":"datetime2","length":8,"precision":27,"scale":7,"nullable":false,"identity":false,"computed":false,"collation":null},

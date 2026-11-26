@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transformWithEsbuild } from 'vite';
 import * as offers from '../src/utils/offers.js';
 import * as purchaseCart from '../src/utils/purchaseCart.js';
+import * as purchaseDeliveries from '../src/utils/purchaseDeliveries.js';
 import * as quantities from '../src/utils/optionQuantityConfirmation.js';
 import * as optionDisplay from '../src/utils/optionDisplay.js';
 import * as loadingLocations from '../src/utils/loadingLocationDraft.js';
@@ -73,6 +74,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../utils/customerSelection.js': { getSelectedCustomer: () => null },
     '../utils/offers.js': offers,
     '../utils/purchaseCart.js': purchaseCart,
+    '../utils/purchaseDeliveries.js': purchaseDeliveries,
     '../utils/optionQuantityConfirmation.js': quantities,
     '../utils/optionDisplay.js': optionDisplay,
     '../utils/useOptionValidityRefresh.js': { useOptionValidityRefresh: () => 0 },
@@ -687,7 +689,7 @@ test('purchase editor and totals use English labels and preserve positions durin
   await view.flush();
   assert.equal(view.field('Packaging type').props.value, 78);
   assert.equal(view.field('Quantity (kg)').props.value, 1000);
-  assert.equal(view.field('Reserved for').props.label, 'Reserved for');
+  assert.doesNotMatch(view.text(), /Reserved for|Position note/);
   assert.ok(view.text().includes('Original packaging type'));
   assert.ok(view.text().includes('Continue shopping'));
   const summary = await mount('../src/components/PurchaseOrderSummary.jsx', { positions: initialOrder.positions }, async () => { throw new Error('Unexpected request'); });
@@ -697,7 +699,7 @@ test('purchase editor and totals use English labels and preserve positions durin
   assert.ok(summary.text().includes('Total amount'));
 });
 
-test('the purchase editor splits below the availability note after validating the position', async () => {
+test('the order shows its planning controls above positions and resets them to one default line', async () => {
   const position = { lineId: 'one', articleIndex: 'A', article: 'Grade', amount: 1400000, amountTouched: true, purchasePrice: 1100 };
   let current;
   const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
@@ -710,37 +712,34 @@ test('the purchase editor splits below the availability note after validating th
     throw new Error(path);
   });
   await view.flush();
-  const split = () => view.find(node => node.type === 'Button' && node.props.children.includes('Aufteilen')).props;
-  const count = expected => assert.ok(view.find(node => node.type === 'Typography' && node.props.children.includes(`Benötigte LKW: ${expected}`)));
+  const summary = () => view.find(node => node.props?.truckEstimate != null).props;
+  const button = label => summary().actions.props.children.find(node => node?.props.children.includes(label)).props;
   const card = view.find(node => node.type === 'Card' && node.props?.variant === 'outlined');
-  assert.match(JSON.stringify(card), /Bemerkung für die Verfügbarkeitsliste.*Benötigte LKW: 57.*Aufteilen/);
+  assert.doesNotMatch(JSON.stringify(card), /Aufteilen|Benötigte LKW|Reserviert für|Positionshinweis/);
   assert.doesNotMatch(view.text(), /Position kopieren/);
-  count(57);
-  split().onClick();
+  assert.equal(summary().truckEstimate, 57);
+  button('Aufteilen').onClick();
   await view.flush();
   assert.equal(current.positions.length, 1);
-  assert.equal(view.field('Liefertermin').props.error, true);
-  assert.deepEqual(view.find(node => node.type === 'Alert' && node.props.severity === 'error').props.children, ['Bitte Liefertermin ergänzen.']);
-  assert.doesNotMatch(view.text(), /"type":"Dialog"/);
-  view.field('Liefertermin').props.onChange({ target: { value: '2026-12-01' } });
+  const dialog = () => view.find(node => node.props?.initialLoadKg != null).props;
+  dialog().onClose();
   await view.flush();
-  split().onClick();
+  assert.equal(current.positions[0].amount, 1400000);
+  button('Aufteilen').onClick();
   await view.flush();
-  assert.equal(current.positions.length, 57);
+  const planned = purchaseDeliveries.planPurchaseDeliveries(current.positions, [{ date: '2026-12-01' }], 23500);
+  dialog().onApply(purchaseDeliveries.allocatePurchaseDeliveries(planned), 23500);
+  await view.flush();
+  assert.equal(current.positions.length, 60);
   assert.ok(current.positions.every(position => position.requestedDeliveryDate === '2026-12-01'));
-  assert.equal(split().disabled, true);
   view.field('Verpackungsart').props.onChange({ target: { value: 79 } });
   await view.flush();
-  count(56);
-  assert.equal(current.positions.length, 57);
-  split().onClick();
+  button('Alle Löschen').onClick();
   await view.flush();
-  assert.equal(current.positions.length, 56);
-  assert.equal(current.positions.at(-1).amount, 25000);
-  view.field('Menge (kg)').props.onChange({ target: { value: '26000' } });
-  await view.flush();
-  count(57);
-  assert.equal(split().disabled, false);
+  assert.equal(current.positions.length, 1);
+  assert.equal(current.positions[0].amount, 25000);
+  assert.equal(current.positions[0].purchasePrice, '');
+  assert.equal(current.positions[0].requestedDeliveryDate, '');
 });
 
 test('a purchase pickup loads its supplier addresses and selects a unique technical ID', async () => {
@@ -790,11 +789,10 @@ test('a new pickup location stays selected in the purchase editor after a master
   assert.equal(purchaseCart.purchaseFieldErrors({ ...order, positions: [] }).addressId, false);
 });
 
-test('an option pickup sends the location entered in the popup to the selected order', async () => {
-  const location = 'Neues Werk\nHafenstraße 2\n2030 Antwerpen\nBE — Belgien';
+test('an option pickup shows its location inline and orders without writing a confirmation rule', async () => {
   let selection;
   const view = await mount('../src/components/OptionPurchaseDialog.jsx', {
-    offer: { id: 1, incoterm: 'FCA' }, position: { id: 10 }, supplier: { id: 'LF' },
+    offer: { id: 1, incoterm: 'FCA', loadingLocation: 'GON' }, position: { id: 10 }, supplier: { id: 'LF' },
     article: { articleIndex: 'A' }, onPrepared: () => {}, defaultAmount: 10000,
   }, async (path, _lang, options) => {
     if (path.endsWith('/selection')) { selection = JSON.parse(options.body); return { data: {} }; }
@@ -804,13 +802,44 @@ test('an option pickup sends the location entered in the popup to the selected o
     throw new Error(path);
   });
   await view.flush();
-  view.find(node => node.props?.['aria-label'] === 'Neuer Ladeort').props.onClick();
-  await view.flush();
-  view.find(node => node.props?.onConfirm).props.onConfirm(location, 'Antwerpen');
-  await view.flush();
+  const place = view.find(node => node.type === 'Box' && node.props.children?.some(child => child?.props?.children?.includes('GON')));
+  assert.deepEqual(place.props.children.map(child => child.props.children[0]), ['Ladeort', 'GON']);
+  assert.doesNotMatch(view.text(), /Neuer Ladeort/);
   await view.find(node => node.type === 'Button' && node.props.children.includes('Weiter')).props.onClick();
-  assert.equal(selection.manualLoadingLocation, location);
-  assert.equal(selection.loadingLocationCity, 'Antwerpen');
+  assert.equal(selection.articleIndex, 'A');
+  assert.equal(view.calls.some(call => call.path.endsWith('/article-confirmation')), false);
+});
+
+test('the deliveries dialog offers three capacities and waits for dates before applying the split', async () => {
+  let applied;
+  const view = await mount('../src/components/PurchaseDeliverySplitDialog.jsx', {
+    positions: [{ lineId: 'first', amount: 1400000, purchasePrice: 1100 }], initialLoadKg: 24750,
+    onApply: (positions, load) => { applied = { positions, load }; }, onClose: () => {},
+  }, async () => assert.fail('Unexpected request'));
+  const button = label => view.find(node => node.type === 'Button' && node.props.children.includes(label)).props;
+  const firstQuantity = () => view.field('Menge (kg)').props;
+  await view.flush();
+  assert.equal(firstQuantity().value, 1400000);
+  assert.deepEqual(view.field('Lademenge je LKW').props.children.flat().map(item => item.props.value), [25000, 24750, 23500]);
+  view.field('Lademenge je LKW').props.onChange({ target: { value: 23500 } });
+  button('Lieferung hinzufügen').onClick();
+  await view.flush();
+  const second = () => view.find(node => node.type === 'Box' && node.props.children?.[0]?.props?.children?.[0]?.props?.children?.includes('Lieferung 2'));
+  second().props.children[1].props.onChange({ target: { value: '500000' } });
+  await view.flush();
+  assert.equal(firstQuantity().value, 900000);
+  button('Aufteilen').onClick();
+  await view.flush();
+  assert.equal(applied, undefined);
+  assert.equal(view.field('Liefertermin').props.error, true);
+  view.field('Liefertermin').props.onChange({ target: { value: '2026-12-01' } });
+  second().props.children[3].props.onChange({ target: { value: '2026-12-02' } });
+  second().props.children[4].props.onChange({ target: { value: 'VL 2' } });
+  await view.flush();
+  button('Aufteilen').onClick();
+  assert.equal(applied.load, 23500);
+  assert.equal(applied.positions.length, 61);
+  assert.ok(applied.positions.slice(39).every(position => position.requestedDeliveryDate === '2026-12-02' && position.availabilityNote === 'VL 2'));
 });
 
 test('purchase contact dropdown displays the name while retaining the technical contact ID', async () => {

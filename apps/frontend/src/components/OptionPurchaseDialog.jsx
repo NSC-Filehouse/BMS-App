@@ -1,10 +1,7 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem,TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ContactCreateDialog from './ContactCreateDialog.jsx';
-import CompactAddressOption from './CompactAddressOption.jsx';
-import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import {getMandant} from '../utils/mandant.js';
 import {getSelectableContactRankings} from '../utils/contactRanking.js';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
@@ -15,7 +12,6 @@ import {createReturnTo} from '../utils/navigation.js';
 import {optionPurchaseReturnTo} from '../utils/optionPurchaseNavigation.js';
 import {useI18n} from '../utils/i18n.jsx';
 import {optionArticleBlocked,optionPositionTitle,optionQuantity} from '../utils/optionDisplay.js';
-import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
 
 const fieldFontSize='0.8125rem';
 
@@ -38,8 +34,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const contactScope=React.useRef(null);contactScope.current={supplierId:supplier?.id,mandant:contactMandant};
   const [orderAmount,setOrderAmount] = React.useState(null);
   const [availability,setAvailability] = React.useState({});
-  const [locationDialogOpen, setLocationDialogOpen] = React.useState(false);
-  const [manualLocation, setManualLocation] = React.useState(null);
   const [totalAmount,setTotalAmount]=React.useState('');
   const [totalUnit,setTotalUnit]=React.useState('');
   const [quantityConfirmed,setQuantityConfirmed]=React.useState(false);
@@ -116,7 +110,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     try {
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
         supplierId:supplier.id,contactId:contact?.id || null,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,packagingTypeId,amount:requestedAmount,
-        ...(manualLocation && pickup && { manualLoadingLocation: manualLocation.text, loadingLocationCity: manualLocation.city }),
       })});
       if (onPrepared) {
         onPrepared(response.data);
@@ -128,7 +121,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   };
   const cartReturnTo=optionPurchaseReturnTo(returnTo || createReturnTo(location),position.id);
   const pickup = /^(FCA|EXW)\b/i.test(availability.sourceIncoterm || offer.incoterm || '');
-  const loadingLocation = manualLocation?.text || availability.sourceLoadingLocation || offer.loadingLocation;
+  const loadingLocation = availability.sourceLoadingLocation || offer.loadingLocation;
   const selectedPackaging=packagingTypes.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
   const effectiveAvailability=truckOptionAvailability(availability,selectedPackaging) || availability;
@@ -166,13 +159,9 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {contactError && <Alert severity="error">{contactError}</Alert>}
         {contactNotice && <Alert severity="warning">{contactNotice}</Alert>}
       </>}
-      {pickup && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary">{t('purchase_loading_location')}</Typography>
-          {loadingLocation && <CompactAddressOption {...loadingLocationParts(loadingLocation)} />}
-        </Box>
-        <IconButton color="primary" size="small" disabled={busy} aria-label={t('purchase_new_loading_location')}
-          onClick={() => setLocationDialogOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton>
+      {pickup && loadingLocation && <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{t('purchase_loading_location')}</Typography>
+        <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{String(loadingLocation).replace(/\s+/g, ' ')}</Typography>
       </Box>}
       {<Box sx={{display:'grid',gap:0.5}}>
         <TextField label={t('packaging_type_label')} required select size="small" disabled={busy || choicesUnavailable} value={selectedPackaging?.id ?? ''} onChange={e=>{
@@ -212,10 +201,6 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {['PURCHASE_CART_SUPPLIER_CONFLICT', 'PURCHASE_CART_LOCATION_CONFLICT'].includes(errorCode) && <Link component={RouterLink} to="/purchase-cart" state={{returnTo:cartReturnTo}} onClick={()=>savePurchaseCartContext({returnTo:cartReturnTo})} sx={{display:'block',mt:1}}>{t('purchase_open_cart')}</Link>}
       </Alert>}
     </DialogContent>
-    {locationDialogOpen && <LoadingLocationDialog onClose={() => setLocationDialogOpen(false)} onConfirm={(text, city) => {
-      setManualLocation({ text, city });
-      setLocationDialogOpen(false);
-    }} />}
     <DialogActions><Button disabled={busy} onClick={onClose}>{t('purchase_cancel')}</Button><Button variant="contained" disabled={busy||contactsLoading||Boolean(contactError)||unavailable||invalidAmount||!supplier||!article||optionArticleBlocked(article)} onClick={submit}>{onPrepared ? t('procurement_continue') : t('purchase_to_cart')}</Button></DialogActions>
     {contactCreateOpen && supplier && <ContactCreateDialog key={`${supplier.id}:${contactMandant}`} customerId={supplier.id} customerName={supplier.name}
       mandant={contactMandant} rankings={getSelectableContactRankings(contacts)} initialContact={contactMeta.suggestion}

@@ -5,9 +5,10 @@ import UndoIcon from '@mui/icons-material/Undo';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from './PurchaseOrderActions.jsx';
 import PurchaseOrderDeliveryFields from './PurchaseOrderDeliveryFields.jsx';
+import PurchaseDeliverySplitDialog from './PurchaseDeliverySplitDialog.jsx';
 import { apiRequest } from '../api/client.js';
 import { findIncotermByCode } from '../utils/incoterm.js';
-import { defaultPurchaseAmount, packagingKey, planPurchaseTruckLoads, purchaseMissingFields, purchaseFieldErrors, splitPurchaseTruckPositions } from '../utils/purchaseCart.js';
+import { defaultPurchaseAmount, packagingKey, planPurchaseTruckLoads, purchaseMissingFields, purchaseFieldErrors } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00Z`).toLocaleDateString(lang === 'en' ? 'en-GB' : 'de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : '–';
@@ -25,7 +26,8 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const [history, setHistory] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [splitError, setSplitError] = React.useState(false);
+  const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
+  const [splitLoadKg, setSplitLoadKg] = React.useState(null);
   const [splitAttempted, setSplitAttempted] = React.useState(false);
   const [paymentTexts, setPaymentTexts] = React.useState([]);
   const [paymentTextsLoading, setPaymentTextsLoading] = React.useState(false);
@@ -110,9 +112,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const fieldErrors = purchaseFieldErrors(order);
   const disabled = saving || locked;
   const selectedPackaging = options.packagingTypes.find(item => Number(order.packagingTypeId) === item.id);
-  const truckPlan = !fixedPosition && order.packagingTypeId
-    ? planPurchaseTruckLoads(order.positions, selectedPackaging?.key || order.packagingType) : null;
-  React.useEffect(() => { setSplitError(false); }, [order.positions, order.packagingTypeId]);
+  const packaging = selectedPackaging?.key || order.packagingType;
+  const showTruckPlanning = !fixedPosition && Boolean(order.packagingTypeId && packaging);
+  const truckPlan = showTruckPlanning ? planPurchaseTruckLoads(order.positions, packaging, splitLoadKg ?? defaultPurchaseAmount(packaging)) : null;
   const savedAttachments = order.attachments || [];
   const pendingAttachmentFiles = order.pendingAttachmentFiles || [];
   const removeAttachmentIds = order.removeAttachmentIds || [];
@@ -135,29 +137,41 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       return;
     }
     setRejectedDeliveryDate(null);
-    const saveFailure = await action(order);
+    const saveFailure = await action({ ...order, positions: order.positions.map(position => ({ ...position, reservedFor: '', comment: '' })) });
     const date = saveFailure?.payload?.error?.details?.date;
     if (saveFailure?.code === 'PURCHASE_DELIVERY_DATE_NON_WORKING' && date) {
       setRejectedDeliveryDate({ date, loadingLocationText: order.loadingLocationText });
     }
   };
-  const canSplit = !disabled && !linkedOrder && Boolean(truckPlan?.changes.length);
+  const canChangePositions = !disabled && !fixedPosition && !linkedOrder;
   const splitMissingFields = Object.entries({
     articleIndex: t('product_article'),
     amount: t('purchase_quantity_kg'),
     purchasePrice: t('purchase_price_input', { currency: order.currency }),
-    requestedDeliveryDate: t('purchase_delivery_date'),
   }).filter(([field]) => fieldErrors.positions.some(errors => errors[field])).map(([, label]) => label);
   const splitFieldsMissing = fieldErrors.articleType || splitMissingFields.length > 0;
-  const splitIntoTrucks = () => {
-    if (!canSplit) return;
-    if (splitFieldsMissing) { setSplitAttempted(true); return; }
-    const positions = splitPurchaseTruckPositions(order.positions, truckPlan);
-    if (positions) {
-      setSplitAttempted(false);
-      update({ positions });
-    }
-    else setSplitError(true);
+  const openSplitDialog = () => {
+    if (!canChangePositions || !showTruckPlanning) return;
+    if (splitFieldsMissing || !truckPlan) { setSplitAttempted(true); return; }
+    setSplitAttempted(false);
+    setSplitDialogOpen(true);
+  };
+  const resetPositions = () => {
+    if (!canChangePositions || !order.positions.length) return;
+    const first = order.positions[0];
+    const optionLines = initialOrder.positions.filter(position => first.optionId != null
+      && position.optionId === first.optionId && position.optionPositionId === first.optionPositionId);
+    const optionAmount = optionLines.reduce((total, position) => total + Number(position.amount || 0), 0);
+    update({ positions: [{ ...first,
+      amount: first.optionId == null ? defaultPurchaseAmount(packaging) : first.optionDefaultAmount ?? (optionAmount || first.amount),
+      amountTouched: first.optionId != null,
+      purchasePrice: first.optionId == null ? '' : first.optionDefaultPurchasePrice ?? optionLines[0]?.purchasePrice ?? '',
+      requestedDeliveryDate: '', reservedFor: '', comment: '', availabilityNote: '',
+    }] });
+    setSplitAttempted(false);
+    setSplitLoadKg(null);
+    setAttempted(false);
+    setRejectedDeliveryDate(null);
   };
 
   return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, minWidth: 0, width: '100%', '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
@@ -244,7 +258,15 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <TextField label={t('wpz_option_other')} multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     {optionQuantityFields}
-    <PurchaseOrderSummary positions={order.positions} currency={order.currency} />
+    <PurchaseOrderSummary positions={order.positions} currency={order.currency} truckEstimate={truckPlan?.count}
+      actions={!fixedPosition && !linkedOrder && order.positions.length > 0 ? <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto' }}>
+        <Button color="error" size="small" disabled={!canChangePositions} onClick={resetPositions}
+          sx={{ textTransform: 'none' }}>{t('purchase_reset_positions')}</Button>
+        {showTruckPlanning && <Button size="small" disabled={!canChangePositions} onClick={openSplitDialog}>{t('purchase_truck_split')}</Button>}
+      </Box> : undefined} />
+    {splitAttempted && splitFieldsMissing && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type')
+      : t('purchase_truck_split_required', { fields: new Intl.ListFormat(locale).format(splitMissingFields) })}</Alert>}
+    {splitAttempted && !splitFieldsMissing && !truckPlan && <Alert severity="error">{t('purchase_delivery_split_invalid_amount')}</Alert>}
     {order.positions.map((p, index) => {
       const last = history[p.articleIndex] || p;
       const errors = fieldErrors.positions[index];
@@ -266,25 +288,18 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_price')}: {priceText(last.lastPurchasePrice, locale)}</Typography>
             <TextField fullWidth label={t('purchase_price_input', { currency: order.currency })} required type="number" size="small" error={showPositionErrors && errors.purchasePrice} value={p.purchasePrice ?? ''} onChange={(e) => patchPosition(p.lineId, { purchasePrice: e.target.value })} disabled={disabled} inputProps={{ min: 0, step: 0.01 }} /></Box>
           <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('purchase_last_delivery')}: {formatDate(last.lastDeliveryDate, lang)}</Typography>
-            <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={isRejectedDate || (showPositionErrors && errors.requestedDeliveryDate)} value={deliveryDate} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
+            <TextField fullWidth label={t('purchase_delivery_date')} required type="date" size="small" error={isRejectedDate || (attempted && errors.requestedDeliveryDate)} value={deliveryDate} onChange={(e) => patchPosition(p.lineId, { requestedDeliveryDate: e.target.value })} disabled={disabled} InputLabelProps={{ shrink: true }} /></Box>
         </Box>
-        <TextField label={t('purchase_reserved_for')} size="small" value={p.reservedFor || ''} onChange={(e) => patchPosition(p.lineId, { reservedFor: e.target.value })} disabled={disabled} />
-        <TextField label={t('purchase_position_note')} size="small" value={p.comment || ''} onChange={(e) => patchPosition(p.lineId, { comment: e.target.value })} disabled={disabled} />
-        <TextField label={lang === 'en' ? 'Availability note' : 'Bemerkung für die Verfügbarkeitsliste'} size="small" value={p.availabilityNote || ''}
+        <TextField label={t('purchase_availability_note')} size="small" value={p.availabilityNote || ''}
           onChange={event => patchPosition(p.lineId, { availabilityNote: event.target.value })} disabled={disabled} inputProps={{ maxLength: 255 }} />
-        {index === order.positions.length - 1 && truckPlan && <>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2">{t('purchase_truck_count', { count: truckPlan.count.toLocaleString(locale) })}</Typography>
-            {!linkedOrder && (truckPlan.count > 1 || truckPlan.changes.length > 0) && <Button size="small" disabled={!canSplit} onClick={splitIntoTrucks}>
-              {t('purchase_truck_split')}
-            </Button>}
-          </Box>
-          {splitAttempted && splitFieldsMissing && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type')
-            : t('purchase_truck_split_required', { fields: new Intl.ListFormat(locale).format(splitMissingFields) })}</Alert>}
-          {splitError && <Alert severity="error">{t('purchase_truck_split_too_large')}</Alert>}
-        </>}
       </CardContent></Card>;
     })}
+    {splitDialogOpen && <PurchaseDeliverySplitDialog positions={order.positions} initialLoadKg={splitLoadKg ?? defaultPurchaseAmount(packaging)}
+      onClose={() => setSplitDialogOpen(false)} onApply={(positions, loadKg) => {
+        setSplitLoadKg(loadKg);
+        update({ positions });
+        setSplitDialogOpen(false);
+      }} />}
     {attempted && missing.length > 0 && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type') : t('purchase_missing_fields')}</Alert>}
     <PurchaseOrderActions>
       {!onSend && <Button variant="outlined" onClick={onContinue} disabled={disabled}>{fixedPosition ? t('back_label') : t('cart_continue_shopping')}</Button>}

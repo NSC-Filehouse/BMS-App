@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { articleHash } = require('../src/options/matching-contract');
+const { optionNameKey } = require('../src/options/article-name-rule-contract');
 
 const calls = [];
 const catalogArticle = { articleIndex: 'A-PP', articleName: 'PP Copo NT MFI 10 - 14,9 natur' };
@@ -34,7 +35,7 @@ require.cache[require.resolve('../src/db/access')] = { exports: {
   runSQLQuerySqlServer: async (database, sql, params) => {
     calls.push({ database, sql, params });
     if (sql.includes('[md_FirmaName]')) return mandants;
-    if (sql.includes('OptionArticleNameRule')) return nameRule ? [nameRule] : [];
+    if (sql.includes('OptionArticleNameRule')) return nameRule && params[2] === optionNameKey('PPC 7600 OG', 'totalenergies') ? [nameRule] : [];
     if (sql.includes('tblOptionenArtikelKandidaten')) {
       return stored ? [{ oak_DatenJson: JSON.stringify(stored), oak_oab_id: 25 }] : [];
     }
@@ -49,7 +50,7 @@ require.cache[require.resolve('../src/db/customer-access')] = { exports: {
 const { resolveOfferArticle, loadOptionOfferCustomers, loadCustomerOfferAudience } = require('../src/options/customer-offers');
 const { buildOfferSubmissions, buildCustomerOfferSubmissions } = require('../src/options/offer-submission');
 
-const owner = { sourceMandantId: 3 };
+const owner = { sourceMandantId: 3, supplierName: 'TotalEnergies' };
 const sameDatabase = { firmaId: 3 };
 const foreignDatabase = { firmaId: 8 };
 const position = {
@@ -76,6 +77,7 @@ test('a global name rule resolves the catalog ID of the active mandant even befo
   candidates = [{ ...catalogArticle, articleIndex: 'OTHER-MANDANT' }];
   const unresolved = { ...position, matchProcessingStatus: 'pending' };
   assert.equal((await resolveOfferArticle(foreignDatabase, owner, unresolved)).articleIndex, 'OTHER-MANDANT');
+  assert.equal(await resolveOfferArticle(sameDatabase, { ...owner, supplierName: 'Borealis' }, unresolved), null);
   assert.equal(calls.find(call => call.sql.includes('OptionArticleNameRule')).params[0], 8);
   candidates.push({ ...catalogArticle, articleIndex: 'DUPLICATE' });
   assert.equal(await resolveOfferArticle(foreignDatabase, owner, unresolved), null);

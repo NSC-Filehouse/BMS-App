@@ -7,7 +7,7 @@ const { articleByIndex } = require('./matching-service');
 const { checkMfi } = require('./mfi-compatibility');
 const { checkMaterial } = require('./material-facts');
 const { loadOptionPosition, validateOptionArticle } = require('./purchase-source');
-const { normalizeArticleName, optionNameKey, ruleSelectSql } = require('./article-name-rule-contract');
+const { normalizeArticleName, articleRuleSupplierKey, optionNameKey, ruleSelectSql } = require('./article-name-rule-contract');
 
 async function findByName(database, name) {
   const key = normalizeArticleName(name);
@@ -19,8 +19,8 @@ async function findByName(database, name) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-async function resolveArticleNameRule(database, sourceMandantId, position) {
-  const key = optionNameKey(position.articleName);
+async function resolveArticleNameRule(database, sourceMandantId, position, supplier = position) {
+  const key = optionNameKey(position.articleName, articleRuleSupplierKey(supplier));
   const test = isTestMandant(database);
   if (!key || test !== isTestMandant({ firmaId: sourceMandantId })) return null;
 
@@ -34,8 +34,8 @@ async function resolveArticleNameRule(database, sourceMandantId, position) {
   return { article: article && !checkMfi(position, article).blocked && !checkMaterial(position, article).blocked ? article : null };
 }
 
-async function loadArticleNameConfirmation(database, position) {
-  const key = optionNameKey(position.articleName);
+async function loadArticleNameConfirmation(database, position, supplier) {
+  const key = optionNameKey(position.articleName, articleRuleSupplierKey(supplier));
   if (!key || !position.id) return null;
   const [row] = await runSQLQuerySqlServer(config.sql.database, `
     IF OBJECT_ID(N'BMSApp.OptionArticleNameRuleMandant', N'U') IS NOT NULL
@@ -49,8 +49,9 @@ async function revokeArticleNameConfirmation(database, optionId, positionId, sel
   const source = await withSqlTransaction(config.sql.database, async ({ query }) => {
     const current = await loadOptionPosition(optionId, positionId, query, { identity, lock: true });
     const test = isTestMandant(database);
-    const key = optionNameKey(current.articleName);
-    if (!key || key !== optionNameKey(selection.optionArticleName) || test !== isTestMandant({ firmaId: current.sourceMandantId })) {
+    const supplier = articleRuleSupplierKey(current);
+    const key = optionNameKey(current.articleName, supplier);
+    if (!key || key !== optionNameKey(selection.optionArticleName, supplier) || test !== isTestMandant({ firmaId: current.sourceMandantId })) {
       throw createHttpError(409, 'Die Optionszuordnung wurde geändert. Bitte die Option erneut laden.', { code: 'OPTION_CHANGED' });
     }
     // Serialize confirmation and revocation of the same shared name rule.
@@ -80,8 +81,12 @@ async function confirmArticleNameRule(database, optionId, positionId, selection,
   if (test !== isTestMandant({ firmaId: source.sourceMandantId })) {
     throw createHttpError(403, 'Bitte zum passenden Test- oder Echtmandanten wechseln.', { code: 'OPTION_ARTICLE_RULE_SCOPE' });
   }
-  const key = optionNameKey(source.articleName);
-  if (!key || key !== optionNameKey(selection.optionArticleName)) {
+  const supplier = articleRuleSupplierKey(source);
+  if (supplier === 'unknown') {
+    throw createHttpError(422, 'Der Lieferant dieser Option ist nicht eindeutig identifiziert.', { code: 'OPTION_ARTICLE_RULE_SUPPLIER_REQUIRED' });
+  }
+  const key = optionNameKey(source.articleName, supplier);
+  if (!key || key !== optionNameKey(selection.optionArticleName, supplier)) {
     throw createHttpError(409, 'Der Optionsartikelname hat sich geändert. Bitte die Option erneut laden.', { code: 'OPTION_CHANGED' });
   }
   const article = await validateOptionArticle(database, source, selection);
@@ -92,11 +97,11 @@ async function confirmArticleNameRule(database, optionId, positionId, selection,
 
   await withSqlTransaction(config.sql.database, async ({ query }) => {
     const current = await loadOptionPosition(optionId, positionId, query, { identity, lock: true });
-    if (optionNameKey(current.articleName) !== key || current.sourceVersion !== source.sourceVersion
+    if (optionNameKey(current.articleName, articleRuleSupplierKey(current)) !== key || current.sourceVersion !== source.sourceVersion
       || current.opp_AktuellerAbgleichID !== source.opp_AktuellerAbgleichID) {
       throw createHttpError(409, 'Die Option wurde zwischenzeitlich geändert. Bitte erneut laden.', { code: 'OPTION_CHANGED' });
     }
-    const availability = await query(`SELECT OBJECT_ID(N'BMSApp.OptionArticleNameRule', N'U') AS ruleTable,
+    const availability = await query(`SELECT COL_LENGTH(N'BMSApp.OptionArticleNameRule', N'SupplierKey') AS ruleTable,
       OBJECT_ID(N'BMSApp.OptionArticleNameRuleMandant', N'U') AS mandantTable`);
     if (!availability.rows[0]?.ruleTable || !availability.rows[0]?.mandantTable) {
       throw createHttpError(503, 'Das Speichern von Artikelregeln ist noch nicht verfügbar.', { code: 'OPTION_ARTICLE_RULE_NOT_READY' });
@@ -104,8 +109,8 @@ async function confirmArticleNameRule(database, optionId, positionId, selection,
     const rule = await query(`SELECT 1 FROM BMSApp.OptionArticleNameRule WITH (UPDLOCK, HOLDLOCK)
       WHERE IsTest=? AND OptionNameKey=CONVERT(CHAR(64),?)`, [test, key]);
     if (!rule.rows.length) {
-      await query(`INSERT BMSApp.OptionArticleNameRule (IsTest, OptionNameKey, OptionName, ArticleName, CreatedBy)
-        VALUES (?, ?, ?, ?, ?)`, [test, key, source.articleName, article.articleName, actor]);
+      await query(`INSERT BMSApp.OptionArticleNameRule (IsTest, OptionNameKey, OptionName, ArticleName, CreatedBy, SupplierKey)
+        VALUES (?, ?, ?, ?, ?, ?)`, [test, key, source.articleName, article.articleName, actor, supplier]);
     }
     const mandantId = Number(database.firmaId);
     const target = await query(`SELECT ArticleIndex AS articleIndex FROM BMSApp.OptionArticleNameRuleMandant

@@ -1,11 +1,31 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { addPurchaseCartItems, clearPurchaseCart, duplicatePurchaseCartItem, getPurchaseCartContext, getPurchaseCartItems, getPurchaseRequestId, planPurchaseTruckLoads, purchaseFieldErrors, purchaseMissingFields, purchaseTotals, savePurchaseCartContext, splitPurchaseTruckPositions, updatePurchaseCartItem } from '../src/utils/purchaseCart.js';
+import { allocatePurchaseDeliveries, planPurchaseDeliveries, purchaseDeliveryAmounts } from '../src/utils/purchaseDeliveries.js';
 
 const storage = new Map();
 global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key) };
 beforeEach(() => { storage.clear(); localStorage.setItem('bms.mandant', 'FRU'); });
 const item = (id, packaging = 'Sackware') => ({ supplierId: '42', articleIndex: id, article: `Artikel ${id}`, originalPackagingType: packaging });
+
+test('delivery allocations subtract all added amounts from the first and preserve dates, notes and source quantities', () => {
+  const source = (lineId, optionPositionId, amount) => ({ ...item('A'), lineId, optionId: 7, optionPositionId, amount, purchasePrice: 1100 });
+  const sources = [source('a', 8, 900000), source('b', 9, 500000)];
+  const deliveries = [{ date: '2026-12-01', note: 'A' }, { amount: '300000', date: '2026-12-02', note: 'B' }, { amount: '200000', date: '2026-12-03', note: 'C' }];
+  assert.deepEqual(purchaseDeliveryAmounts(sources, deliveries), [900000000, 300000000, 200000000]);
+  assert.deepEqual(purchaseDeliveryAmounts(sources, deliveries.slice(0, 2)), [1100000000, 300000000]);
+  assert.equal(planPurchaseDeliveries(sources, [...deliveries, { amount: 999999 }], 23500), null);
+  let id = 0;
+  for (const capacity of [25000, 24750, 23500]) {
+    const plan = planPurchaseDeliveries(sources, deliveries, capacity);
+    const positions = allocatePurchaseDeliveries(plan, () => `new-${++id}`);
+    assert.equal(new Set(positions.map(position => position.lineId)).size, positions.length);
+    assert.equal(positions.reduce((total, position) => total + position.amount, 0), 1400000);
+    assert.equal(positions.filter(position => position.optionPositionId === 9).reduce((total, position) => total + position.amount, 0), 500000);
+    assert.ok(positions.every(position => position.amount > 0 && position.amount <= capacity));
+    assert.ok(positions.filter(position => position.requestedDeliveryDate === '2026-12-03').every(position => position.availabilityNote === 'C'));
+  }
+});
 
 test('an option pickup fills a cart without a chosen address and preserves an existing different pickup', () => {
   addPurchaseCartItems([item('A')]);

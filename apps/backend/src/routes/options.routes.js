@@ -43,7 +43,7 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  const [detail, article, confirmationIndex] = await Promise.all([
-   enrichOptionContactPhone(req.database,offer), resolveOfferArticle(req.database,offer,position), loadArticleNameConfirmation(req.database,position),
+   enrichOptionContactPhone(req.database,offer), resolveOfferArticle(req.database,offer,position), loadArticleNameConfirmation(req.database,position,offer),
  ]);
  const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = position;
  publicPosition.matchedArticle = article ? { articleIndex: String(article.articleIndex), articleName: article.articleName } : null;

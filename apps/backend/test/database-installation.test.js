@@ -53,7 +53,7 @@ test('incompatible installations abort atomically instead of altering or deletin
  const supportedOfferUpgrade='ALTER TABLE [BMSApp].[OptionOfferMailOutbox] ALTER COLUMN [OptionPositionId] INT NULL;';
  assert.doesNotMatch(sql.replace(supportedOfferUpgrade,''),/ALTER TABLE[^\n]*(?:DROP COLUMN|ALTER COLUMN)/i);
  const manifest=JSON.parse(sql.match(/DECLARE @expectedColumns NVARCHAR\(MAX\)=N'((?:''|[^'])*)';/s)[1].replaceAll("''","'"));
- assert.equal(manifest.length,813);
+ assert.equal(manifest.length,814);
  assert.equal(new Set(manifest.map(c=>c.table)).size,47);
  assert.equal(manifest.find(c=>c.table==='tbl_Temp_Auftrag' && c.column==='ta_delivery_address_id').type,'int');
  const purchaseOrderColumns = manifest.filter(c => ['tb_supplier_contact_id','tb_warehouse_id','tb_address_customer_id',

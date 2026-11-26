@@ -460,6 +460,18 @@ test('a full truck split saves and reloads all 57 positions with the original to
   assert.equal(reopened.positions.reduce((sum, position) => sum + position.amount * position.purchasePrice / 1000, 0), 1540000);
 });
 
+test('purchase orders persist the date and VL note per delivery and clear removed position fields', async () => {
+  const f = fixture();
+  const input = body();
+  const positions = ['2026-12-01', '2026-12-02', '2026-12-03'].map((date, index) => ({ ...input.positions[0],
+    amount: 23500, requestedDeliveryDate: date, availabilityNote: `VL ${index + 1}`, reservedFor: 'Old value', comment: 'Old note' }));
+  await f.request({ ...input, positions: JSON.stringify(positions) });
+  const { data } = await f.request({}, 'get', '/temp-purchase-orders/:id');
+  assert.deepEqual(data.positions.map(position => [position.requestedDeliveryDate, position.availabilityNote]),
+    positions.map(position => [position.requestedDeliveryDate, position.availabilityNote]));
+  assert.ok(f.lines.every(position => position.tbp_reserved_for == null && position.tbp_comment == null));
+});
+
 test('a response read failure rolls back instead of leaving an apparently failed saved order', async () => {
   const f = fixture(); f.failRead();
   await assert.rejects(f.request(body()), /Simulated read error/);
