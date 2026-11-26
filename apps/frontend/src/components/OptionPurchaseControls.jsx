@@ -27,7 +27,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
   const [selectedArticle, setSelectedArticle] = React.useState(null);
   const matchedArticle = position.matchedArticle;
   const article = matchedArticle ?? selectedArticle;
-  const [articleChosen, setArticleChosen] = React.useState(false);
   const [confirmingArticle, setConfirmingArticle] = React.useState(false);
   const [articleConfirmationError, setArticleConfirmationError] = React.useState('');
   const confirmationRequest = React.useRef(null);
@@ -104,7 +103,6 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
 
   function chooseArticle(value) {
     setSelectedArticle(value);
-    setArticleChosen(Boolean(value));
     setArticleConfirmationError('');
   }
 
@@ -225,7 +223,7 @@ export default function OptionPurchaseControls({ enabled, offer, position, prefe
           aria-expanded={searchOpen} aria-controls={searchOpen ? searchId : undefined}
           onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></IconButton>
       </Box>
-      {articleChosen && article && <Button size="small" endIcon={<CheckIcon />} sx={{ justifySelf: 'start', textTransform: 'none' }}
+      {article && <Button size="small" endIcon={<CheckIcon />} sx={{ justifySelf: 'start', textTransform: 'none' }}
         disabled={confirmingArticle || position.expired || optionArticleBlocked(article)} onClick={confirmArticle}>
         {t('option_commit_article')}
       </Button>}

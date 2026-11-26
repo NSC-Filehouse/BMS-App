@@ -456,7 +456,7 @@ test('the first selectable article is preselected and a resolved supplier appear
   }
 });
 
-test('explicit article confirmation hides the selector and keeps the confirmed article for ordering', async () => {
+test('the preselected article can be confirmed immediately and is kept for ordering', async () => {
   const position = { id: 10, articleName: 'Supplier grade', matchedArticle: null };
   const proposal = { articleIndex: 'OTHER', articleName: 'Other proposal' };
   const target = { articleIndex: 'LOCAL-99', articleName: 'Local article' };
@@ -466,16 +466,14 @@ test('explicit article confirmation hides the selector and keeps the confirmed a
     onArticleConfirmed: matchedArticle => view.updateProps({ position: { ...position, matchedArticle } }),
   }, async (path, _lang, options) => {
     if (path.includes('/suppliers?')) return { data: [{ id: 'SUP', name: 'Supplier' }] };
-    if (path.includes('/articles?')) return { data: [proposal, target] };
+    if (path.includes('/articles?')) return { data: [target, proposal] };
     assert.match(path, /\/article-confirmation$/);
     assert.equal(options.method, 'POST');
     assert.deepEqual(JSON.parse(options.body), { confirmed: true, articleIndex: 'LOCAL-99', optionArticleName: 'Supplier grade' });
     return { data: target };
   });
   await view.flush();
-  assert.doesNotMatch(view.text(), /Hiermit committe/);
-  view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled).props.onChange(null, target);
-  await view.flush();
+  assert.equal(view.find(node => node.type === 'Autocomplete' && node.props.getOptionDisabled).props.value, target);
   await view.find(node => node.type === 'Button' && node.props.children.includes('Hiermit committe ich den Artikel')).props.onClick();
   await view.flush();
   assert.throws(() => view.find(node => node.type === 'Autocomplete'), /Expected element not found/);
