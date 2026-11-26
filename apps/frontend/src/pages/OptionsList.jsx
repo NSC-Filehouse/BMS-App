@@ -12,7 +12,7 @@ import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 export default function OptionsList() {
   const [offers, setOffers] = React.useState([]);
   const [query, setQuery] = React.useState('');
-  const [listView, setListView] = React.useState('grouped');
+  const [listView, setListView] = React.useState('received');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const navigate = useNavigate();
