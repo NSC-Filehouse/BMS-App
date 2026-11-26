@@ -552,7 +552,8 @@ test('the offer ID opens details while PDF is pending and the same link opens th
   let pdfReady = false;
   const view = await mount('../src/components/OptionOfferCustomers.jsx', {
     returnTo,
-    customers: [{ id: 'A', name: 'Open', offerId: 101, queued: true }, { id: 'B', name: 'Restricted', offerStatus: 5 }],
+    customers: [{ id: 'A', name: 'Open', offerId: 101, queued: true, assignments: [{ salesCode: 'RRÖ', mandant: 'FRU' }] },
+      { id: 'B', name: 'Restricted', offerStatus: 5 }],
   }, async path => {
     assert.equal(path, '/temp-offers/101/pdf');
     if (!pdfReady) throw Object.assign(new Error('Waiting for PDF'), { code: 'OFFER_PDF_NOT_READY' });
@@ -561,7 +562,9 @@ test('the offer ID opens details while PDF is pending and the same link opens th
   await view.flush();
   const link = view.find(node => node.props?.to === '/temp-offers/101');
   assert.deepEqual(link.props.state, { returnTo });
-  assert.deepEqual(link.props.children, [101]);
+  assert.deepEqual(link.props.children, ['Angebot-ID']);
+  const linkRow = view.find(node => node.props?.children?.includes(link));
+  assert.deepEqual(linkRow.props.children[1].props.children, ['RRÖ(FRU)']);
   assert.throws(() => view.find(node => node.type === 'Checkbox'), /Expected element not found/);
   const click = () => link.props.onClick({ preventDefault() {} });
   await click();

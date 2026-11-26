@@ -334,13 +334,17 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                 />}
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{customer.name}</Typography>
-                  {!stock && customer.offerId && <Typography component={Link} variant="caption" color="primary.main" display="block"
-                    to={`/temp-offers/${customer.offerId}`} state={{ returnTo }} onClick={event => openOffer(event, customer.offerId)}>
-                    {customer.offerId}
-                  </Typography>}
-                  {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
-                    {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
-                  </Typography> : null}
+                  {((!stock && customer.offerId) || customer.assignments?.length || customer.salesCode) ? (
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 0.75 }}>
+                      {!stock && customer.offerId && <Typography component={Link} variant="caption" color="primary.main"
+                        to={`/temp-offers/${customer.offerId}`} state={{ returnTo }} onClick={event => openOffer(event, customer.offerId)}>
+                        {t('option_offer_id_link')}
+                      </Typography>}
+                      {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
+                        {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
+                      </Typography> : null}
+                    </Box>
+                  ) : null}
                   {!stock && !status && customer.failed && <Typography variant="caption" color="error.main">{t('option_offer_failed')}</Typography>}
                 </Box>
                 {stock && statusIcon}
