@@ -1,6 +1,5 @@
 import React from 'react';
 import { Alert, Autocomplete, Box, Button, Card, CardContent, CircularProgress, IconButton, MenuItem, TextField, Typography } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import UndoIcon from '@mui/icons-material/Undo';
 import PurchaseOrderSummary from './PurchaseOrderSummary.jsx';
@@ -8,7 +7,7 @@ import PurchaseOrderActions from './PurchaseOrderActions.jsx';
 import PurchaseOrderDeliveryFields from './PurchaseOrderDeliveryFields.jsx';
 import { apiRequest } from '../api/client.js';
 import { findIncotermByCode } from '../utils/incoterm.js';
-import { packagingKey, purchaseMissingFields, purchaseFieldErrors, createPurchaseLineId } from '../utils/purchaseCart.js';
+import { defaultPurchaseAmount, packagingKey, planPurchaseTruckLoads, purchaseMissingFields, purchaseFieldErrors, splitPurchaseTruckPositions } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
 const formatDate = (value, lang) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00Z`).toLocaleDateString(lang === 'en' ? 'en-GB' : 'de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : '–';
@@ -26,6 +25,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const [history, setHistory] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [splitError, setSplitError] = React.useState(false);
   const [paymentTexts, setPaymentTexts] = React.useState([]);
   const [paymentTextsLoading, setPaymentTextsLoading] = React.useState(false);
   const [paymentTextsError, setPaymentTextsError] = React.useState('');
@@ -108,6 +108,10 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const missing = purchaseMissingFields(order);
   const fieldErrors = purchaseFieldErrors(order);
   const disabled = saving || locked;
+  const selectedPackaging = options.packagingTypes.find(item => Number(order.packagingTypeId) === item.id);
+  const truckPlan = !fixedPosition && order.packagingTypeId
+    ? planPurchaseTruckLoads(order.positions, selectedPackaging?.key || order.packagingType) : null;
+  React.useEffect(() => { setSplitError(false); }, [order.positions, order.packagingTypeId]);
   const savedAttachments = order.attachments || [];
   const pendingAttachmentFiles = order.pendingAttachmentFiles || [];
   const removeAttachmentIds = order.removeAttachmentIds || [];
@@ -136,14 +140,13 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       setRejectedDeliveryDate({ date, loadingLocationText: order.loadingLocationText });
     }
   };
-  const copy = (lineId) => update((previous) => {
-    const positions = [...previous.positions];
-    const index = positions.findIndex((p) => p.lineId === lineId);
-    const source = positions[index];
-    const { id, ...values } = source;
-    positions.splice(index + 1, 0, { ...values, copyOfPositionId: id || source.copyOfPositionId, lineId: createPurchaseLineId(), amountTouched: true });
-    return { ...previous, positions };
-  });
+  const canSplit = !disabled && !linkedOrder && Boolean(truckPlan?.changes.length);
+  const splitIntoTrucks = () => {
+    if (!canSplit) return;
+    const positions = splitPurchaseTruckPositions(order.positions, truckPlan);
+    if (positions) update({ positions });
+    else setSplitError(true);
+  };
 
   return <Box ref={editorRef} sx={{ display: 'grid', gap: 1.5, minWidth: 0, width: '100%', '& .MuiFormLabel-asterisk': { color: 'error.main' } }}>
     <input ref={attachmentInputRef} type="file" accept=".pdf,image/*,.heic,.heif" multiple hidden onChange={handleAttachmentPick} disabled={disabled} />
@@ -219,7 +222,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         <TextField label={t('packaging_type_label')} required select size="small" error={attempted && fieldErrors.packagingTypeId} value={order.packagingTypeId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.packagingTypes.find((p) => p.id === Number(e.target.value));
           update((previous) => ({ ...previous, packagingTypeId: option?.id || '', packagingType: option?.text || '',
-            positions: previous.positions.map((p) => isNew && !p.amountTouched && p.optionId==null ? { ...p, amount: option?.key === 'silo' ? 25000 : 24750 } : p) }));
+            positions: previous.positions.map((p) => isNew && !p.amountTouched && p.optionId==null ? { ...p, amount: defaultPurchaseAmount(option?.key || option?.text) } : p) }));
         }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.packagingTypeId && !options.packagingTypes.some(p=>String(p.id)===String(order.packagingTypeId)) &&
             <MenuItem value={order.packagingTypeId} disabled>{order.packagingType || t('purchase_saved_packaging')}</MenuItem>}
@@ -228,7 +231,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <TextField label={t('wpz_option_other')} multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     {optionQuantityFields}
-    <PurchaseOrderSummary positions={order.positions} currency={order.currency} />
+    <PurchaseOrderSummary positions={order.positions} currency={order.currency} truckCount={truckPlan?.count}
+      onSplit={!linkedOrder && (truckPlan?.count > 1 || truckPlan?.changes.length) ? splitIntoTrucks : undefined} splitDisabled={!canSplit} />
+    {splitError && <Alert severity="error">{t('purchase_truck_split_too_large')}</Alert>}
     {order.positions.map((p, index) => {
       const last = history[p.articleIndex] || p;
       const errors = fieldErrors.positions[index];
@@ -238,7 +243,6 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       return <Card key={p.lineId} variant="outlined" sx={{ minWidth: 0, ...(attempted && (errors.articleIndex || fieldErrors.articleType) ? { borderColor: 'error.main' } : {}) }}><CardContent sx={{ display: 'grid', gap: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <Typography variant="subtitle1" title={p.article} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{String(p.article || '').slice(0, 75)}</Typography>
-          {!fixedPosition && <IconButton size="small" color="primary" aria-label={t('purchase_copy_position')} disabled={disabled || linkedOrder} onClick={() => copy(p.lineId)}><AddIcon /></IconButton>}
           {!fixedPosition && <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled || linkedOrder} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>}
         </Box>
         {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&

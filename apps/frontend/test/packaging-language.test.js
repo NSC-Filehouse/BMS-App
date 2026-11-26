@@ -697,6 +697,40 @@ test('purchase editor and totals use English labels and preserve positions durin
   assert.ok(summary.text().includes('Total amount'));
 });
 
+test('the purchase editor replaces the copy icon with truck planning and recalculates edited quantities', async () => {
+  const position = { lineId: 'one', articleIndex: 'A', article: 'Grade', amount: 1400000, amountTouched: true, purchasePrice: 1100 };
+  let current;
+  const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
+    initialOrder: { supplierId: 'LF', packagingTypeId: 78, packagingType: 'Sackware', positions: [position] },
+    onChange: order => { current = order; }, isNew: true,
+  }, async path => {
+    if (path.startsWith('/purchase-order-options')) return { data: { packagingTypes: choices('de'), incoterms: [], defaults: {} } };
+    if (path.endsWith('/purchase-defaults')) return { data: { defaults: {} } };
+    if (path === '/temp-orders/payment-texts') return { data: [] };
+    throw new Error(path);
+  });
+  await view.flush();
+  const summary = () => view.find(node => node.props?.truckCount != null).props;
+  assert.doesNotMatch(view.text(), /Position kopieren/);
+  assert.equal(summary().truckCount, 57);
+  summary().onSplit();
+  await view.flush();
+  assert.equal(current.positions.length, 57);
+  assert.equal(summary().splitDisabled, true);
+  view.field('Verpackungsart').props.onChange({ target: { value: 79 } });
+  await view.flush();
+  assert.equal(summary().truckCount, 56);
+  assert.equal(current.positions.length, 57);
+  summary().onSplit();
+  await view.flush();
+  assert.equal(current.positions.length, 56);
+  assert.equal(current.positions.at(-1).amount, 25000);
+  view.field('Menge (kg)').props.onChange({ target: { value: '26000' } });
+  await view.flush();
+  assert.equal(summary().truckCount, 57);
+  assert.equal(summary().splitDisabled, false);
+});
+
 test('a purchase pickup loads its supplier addresses and selects a unique technical ID', async () => {
   let order = { supplierId: 'LF', warehouseId: 'LG0000', deliveryTermId: 1, deliveryTermText: 'FCA' };
   const editor = await mount('../src/components/PurchaseOrderDeliveryFields.jsx', {

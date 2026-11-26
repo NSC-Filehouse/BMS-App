@@ -189,6 +189,68 @@ export function packagingKey(value) {
 
 export function defaultPurchaseAmount(packaging) { return packagingKey(packaging) === 'silo' ? 25000 : 24750; }
 
+export function planPurchaseTruckLoads(positions, packaging) {
+  if (!packaging || !positions.length) return null;
+  const capacity = defaultPurchaseAmount(packaging) * 1000;
+  const groups = new Map();
+  for (const [index, position] of positions.entries()) {
+    const { amount, amountTouched, lineId, id, copyOfPositionId, lineNo, ...details } = position;
+    const scaled = Number(amount) * 1000;
+    const grams = Math.round(scaled);
+    if ((details.unit && details.unit !== 'kg') || !Number.isSafeInteger(grams) || grams <= 0 || Math.abs(scaled - grams) > 0.00001) return null;
+    const key = JSON.stringify(Object.keys(details).sort().map(field => [field, details[field]]));
+    const group = groups.get(key) || { indexes: [], grams: 0, oversized: false };
+    group.indexes.push(index);
+    group.grams += grams;
+    if (!Number.isSafeInteger(group.grams)) return null;
+    group.oversized ||= grams > capacity;
+    groups.set(key, group);
+  }
+
+  let count = 0;
+  const changes = [];
+  for (const group of groups.values()) {
+    const loadCount = Math.ceil(group.grams / capacity);
+    count += loadCount;
+    if (group.oversized || group.indexes.length !== loadCount) changes.push({ ...group, loadCount });
+  }
+  return { count, capacity, changes };
+}
+
+export function splitPurchaseTruckPositions(positions, plan, newLineId = createPurchaseLineId) {
+  const groupsByIndex = new Map();
+  for (const group of plan.changes) {
+    for (const index of group.indexes) groupsByIndex.set(index, group);
+  }
+
+  const result = [];
+  const encoder = new TextEncoder();
+  // The purchase request sends all positions in one multipart field (Multer's default limit is 1 MiB).
+  let bytes = 2;
+  const append = position => {
+    bytes += encoder.encode(JSON.stringify(position)).length + Number(result.length > 0);
+    if (bytes >= 1024 * 1024) return false;
+    result.push(position);
+    return true;
+  };
+  for (const [index, position] of positions.entries()) {
+    const group = groupsByIndex.get(index);
+    if (!group) {
+      if (!append(position)) return null;
+      continue;
+    }
+    if (index !== group.indexes[0]) continue;
+    const { id, ...values } = position;
+    for (let i = 0; i < group.loadCount; i++) {
+      const amount = Math.min(plan.capacity, group.grams - i * plan.capacity) / 1000;
+      const existing = positions[group.indexes[i]];
+      const line = existing || { ...values, copyOfPositionId: id || position.copyOfPositionId, lineId: newLineId() };
+      if (!append({ ...line, amount, amountTouched: true })) return null;
+    }
+  }
+  return result;
+}
+
 export function purchaseFieldErrors(order) {
   return {
     packagingTypeId: !order.packagingTypeId,

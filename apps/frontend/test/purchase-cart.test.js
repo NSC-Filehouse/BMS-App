@@ -1,11 +1,44 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
-import { addPurchaseCartItems, clearPurchaseCart, duplicatePurchaseCartItem, getPurchaseCartContext, getPurchaseCartItems, getPurchaseRequestId, purchaseFieldErrors, purchaseMissingFields, purchaseTotals, savePurchaseCartContext, updatePurchaseCartItem } from '../src/utils/purchaseCart.js';
+import { addPurchaseCartItems, clearPurchaseCart, duplicatePurchaseCartItem, getPurchaseCartContext, getPurchaseCartItems, getPurchaseRequestId, planPurchaseTruckLoads, purchaseFieldErrors, purchaseMissingFields, purchaseTotals, savePurchaseCartContext, splitPurchaseTruckPositions, updatePurchaseCartItem } from '../src/utils/purchaseCart.js';
 
 const storage = new Map();
 global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key) };
 beforeEach(() => { storage.clear(); localStorage.setItem('bms.mandant', 'FRU'); });
 const item = (id, packaging = 'Sackware') => ({ supplierId: '42', articleIndex: id, article: `Artikel ${id}`, originalPackagingType: packaging });
+
+test('truck loads split and regroup the same order without losing amounts or line details', () => {
+  const source = { ...item('A'), id: 15, lineId: 'existing', amount: 1400000, purchasePrice: 1100,
+    requestedDeliveryDate: '2026-12-01', comment: 'Hinweis', optionId: 8, optionPositionId: 9 };
+  let nextId = 0;
+  const split = (positions, packaging) => splitPurchaseTruckPositions(positions, planPurchaseTruckLoads(positions, packaging), () => `new-${++nextId}`);
+  const bags = split([source], 'Sackware');
+  assert.deepEqual(bags.map(line => line.amount), [...Array(56).fill(24750), 14000]);
+  assert.equal(bags[0].id, 15);
+  assert.ok(bags.slice(1).every(line => line.id == null && line.copyOfPositionId === 15));
+  assert.equal(new Set(bags.map(line => line.lineId)).size, 57);
+  assert.ok(bags.every(line => line.amountTouched && line.optionPositionId === 9 && line.comment === 'Hinweis'));
+  assert.deepEqual(purchaseTotals(bags), { count: 57, amount: 1400000, sum: 1540000 });
+  assert.equal(planPurchaseTruckLoads(bags, 'Sackware').changes.length, 0);
+
+  const silo = split(bags, 'Silo/Bulk');
+  assert.deepEqual(silo.map(line => line.amount), Array(56).fill(25000));
+  assert.deepEqual(purchaseTotals(silo), { count: 56, amount: 1400000, sum: 1540000 });
+});
+
+test('truck planning separates delivery dates and option sources and preserves fractional kilograms', () => {
+  const base = { ...item('A'), amount: 24750.005, purchasePrice: 900, requestedDeliveryDate: '2026-12-01', optionId: 8 };
+  const positions = [{ ...base, lineId: 'one', optionPositionId: 9 },
+    { ...base, lineId: 'two', amount: 10, requestedDeliveryDate: '2026-12-02', optionPositionId: 9 },
+    { ...base, lineId: 'three', amount: 10, optionPositionId: 10 }];
+  const plan = planPurchaseTruckLoads(positions, 'Big Bags');
+  assert.equal(plan.count, 4);
+  const result = splitPurchaseTruckPositions(positions, plan, () => 'split');
+  assert.deepEqual(result.map(line => line.amount), [24750, 0.005, 10, 10]);
+  assert.equal(result[2], positions[1]);
+  assert.equal(result[3], positions[2]);
+  assert.equal(planPurchaseTruckLoads([{ ...base, amount: '' }], 'Sackware'), null);
+});
 
 test('supplier name remains primary and the separate internal name survives shopping and independent copies', () => {
   addPurchaseCartItems([{ ...item('A'), article: 'Supplier grade', masterArticleName: 'Our material name' }]);

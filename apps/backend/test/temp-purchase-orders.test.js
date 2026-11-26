@@ -444,6 +444,21 @@ test('retrying a committed request returns the same ID without another insert', 
   assert.equal(f.lines.length, 1);
 });
 
+test('a full truck split saves and reloads all 57 positions with the original total and delivery date', async () => {
+  const f = fixture();
+  const input = body();
+  const item = input.positions[0];
+  const amounts = [...Array(56).fill(24750), 14000];
+  const positions = amounts.map(amount => ({ ...item, amount, unit: 'kg', purchasePrice: 1100 }));
+  const created = (await f.request({ ...input, positions: JSON.stringify(positions) })).data;
+  const reopened = (await f.request({}, 'get', '/temp-purchase-orders/:id')).data;
+  assert.equal(reopened.id, created.id);
+  assert.deepEqual(reopened.positions.map(position => position.amount), amounts);
+  assert.ok(reopened.positions.every(position => position.purchasePrice === 1100 && position.requestedDeliveryDate === item.requestedDeliveryDate));
+  assert.equal(reopened.positions.reduce((sum, position) => sum + position.amount, 0), 1400000);
+  assert.equal(reopened.positions.reduce((sum, position) => sum + position.amount * position.purchasePrice / 1000, 0), 1540000);
+});
+
 test('a response read failure rolls back instead of leaving an apparently failed saved order', async () => {
   const f = fixture(); f.failRead();
   await assert.rejects(f.request(body()), /Simulated read error/);
