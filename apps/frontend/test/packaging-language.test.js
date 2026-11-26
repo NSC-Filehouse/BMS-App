@@ -562,7 +562,7 @@ test('the offer ID opens details while PDF is pending and the same link opens th
   await view.flush();
   const link = view.find(node => node.props?.to === '/temp-offers/101');
   assert.deepEqual(link.props.state, { returnTo });
-  assert.deepEqual(link.props.children, ['Angebot-ID']);
+  assert.deepEqual(link.props.children, ['Angebot-101']);
   const linkRow = view.find(node => node.props?.children?.includes(link));
   assert.deepEqual(linkRow.props.children[1].props.children, ['RRÖ(FRU)']);
   assert.throws(() => view.find(node => node.type === 'Checkbox'), /Expected element not found/);

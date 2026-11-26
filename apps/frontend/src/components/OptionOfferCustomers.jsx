@@ -338,7 +338,7 @@ export default function OptionOfferCustomers({ customers, salesFilter, position,
                     <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 0.75 }}>
                       {!stock && customer.offerId && <Typography component={Link} variant="caption" color="primary.main"
                         to={`/temp-offers/${customer.offerId}`} state={{ returnTo }} onClick={event => openOffer(event, customer.offerId)}>
-                        {t('option_offer_id_link')}
+                        {t('option_offer_id_link', { id: customer.offerId })}
                       </Typography>}
                       {(customer.assignments?.length || customer.salesCode) ? <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
                         {customer.assignments?.map(({ salesCode, mandant }) => `${salesCode}(${mandant})`).join(' ') ?? customer.salesCode}
