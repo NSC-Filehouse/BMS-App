@@ -142,7 +142,13 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     }
   };
   const canSplit = !disabled && !linkedOrder && Boolean(truckPlan?.changes.length);
-  const splitFieldsMissing = fieldErrors.articleType || fieldErrors.positions.some(errors => Object.values(errors).some(Boolean));
+  const splitMissingFields = Object.entries({
+    articleIndex: t('product_article'),
+    amount: t('purchase_quantity_kg'),
+    purchasePrice: t('purchase_price_input', { currency: order.currency }),
+    requestedDeliveryDate: t('purchase_delivery_date'),
+  }).filter(([field]) => fieldErrors.positions.some(errors => errors[field])).map(([, label]) => label);
+  const splitFieldsMissing = fieldErrors.articleType || splitMissingFields.length > 0;
   const splitIntoTrucks = () => {
     if (!canSplit) return;
     if (splitFieldsMissing) { setSplitAttempted(true); return; }
@@ -273,7 +279,8 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
               {t('purchase_truck_split')}
             </Button>}
           </Box>
-          {splitAttempted && splitFieldsMissing && <Alert severity="error">{t(fieldErrors.articleType ? 'purchase_one_article_type' : 'purchase_truck_split_required')}</Alert>}
+          {splitAttempted && splitFieldsMissing && <Alert severity="error">{fieldErrors.articleType ? t('purchase_one_article_type')
+            : t('purchase_truck_split_required', { fields: new Intl.ListFormat(locale).format(splitMissingFields) })}</Alert>}
           {splitError && <Alert severity="error">{t('purchase_truck_split_too_large')}</Alert>}
         </>}
       </CardContent></Card>;

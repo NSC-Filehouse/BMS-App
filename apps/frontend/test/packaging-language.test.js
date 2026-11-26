@@ -720,6 +720,7 @@ test('the purchase editor splits below the availability note after validating th
   await view.flush();
   assert.equal(current.positions.length, 1);
   assert.equal(view.field('Liefertermin').props.error, true);
+  assert.deepEqual(view.find(node => node.type === 'Alert' && node.props.severity === 'error').props.children, ['Bitte Liefertermin ergänzen.']);
   assert.doesNotMatch(view.text(), /"type":"Dialog"/);
   view.field('Liefertermin').props.onChange({ target: { value: '2026-12-01' } });
   await view.flush();
