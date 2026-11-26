@@ -69,6 +69,14 @@ test.beforeEach(()=>{identity={shortCode:'NSC',personNumber:227,userId:'n.schroe
 const select=(body,lang='de')=>fetch(`${base}/selection`,{method:'POST',headers:{'Content-Type':'application/json','x-lang':lang},body:JSON.stringify(body)});
 const choice=()=>({supplierId:'LF0124',articleIndex:'TARGET',supplierConfirmed:true,articleConfirmed:true,packagingTypeId:78});
 
+test('PBO can confirm a selection for the purchase cart', async () => {
+  identity = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: true };
+  const response = await select(choice());
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.position.articleIndex, 'TARGET');
+});
+
 test('one supplier or article never replaces explicit selection',async()=>{
   assert.equal((await fetch(`${base}/suppliers`)).status,200);
   assert.equal((await fetch(`${base}/articles`)).status,200);

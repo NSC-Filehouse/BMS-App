@@ -1,8 +1,7 @@
 const AKI = { shortCode: 'AKI', personNumber: 1, userId: 'kimaz' };
-const DELEGATES = [
-  { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach' },
-  { shortCode: 'KMU', personNumber: 126, userId: 'musah' },
-];
+const PBO = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach' };
+const KMU = { shortCode: 'KMU', personNumber: 126, userId: 'musah' };
+const DELEGATES = [PBO, KMU];
 
 function matchesActiveIdentity(identity, account) {
   return identity?.active === true
@@ -15,4 +14,4 @@ function hasDelegatedAkiReadAccess(identity) {
   return DELEGATES.some(account => matchesActiveIdentity(identity, account));
 }
 
-module.exports = { AKI, matchesActiveIdentity, hasDelegatedAkiReadAccess };
+module.exports = { AKI, PBO, KMU, matchesActiveIdentity, hasDelegatedAkiReadAccess };

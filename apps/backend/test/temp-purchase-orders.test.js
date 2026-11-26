@@ -230,10 +230,10 @@ function fixture(options = {}) {
   return { router, request, headers, lines, calls, timeline, mails, csMails, attachments, reservations, attachmentModule: attachmentModule.exports, failAttachmentRead: () => { failAttachmentRead = true; }, failDelete: () => { failDelete = true; }, buildCreatedPeriodFilter: mod.exports.buildPurchaseCreatedPeriodFilter, normalizePositions: mod.exports.normalizePositions, failRead: () => { failRead = true; } };
 }
 
-function routedRequest(router, method, url, userIdentity) {
+function routedRequest(router, method, url, userIdentity, { body, companyId = 1 } = {}) {
   return new Promise((resolve, reject) => {
-    const req = { method, url, userIdentity, query: { supplierId: '42' }, params: {},
-      database: { firmaId: 1 }, header: () => 'de' };
+    const req = { method, url, userIdentity, body, headers: {}, query: { supplierId: '42' }, params: {},
+      database: { firmaId: companyId }, header: () => 'de' };
     const res = { status() { return this; }, json: resolve };
     router.handle(req, res, (error) => error ? reject(error) : resolve({ next: true }));
   });
@@ -280,14 +280,25 @@ test('every purchase route still rejects ordinary users before accessing data', 
   assert.equal(f.calls.length, 0);
 });
 
-test('PBO can read purchase orders and the purchase pilot still rejects writes', async () => {
-  const f = fixture({ routing: true });
+test('PBO can save and hand off both normal purchases and option purchases in Frupack', async () => {
   const identity = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: true };
-  const result = await routedRequest(f.router, 'GET', '/temp-purchase-orders', identity);
-  assert.equal(result.meta.canViewAll, true);
-  await assert.rejects(routedRequest(f.router, 'POST', '/temp-purchase-orders', identity),
-    error => error.status === 403 && error.details.code === 'PILOT_FEATURE_FORBIDDEN');
-  assert.equal(f.headers.length, 0);
+  for (const fromOption of [false, true]) {
+    const f = fixture({ routing: true });
+    const input = body();
+    if (fromOption) {
+      input.addressId = 12;
+      Object.assign(input.positions[0], { articleIndex: 'NEW', optionId: 7, optionPositionId: 11,
+        supplierConfirmed: true, articleConfirmed: true, amount: 1000 });
+    }
+    const post = (url, body) => routedRequest(f.router, 'POST', url, identity, { body, companyId: 3 });
+    const { data: draft } = await post('/temp-purchase-orders', input);
+    assert.equal(draft.status, 0);
+    assert.equal(draft.createdBy, 'PBO');
+    assert.equal(draft.positions[0].optionId, fromOption ? 7 : null);
+    const { data: sent } = await post(`/temp-purchase-orders/${draft.id}/finalize`, {});
+    assert.equal(sent.status, 1);
+    assert.equal(sent.csMail.queued, true);
+  }
 });
 
 test('verified pilot users can still load purchase options', async () => {

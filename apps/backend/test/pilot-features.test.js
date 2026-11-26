@@ -12,7 +12,7 @@ test('pilot features belong to the three verified employee identities', () => {
   }
 });
 
-test('PBO and KMU see the same pilot sections as AKI while keeping their existing action permissions', () => {
+test('PBO and KMU can place purchases and see the same pilot sections as AKI', () => {
   const aki = { shortCode: 'AKI', personNumber: 1, userId: 'kimaz', active: true };
   const pbo = { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: true, mainCompanyId: 3 };
   const kmu = { shortCode: 'KMU', personNumber: 126, userId: 'musah', active: true, mainCompanyId: 3 };
@@ -20,7 +20,7 @@ test('PBO and KMU see the same pilot sections as AKI while keeping their existin
   assert.deepEqual(pilotFeaturesForIdentity(kmu), expected);
   assert.deepEqual(pilotFeaturesForIdentity(pbo), { ...expected, offerToOrder: false, linkedProcurement: false });
   assert.deepEqual(pilotFeaturesForIdentity(pbo, { readOnly: false }), {
-    offers: false, offerToOrder: false, linkedProcurement: false, purchaseOrders: false, options: false,
+    offers: false, offerToOrder: false, linkedProcurement: false, purchaseOrders: true, options: true,
     optionsVlPreview: false, forecast: false, frupackGroupVl: true,
   });
   assert.deepEqual(pilotFeaturesForIdentity(kmu, { readOnly: false }), {
@@ -36,6 +36,7 @@ test('a matching short code alone never opens pilot features', () => {
     { shortCode: 'NSC', personNumber: 227, userId: 'other', active: true },
     { shortCode: 'NSC', personNumber: 227, userId: 'n.schroeder', active: false },
     { shortCode: 'PBO', personNumber: 81, userId: 'other', active: true },
+    { shortCode: 'PBO', personNumber: 82, userId: 'bohmbach', active: true },
     { shortCode: 'PBO', personNumber: 81, userId: 'bohmbach', active: false },
     { shortCode: 'KMU', personNumber: 127, userId: 'musah', active: true },
     { shortCode: 'KMU', personNumber: 126, userId: 'other', active: true },
