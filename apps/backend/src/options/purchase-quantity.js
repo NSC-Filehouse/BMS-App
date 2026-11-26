@@ -1,3 +1,6 @@
+const { appTableSql } = require('../db/app-tables');
+const { TEST_MANDANT_ID } = require('../executive-access');
+
 const number = value => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
 
 function offeredQuantityKg(position,kgPerTruck=25000) {
@@ -28,6 +31,15 @@ function quantitySourceHashSql(alias = 'p') {
 
 function confirmedQuantitySql(alias = 'p') {
   return `CASE WHEN ${alias}.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql(alias)} THEN ${alias}.opp_GesamtmengeBestaetigtKg END`;
+}
+
+// Saved purchases from all productive mandants share one quantity, including drafts and ERP-accepted orders.
+function orderedOptionKgSql(positionIdSql, { excludeOrder = false } = {}) {
+  return `SELECT COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0) AS orderedKg
+    FROM ${appTableSql('tempPurchaseOrderPosition')} bp
+    JOIN ${appTableSql('tempPurchaseOrder')} b ON b.tb_id=bp.tbp_tb_id
+    WHERE bp.OptionPositionID=${positionIdSql} AND b.tb_company_id<>${TEST_MANDANT_ID}
+      ${excludeOrder ? 'AND bp.tbp_tb_id<>?' : ''}`;
 }
 
 function quantityAvailability(position, orderedKg = 0,kgPerTruck=25000) {
@@ -72,4 +84,4 @@ function offeredTruckCount(position) {
   return 1;
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount };
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,quantityInputKg,isTruckOffer,offeredTruckCount };

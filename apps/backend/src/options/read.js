@@ -5,7 +5,7 @@ const { excludeTestMandantSql } = require('../executive-access');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
-const { quantityAvailability,confirmedQuantitySql,offeredTruckCount } = require('./purchase-quantity');
+const { quantityAvailability,confirmedQuantitySql,orderedOptionKgSql,offeredTruckCount } = require('./purchase-quantity');
 const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase-order-values');
 const {createPackagingDisplay}=require('./packaging-display');
 const {checkMfi}=require('./mfi-compatibility');
@@ -119,8 +119,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
       WHEN r.oab_QuelldatenGeaendertAm<>p.opp_GeaendertAm OR j.oaa_Revision>r.oab_AnforderungRevision THEN N'updating' ELSE N'ready' END AS matchProcessingStatus,
     p.opp_LernenAngefordert AS learningPending,p.opp_LernregelHinweis AS learningNotice,
     COALESCE(p.opp_GueltigBis,o.op_GueltigBis) AS validUntil,${confirmedQuantitySql()} AS confirmedQuantityKg,
-    (SELECT COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0)
-      FROM ${appTableSql('tempPurchaseOrderPosition')} bp WHERE bp.OptionPositionID=p.opp_id) AS orderedKg
+    (${orderedOptionKgSql('p.opp_id')}) AS orderedKg
     FROM ${appTableSql('optionPositions')} p JOIN ${appTableSql('options')} o ON o.op_id=p.opp_op_id
     LEFT JOIN BMSApp.tblOptionenAbgleich r ON r.oab_id=p.opp_AktuellerAbgleichID AND r.oab_opp_id=p.opp_id AND r.oab_MandantID=o.op_MandantID
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID

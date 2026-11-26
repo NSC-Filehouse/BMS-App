@@ -125,6 +125,10 @@ die Sichtbarkeit von Optionen nicht. Optionsübersicht, Details und die
 Optionszeilen der VL lesen den gemeinsamen Bestand. Lagerbestände behalten
 ihre bisherigen Mandantengrenzen. Die bestehende Pilotfreigabe bleibt bestehen.
 
+Die Restmenge berücksichtigt gespeicherte Bestellungen aller produktiven
+Mandanten einschließlich ihrer Entwürfe. Bestellungen des Testmandanten werden
+bei der Restmenge und beim Speichern oder Abschließen einer Bestellung ignoriert.
+
 In der Lieferantenansicht steht ein zunächst geschlossenes Accordion „Optionen“
 über „Bestellungen“. `/customers/:id/options` prüft die Sichtbarkeit des geöffneten
 Firmenkontos und ermittelt dessen Lieferantenfamilie aus Namen bzw. Domain.

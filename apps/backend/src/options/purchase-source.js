@@ -9,7 +9,7 @@ const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
 const { checkMaterial, deriveMaterialFacts, quality } = require('./material-facts');
-const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
+const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
 const {loadPurchasePackagingOptions,purchaseTruckLoadKg}=require('../db/purchase-order-values');
 
 const text = value => String(value ?? '').trim();
@@ -60,11 +60,10 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
 
 async function loadOptionAvailability(position, excludeOrderId = null, query = null) {
   const execute = query || (async (sql, params) => ({ rows: await runSQLQuerySqlServer(config.sql.database, sql, params) }));
-  // All saved temp rows count, including drafts, rework and ERP-accepted rows.
   // Do not add ERP positions again: accepted temp rows already represent them.
-  const result = await execute(`SELECT COALESCE(SUM(tbp_amount * CASE WHEN LOWER(tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0) AS orderedKg
-    FROM ${appTableSql('tempPurchaseOrderPosition')} WHERE OptionPositionID=? AND (? IS NULL OR tbp_tb_id<>?)`,
-  [Number(position.opp_id), excludeOrderId, excludeOrderId]);
+  const params = [Number(position.opp_id)];
+  if (excludeOrderId != null) params.push(excludeOrderId);
+  const result = await execute(orderedOptionKgSql('?', { excludeOrder: excludeOrderId != null }), params);
   return quantityAvailability(position, Number((result.rows || result)[0]?.orderedKg || 0));
 }
 

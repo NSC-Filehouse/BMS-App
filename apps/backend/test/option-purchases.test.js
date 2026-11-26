@@ -10,7 +10,7 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
     supplierName:'Borealis',supplierKey:'borealis',...sourceOverride};
   const query=async(sql,params)=>{
     calls.push({sql,params});assert.equal((sql.match(/\?/g)||[]).length,params.length);
-    if(sql.includes('SUM(tbp_amount'))return {rows:[{orderedKg}]};
+    if(sql.includes('SUM(bp.tbp_amount'))return {rows:[{orderedKg}]};
     const excluded = source.sourceMandantId === 0 && sql.includes('AND o.op_MandantID <> 0');
     return {rows:available && !excluded?[source]:[]};
   };
@@ -137,16 +137,20 @@ test('changing packaging during order editing cannot exceed the truck limit for 
   await assert.rejects(manual.assertOptionQuantities(manual.query,[{...line,amount:50000}],null,'Sackware'),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED');
 });
 
-test('locks source and sums all saved orders across tenants; own edit is excluded once',async()=>{
+test('locks the source and sums saved purchases across productive tenants; the current order is excluded once',async()=>{
   const f=fixture({orderedKg:10000});
   await f.assertOptionQuantities(f.query,[{optionId:1,optionPositionId:10,amount:5000},{optionId:1,optionPositionId:10,amount:10000}],99);
   assert.equal(f.calls.length,2);
   assert.match(f.calls[0].sql,/WITH\(UPDLOCK,HOLDLOCK\)/);
   assert.match(f.calls[0].sql,/op_IstDemo=0/);
   assert.match(f.calls[0].sql,/COALESCE\(p.opp_GueltigBis,o.op_GueltigBis\)>=\?/);
-  assert.deepEqual(f.calls[1].params,[10,99,99]);
-  assert.doesNotMatch(f.calls[1].sql,/company|Mandant|status/i);
+  assert.deepEqual(f.calls[1].params,[10,99]);
+  assert.match(f.calls[1].sql,/JOIN .*tbl_Temp_Bestellung.* b ON b\.tb_id=bp\.tbp_tb_id/);
+  assert.match(f.calls[1].sql,/bp\.OptionPositionID=\? AND b\.tb_company_id<>0/);
+  assert.match(f.calls[1].sql,/AND bp\.tbp_tb_id<>\?/);
+  assert.doesNotMatch(f.calls[1].sql,/status|tb_company_id\s*=\s*\?/i);
   await assert.rejects(f.assertOptionQuantities(f.query,[{optionId:1,optionPositionId:10,amount:15000.001}]),e=>e.details.code==='OPTION_QUANTITY_EXCEEDED');
+  assert.deepEqual(f.calls.at(-1).params,[10]);
 });
 
 test('expired or withdrawn options, mismatched references and quantities without a cap fail closed',async()=>{
