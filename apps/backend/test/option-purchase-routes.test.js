@@ -48,6 +48,7 @@ const deps={
   '../options/packaging-display':require('../src/options/packaging-display'),
   '../options/purchase-quantity':require('../src/options/purchase-quantity'),
   '../options/supplier-contacts':require('../src/options/supplier-contacts'),
+  '../options/manual-purchase-location':require('../src/options/manual-purchase-location'),
   '../options/article-name-rules': {
     confirmArticleNameRule: async (database, id, positionId, selection, _identity, actor) => {
       articleConfirmations.push({ mandant: database.firmaId, id, positionId, selection, actor });
@@ -93,6 +94,16 @@ test('only an explicit article confirmation saves the active mandant ID used for
   assert.equal(revoke.status, 200);
   assert.equal((await revoke.json()).data, null);
   assert.deepEqual(articleConfirmations.at(-1), { revoked: true, mandant: 10, id: '1', positionId: '10', selection });
+});
+
+test('a manually entered option loading location is passed through as the selected pickup', async () => {
+  const text = 'Neues Lager\nHafenstraße 2\n2030 Antwerpen\nBE — Belgien';
+  const response = await select({ ...choice(), manualLoadingLocation: text, loadingLocationCity: 'Antwerpen' });
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.header.loadingLocationText, text);
+  assert.equal(data.header.loadingLocationCity, 'Antwerpen');
+  assert.equal(data.header.loadingLocationChanged, true);
 });
 
 test('purchase preview translates offered packaging alternatives while retaining the source',async()=>{

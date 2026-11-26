@@ -100,7 +100,7 @@ export default function TempPurchaseOrderDetail() {
       <InfoRow label="Zahlungsziel" value={item.paymentConditionText} />
       <InfoRow label="Incoterm" value={item.deliveryTermText} />
       <InfoRow label="Lager" value={item.warehouseId} />
-      <InfoRow label={item.addressId ? 'Liefer-/Abholadresse' : 'Bisheriger Ladeort'} value={item.loadingLocationText} />
+      <InfoRow label={item.addressId ? 'Liefer-/Abholadresse' : item.loadingLocationSource === 'manual' ? 'Ladeort' : 'Bisheriger Ladeort'} value={item.loadingLocationText} />
       <InfoRow label="Adressinhaber" value={item.addressCustomerId} />
       <InfoRow label="Referenz" value={item.reference} />
       <InfoRow label="Währung" value={item.currency} />

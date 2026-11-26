@@ -10,6 +10,7 @@ const { createPackagingDisplay } = require('../options/packaging-display');
 const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const {resolveSupplierContact}=require('../options/supplier-contacts');
 const { confirmArticleNameRule, revokeArticleNameConfirmation } = require('../options/article-name-rules');
+const { manualPurchaseLocation } = require('../options/manual-purchase-location');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
@@ -86,6 +87,8 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const sourceIncoterm = String(source.incoterm ?? '').trim().toLowerCase();
   const exactTerms = choices.incoterms.filter(row => row.text.trim().toLowerCase() === sourceIncoterm);
   const deliveryTerm = exactTerms.length === 1 ? exactTerms[0] : findIncotermByCode(choices.incoterms, sourceIncoterm);
+  const location = req.body.manualLoadingLocation == null ? null
+    : manualPurchaseLocation(req.body.manualLoadingLocation, req.body.loadingLocationCity, deliveryTerm?.text || source.incoterm);
   const amount=Object.hasOwn(req.body,'amount')?Number(req.body.amount):availability.remainingKg;
   if(!Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*1000))
     || Math.abs(amount*1000-Math.round(amount*1000))>0.00001 || amount>availability.remainingKg)
@@ -93,7 +96,8 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
   const price = source.opp_PreisProTonne;
   sendEnvelope(res,{data:{
     header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '',
-      loadingLocationText:source.loadingLocation || '',loadingLocationSource:source.loadingLocation?'manual':'',
+      loadingLocationText:location?.text || source.loadingLocation || '',loadingLocationSource:location || source.loadingLocation ? 'manual' : '',
+      ...(location && { loadingLocationChanged: true, loadingLocationCity: location.city }),
       packagingType:chosenPackaging?.text || source.opp_Verpackung || source.packagingText || '',packagingTypeId:chosenPackaging?.id || source.opp_Verpackungsart_id || '',
       supplierContact:contact?.name || ''},
     position:{optionId:Number(source.opp_op_id),optionPositionId:Number(source.opp_id),

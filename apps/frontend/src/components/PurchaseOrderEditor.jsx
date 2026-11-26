@@ -204,7 +204,8 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         <TextField label="Incoterm" required select size="small" error={attempted && fieldErrors.deliveryTermId} value={order.deliveryTermId || ''} disabled={disabled || loading} onChange={(e) => {
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '',
-            addressCustomerId: '', addressCustomerName: '', addressId: '', loadingLocationText: '' });
+            addressCustomerId: '', addressCustomerName: '', addressId: '', loadingLocationText: '',
+            loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '' });
         }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.deliveryTermId && !options.incoterms.some(p=>String(p.id)===String(order.deliveryTermId)) &&
             <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || t('purchase_saved_incoterm')}</MenuItem>}

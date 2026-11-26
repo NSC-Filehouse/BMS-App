@@ -758,6 +758,49 @@ test('a purchase pickup loads its supplier addresses and selects a unique techni
   assert.doesNotMatch(editor.text(), /Adresse anzeigen|Adresse ausblenden/);
 });
 
+test('a new pickup location stays selected in the purchase editor after a master-address refresh', async () => {
+  let order = { supplierId: 'LF', deliveryTermId: 1, deliveryTermText: 'FCA' };
+  const location = 'Neues Werk\nHafenstraße 2\n2030 Antwerpen\nBE — Belgien';
+  const editor = await mount('../src/components/PurchaseOrderDeliveryFields.jsx', {
+    warehouses: [{ id: 'LG0000', label: 'Strecke', isDirect: true }], order,
+    update: patch => { order = typeof patch === 'function' ? patch(order) : { ...order, ...patch }; editor.updateProps({ order }); },
+  }, async () => ({ data: [], meta: { pickupWarehouseId: 'LG0000' } }));
+  await editor.flush();
+  editor.find(node => node.props?.['aria-label'] === 'Neuer Ladeort').props.onClick();
+  await editor.flush();
+  editor.find(node => node.props?.onConfirm).props.onConfirm(location, 'Antwerpen');
+  await editor.flush();
+  assert.equal(editor.field('Ladeort').props.value, 'manual');
+  assert.equal(editor.field('Ladeort').props.SelectProps.renderValue().props.primary, 'Neues Werk');
+  assert.equal(order.warehouseId, 'LG0000');
+  assert.equal(order.addressId, '');
+  assert.equal(order.loadingLocationCity, 'Antwerpen');
+  assert.equal(purchaseCart.purchaseFieldErrors({ ...order, positions: [] }).addressId, false);
+});
+
+test('an option pickup sends the location entered in the popup to the selected order', async () => {
+  const location = 'Neues Werk\nHafenstraße 2\n2030 Antwerpen\nBE — Belgien';
+  let selection;
+  const view = await mount('../src/components/OptionPurchaseDialog.jsx', {
+    offer: { id: 1, incoterm: 'FCA' }, position: { id: 10 }, supplier: { id: 'LF' },
+    article: { articleIndex: 'A' }, onPrepared: () => {}, defaultAmount: 10000,
+  }, async (path, _lang, options) => {
+    if (path.endsWith('/selection')) { selection = JSON.parse(options.body); return { data: {} }; }
+    if (path.includes('/suppliers?')) return { data: [], meta: { remainingKg: 12000, packagingTypes: choices('de'), sourcePackagingTypeId: 78 } };
+    if (path.includes('/contacts?')) return { data: [] };
+    if (path === '/packaging-types') return { data: choices('de') };
+    throw new Error(path);
+  });
+  await view.flush();
+  view.find(node => node.props?.['aria-label'] === 'Neuer Ladeort').props.onClick();
+  await view.flush();
+  view.find(node => node.props?.onConfirm).props.onConfirm(location, 'Antwerpen');
+  await view.flush();
+  await view.find(node => node.type === 'Button' && node.props.children.includes('Weiter')).props.onClick();
+  assert.equal(selection.manualLoadingLocation, location);
+  assert.equal(selection.loadingLocationCity, 'Antwerpen');
+});
+
 test('purchase contact dropdown displays the name while retaining the technical contact ID', async () => {
   const contact = { id: 8117, name: 'Mr. Amaury De Coninck', position: 'Geschäftsführer' };
   let changed;

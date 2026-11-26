@@ -81,6 +81,10 @@ export function purchaseSourceKey(item) {
   return item?.optionId != null ? `option:${item.optionId}:${item.optionPositionId}` : `article:${purchaseArticleKey(item)}`;
 }
 
+export function isManualPurchaseLocation(order) {
+  return order?.loadingLocationSource === 'manual' && order.loadingLocationChanged === true;
+}
+
 export function addPurchaseCartItems(items, returnTo = null, headerDefaults = null) {
   const current = read();
   const context = getPurchaseCartContext();
@@ -108,6 +112,17 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   if(current.length && confirmedPackaging!=null && context.header?.packagingTypeId
     && Number(context.header.packagingTypeId)!==Number(confirmedPackaging))
     throw new Error('Die gewählte Verpackungsart passt nicht zum bestehenden Bestellwarenkorb. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
+  const manualLocation = isManualPurchaseLocation(headerDefaults);
+  if (current.length && manualLocation) {
+    const header = context.header;
+    const existingLocation = isManualPurchaseLocation(header) || header?.addressId;
+    const incompatibleTerm = header?.deliveryTermText && !/^(FCA|EXW)\b/i.test(header.deliveryTermText);
+    if (incompatibleTerm || (existingLocation && (!isManualPurchaseLocation(header) || header.loadingLocationText !== headerDefaults.loadingLocationText))) {
+      const error = new Error('Im Bestellwarenkorb ist bereits eine andere Lieferbedingung oder Adresse gewählt. Bitte den Ladeort im Warenkorb ändern.');
+      error.code = 'PURCHASE_CART_LOCATION_CONFLICT';
+      throw error;
+    }
+  }
   if (!current.length && (context.header || context.clientRequestId)) {
     attachmentFiles.delete(key());
     savePurchaseCartContext({ header: null, clientRequestId: null });
@@ -130,11 +145,13 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
     const needsPackaging = confirmedPackaging != null && !header.packagingTypeId;
     const needsIncoterm = headerDefaults.deliveryTermId && !header.deliveryTermId && !header.deliveryTermText;
     if (!current.length) savePurchaseCartContext({ header: headerDefaults });
-    else if (needsPackaging || needsIncoterm) {
+    else if (needsPackaging || needsIncoterm || manualLocation) {
       savePurchaseCartContext({ header: {
         ...header,
         ...(needsPackaging ? { packagingTypeId: headerDefaults.packagingTypeId, packagingType: headerDefaults.packagingType } : {}),
         ...(needsIncoterm ? { deliveryTermId: headerDefaults.deliveryTermId, deliveryTermText: headerDefaults.deliveryTermText } : {}),
+        ...(manualLocation ? { loadingLocationSource: 'manual', loadingLocationChanged: true,
+          loadingLocationText: headerDefaults.loadingLocationText, loadingLocationCity: headerDefaults.loadingLocationCity } : {}),
       } });
     }
   }
@@ -256,7 +273,7 @@ export function purchaseFieldErrors(order) {
     packagingTypeId: !order.packagingTypeId,
     deliveryTermId: !order.deliveryTermId,
     warehouseId: !order.warehouseId,
-    addressId: !order.addressCustomerId || !order.addressId,
+    addressId: isManualPurchaseLocation(order) ? !String(order.loadingLocationText || '').trim() : !order.addressCustomerId || !order.addressId,
     articleType: new Set((order.positions || []).map(purchaseArticleKey)).size > 1,
     positions: (order.positions || []).map((item) => {
       const date = String(item.requestedDeliveryDate || '').slice(0, 10);

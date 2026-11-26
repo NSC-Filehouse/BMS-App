@@ -52,14 +52,11 @@ EK-/Termin-/Freitextfelder und die Verpackungs-Standardmenge umgestellt.
 Danach bleiben manuelle Eingaben erhalten. Bei einer unklaren Speicherantwort
 bleibt der eingefrorene ursprüngliche Inhalt vollständig unverändert.
 
-Der Ladeort ist wie die Lieferadresse beim Auftrag ein Kopffeld. Für die eine
-Artikelart stehen sämtliche bisherigen Abholadressen dieses Lieferanten aus
-allen zugehörigen, nicht stornierten Einkaufspositionen zur Auswahl. Dazu werden
-be_AdresseAbhol und be_AdresseSP_Abhol ausgewertet; gleiche Adressen erscheinen
-nur einmal. Lange Adressen werden im Dropdown mehrzeilig dargestellt. Historische
-Adressfreitexte sind keine technischen Adress-IDs; tb_loading_location_id bleibt
-für diese Orte NULL. Andere Lieferanten- oder Mandantenadressen werden nicht
-als Ersatz zugelassen.
+Der Ladeort ist wie die Lieferadresse beim Auftrag ein Kopffeld. Bei FCA und
+EXW stehen die Abholadressen aus dem Lieferantenstamm zur Auswahl. Das blaue
+Plus öffnet „Neuer Ladeort“. Die Bestellung speichert die vollständige
+eingegebene Adresse einschließlich optionaler Ladezeiten, Kontakt und Hinweise.
+Bei dieser manuellen Adresse bleiben die technischen Adress-IDs leer.
 
 ## Dateianhänge
 

@@ -7,6 +7,20 @@ global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (ke
 beforeEach(() => { storage.clear(); localStorage.setItem('bms.mandant', 'FRU'); });
 const item = (id, packaging = 'Sackware') => ({ supplierId: '42', articleIndex: id, article: `Artikel ${id}`, originalPackagingType: packaging });
 
+test('an option pickup fills a cart without a chosen address and preserves an existing different pickup', () => {
+  addPurchaseCartItems([item('A')]);
+  const header = { deliveryTermId: 1, deliveryTermText: 'FCA', loadingLocationSource: 'manual', loadingLocationChanged: true,
+    loadingLocationText: 'Neues Werk\nStraße 1\n2030 Antwerpen\nBE — Belgien', loadingLocationCity: 'Antwerpen' };
+  const option = { ...item('A'), optionId: 1, optionPositionId: 10, amount: 10000 };
+  addPurchaseCartItems([option], null, header);
+  assert.equal(getPurchaseCartContext().header.loadingLocationText, header.loadingLocationText);
+  assert.equal(getPurchaseCartContext().header.loadingLocationCity, 'Antwerpen');
+  assert.throws(() => addPurchaseCartItems([{ ...option, optionPositionId: 11 }], null, { ...header, loadingLocationText: 'Anderer Ladeort' }),
+    error => error.code === 'PURCHASE_CART_LOCATION_CONFLICT');
+  assert.equal(getPurchaseCartItems().length, 2);
+  assert.equal(getPurchaseCartContext().header.loadingLocationText, header.loadingLocationText);
+});
+
 test('truck loads split and regroup the same order without losing amounts or line details', () => {
   const source = { ...item('A'), id: 15, lineId: 'existing', amount: 1400000, purchasePrice: 1100,
     requestedDeliveryDate: '2026-12-01', comment: 'Hinweis', optionId: 8, optionPositionId: 9 };

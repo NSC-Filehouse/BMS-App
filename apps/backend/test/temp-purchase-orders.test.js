@@ -165,6 +165,7 @@ function fixture(options = {}) {
     '../db/purchase-order-mail-outbox': { queuePurchaseOrderCsMail: options.queueCsMail || (async () => ({ queued: true })) },
     '../mail/order-mail': { validateOrderMailConfig: () => ({ ok: true }), resolveOrderMailRecipient: () => ({ ok: true }) },
     '../db/timeline': { appendTimelineEntries: async (entries) => timeline.push(...entries) },
+    '../options/manual-purchase-location': require('../src/options/manual-purchase-location'),
     '../options/purchase-source': {
       loadOptionPosition: async (optionId,positionId)=>({opp_id:positionId,opp_op_id:optionId,opp_Artikelname_Lieferant:'Optionsmaterial',
         opp_Verpackung:'Sackware', opp_MengeBisKg:49500, opp_PreisProTonne:options.optionPrice ?? 950,
@@ -642,6 +643,36 @@ test('the pickup city is derived in the background and a stored pickup reference
   const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
   assert.equal(sent.positions[0].placeAtSupplier, 'Berlin');
   assert.equal(sent.positions[0].pickupReference, 'SUPPLIER-123');
+});
+
+test('a manual pickup saves, reopens and finalizes with the complete address and no ERP address ID', async () => {
+  const pickup = 'Neues Werk\nHafenstraße 2\n2030 Antwerpen\nBE — Belgien\nLadezeiten: 08:00–16:00';
+  const input = { ...body(), warehouseId: 'LG0000', addressCustomerId: '', addressId: '', loadingLocationSource: 'manual',
+    loadingLocationChanged: 'true', loadingLocationCity: 'Antwerpen', loadingLocationText: pickup };
+  for (const option of [false, true]) {
+    let csOrder;
+    const f = fixture({ queueCsMail: async ({ order }) => { csOrder = order; return { queued: true }; } });
+    const positions = input.positions.map(position => option ? { ...position, article: 'Optionsmaterial', optionId: 9, optionPositionId: 10,
+      supplierConfirmed: true, articleConfirmed: true } : position);
+    const order = (await f.request({ ...input, positions })).data;
+    assert.equal(order.addressId, null);
+    assert.equal(order.loadingLocationId, null);
+    assert.equal(order.loadingLocationText, pickup);
+    assert.equal(order.positions[0].placeAtSupplier, 'Antwerpen');
+    assert.equal(order.loadingLocationChanged, true);
+    const reopened = (await f.request({}, 'get', '/temp-purchase-orders/:id')).data;
+    assert.equal(reopened.loadingLocationSource, 'manual');
+    const edited = (await f.request({ ...reopened, reference: 'Referenz' }, 'put', '/temp-purchase-orders/:id')).data;
+    assert.equal(edited.positions[0].placeAtSupplier, 'Antwerpen');
+    const sent = (await f.request({}, 'post', '/temp-purchase-orders/:id/finalize')).data;
+    assert.equal(sent.loadingLocationText, pickup);
+    assert.equal(sent.addressId, null);
+    assert.equal(csOrder.loadingLocationText, pickup);
+    if (option) assert.ok(sent.attachments.some(attachment => attachment.fileName === 'Option.pdf'));
+  }
+  await assert.rejects(fixture().request({ ...input, warehouseId: 'OTHER' }), /Lager dieses Lieferanten/);
+  await assert.rejects(fixture().request({ ...input, deliveryTermId: 2 }), /vollständigen Ladeort für die Abholung/);
+  await assert.rejects(fixture().request({ ...input, loadingLocationText: 'Altadresse' }), /vollständigen Ladeort/);
 });
 test('enforces the active ERP master article and position field lengths on save', async () => {
   await assert.rejects(fixture({ inactiveArticle: true }).request(body()), /Artikel im Stamm/);

@@ -34,7 +34,7 @@ export default function LoadingLocationDialog({onClose,onConfirm,initialAddress}
   },[lang, t, countryCode]);
   const errors=loadingLocationDraftErrors(draft,countries);
   const change=field=>event=>setDraft(previous=>({...previous,[field]:event.target.value}));
-  const confirm=()=>{setAttempted(true);if(!Object.values(errors).some(Boolean))onConfirm(buildLoadingLocationText(draft,countries));};
+  const confirm=()=>{setAttempted(true);if(!Object.values(errors).some(Boolean))onConfirm(buildLoadingLocationText(draft,countries),draft.city.trim());};
   return <Dialog open onClose={onClose} fullWidth maxWidth="sm">
     <DialogTitle>{t('purchase_new_loading_location')}</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.25,pt:'16px !important'}}>

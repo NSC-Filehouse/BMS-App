@@ -1,9 +1,12 @@
 import React from 'react';
-import { Alert, Autocomplete, Box, Button, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, IconButton, MenuItem, TextField, Typography } from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import CompactAddressOption from './CompactAddressOption.jsx';
+import LoadingLocationDialog from './LoadingLocationDialog.jsx';
 import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
+import { isManualPurchaseLocation } from '../utils/purchaseCart.js';
 
 const choiceKey = choice => JSON.stringify([choice.warehouseId, String(choice.addressCustomerId), String(choice.addressId)]);
 
@@ -23,8 +26,13 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [canDeliverToCustomer, setCanDeliverToCustomer] = React.useState(false);
+  const [locationDialogOpen, setLocationDialogOpen] = React.useState(false);
   const { supplierId, deliveryTermId, warehouseId } = order;
   const deliveryCustomerId = !pickup && customerMode ? customer?.id || '' : '';
+  const manual = pickup && isManualPurchaseLocation(order);
+  const directWarehouses = warehouses.filter(item => item.isDirect);
+  const pickupWarehouse = savedWarehouse || (directWarehouses.length === 1 ? directWarehouses[0] : null)
+    || (warehouses.length === 1 ? warehouses[0] : null);
 
   React.useEffect(() => {
     if (!customerMode || customerQuery.trim().length < 2) return;
@@ -56,12 +64,17 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
       setChoices(entries);
       setCanDeliverToCustomer(Boolean(meta?.canDeliverToCustomer));
       update(previous => {
+        if (pickup && isManualPurchaseLocation(previous)) {
+          const warehouse = warehouses.find(item => item.id === previous.warehouseId);
+          return { ...previous, warehouseId: warehouse?.id || meta?.pickupWarehouseId || (warehouses.length === 1 ? warehouses[0].id : '') };
+        }
         const selected = entries.find(item => choiceKey(item) === choiceKey(previous))
           || (entries.length === 1 ? entries[0] : null);
         return { ...previous, warehouseId: selected?.warehouseId || '',
           addressCustomerId: selected?.addressCustomerId || '', addressId: selected?.addressId || '',
           addressCustomerName: selected?.name1 || '',
-          loadingLocationText: selected?.text || previous.loadingLocationText || '' };
+          loadingLocationText: selected?.text || previous.loadingLocationText || '',
+          ...(selected && { loadingLocationSource: 'master', loadingLocationChanged: false }) };
       });
     }).catch(cause => {
       if (!controller.signal.aborted) {
@@ -83,7 +96,7 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
     setCustomerMode(!customerMode);
     setCustomer(null);
     setChoices([]);
-    update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '' });
+    update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '', loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '' });
   };
 
   return <Box sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
@@ -98,32 +111,50 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
         update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '' });
       }}
       renderInput={params => <TextField {...params} size="small" required label={en ? 'Delivery customer' : 'Lieferkunde'} />} />}
-    <TextField select required size="small" label={t('purchase_loading_location')} value={selected ? selectedKey : ''}
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+    <TextField select required size="small" label={t('purchase_loading_location')} value={manual ? 'manual' : selected ? selectedKey : ''}
       disabled={disabled || !deliveryTermId || loading || (!pickup && customerMode && !customer)}
-      error={attempted && (!selected || !order.addressId)}
-      SelectProps={{ renderValue: () => selected && <CompactAddressOption {...parts(selected)} />,
+      error={attempted && !manual && (!selected || !order.addressId)}
+      SelectProps={{ renderValue: () => manual ? <CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} />
+        : selected && <CompactAddressOption {...parts(selected)} />,
         classes: { select: 'address-select' }, MenuProps: { MenuListProps: { className: 'address-select-list' },
           PaperProps: { sx: { maxHeight: 320 } } } }}
-      sx={{ minWidth: 0, '& .MuiSelect-select': { minWidth: 0, overflow: 'hidden' } }}
+      sx={{ flex: 1, minWidth: 0, '& .MuiSelect-select': { minWidth: 0, overflow: 'hidden' } }}
       onChange={event => {
+        if (event.target.value === 'manual') return;
         const choice = choices.find(item => choiceKey(item) === event.target.value);
         update({ warehouseId: choice?.warehouseId || '', addressCustomerId: choice?.addressCustomerId || '',
-          addressId: choice?.addressId || '', addressCustomerName: choice?.name1 || '', loadingLocationText: choice?.text || '' });
+          addressId: choice?.addressId || '', addressCustomerName: choice?.name1 || '', loadingLocationText: choice?.text || '',
+          loadingLocationSource: 'master', loadingLocationChanged: false, loadingLocationCity: '' });
       }}>
       <MenuItem value="" disabled>{en ? 'Select address' : 'Adresse auswählen'}</MenuItem>
+      {manual && <MenuItem value="manual"><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
       {choices.map(choice => <MenuItem key={choiceKey(choice)} value={choiceKey(choice)} divider sx={{ py: 1, minWidth: 0 }}>
         <CompactAddressOption {...parts(choice)} />
       </MenuItem>)}
     </TextField>
+    {pickup && <IconButton color="primary" size="small" disabled={disabled || !deliveryTermId}
+      aria-label={t('purchase_new_loading_location')} onClick={() => setLocationDialogOpen(true)}><AddCircleOutlineIcon fontSize="small" /></IconButton>}
+    </Box>
+    {manual && warehouses.length > 1 && directWarehouses.length !== 1 && <TextField select required size="small" label={t('product_warehouse')}
+      disabled={disabled || loading} error={attempted && !warehouseId} value={savedWarehouse?.id || ''}
+      onChange={event => update({ warehouseId: event.target.value })}>
+      {warehouses.map(warehouse => <MenuItem key={warehouse.id} value={warehouse.id}>{warehouse.label}</MenuItem>)}
+    </TextField>}
+    {locationDialogOpen && pickup && <LoadingLocationDialog onClose={() => setLocationDialogOpen(false)} onConfirm={(text, city) => {
+      update({ warehouseId: pickupWarehouse?.id || '', addressCustomerId: '', addressId: '', addressCustomerName: '',
+        loadingLocationSource: 'manual', loadingLocationChanged: true, loadingLocationText: text, loadingLocationCity: city });
+      setLocationDialogOpen(false);
+    }} />}
     {!pickup && canDeliverToCustomer && <Button size="small" disabled={disabled || loading}
       sx={{ justifySelf: 'start', textTransform: 'none' }} onClick={changeCustomerMode}>
       {customerMode ? (en ? 'Choose warehouse address' : 'Lageradresse wählen')
         : (en ? 'Deliver directly to customer' : 'Direkt an Kunden liefern')}
     </Button>}
     {error && <Alert severity="error">{error}</Alert>}
-    {!loading && !error && deliveryTermId && !choices.length && (!customerMode || customer)
+    {!pickup && !loading && !error && deliveryTermId && !choices.length && (!customerMode || customer)
       && <Alert severity="info">{en ? 'Create the address in the master data first.' : 'Bitte die Adresse zuerst im Stamm anlegen.'}</Alert>}
-    {!selected && order.loadingLocationText && <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
+    {!manual && !selected && order.loadingLocationText && <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
       {order.loadingLocationText}
     </Typography>}
   </Box>;

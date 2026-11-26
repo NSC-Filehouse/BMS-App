@@ -25,6 +25,7 @@ const { queuePurchaseOrderCsMail, processPurchaseOrderCsMailOutboxById } = requi
 const { resolveOrderMailRecipient, validateOrderMailConfig } = require('../mail/order-mail');
 const { appendTimelineEntries } = require('../db/timeline');
 const { loadOptionPosition, validateOptionArticle, validateOptionSupplier,assertOptionQuantities } = require('../options/purchase-source');
+const { manualPurchaseLocation } = require('../options/manual-purchase-location');
 const TIMELINE_TABLE = appTableSql('timeline');
 
 const router = express.Router();
@@ -338,13 +339,23 @@ async function loadPurchaseAddressChoices(req, { supplierId, warehouseId, addres
 }
 
 async function resolvePurchaseAddress(req, body, accessScope) {
+  if (body.loadingLocationSource === 'manual' && (body.loadingLocationChanged === true || body.loadingLocationChanged === 'true' || body.loadingLocationChanged === 1)) {
+    const address = manualPurchaseLocation(body.loadingLocationText, body.loadingLocationCity, body.deliveryTermText);
+    const warehouseId = asText(body.warehouseId);
+    const [warehouse] = warehouseId ? await loadPurchaseWarehouses(req.database, body.supplierId, warehouseId) : [];
+    if (!warehouse || warehouse.id !== warehouseId) {
+      throw createHttpError(400, 'Bitte ein Lager dieses Lieferanten oder das Streckenlager auswählen.', { code: 'PURCHASE_WAREHOUSE_REQUIRED' });
+    }
+    return { warehouseId, isDirect: warehouse.isDirect, pickup: true, customerId: null, id: null,
+      address, text: address.text, source: 'manual', changed: true };
+  }
   const { warehouse, customerId, addresses } = await loadPurchaseAddressChoices(req, body, accessScope);
   const address = addresses.find(item => item.id === asText(body.addressId));
   if (!address?.text) {
     throw createHttpError(400, 'Bitte eine Liefer- oder Abholadresse aus dem Stamm auswählen.', { code: 'PURCHASE_ADDRESS_REQUIRED' });
   }
   return { warehouseId: warehouse.id, isDirect: warehouse.isDirect,
-    pickup: /^(FCA|EXW)\b/i.test(body.deliveryTermText), customerId, id: Number(address.id), address, text: address.text };
+    pickup: /^(FCA|EXW)\b/i.test(body.deliveryTermText), customerId, id: Number(address.id), address, text: address.text, source: 'master', changed: false };
 }
 
 function applyPurchaseLogistics(positions, loading, storedPositions = []) {
@@ -515,7 +526,8 @@ router.get('/purchase-order-addresses', requirePurchaseOrders, requireMandant, a
       })));
     const uniqueChoices = [...new Map(choices.map(choice =>
       [JSON.stringify([choice.warehouseId, choice.addressCustomerId, choice.addressId]), choice])).values()];
-    sendEnvelope(res, { data: uniqueChoices, meta: { canDeliverToCustomer: !pickup && Boolean(directWarehouse) } });
+    sendEnvelope(res, { data: uniqueChoices, meta: { canDeliverToCustomer: !pickup && Boolean(directWarehouse),
+      ...(pickup ? { pickupWarehouseId: sources[0]?.warehouse.id ?? null } : {}) } });
     return;
   }
   const { addresses } = await loadPurchaseAddressChoices(req, {
@@ -744,7 +756,7 @@ async function savePurchaseDraft(query, req, draft) {
   [companyId, clientRequestId, supplierId, asText(supplier.kd_Name1 || supplier.kd_Name2) || supplierId,
     [supplier.kd_Strasse, [supplier.kd_PLZ, supplier.kd_Ort].filter(Boolean).join(' '), supplier.kd_LK].filter(Boolean).join(', '), contact?.name || null,
     payment.paymentConditionChanged ? 1 : 0, payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id,
-    'master', loading.id, loading.text, 0, asText(req.body?.comment) || null, user, now, user, now,
+    loading.source, loading.id, loading.text, Number(loading.changed), asText(req.body?.comment) || null, user, now, user, now,
     contact?.id ?? null, loading.warehouseId, loading.customerId, loading.id, reference, currency]);
   const id = result.rows[0].id;
   await insertPurchasePositions(query, id, positions, currency, user, now);
@@ -838,7 +850,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
       [tb_supplier_contact_id]=?,[tb_warehouse_id]=?,[tb_address_customer_id]=?,[tb_address_id]=?,[tb_reference]=?,[tb_currency]=?
       WHERE [tb_id]=? AND [tb_company_id]=?`, [contact?.name || null, payment.paymentConditionChanged ? 1 : 0,
       payment.paymentConditionId, payment.paymentConditionText || null, incoterm.id, incoterm.text, packaging.text, packaging.id,
-      'master', loading.id, loading.text, 0, asText(req.body?.comment) || null, user, now,
+      loading.source, loading.id, loading.text, Number(loading.changed), asText(req.body?.comment) || null, user, now,
       contact?.id ?? null, loading.warehouseId, loading.customerId, loading.id, reference, currency, id, companyId]);
     if (linked.length) {
       assertProcurementAccess(req.userIdentity);
