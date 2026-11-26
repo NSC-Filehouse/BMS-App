@@ -697,7 +697,7 @@ test('purchase editor and totals use English labels and preserve positions durin
   assert.ok(summary.text().includes('Total amount'));
 });
 
-test('the purchase editor replaces the copy icon with truck planning and recalculates edited quantities', async () => {
+test('the purchase editor splits below the availability note after validating the position', async () => {
   const position = { lineId: 'one', articleIndex: 'A', article: 'Grade', amount: 1400000, amountTouched: true, purchasePrice: 1100 };
   let current;
   const view = await mount('../src/components/PurchaseOrderEditor.jsx', {
@@ -710,25 +710,36 @@ test('the purchase editor replaces the copy icon with truck planning and recalcu
     throw new Error(path);
   });
   await view.flush();
-  const summary = () => view.find(node => node.props?.truckCount != null).props;
+  const split = () => view.find(node => node.type === 'Button' && node.props.children.includes('Aufteilen')).props;
+  const count = expected => assert.ok(view.find(node => node.type === 'Typography' && node.props.children.includes(`Benötigte LKW: ${expected}`)));
+  const card = view.find(node => node.type === 'Card' && node.props?.variant === 'outlined');
+  assert.match(JSON.stringify(card), /Bemerkung für die Verfügbarkeitsliste.*Benötigte LKW: 57.*Aufteilen/);
   assert.doesNotMatch(view.text(), /Position kopieren/);
-  assert.equal(summary().truckCount, 57);
-  summary().onSplit();
+  count(57);
+  split().onClick();
+  await view.flush();
+  assert.equal(current.positions.length, 1);
+  assert.equal(view.field('Liefertermin').props.error, true);
+  assert.doesNotMatch(view.text(), /"type":"Dialog"/);
+  view.field('Liefertermin').props.onChange({ target: { value: '2026-12-01' } });
+  await view.flush();
+  split().onClick();
   await view.flush();
   assert.equal(current.positions.length, 57);
-  assert.equal(summary().splitDisabled, true);
+  assert.ok(current.positions.every(position => position.requestedDeliveryDate === '2026-12-01'));
+  assert.equal(split().disabled, true);
   view.field('Verpackungsart').props.onChange({ target: { value: 79 } });
   await view.flush();
-  assert.equal(summary().truckCount, 56);
+  count(56);
   assert.equal(current.positions.length, 57);
-  summary().onSplit();
+  split().onClick();
   await view.flush();
   assert.equal(current.positions.length, 56);
   assert.equal(current.positions.at(-1).amount, 25000);
   view.field('Menge (kg)').props.onChange({ target: { value: '26000' } });
   await view.flush();
-  assert.equal(summary().truckCount, 57);
-  assert.equal(summary().splitDisabled, false);
+  count(57);
+  assert.equal(split().disabled, false);
 });
 
 test('a purchase pickup loads its supplier addresses and selects a unique technical ID', async () => {
