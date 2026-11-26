@@ -714,6 +714,7 @@ test('a purchase pickup loads its supplier addresses and selects a unique techni
   const addressOption = editor.find(node => node.type === 'MenuItem' && node.props.value === selectedKey);
   assert.equal(addressOption.props.children[0].props.primary, 'Stammadresse');
   assert.equal(editor.field('Ladeort').props.SelectProps.renderValue().props.primary, 'Stammadresse');
+  assert.doesNotMatch(editor.text(), /Adresse anzeigen|Adresse ausblenden/);
 });
 
 test('purchase contact dropdown displays the name while retaining the technical contact ID', async () => {

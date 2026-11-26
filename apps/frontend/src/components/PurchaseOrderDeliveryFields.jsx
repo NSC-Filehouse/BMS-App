@@ -23,7 +23,6 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [canDeliverToCustomer, setCanDeliverToCustomer] = React.useState(false);
-  const [showDetails, setShowDetails] = React.useState(false);
   const { supplierId, deliveryTermId, warehouseId } = order;
   const deliveryCustomerId = !pickup && customerMode ? customer?.id || '' : '';
 
@@ -108,7 +107,6 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
       sx={{ minWidth: 0, '& .MuiSelect-select': { minWidth: 0, overflow: 'hidden' } }}
       onChange={event => {
         const choice = choices.find(item => choiceKey(item) === event.target.value);
-        setShowDetails(false);
         update({ warehouseId: choice?.warehouseId || '', addressCustomerId: choice?.addressCustomerId || '',
           addressId: choice?.addressId || '', addressCustomerName: choice?.name1 || '', loadingLocationText: choice?.text || '' });
       }}>
@@ -117,13 +115,6 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
         <CompactAddressOption {...parts(choice)} />
       </MenuItem>)}
     </TextField>
-    {selected && <Button size="small" sx={{ justifySelf: 'start', textTransform: 'none' }}
-      onClick={() => setShowDetails(value => !value)} aria-expanded={showDetails}>
-      {t(showDetails ? 'purchase_hide_address' : 'purchase_show_address')}
-    </Button>}
-    {showDetails && selected && <Typography variant="caption" sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
-      {selected.text}
-    </Typography>}
     {!pickup && canDeliverToCustomer && <Button size="small" disabled={disabled || loading}
       sx={{ justifySelf: 'start', textTransform: 'none' }} onClick={changeCustomerMode}>
       {customerMode ? (en ? 'Choose warehouse address' : 'Lageradresse wählen')
