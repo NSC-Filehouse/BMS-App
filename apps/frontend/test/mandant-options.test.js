@@ -10,13 +10,13 @@ const elbpolymerMandant = { id: 18, name: 'Elbpolymer', shortName: 'EPO', isMain
 
 test('hides Test from mandant selection for other users', () => {
   assert.deepEqual(
-    getSelectableMandants([testMandant, normalMandant], { shortCode: 'AKI' }),
+    getSelectableMandants([testMandant, normalMandant], { shortCode: 'KMU' }),
     [normalMandant],
   );
 });
 
-test('keeps Test visible for MFR and NSC', () => {
-  for (const shortCode of ['MFR', 'NSC']) {
+test('keeps Test visible for AKI, MFR and NSC', () => {
+  for (const shortCode of ['AKI', 'MFR', 'NSC']) {
     assert.deepEqual(
       getSelectableMandants([testMandant, normalMandant], { shortCode }),
       [testMandant, normalMandant],

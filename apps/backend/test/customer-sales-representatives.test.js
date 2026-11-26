@@ -64,21 +64,21 @@ test('hides Elbpolymer and Just4Today from responsible mandants', () => {
   ]);
 });
 
-test('hides Test for other viewers but keeps it for MFR and NSC', () => {
+test('hides Test for other viewers but keeps it for AKI, MFR and NSC', () => {
   const rows = [
     { MandantID: 0, MandantKuerzel: 'TES', MandantName: 'Test', Aussendienst: 'EPO' },
     { MandantID: 2, MandantKuerzel: 'PLA', MandantName: 'MLPlastics', Aussendienst: 'EPO' },
   ];
   const primaryMandant = { MandantID: 0, MandantKuerzel: 'TES', MandantName: 'Test' };
 
-  const hiddenForOtherViewer = buildSalesRepresentativeList('EPO', rows, primaryMandant, { shortCode: 'AKI' });
+  const hiddenForOtherViewer = buildSalesRepresentativeList('EPO', rows, primaryMandant, { shortCode: 'KMU' });
   assert.deepEqual(hiddenForOtherViewer, [{
     shortCode: 'EPO',
     primary: true,
     mandants: [{ id: 2, shortCode: 'PLA', name: 'MLPlastics' }],
   }]);
 
-  for (const shortCode of ['MFR', 'NSC']) {
+  for (const shortCode of ['AKI', 'MFR', 'NSC']) {
     const visibleForException = buildSalesRepresentativeList('EPO', rows, primaryMandant, { shortCode });
     assert.deepEqual(visibleForException, [{
       shortCode: 'EPO',
@@ -114,7 +114,7 @@ test('hides every mandant from the configured customer-detail exclusion list', (
   }));
 
   assert.deepEqual(
-    buildSalesRepresentativeList('EPO', rows, rows[rows.length - 1], { shortCode: 'AKI' }),
+    buildSalesRepresentativeList('EPO', rows, rows[rows.length - 1], { shortCode: 'KMU' }),
     [],
   );
 });

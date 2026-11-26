@@ -1,7 +1,7 @@
 import { MANDANT_EXCLUDE_IDS } from '../config.js';
 
 const TEST_MANDANT_ID = 0;
-const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['MFR', 'NSC']);
+const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['AKI', 'MFR', 'NSC']);
 
 function parseMandantId(value) {
   const text = String(value ?? '').trim();

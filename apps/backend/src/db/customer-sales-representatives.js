@@ -8,7 +8,7 @@ const { hasExecutiveAccess, isTestMandant, isHiddenMandant } = require('../execu
 const HIDDEN_CUSTOMER_DETAIL_MANDANT_IDS = new Set([0, 1, 6, 8, 13, 14, 15, 16, 17, 18]);
 const HIDDEN_CUSTOMER_DETAIL_EMPLOYEE_SHORT_CODES = new Set(['AKI']);
 const TEST_MANDANT_ID = 0;
-const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['MFR', 'NSC']);
+const TEST_MANDANT_ACCESS_SHORT_CODES = new Set(['AKI', 'MFR', 'NSC']);
 
 function normalizeShortCode(value) {
   return String(value || '').trim().toUpperCase();
