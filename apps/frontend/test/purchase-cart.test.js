@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { addPurchaseCartItems, clearPurchaseCart, duplicatePurchaseCartItem, getPurchaseCartContext, getPurchaseCartItems, getPurchaseRequestId, planPurchaseTruckLoads, purchaseFieldErrors, purchaseMissingFields, purchaseTotals, savePurchaseCartContext, splitPurchaseTruckPositions, updatePurchaseCartItem } from '../src/utils/purchaseCart.js';
-import { allocatePurchaseDeliveries, planPurchaseDeliveries, purchaseDeliveryAmounts } from '../src/utils/purchaseDeliveries.js';
+import { allocatePurchaseDeliveries, defaultPurchaseTruckLoad, planPurchaseDeliveries, purchaseDeliveryAmounts } from '../src/utils/purchaseDeliveries.js';
 
 const storage = new Map();
 global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key) };
@@ -25,6 +25,33 @@ test('delivery allocations subtract all added amounts from the first and preserv
     assert.ok(positions.every(position => position.amount > 0 && position.amount <= capacity));
     assert.ok(positions.filter(position => position.requestedDeliveryDate === '2026-12-03').every(position => position.availabilityNote === 'C'));
   }
+});
+
+test('only deliveries without the checkbox are split into truckloads', () => {
+  const positions = [{ ...item('A'), id: 15, lineId: 'existing', amount: 100000, optionId: 7, optionPositionId: 8 }];
+  const deliveries = [
+    { date: '2026-12-01', note: 'Full delivery', skipTruckSplit: true },
+    { amount: 50000, date: '2026-12-02', note: 'Truck deliveries' },
+  ];
+  const plan = planPurchaseDeliveries(positions, deliveries, 23375);
+  let id = 0;
+  const result = allocatePurchaseDeliveries(plan, () => `new-${++id}`);
+  assert.deepEqual(result.map(position => position.amount), [50000, 23375, 23375, 3250]);
+  assert.equal(result[0].id, 15);
+  assert.equal(result[0].requestedDeliveryDate, '2026-12-01');
+  assert.equal(result[0].availabilityNote, 'Full delivery');
+  assert.ok(result.every(position => position.optionId === 7 && position.optionPositionId === 8));
+  assert.equal(plan[0].plan, null);
+  assert.equal(plan[1].plan.count, 3);
+});
+
+test('truck capacity defaults to 23375 only for evidence of a French loading point', () => {
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'FCA', loadingLocationCountryCode: 'FR' }, 'Sackware'), 23375);
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'FCA', loadingLocationText: 'Werk, FR-59000 Lille' }, 'Sackware'), 23375);
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'CPT', optionLoadingLocationText: 'Werk\n59000 Lille\nFrance' }, 'Sackware'), 23375);
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'CPT', loadingLocationText: 'Lille, France' }, 'Sackware'), 24750);
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'FCA', loadingLocationText: 'Werk, 59000 Lille' }, 'Sackware'), 24750);
+  assert.equal(defaultPurchaseTruckLoad({ deliveryTermText: 'FCA', loadingLocationCountryCode: 'BE', loadingLocationText: 'Werk, France' }, 'Siloware'), 25000);
 });
 
 test('an option pickup fills a cart without a chosen address and preserves an existing different pickup', () => {
@@ -110,6 +137,22 @@ test('truck packaging transfers to the order and does not silently overwrite an 
   assert.equal(getPurchaseCartContext().header.packagingTypeId,79);assert.equal(getPurchaseCartContext().header.comment,'Behalten');
 });
 
+test('option header fills a missing contact and pickup suggestion without replacing user choices', () => {
+  const option = { ...item('A'), optionId: 1, optionPositionId: 10, amount: 10000 };
+  addPurchaseCartItems([item('A')]);
+  const header = { supplierContactId: 41, supplierContact: 'Max Muster', supplierContactSelected: true,
+    deliveryTermId: 29, deliveryTermText: 'FCA', optionLoadingLocationText: 'Lille, France' };
+  addPurchaseCartItems([option], null, header);
+  const saved = getPurchaseCartContext().header;
+  assert.equal(saved.supplierContactId, 41);
+  assert.equal(saved.supplierContactSelected, true);
+  assert.equal(saved.loadingLocationText, 'Lille, France');
+  assert.equal(saved.loadingLocationChanged, false);
+  savePurchaseCartContext({ header: { ...saved, supplierContactId: '', supplierContactSelected: true } });
+  addPurchaseCartItems([{ ...option, optionId: 2, optionPositionId: 20 }], null, header);
+  assert.equal(getPurchaseCartContext().header.supplierContactId, '');
+});
+
 test('adding an option fills an empty cart Incoterm and preserves an existing choice', () => {
   const row = { ...item('A'), optionId: 1, optionPositionId: 10, amount: 25000, purchasePrice: 900 };
   const fca = { deliveryTermId: 29, deliveryTermText: 'FCA / Frei Frachtführer' };
@@ -121,7 +164,9 @@ test('adding an option fills an empty cart Incoterm and preserves an existing ch
   assert.equal(getPurchaseCartItems().length, 1);
 
   savePurchaseCartContext({ header: dap });
-  addPurchaseCartItems([{ ...row, optionId: 2, optionPositionId: 20 }], null, fca);
+  const second = [{ ...row, optionId: 2, optionPositionId: 20 }];
+  assert.throws(() => addPurchaseCartItems(second, null, fca), { code: 'PURCHASE_CART_LOCATION_CONFLICT' });
+  addPurchaseCartItems(second, null, { deliveryTermId: 25, deliveryTermText: 'CPT', deliveryTermFromOption: false });
   assert.deepEqual(getPurchaseCartContext().header, dap);
   assert.equal(getPurchaseCartItems().length, 2);
 });

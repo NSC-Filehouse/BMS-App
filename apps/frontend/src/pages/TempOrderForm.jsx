@@ -50,7 +50,7 @@ import { isValidSalePrice } from '../utils/salePrice.js';
 import ExpandCollapseIndicator from '../components/ExpandCollapseIndicator.jsx';
 import DeliveryDateHint from '../components/DeliveryDateHint.jsx';
 import PickupAddressField from '../components/PickupAddressField.jsx';
-import { isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../utils/incoterm.js';
+import { findDefaultIncoterm, findIncotermByCode, isFcaIncoterm, normalizePickupFormAddress, applyPickupSuggestion, switchOrderIncoterm } from '../utils/incoterm.js';
 import { normalizeWpzFields } from '../utils/wpz.js';
 import { getWeekendStatus, nextWeekday } from '../utils/deliveryDate.js';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
@@ -89,13 +89,6 @@ function normalizeRepresentativeOptions(representatives, preferredName = '') {
     options.unshift({ id: null, name: preferred, position: '', email: '', ranking: null });
   }
   return options;
-}
-
-function findDefaultIncoterm(options) {
-  return (Array.isArray(options) ? options : []).find((option) => {
-    const text = String(option?.text || '').trim().toUpperCase();
-    return text === 'CPT' || text.startsWith('CPT ') || text.startsWith('CPT-');
-  }) || null;
 }
 
 function parsePaymentTextId(value) {
@@ -1552,8 +1545,9 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
   }, [activeMandant, lang]);
 
   React.useEffect(() => {
-    const defaultIncoterm = findDefaultIncoterm(incotermOptions);
-    if (!defaultIncoterm || form.incotermId) return;
+    if (form.incotermId || !incotermOptions.length) return;
+    const defaultIncoterm = findIncotermByCode(incotermOptions, form.incotermText) || findDefaultIncoterm(incotermOptions);
+    if (!defaultIncoterm) return;
     setForm((previous) => {
       if (previous.incotermId) return previous;
       return {
@@ -1562,7 +1556,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
         incotermText: defaultIncoterm.text,
       };
     });
-  }, [incotermOptions, form.incotermId]);
+  }, [incotermOptions, form.incotermId, form.incotermText]);
 
   React.useEffect(() => {
     if (!addPosOpen) return undefined;
@@ -1629,6 +1623,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
         ...prev,
         clientRepresentative: '',
         clientRepresentativeId: '',
+        clientRepresentativeSelected: false,
         customerOrderNumber: '',
         deliveryAddressNewlyCreated: false,
       }));
@@ -1660,6 +1655,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
       clientAddress,
       clientRepresentative: '',
       clientRepresentativeId: '',
+      clientRepresentativeSelected: false,
       deliveryAddress: '',
       deliveryAddressId: '',
       deliveryAddressManual: false,
@@ -1898,6 +1894,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
         clientRepresentativeId: form.clientRepresentativeId === '' || form.clientRepresentativeId === null || form.clientRepresentativeId === undefined
           ? null
           : Number(form.clientRepresentativeId),
+        clientRepresentativeSelected: form.clientRepresentativeSelected === true,
         comment: form.comment || null,
         supplier: form.supplier || null,
         specialPaymentCondition: Boolean(form.specialPaymentCondition),
@@ -2216,6 +2213,7 @@ export default function TempOrderForm({ preparedOfferOrder } = {}) {
                   ...prev,
                   clientRepresentativeId: Number.isFinite(selectedId) && selectedId > 0 ? selectedId : '',
                   clientRepresentative: selected?.name || '',
+                  clientRepresentativeSelected: Boolean(selected?.id),
                 }));
               }}
               disabled={!form.clientReferenceId || representativeOptions.length === 0}

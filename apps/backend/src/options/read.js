@@ -5,7 +5,7 @@ const { excludeTestMandantSql } = require('../executive-access');
 const { supplierKey } = require('./supplier-identity');
 const { normalizePosition } = require('./normalization');
 const { optionPriceNeedsReview, optionPriceWarning } = require('./price-plausibility');
-const { quantityAvailability,confirmedQuantitySql,orderedOptionKgSql,offeredTruckCount } = require('./purchase-quantity');
+const { quantityAvailability,confirmedQuantitySql,orderedOptionKgSql,optionAvailableForPurchaseSql,offeredTruckCount } = require('./purchase-quantity');
 const {purchaseTruckLoadKg,loadPurchasePackagingOptions}=require('../db/purchase-order-values');
 const {createPackagingDisplay}=require('./packaging-display');
 const {checkMfi}=require('./mfi-compatibility');
@@ -80,6 +80,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     FROM ${appTableSql('options')} o WHERE ${scope}
       AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      AND ${optionAvailableForPurchaseSql('o')}
       ${excludeTestMandantSql(identity, 'o.op_MandantID')}
     ORDER BY o.op_GueltigBis,o.op_id DESC`, [...scopeParams, today, ...(optionId == null ? [] : [optionId])]);
   if (!heads.length) return [];
@@ -125,6 +126,7 @@ async function loadOffers(companyIds = [], { optionId = null, includeMatchInputs
     LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
     WHERE ${scope} AND o.op_Pruefstatus IN (N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GueltigAb<=? ${optionId == null ? '' : 'AND o.op_id=?'}
+      AND ${optionAvailableForPurchaseSql('o')}
       ${excludeTestMandantSql(identity, 'o.op_MandantID')}
       AND p.opp_GeloeschtAm IS NULL AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
     ORDER BY p.opp_op_id,p.opp_Positionsnummer`, [...scopeParams, today, ...(optionId == null ? [] : [optionId]), today]);

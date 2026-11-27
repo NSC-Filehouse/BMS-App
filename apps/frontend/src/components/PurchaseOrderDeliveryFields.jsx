@@ -30,6 +30,8 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
   const { supplierId, deliveryTermId, warehouseId } = order;
   const deliveryCustomerId = !pickup && customerMode ? customer?.id || '' : '';
   const manual = pickup && isManualPurchaseLocation(order);
+  const sourceLocation = order.optionLoadingLocationText || '';
+  const pickupSuggestion = pickup && !manual ? order.loadingLocationText || sourceLocation : '';
   const directWarehouses = warehouses.filter(item => item.isDirect);
   const pickupWarehouse = savedWarehouse || (directWarehouses.length === 1 ? directWarehouses[0] : null)
     || (warehouses.length === 1 ? warehouses[0] : null);
@@ -68,18 +70,23 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
           const warehouse = warehouses.find(item => item.id === previous.warehouseId);
           return { ...previous, warehouseId: warehouse?.id || meta?.pickupWarehouseId || (warehouses.length === 1 ? warehouses[0].id : '') };
         }
+        const normalize = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const suggested = pickup && !previous.addressId
+          ? normalize(previous.optionLoadingLocationText || previous.loadingLocationText) : '';
+        const matches = suggested ? entries.filter(item => normalize(item.text) === suggested) : [];
         const selected = entries.find(item => choiceKey(item) === choiceKey(previous))
-          || (entries.length === 1 ? entries[0] : null);
-        return { ...previous, warehouseId: selected?.warehouseId || '',
-          addressCustomerId: selected?.addressCustomerId || '', addressId: selected?.addressId || '',
-          addressCustomerName: selected?.name1 || '',
-          loadingLocationText: selected?.text || previous.loadingLocationText || '',
-          ...(selected && { loadingLocationSource: 'master', loadingLocationChanged: false }) };
+          || (matches.length === 1 ? matches[0] : null)
+          || (!suggested && entries.length === 1 && !previous.addressId ? entries[0] : null);
+        if (!selected) return previous;
+        return { ...previous, warehouseId: selected.warehouseId,
+          addressCustomerId: selected.addressCustomerId, addressId: selected.addressId,
+          addressCustomerName: selected.name1 || '', loadingLocationText: selected.text,
+          loadingLocationCountryCode: selected.countryCode || '',
+          loadingLocationSource: 'master', loadingLocationChanged: false };
       });
     }).catch(cause => {
       if (!controller.signal.aborted) {
         setError(cause.message);
-        update(previous => ({ ...previous, addressId: '' }));
       }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -96,7 +103,7 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
     setCustomerMode(!customerMode);
     setCustomer(null);
     setChoices([]);
-    update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '', loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '' });
+    update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '', loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '', loadingLocationCountryCode: '' });
   };
 
   return <Box sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
@@ -108,27 +115,30 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
       }}
       onChange={(_event, value) => {
         setCustomer(value);
-        update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '' });
+        update({ warehouseId: '', addressId: '', addressCustomerId: '', loadingLocationText: '', loadingLocationCountryCode: '' });
       }}
       renderInput={params => <TextField {...params} size="small" required label={en ? 'Delivery customer' : 'Lieferkunde'} />} />}
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-    <TextField select required size="small" label={t('purchase_loading_location')} value={manual ? 'manual' : selected ? selectedKey : ''}
+    <TextField select required size="small" label={t('purchase_loading_location')} value={manual ? 'manual' : selected ? selectedKey : pickupSuggestion ? 'suggested' : ''}
       disabled={disabled || !deliveryTermId || loading || (!pickup && customerMode && !customer)}
       error={attempted && !manual && (!selected || !order.addressId)}
       SelectProps={{ renderValue: () => manual ? <CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} />
-        : selected && <CompactAddressOption {...parts(selected)} />,
+        : selected ? <CompactAddressOption {...parts(selected)} />
+          : pickupSuggestion && <CompactAddressOption {...loadingLocationParts(pickupSuggestion)} />,
         classes: { select: 'address-select' }, MenuProps: { MenuListProps: { className: 'address-select-list' },
           PaperProps: { sx: { maxHeight: 320 } } } }}
       sx={{ flex: 1, minWidth: 0, '& .MuiSelect-select': { minWidth: 0, overflow: 'hidden' } }}
       onChange={event => {
-        if (event.target.value === 'manual') return;
+        if (event.target.value === 'manual' || event.target.value === 'suggested') return;
         const choice = choices.find(item => choiceKey(item) === event.target.value);
         update({ warehouseId: choice?.warehouseId || '', addressCustomerId: choice?.addressCustomerId || '',
           addressId: choice?.addressId || '', addressCustomerName: choice?.name1 || '', loadingLocationText: choice?.text || '',
-          loadingLocationSource: 'master', loadingLocationChanged: false, loadingLocationCity: '' });
+          loadingLocationSource: 'master', loadingLocationChanged: false, loadingLocationCity: '',
+          loadingLocationCountryCode: choice?.countryCode || '' });
       }}>
       <MenuItem value="" disabled>{en ? 'Select address' : 'Adresse auswählen'}</MenuItem>
       {manual && <MenuItem value="manual"><CompactAddressOption {...loadingLocationParts(order.loadingLocationText)} /></MenuItem>}
+      {!selected && pickupSuggestion && <MenuItem value="suggested" disabled><CompactAddressOption {...loadingLocationParts(pickupSuggestion)} /></MenuItem>}
       {choices.map(choice => <MenuItem key={choiceKey(choice)} value={choiceKey(choice)} divider sx={{ py: 1, minWidth: 0 }}>
         <CompactAddressOption {...parts(choice)} />
       </MenuItem>)}
@@ -141,9 +151,10 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
       onChange={event => update({ warehouseId: event.target.value })}>
       {warehouses.map(warehouse => <MenuItem key={warehouse.id} value={warehouse.id}>{warehouse.label}</MenuItem>)}
     </TextField>}
-    {locationDialogOpen && pickup && <LoadingLocationDialog onClose={() => setLocationDialogOpen(false)} onConfirm={(text, city) => {
+    {locationDialogOpen && pickup && <LoadingLocationDialog onClose={() => setLocationDialogOpen(false)} onConfirm={(text, city, countryCode) => {
       update({ warehouseId: pickupWarehouse?.id || '', addressCustomerId: '', addressId: '', addressCustomerName: '',
-        loadingLocationSource: 'manual', loadingLocationChanged: true, loadingLocationText: text, loadingLocationCity: city });
+        loadingLocationSource: 'manual', loadingLocationChanged: true, loadingLocationText: text, loadingLocationCity: city,
+        loadingLocationCountryCode: countryCode });
       setLocationDialogOpen(false);
     }} />}
     {!pickup && canDeliverToCustomer && <Button size="small" disabled={disabled || loading}
@@ -154,8 +165,8 @@ export default function PurchaseOrderDeliveryFields({ order, warehouses, update,
     {error && <Alert severity="error">{error}</Alert>}
     {!pickup && !loading && !error && deliveryTermId && !choices.length && (!customerMode || customer)
       && <Alert severity="info">{en ? 'Create the address in the master data first.' : 'Bitte die Adresse zuerst im Stamm anlegen.'}</Alert>}
-    {!manual && !selected && order.loadingLocationText && <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
-      {order.loadingLocationText}
+    {!pickup && sourceLocation && <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
+      {t('purchase_option_loading_location')}: {sourceLocation}
     </Typography>}
   </Box>;
 }

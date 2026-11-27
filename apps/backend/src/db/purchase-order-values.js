@@ -123,7 +123,14 @@ async function loadLatestPurchase(database, supplierId, articleIndex) {
 
 async function enrichPurchaseArticleNames(database, supplierId, positions) {
   const ids = [...new Set(positions.map(position => text(position.articleIndex)).filter(Boolean))];
-  const sources = new Map(await Promise.all(ids.map(async id => [id, await loadLatestPurchase(database, supplierId, id)])));
+  const optionIds = new Set(positions.filter(position => position.optionId != null).map(position => text(position.articleIndex)));
+  const sources = new Map(await Promise.all(ids.map(async id => {
+    const source = await loadLatestPurchase(database, supplierId, id);
+    if (source?.masterArticleName || !optionIds.has(id)) return [id, source];
+    const [master] = await runSQLQueryAccess(database, `SELECT [agA_Artikelname] AS masterArticleName
+      FROM [dbo].[tblArt_Artikel] WHERE [agA_Artikelindex] = ?`, [id]);
+    return [id, { ...source, masterArticleName: master?.masterArticleName }];
+  })));
   return positions.map(position => {
     const source = sources.get(text(position.articleIndex));
     const masterArticleName = text(source?.masterArticleName);

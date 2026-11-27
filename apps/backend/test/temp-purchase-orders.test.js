@@ -144,6 +144,8 @@ function fixture(options = {}) {
     crypto: require('node:crypto'), express: { Router: () => router }, '../config': { sql: { database: 'mock' } }, '../logger': {}, '../utils': require('../src/utils'),
     '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
     '../middlewares/pilot-feature.middleware': options.routing ? require('../src/middlewares/pilot-feature.middleware') : { requirePilotFeature: () => () => {} },
+    '../options/delivery-data': require('../src/options/delivery-data'),
+    '../db/customer-contact-ranking': { rememberFirstContact: async (...args) => { options.rememberContact?.(...args); } },
     '../db/access': {
       runSQLQueryAccess: async (_database, sql) => sql.includes('tblArt_Artikel')
         ? (options.inactiveArticle ? [] : [{ article: 'Stammartikel' }]) : [{ ok: 1 }],
@@ -315,6 +317,23 @@ test('verified pilot users can still load purchase options', async () => {
 const body = () => ({ supplierId: '42', clientRequestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', packagingTypeId: 79, deliveryTermId: 1, paymentConditionText: 'Manipuliert', paymentConditionId: 999,
   warehouseId: 'LG0001', addressCustomerId: '42', addressId: 11,
   positions: [{ articleIndex: 'A', article: 'Alter Name', amount: 25000, purchasePrice: 900, requestedDeliveryDate: '2026-11-05', sourceBestellindex: 'ALTE-BE' }] });
+
+test('successful supplier contact selection is handed to the ranking helper after saving', async () => {
+  const seen = [];
+  const f = fixture({
+    supplierTerms: { paymentConditionId: 17, paymentConditionText: '30 Tage', contacts: [{ id: 34, name: 'Max Muster' }] },
+    rememberContact: (_database, supplierId, contactId, selected) => {
+      assert.equal(f.headers.length, 1);
+      seen.push({ supplierId, contactId, selected });
+    },
+  });
+  const input = { ...body(), supplierContactSelected: 'true', supplierContactId: '34' };
+  await assert.rejects(f.request({ ...input, supplierContactId: '98' }), { status: 400 });
+  assert.deepEqual(seen, []);
+  const saved = (await f.request(input)).data;
+  assert.equal(saved.supplierContact, 'Max Muster');
+  assert.deepEqual(seen, [{ supplierId: '42', contactId: 34, selected: 'true' }]);
+});
 
 test('a missing supplier payment term can be filled from the validated catalog on draft save and edit', async () => {
   const f = fixture({ supplierTerms: { paymentConditionId: null, paymentConditionText: '' } });

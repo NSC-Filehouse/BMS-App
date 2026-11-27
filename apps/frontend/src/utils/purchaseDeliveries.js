@@ -1,6 +1,18 @@
-import { createPurchaseLineId, planPurchaseTruckLoads, splitPurchaseTruckPositions } from './purchaseCart.js';
+import { createPurchaseLineId, defaultPurchaseAmount, planPurchaseTruckLoads, splitPurchaseTruckPositions } from './purchaseCart.js';
 
 export const purchaseTruckLoadChoices = [25000, 24750, 23375];
+
+export function defaultPurchaseTruckLoad(order, packaging) {
+  const pickup = !order.deliveryTermText || /^(FCA|EXW)\b/i.test(order.deliveryTermText);
+  const country = pickup ? String(order.loadingLocationCountryCode || '').trim() : '';
+  const location = pickup ? order.loadingLocationText || order.optionLoadingLocationText : order.optionLoadingLocationText;
+  const parts = String(location || '').split(/[\r\n,;]+/).map(value => value.trim());
+  const france = country ? /^(?:FR|FRA)$/i.test(country) : parts.some(part =>
+    /^(?:FR(?:A)?(?:\s*[-—–]\s*(?:France|Frankreich))?|France|Frankreich)$/i.test(part)
+    || /\b(?:FR[-\s]|F-)\d{5}\b/i.test(part)
+    || /(?:^|\s)(?:France|Frankreich)\s*$/i.test(part));
+  return france ? 23375 : defaultPurchaseAmount(packaging);
+}
 
 function grams(value) {
   const scaled = Number(value) * 1000;
@@ -31,12 +43,14 @@ export function planPurchaseDeliveries(positions, deliveries, loadKg) {
       const amount = Math.min(remaining, needed);
       const isCopy = remaining !== grams(source.amount);
       lines.push({ isCopy, position: { ...source, amount: amount / 1000, amountTouched: true, requestedDeliveryDate: delivery.date,
-        availabilityNote: delivery.note || '', reservedFor: '', comment: '' } });
+        availabilityNote: delivery.note || '', reservedFor: '', comment: '',
+        skipTruckSplit: Boolean(delivery.skipTruckSplit) } });
       remaining -= amount;
       needed -= amount;
       if (remaining === 0) remaining = grams(positions[++sourceIndex]?.amount);
     }
-    return { lines, plan: planPurchaseTruckLoads(lines.map(line => line.position), null, loadKg, true) };
+    return { lines, skipTruckSplit: Boolean(delivery.skipTruckSplit),
+      plan: delivery.skipTruckSplit ? null : planPurchaseTruckLoads(lines.map(line => line.position), null, loadKg, true) };
   });
 }
 
@@ -44,14 +58,14 @@ export function allocatePurchaseDeliveries(planned, newLineId = createPurchaseLi
   const result = [];
   const encoder = new TextEncoder();
   let bytes = 2;
-  for (const { lines, plan } of planned) {
+  for (const { lines, plan, skipTruckSplit } of planned) {
     if (!lines.length) continue;
     const positions = lines.map(({ position, isCopy }) => {
       if (!isCopy) return position;
       const { id, ...values } = position;
       return { ...values, copyOfPositionId: id || values.copyOfPositionId, lineId: newLineId() };
     });
-    const split = splitPurchaseTruckPositions(positions, plan, newLineId);
+    const split = skipTruckSplit ? positions : splitPurchaseTruckPositions(positions, plan, newLineId);
     if (!split) return null;
     bytes += encoder.encode(JSON.stringify(split)).length - (result.length ? 1 : 2);
     if (bytes >= 1024 * 1024) return null;

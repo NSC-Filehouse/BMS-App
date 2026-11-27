@@ -27,7 +27,8 @@ function fixture({orderedKg=0,available=true,sourceOverride={},articleOverride={
       ];
     }},'../db/app-tables':{appTableSql:key=>key},'../utils':require('../src/utils'),
     '../executive-access':require('../src/executive-access'),
-    './read':{berlinDate:()=> '2026-11-12'},'./supplier-identity':require('../src/options/supplier-identity'),
+    './read':{berlinDate:()=> '2026-11-12'},'./delivery-data':require('../src/options/delivery-data'),
+    './supplier-identity':require('../src/options/supplier-identity'),
     './matching-service':{articleByIndex:async(_db,index)=>index==='A'?{articleName:'LDPE MFI 1-4',mfi:1,mfiTo:4,mfiMethod:'190 °C / 2.16 kg',...articleOverride}:null,
       candidatesFor:async(database,position,options)=>({data:articleCandidates,total:articleCandidates.length,database,position,options})},
     './article-catalog':require('../src/options/article-catalog'),'./mfi-compatibility':require('../src/options/mfi-compatibility'),

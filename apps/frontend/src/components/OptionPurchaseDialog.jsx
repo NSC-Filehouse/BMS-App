@@ -26,6 +26,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   const supplier = supplierEditable && suppliers
     ? (suppliers.find(row => row.id === supplierId) || (supplierId === undefined && (suppliers.find(row => row.preferred) || (suppliers.length === 1 ? suppliers[0] : null))))
     : initialSupplier;
+  const [contactSelected, setContactSelected] = React.useState(false);
   const [contacts,setContacts]=React.useState([]),[contact,setContact]=React.useState(null);
   const [contactMeta,setContactMeta]=React.useState({}),[contactsLoading,setContactsLoading]=React.useState(false);
   const [contactError,setContactError]=React.useState(''),[contactCreateOpen,setContactCreateOpen]=React.useState(false);
@@ -77,7 +78,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     return()=>{active=false;};
   },[lang]);
   React.useEffect(()=>{
-    let active=true;setContacts([]);setContact(null);setContactMeta({});setContactError('');setContactCreateOpen(false);setContactNotice('');
+    let active=true;setContacts([]);setContact(null);setContactSelected(false);setContactMeta({});setContactError('');setContactCreateOpen(false);setContactNotice('');
     if(!supplier){setContactsLoading(false);return;}
     setContactsLoading(true);
     apiRequest(`${base}/contacts?${new URLSearchParams({supplierId:supplier.id})}`).then(response=>{
@@ -93,7 +94,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     if(contactScope.current?.supplierId!==scope.supplierId || getMandant()!==scope.mandant)return;
     const found=(response.data || []).find(row=>row.id===Number(id));
     if(!found)throw Error(t('purchase_contact_not_available'));
-    setContacts(response.data || []);setContact(found);setContactMeta(response.meta || {});
+    setContacts(response.data || []);setContact(found);setContactSelected(Boolean(found));setContactMeta(response.meta || {});
   };
   const confirmQuantity=async()=>{
     setBusy(true);setError('');
@@ -109,7 +110,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     setBusy(true);setError('');
     try {
       const response = await apiRequest(`${base}/selection`,{method:'POST',body:JSON.stringify({
-        supplierId:supplier.id,contactId:contact?.id || null,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,packagingTypeId,amount:requestedAmount,
+        supplierId:supplier.id,contactId:contact?.id || null,contactSelected,articleIndex:article.articleIndex,supplierConfirmed:true,articleConfirmed:true,packagingTypeId,amount:requestedAmount,
       })});
       if (onPrepared) {
         onPrepared(response.data);
@@ -120,7 +121,7 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
     } catch(e){setError(e.message);setErrorCode(e.code || '');} finally{setBusy(false);}
   };
   const cartReturnTo=optionPurchaseReturnTo(returnTo || createReturnTo(location),position.id);
-  const pickup = /^(FCA|EXW)\b/i.test(availability.sourceIncoterm || offer.incoterm || '');
+  const deliveryTerm = availability.deliveryTermText || availability.sourceIncoterm || offer.incoterm || '';
   const loadingLocation = availability.sourceLoadingLocation || offer.loadingLocation;
   const selectedPackaging=packagingTypes.find(row=>row.id===Number(packagingTypeId));
   const automaticTruck=availability.truckOffer && Number(availability.offeredTrucks)>0;
@@ -134,7 +135,10 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
   return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="sm">
     <DialogTitle>{t('purchase_option_title')}</DialogTitle>
     <DialogContent sx={{display:'grid',gap:1.5,pt:'8px !important','& .MuiInputBase-root':{fontSize:fieldFontSize}}}>
-      <Typography>{optionPositionTitle(position)}</Typography>
+      <Box>
+        <Typography>{optionPositionTitle(position)}</Typography>
+        {article && <Typography variant="body2">{t('purchase_internal_name')}: {article.articleName}</Typography>}
+      </Box>
       {supplierEditable ? <Autocomplete options={suppliers ?? (initialSupplier ? [initialSupplier] : [])}
         value={supplier ?? null} disabled={busy || availabilityLoading || Boolean(availabilityError)}
         isOptionEqualToValue={(a,b)=>a.id===b.id} getOptionKey={row=>row.id}
@@ -143,12 +147,11 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         onChange={(_event,value)=>{setContact(null);setSupplierId(value?.id);}}
         renderInput={params=><TextField {...params} label={t('supplier_label')} required size="small" />} />
         : supplier && <Typography variant="body2">{t('supplier_label')}: {supplier.name}{supplier.city ? ` · ${supplier.city}` : ''}</Typography>}
-      {article && <Typography variant="body2">{t('product_article')}: {article.articleName}</Typography>}
       {supplier && <>
         <Box sx={{display:'flex',gap:1,alignItems:'flex-start'}}>
           <Autocomplete sx={{flex:1,minWidth:0}} options={contacts} value={contact} loading={contactsLoading} disabled={busy || contactsLoading}
             getOptionLabel={row=>row.name} getOptionKey={row=>row.id} isOptionEqualToValue={(a,b)=>a.id===b.id}
-            onChange={(_e,value)=>setContact(value)} noOptionsText={t('purchase_no_contact')}
+            onChange={(_e,value)=>{setContact(value);setContactSelected(true);}} noOptionsText={t('purchase_no_contact')}
             renderOption={({key,...props},row)=><Box component="li" key={key} {...props} sx={{overflowWrap:'anywhere'}}><Box>{row.name}{row.email && <Typography variant="caption" display="block">{row.email}</Typography>}</Box></Box>}
             renderInput={params=><TextField {...params} label={t('contact_label')} size="small" InputLabelProps={{shrink:true}} />} />
           <IconButton aria-label={t('contact_create')} title={t('contact_create')} disabled={busy || contactsLoading || Boolean(contactError)} onClick={()=>setContactCreateOpen(true)}><AddIcon /></IconButton>
@@ -159,7 +162,8 @@ export default function OptionPurchaseDialog({ offer, position, preferredSupplie
         {contactError && <Alert severity="error">{contactError}</Alert>}
         {contactNotice && <Alert severity="warning">{contactNotice}</Alert>}
       </>}
-      {pickup && loadingLocation && <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0 }}>
+      {deliveryTerm && <Typography variant="body2">{t('incoterm_label')}: {deliveryTerm}</Typography>}
+      {loadingLocation && <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{t('purchase_loading_location')}</Typography>
         <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{String(loadingLocation).replace(/\s+/g, ' ')}</Typography>
       </Box>}

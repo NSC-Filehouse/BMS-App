@@ -6,6 +6,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
+const { optionAvailableForPurchaseSql } = require('../options/purchase-quantity');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { resolveOfferArticle, loadOptionOfferCustomers } = require('../options/customer-offers');
 const { loadArticleNameConfirmation } = require('../options/article-name-rules');
@@ -124,7 +125,7 @@ async function scopedPosition(req,database=req.database){
   LEFT JOIN BMSApp.tblOptionenAbgleichAuftrag j ON j.oaa_MandantID=o.op_MandantID
   WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL
   AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
-  AND o.op_IstDemo=0 AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
+  AND ${optionAvailableForPurchaseSql('o')} AND o.op_IstDemo=0 AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
   [positiveId(req.params.id),positiveId(req.params.positionId),Number(database.firmaId),berlinDate(),berlinDate()]);
  if(!rows.length)throw createHttpError(404,'Position nicht gefunden.',{code:'OPTION_POSITION_NOT_FOUND'});
  return rows[0];
@@ -194,6 +195,7 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
    opp_LernenAngefordert=1,opp_LernregelHinweis=NULL
    FROM ${POSITIONS} p JOIN ${OPTIONS} o WITH(UPDLOCK,HOLDLOCK) ON o.op_id=p.opp_op_id
    WHERE p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_id=? AND o.op_MandantID=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
+   AND ${optionAvailableForPurchaseSql('o', { lock: true })}
    AND p.opp_GeaendertAm=CONVERT(DATETIME2(7),?) AND o.op_IstDemo=0
    AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?`,
    [index,article.articleName,actor,article.polymerCategory||'Optionen',sub??'',Number(position.id),positiveId(req.params.id),Number(req.database.firmaId),position.originalChanged,berlinDate(),berlinDate()]);
@@ -204,9 +206,10 @@ router.post('/options/:id/positions/:positionId/article',requireMandant,requireP
 router.delete('/options/:id',requireMandant,requirePilotFeature('options'),asyncHandler(async(req,res)=>{
  if(req.body?.confirmed!==true)throw createHttpError(422,'Bitte das Löschen ausdrücklich bestätigen.',{code:'OPTION_DELETE_CONFIRMATION_REQUIRED'});
  const actor=String(req.userIdentity?.shortCode||req.userEmail||'APP').slice(0,100);
- const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE ${OPTIONS} SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
+ const rows=await runSQLQuerySqlServer(config.sql.database,`UPDATE o SET op_GeloeschtAm=SYSUTCDATETIME(),op_GeloeschtVon=?,
   op_GeaendertVon=?,op_GeaendertAm=SYSUTCDATETIME() OUTPUT inserted.op_id AS id
-  WHERE op_id=? AND op_GeloeschtAm IS NULL AND op_Geschaeftsstatus=N'open'
+  FROM ${OPTIONS} o WHERE o.op_id=? AND o.op_GeloeschtAm IS NULL AND o.op_Geschaeftsstatus=N'open'
+   AND ${optionAvailableForPurchaseSql('o')}
    ${excludeTestMandantSql(req.userIdentity, 'op_MandantID')}`,[actor,actor,positiveId(req.params.id)]);
  if(!rows.length)throw createHttpError(404,'Option nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();
@@ -219,6 +222,7 @@ router.delete('/options/:id/positions/:positionId',requireMandant,requirePilotFe
   FROM ${POSITIONS} p JOIN ${OPTIONS} o ON o.op_id=p.opp_op_id
   WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_GeloeschtAm IS NULL AND o.op_IstDemo=0
    AND o.op_Geschaeftsstatus=N'open' AND o.op_Pruefstatus IN(N'approved',N'pending')
+   AND ${optionAvailableForPurchaseSql('o')}
    ${excludeTestMandantSql(req.userIdentity, 'o.op_MandantID')}`,[actor,actor,positiveId(req.params.id),positiveId(req.params.positionId)]);
  if(!rows.length)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
  res.status(204).end();

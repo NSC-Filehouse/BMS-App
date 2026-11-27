@@ -5,6 +5,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
+import { PurchaseOptionArticleNames } from '../components/PurchaseOrderSummary.jsx';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
 import { useI18n } from '../utils/i18n.jsx';
 import { getMandant } from '../utils/mandant.js';
@@ -183,6 +184,7 @@ export function PurchaseForOrder({ state, offerPosition, directPosition, stockLo
     }
   };
 
+  const loadingLocation = availability?.sourceLoadingLocation || state.loadingLocation || '';
   const supplierSelection = canEditSupplier && availability ? <Autocomplete
       options={supplier && !supplierChoices.some((row) => row.id === supplier.id) ? [supplier, ...supplierChoices] : supplierChoices}
       value={supplier} disabled={saving || locked} openOnFocus filterOptions={(rows) => rows}
@@ -208,6 +210,8 @@ export function PurchaseForOrder({ state, offerPosition, directPosition, stockLo
       <IconButton disabled={!supplier || !availability || saving || locked} onClick={() => attachmentInputRef.current?.click()}
         aria-label={t('temp_order_attachment_add')}><AttachFileIcon /></IconButton>
     </Box>
+    {base && <PurchaseOptionArticleNames positions={[{ optionId: option.optionId,
+      article: state.supplierArticleName || availability?.sourceArticleName || option.article, masterArticleName: option.article }]} />}
     <Alert severity="info">{t((offerPosition?.candidates?.length || stockLots.length)
       ? 'procurement_offer_insufficient_stock' : 'procurement_option_purchase_first')}</Alert>
     {loadError && <Alert severity="error">{loadError}</Alert>}
@@ -233,9 +237,10 @@ export function PurchaseForOrder({ state, offerPosition, directPosition, stockLo
       stockHint={stockHint}
       initialOrder={{
         packagingTypeId: defaultPackaging?.id, packagingType: defaultPackaging?.text,
-        deliveryTermText: state.incoterm || availability.sourceIncoterm,
-        loadingLocationText: state.loadingLocation || availability.sourceLoadingLocation || '',
-        loadingLocationSource: state.loadingLocation || availability.sourceLoadingLocation ? 'manual' : '',
+        deliveryTermText: availability.deliveryTermText || availability.sourceIncoterm || state.incoterm,
+        optionLoadingLocationText: loadingLocation,
+        loadingLocationText: loadingLocation,
+        loadingLocationSource: loadingLocation ? 'manual' : '',
         ...directPosition?.procurement?.header,
         supplierId: supplier.id, supplierName: supplier.name,
         positions: [{

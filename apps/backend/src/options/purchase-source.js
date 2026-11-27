@@ -4,12 +4,13 @@ const { appTableSql } = require('../db/app-tables');
 const { excludeTestMandantSql } = require('../executive-access');
 const { createHttpError } = require('../utils');
 const { berlinDate } = require('./read');
+const { optionDeliveryDataSql } = require('./delivery-data');
 const { supplierKey, companyKey, knownSupplier } = require('./supplier-identity');
 const { articleByIndex, candidatesFor } = require('./matching-service');
 const { articleSelect } = require('./article-catalog');
 const { checkMfi } = require('./mfi-compatibility');
 const { checkMaterial, deriveMaterialFacts, quality } = require('./material-facts');
-const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
+const { quantityAvailability, fitsQuantity,offeredQuantityKg,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,optionAvailableForPurchaseSql,quantityInputKg,isTruckOffer,offeredTruckCount } = require('./purchase-quantity');
 const {loadPurchasePackagingOptions,purchaseTruckLoadKg}=require('../db/purchase-order-values');
 
 const text = value => String(value ?? '').trim();
@@ -22,6 +23,7 @@ function positiveId(value) {
 async function loadOptionPosition(optionId, positionId, query = null, { lock = false, identity } = {}) {
   const execute = query || (async (sql, params) => ({ rows: await runSQLQuerySqlServer(config.sql.database, sql, params) }));
   const today = berlinDate();
+  const delivery = optionDeliveryDataSql();
   const result = await execute(`SELECT p.opp_id,p.opp_op_id,p.opp_Artikelname_Lieferant,p.opp_Artikelname,
     p.opp_Verpackung,p.opp_Verpackungsart_id,p.opp_MengeVonKg,p.opp_MengeBisKg,p.opp_Mengenart,
     p.opp_ChargenbestandKg,p.opp_PreisProTonne,p.opp_GeaendertAm,p.opp_AktuellerAbgleichID,
@@ -35,8 +37,8 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     ${quantitySourceHashSql()} AS quantitySourceHash,${confirmedQuantitySql()} AS confirmedQuantityKg,
     CONVERT(NVARCHAR(33),p.opp_GeaendertAm,126) AS sourceVersion,
     o.op_MandantID AS sourceMandantId,o.op_LieferantID AS sourceSupplierId,o.op_Lieferantenname AS supplierName,
-    o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_AnbieterKontaktJson AS sourceContactsJson,o.op_Ladeort AS loadingLocation,
-    o.op_Incoterm AS incoterm,o.op_Verpackung AS packagingText,o.op_Angebotsnummer AS externalOfferNo,
+    o.op_Lieferantenkennung AS supplierKey,o.op_Antwortadresse AS supplierReplyTo,o.op_AnbieterKontaktJson AS sourceContactsJson,
+    ${delivery.loadingLocation} AS loadingLocation,${delivery.incoterm} AS incoterm,o.op_Verpackung AS packagingText,o.op_Angebotsnummer AS externalOfferNo,
     o.op_Konditionen AS termsText,p.opp_Ladehinweis AS loadingText,p.opp_Charge AS batchNo,
     p.opp_PreisRoh AS rawPrice,p.opp_PreiseinheitRoh AS rawPriceUnit,p.opp_Waehrung AS rawCurrency,
     p.opp_MFI AS mfi,p.opp_MFI_bis AS mfiTo,p.opp_MFI_Pruefmethode AS mfiTestCondition,
@@ -51,6 +53,7 @@ async function loadOptionPosition(optionId, positionId, query = null, { lock = f
     WHERE o.op_id=? AND p.opp_id=? AND p.opp_GeloeschtAm IS NULL AND o.op_IstDemo=0 AND o.op_GeloeschtAm IS NULL
       AND o.op_Pruefstatus IN(N'approved',N'pending') AND o.op_Geschaeftsstatus=N'open'
       AND o.op_GueltigAb<=? AND COALESCE(p.opp_GueltigBis,o.op_GueltigBis)>=?
+      AND ${optionAvailableForPurchaseSql('o', { lock })}
       ${excludeTestMandantSql(identity, 'o.op_MandantID')}`,
   [positiveId(optionId), positiveId(positionId), today, today]);
   const row = (result.rows || result)[0];

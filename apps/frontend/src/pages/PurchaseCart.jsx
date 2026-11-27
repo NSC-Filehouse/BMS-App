@@ -6,6 +6,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { navigateToReturn } from '../utils/navigation.js';
+import { PurchaseOptionArticleNames } from '../components/PurchaseOrderSummary.jsx';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
 import { useI18n } from '../utils/i18n.jsx';
 import { purchaseOrderRequestBody } from '../utils/purchaseOrderAttachments.js';
@@ -64,6 +65,7 @@ export default function PurchaseCart() {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving || locked} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{initialOrder.positions.some(p=>p.optionId!=null)?'Bestellung (Option)':'Bestellwarenkorb'}</Typography>
       <IconButton aria-label={t('temp_order_attachment_add')} title={t('temp_order_attachment_add')} disabled={saving || locked || !initialOrder.positions.length} onClick={() => attachmentInputRef.current?.click()}><AttachFileIcon /></IconButton>
     </Box>
+    <PurchaseOptionArticleNames positions={initialOrder.positions} />
     {error && <Alert severity="error">{error}</Alert>}
     {locked && <Alert severity="info">Der Speicherstatus wird mit derselben Anfrage geprüft. Bitte „Speichern erneut prüfen“ verwenden.</Alert>}
     {initialOrder.positions.length ? <PurchaseOrderEditor initialOrder={initialOrder} attachmentInputRef={attachmentInputRef} isNew onChange={change} onSave={submit} onContinue={back} onDelete={removeDraft} saving={saving} locked={locked} />

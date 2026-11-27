@@ -9,6 +9,10 @@ export function findIncotermByCode(options, value) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+export function findDefaultIncoterm(options) {
+  return findIncotermByCode(options, 'CPT');
+}
+
 export function isFcaIncoterm(value) {
   return incotermCode(value) === 'FCA';
 }

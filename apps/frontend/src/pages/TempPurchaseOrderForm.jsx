@@ -8,6 +8,7 @@ import { apiRequest } from '../api/client.js';
 import { navigateToReturn } from '../utils/navigation.js';
 import { supplierReturnTo } from '../utils/purchaseCart.js';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
+import { PurchaseOptionArticleNames } from '../components/PurchaseOrderSummary.jsx';
 import PurchaseOrderEditor from '../components/PurchaseOrderEditor.jsx';
 import { purchaseOrderListReturnTo } from '../utils/purchaseOrderDisplay.js';
 import { isTempOrderEditableStatus } from '../utils/tempOrderStatus.js';
@@ -63,6 +64,7 @@ export default function TempPurchaseOrderForm() {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><DisclosureBackButton onClick={back} disabled={saving} aria-label="zurück"><ArrowBackIcon /></DisclosureBackButton><Typography variant="h5" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{order.positions.some(p=>p.optionId!=null)?'Bestellung (Option) bearbeiten':'Bestellung bearbeiten'}</Typography>
       <IconButton aria-label={t('temp_order_attachment_add')} title={t('temp_order_attachment_add')} disabled={saving || !isTempOrderEditableStatus(order.status)} onClick={() => attachmentInputRef.current?.click()}><AttachFileIcon /></IconButton>
     </Box>
+    <PurchaseOptionArticleNames positions={order.positions} />
     {error && <Alert severity="error">{error}</Alert>}
     {isTempOrderEditableStatus(order.status)
       ? <PurchaseOrderEditor key={order.id} initialOrder={order} attachmentInputRef={attachmentInputRef} onSave={save} allowFirstPurchase={features.linkedProcurement} linkedOrder={Boolean(order.linkedOrderIds?.length)} onDelete={order.linkedOrderIds?.length ? undefined : remove} onContinue={() => navigateToReturn(navigate, location.state?.shoppingReturnTo || supplierReturnTo(order.supplierId), '/suppliers')} saving={saving} />

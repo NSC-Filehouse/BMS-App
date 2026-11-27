@@ -2,10 +2,34 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  rememberFirstContact,
   SET_CUSTOMER_CONTACT_RANKING_SQL,
   getRankingMessage,
   setCustomerContactRanking,
 } = require('../src/db/customer-contact-ranking');
+
+test('remembers only a selected contact when the company has no Top 1', async () => {
+  let rows = [{ id: 12, ranking: 2 }, { id: 18, ranking: null }];
+  const calls = [];
+  const database = { databaseName: 'BMS.TES' };
+  const transact = async (name, work) => {
+    assert.equal(name, 'BMS.TES');
+    return work({ query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.includes('UPDLOCK')) return { rows };
+      rows = rows.map(row => row.id === params[1] ? { ...row, ranking: 1 } : row);
+      return { rows: [] };
+    } });
+  };
+  assert.equal(await rememberFirstContact(database, '38201', 18, false, transact), false);
+  assert.equal(calls.length, 0);
+  assert.equal(await rememberFirstContact(database, '38201', 42, true, transact), false);
+  assert.equal(await rememberFirstContact(database, '38201', 18, 'true', transact), true);
+  assert.equal(await rememberFirstContact(database, '38201', 12, true, transact), false);
+  assert.match(calls[1].sql, /UPDLOCK,HOLDLOCK/);
+  assert.equal(calls[2].sql, SET_CUSTOMER_CONTACT_RANKING_SQL);
+  assert.deepEqual(calls[2].params, ['38201', 18, 1]);
+});
 
 test('sets contact rankings only through the ERP procedure', async () => {
   const calls = [];

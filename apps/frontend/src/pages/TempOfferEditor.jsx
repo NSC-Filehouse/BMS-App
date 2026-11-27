@@ -33,7 +33,7 @@ import {
   defaultOfferQuantityKg,
   newOfferPosition,
 } from '../utils/offers.js';
-import { findOptionOfferIncoterm } from '../utils/incoterm.js';
+import { findDefaultIncoterm, findIncotermByCode, findOptionOfferIncoterm } from '../utils/incoterm.js';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
 import OfferCustomerPicker from '../components/OfferCustomerPicker.jsx';
 import OfferArticlePicker from '../components/OfferArticlePicker.jsx';
@@ -67,6 +67,15 @@ function offerPositionErrors(position) {
     reserveUntil: position.reserve && !position.reserveUntil,
   };
 }
+
+function withDefaultOfferIncoterm(offer, incoterms, fromSupplierArticle) {
+  if (offer.deliveryTermsId) return offer;
+  const term = findIncotermByCode(incoterms, offer.deliveryTerms)
+    || (fromSupplierArticle ? findOptionOfferIncoterm(incoterms) : null)
+    || findDefaultIncoterm(incoterms);
+  return term ? { ...offer, deliveryTermsId: term.id, deliveryTerms: term.text } : offer;
+}
+
 export default function TempOfferEditor() {
   const { id } = useParams();
   const location = useLocation();
@@ -134,17 +143,7 @@ export default function TempOfferEditor() {
         navigate(`/temp-offers/${id}`, { replace: true, state: { returnTo } });
         return;
       }
-      if (!next.deliveryTermsId) {
-        const incoterm =
-          (fromSupplierArticle ? findOptionOfferIncoterm(opts.incoterms) : null) ||
-          opts.incoterms.find((i) => /^FCA\b/i.test(i.text)) ||
-          opts.incoterms[0];
-        next = {
-          ...next,
-          deliveryTermsId: incoterm?.id || null,
-          deliveryTerms: incoterm?.text || '',
-        };
-      }
+      next = withDefaultOfferIncoterm(next, opts.incoterms, fromSupplierArticle);
       let d = { contacts: [], deliveryAddresses: [] };
       const customerId =
         next.customerId ||
@@ -848,7 +847,7 @@ export default function TempOfferEditor() {
           </Button>
           <Button
             onClick={async () => {
-              setForm(draft);
+              setForm(withDefaultOfferIncoterm(draft, options.incoterms, fromSupplierArticle));
               setDirty(true);
               setDraft(null);
               if (draft.customerId) {

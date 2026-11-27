@@ -31,6 +31,7 @@ const {
   validateOrderMailConfig,
 } = require('../mail/order-mail');
 const logger = require('../logger');
+const { rememberFirstContact } = require('../db/customer-contact-ranking');
 const {
   loadProductContext,
   calculateTempOrderAvailableAmount,
@@ -1878,6 +1879,7 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
       SELECT * FROM ${TEMP_ORDER_TABLE} WHERE ta_company_id=? AND ta_CreatedBy=? AND ta_procurement_request_id=?
     `, [companyId, userShortCode, procurementRequestId]);
     if (prior[0]) {
+      await rememberFirstContact(req.database, prior[0].ta_ClientReferenceId, prior[0].ta_client_representative_id, body.clientRepresentativeSelected);
       sendEnvelope(res, { data: await completeLinkedProcurement(req, prior[0], companyId, { handoff: hasInlineProcurement }) });
       return;
     }
@@ -2280,6 +2282,10 @@ router.post('/temp-orders', requireMandant, attachmentUploadMiddleware, asyncHan
     return createdRow;
   });
 
+  await rememberFirstContact(req.database, created.ta_ClientReferenceId, created.ta_client_representative_id, body.clientRepresentativeSelected);
+  for (const { purchaseDraft, purchaseRequest } of normalizedPositions) {
+    if (purchaseDraft) await rememberFirstContact(req.database, purchaseDraft.supplierId, purchaseDraft.contact?.id, purchaseRequest.body.supplierContactSelected);
+  }
   sendEnvelope(res, {
     status: 201,
     data: hasProcurement ? await completeLinkedProcurement(req, created, companyId, { handoff: hasInlineProcurement }) : await mapTempOrderWithAttachments(
@@ -3460,6 +3466,7 @@ router.put('/temp-orders/:id', requireMandant, attachmentUploadMiddleware, async
     throw createHttpError(404, `temp order not found: ${id}`, { code: 'RESOURCE_NOT_FOUND', id });
   }
 
+  await rememberFirstContact(req.database, clientReferenceId, representative.id, body.clientRepresentativeSelected);
   sendEnvelope(res, {
     status: 200,
     data: await mapTempOrderWithAttachments(

@@ -4,16 +4,22 @@ const { findIncotermByCode } = require('../incoterm');
 const { requireMandant } = require('../middlewares/mandant.middleware');
 const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware');
 const { loadOptionPosition, loadOptionAvailability, confirmOptionQuantity,supplierCandidates, purchaseCandidates, validateOptionArticle, validateOptionSupplier } = require('../options/purchase-source');
-const { loadPurchaseOptions, loadSupplierTerms,loadPurchasePackagingOptions,purchaseTruckLoadKg } = require('../db/purchase-order-values');
+const { loadPurchaseOptions, loadSupplierTerms,purchaseTruckLoadKg } = require('../db/purchase-order-values');
 const { optionPriceNeedsReview } = require('../options/price-plausibility');
 const { createPackagingDisplay } = require('../options/packaging-display');
 const {offeredQuantityKg,quantityAvailability,isTruckOffer,offeredTruckCount}=require('../options/purchase-quantity');
 const {resolveSupplierContact}=require('../options/supplier-contacts');
 const { confirmArticleNameRule, revokeArticleNameConfirmation } = require('../options/article-name-rules');
-const { manualPurchaseLocation } = require('../options/manual-purchase-location');
+const { manualPurchaseLocation, parsePurchaseLocation } = require('../options/manual-purchase-location');
 const router = express.Router();
 const guard = [requireMandant, requirePilotFeature('options'), requirePilotFeature('purchaseOrders')];
 const base = '/options/:id/positions/:positionId/purchase';
+
+function sourceDeliveryTerm(incoterms, value) {
+  const source = String(value ?? '').trim().toLowerCase();
+  const exact = incoterms.filter(row => row.text.trim().toLowerCase() === source);
+  return exact.length === 1 ? exact[0] : findIncotermByCode(incoterms, source);
+}
 router.get(`${base}/contacts`,...guard,asyncHandler(async(req,res)=>{
  const source=await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
  const supplier=await validateOptionSupplier(req.database,source,req.query.supplierId);
@@ -26,9 +32,10 @@ router.get(`${base}/suppliers`, ...guard, asyncHandler(async (req,res) => {
   const source = await loadOptionPosition(req.params.id,req.params.positionId,null,{identity:req.userIdentity});
   const data = await supplierCandidates(req.database,source,{q:String(req.query.q || '').trim().slice(0,150),preferredSupplierId:req.query.supplierId});
   const availability = await loadOptionAvailability(source);
-  const packagingTypes=await loadPurchasePackagingOptions(req.header('x-lang')==='en'?'en':'de');
+  const { packagingTypes, incoterms } = await loadPurchaseOptions(req.database, req.header('x-lang') === 'en' ? 'en' : 'de');
+  const deliveryTerm = sourceDeliveryTerm(incoterms, source.incoterm) || findIncotermByCode(incoterms, 'CPT');
   sendEnvelope(res,{data,meta:{...availability,supplierName:source.supplierName,
-    sourceIncoterm:source.incoterm,sourceLoadingLocation:source.loadingLocation,sourceArticleName:source.opp_Artikelname_Lieferant,
+    sourceIncoterm:source.incoterm,deliveryTermText:deliveryTerm?.text || '',sourceLoadingLocation:source.loadingLocation,sourceArticleName:source.opp_Artikelname_Lieferant,
     confirmedQuantityKg:source.confirmedQuantityKg,quantitySourceHash:source.quantitySourceHash,
     confirmedPackagingTypeId:source.confirmedPackagingTypeId,confirmedTruckCount:source.confirmedTruckCount,
     truckOffer:isTruckOffer(source),offeredTrucks:offeredTruckCount(source),packagingTypes,
@@ -84,10 +91,10 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     availability=quantityAvailability(source,availability.orderedKg,purchaseTruckLoadKg(chosenPackaging.text));
     if(availability.remainingKg<=0)throw createHttpError(422,'Diese Optionsposition ist für die gewählte Verpackung bereits vollständig verplant.',{code:'OPTION_QUANTITY_EXCEEDED'});
   }
-  const sourceIncoterm = String(source.incoterm ?? '').trim().toLowerCase();
-  const exactTerms = choices.incoterms.filter(row => row.text.trim().toLowerCase() === sourceIncoterm);
-  const deliveryTerm = exactTerms.length === 1 ? exactTerms[0] : findIncotermByCode(choices.incoterms, sourceIncoterm);
-  const location = req.body.manualLoadingLocation == null ? null
+  const optionTerm = sourceDeliveryTerm(choices.incoterms, source.incoterm);
+  const deliveryTerm = optionTerm || findIncotermByCode(choices.incoterms, 'CPT');
+  const location = req.body.manualLoadingLocation == null
+    ? parsePurchaseLocation(source.loadingLocation, '', deliveryTerm?.text || source.incoterm)
     : manualPurchaseLocation(req.body.manualLoadingLocation, req.body.loadingLocationCity, deliveryTerm?.text || source.incoterm);
   const amount=Object.hasOwn(req.body,'amount')?Number(req.body.amount):availability.remainingKg;
   if(!Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*1000))
@@ -95,11 +102,13 @@ router.post(`${base}/selection`, ...guard, asyncHandler(async (req,res) => {
     throw createHttpError(422,'Bitte eine gültige Bestellmenge bis zur verfügbaren Restmenge eingeben.',{code:'OPTION_QUANTITY_EXCEEDED',remainingKg:availability.remainingKg});
   const price = source.opp_PreisProTonne;
   sendEnvelope(res,{data:{
-    header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '',
+    header:{deliveryTermId:deliveryTerm?.id || '',deliveryTermText:deliveryTerm?.text || '', deliveryTermFromOption: Boolean(optionTerm),
+      optionLoadingLocationText:location?.text || source.loadingLocation || '',
       loadingLocationText:location?.text || source.loadingLocation || '',loadingLocationSource:location || source.loadingLocation ? 'manual' : '',
-      ...(location && { loadingLocationChanged: true, loadingLocationCity: location.city }),
+      ...(location && { loadingLocationChanged: true, loadingLocationCity: location.city, loadingLocationCountryCode: location.countryCode }),
       packagingType:chosenPackaging?.text || source.opp_Verpackung || source.packagingText || '',packagingTypeId:chosenPackaging?.id || source.opp_Verpackungsart_id || '',
-      supplierContact:contact?.name || ''},
+      supplierContactId:contact?.id ?? (Object.hasOwn(req.body, 'contactId') ? '' : null), supplierContact:contact?.name || '',
+      ...(req.body.contactSelected === true && { supplierContactSelected: true })},
     position:{optionId:Number(source.opp_op_id),optionPositionId:Number(source.opp_id),
       supplierId:supplier.id,supplierName:supplier.name,articleIndex:article.articleIndex,
       article:source.opp_Artikelname_Lieferant || article.supplierArticleName || article.articleName,masterArticleName:article.articleName,

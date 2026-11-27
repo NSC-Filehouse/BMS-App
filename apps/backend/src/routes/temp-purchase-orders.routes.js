@@ -11,6 +11,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require(
 const { appTableSql } = require('../db/app-tables');
 const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
   loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
+const { rememberFirstContact } = require('../db/customer-contact-ranking');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { loadPurchaseOptions, loadSupplierTerms, loadPurchaseWarehouses, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
 const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
@@ -25,6 +26,7 @@ const {
 const { queuePurchaseOrderCsMail, processPurchaseOrderCsMailOutboxById } = require('../db/purchase-order-mail-outbox');
 const { resolveOrderMailRecipient, validateOrderMailConfig } = require('../mail/order-mail');
 const { appendTimelineEntries } = require('../db/timeline');
+const { optionDeliveryDataSql } = require('../options/delivery-data');
 const { loadOptionPosition, validateOptionArticle, validateOptionSupplier,assertOptionQuantities } = require('../options/purchase-source');
 const { manualPurchaseLocation } = require('../options/manual-purchase-location');
 const TIMELINE_TABLE = appTableSql('timeline');
@@ -72,6 +74,7 @@ function isEditable(status) {
 
 function mapOrder(row, positions = []) {
   if (!row) return null;
+  const optionLocations = new Set(positions.map(position => asText(position.optionLoadingLocationText)).filter(Boolean));
   return {
     id: Number(row.id),
     companyId: Number(row.companyId),
@@ -96,6 +99,7 @@ function mapOrder(row, positions = []) {
     loadingLocationSource: asText(row.loadingLocationSource),
     loadingLocationId: row.loadingLocationId === null || row.loadingLocationId === undefined ? null : Number(row.loadingLocationId),
     loadingLocationText: asText(row.loadingLocationText),
+    ...(optionLocations.size === 1 && { optionLoadingLocationText: optionLocations.values().next().value }),
     loadingLocationChanged: Boolean(row.loadingLocationChanged),
     comment: asText(row.comment),
     status: normalizeStatus(row.status),
@@ -184,6 +188,7 @@ function orderSelectSql() {
 
 async function loadPositions(orderId, query = null) {
   const execute = query || ((sql, params) => runSQLQuerySqlServer(config.sql.database, sql, params));
+  const delivery = optionDeliveryDataSql('optionPosition');
   const result = await execute(`
     SELECT
       [tbp_id] AS id,
@@ -205,8 +210,10 @@ async function loadPositions(orderId, query = null) {
       [tbp_original_packaging_type_id] AS originalPackagingTypeId,
       [tbp_packaging_type_changed] AS packagingTypeChanged,
       [OptionID] AS optionId,[OptionPositionID] AS optionPositionId,
-      [tbp_option_mfi_acknowledged] AS acknowledgeUnverifiedMfi
-    FROM ${TEMP_PURCHASE_POSITION_TABLE}
+      [tbp_option_mfi_acknowledged] AS acknowledgeUnverifiedMfi, ${delivery.loadingLocation} AS optionLoadingLocationText
+    FROM ${TEMP_PURCHASE_POSITION_TABLE} p
+    LEFT JOIN ${appTableSql('options')} o ON o.op_id=p.OptionID
+    LEFT JOIN ${appTableSql('optionPositions')} optionPosition ON optionPosition.opp_id=p.OptionPositionID
     WHERE [tbp_tb_id] = ?
     ORDER BY [tbp_line_no] ASC
   `, [orderId]);
@@ -800,6 +807,7 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
   const prior = await runSQLQuerySqlServer(config.sql.database, `${orderSelectSql()} WHERE [tb_company_id]=? AND [tb_client_request_id]=?`, [companyId, clientRequestId]);
   if (prior[0]) {
     if (asText(prior[0].createdBy).toLowerCase() !== user.toLowerCase()) throw createHttpError(409, 'Anfragekennung bereits verwendet.');
+    await rememberFirstContact(req.database, prior[0].supplierId, prior[0].supplierContactId, req.body?.supplierContactSelected);
     sendEnvelope(res, { data: await withPurchaseOrderAttachments(mapOrder(prior[0], await loadPositions(prior[0].id))), meta: { alreadyCreated: true } });
     return;
   }
@@ -819,6 +827,7 @@ router.post('/temp-purchase-orders', requirePurchaseOrders, requireMandant, atta
     }
     return savePurchaseDraft(query, req, draft);
   });
+  await rememberFirstContact(req.database, created.supplierId, created.supplierContactId, req.body?.supplierContactSelected);
   sendEnvelope(res, { status: 201, data: created, meta: { mandant: req.mandant } });
 }));
 
@@ -888,6 +897,7 @@ router.put('/temp-purchase-orders/:id', requirePurchaseOrders, requireMandant, a
     await syncPurchaseOptionPdf(query, { order, sources, user, now });
     return withPurchaseOrderAttachments(order, query);
   });
+  await rememberFirstContact(req.database, updated.supplierId, updated.supplierContactId, req.body?.supplierContactSelected);
   sendEnvelope(res, { data: updated, meta: { mandant: req.mandant } });
 }));
 

@@ -42,6 +42,17 @@ function orderedOptionKgSql(positionIdSql, { excludeOrder = false } = {}) {
       ${excludeOrder ? 'AND bp.tbp_tb_id<>?' : ''}`;
 }
 
+function optionAvailableForPurchaseSql(optionAlias, { lock = false } = {}) {
+  const orderLock = lock ? 'WITH (HOLDLOCK)' : '';
+  return `NOT EXISTS (
+    SELECT 1 FROM ${appTableSql('optionPositions')} optionPosition
+    JOIN ${appTableSql('tempPurchaseOrderPosition')} bp ON bp.OptionPositionID=optionPosition.opp_id
+    JOIN ${appTableSql('tempPurchaseOrder')} b ${orderLock} ON b.tb_id=bp.tbp_tb_id
+    WHERE optionPosition.opp_op_id=${optionAlias}.op_id AND b.tb_status=2
+      AND (b.tb_company_id<>${TEST_MANDANT_ID} OR ${optionAlias}.op_MandantID = ${TEST_MANDANT_ID})
+  )`;
+}
+
 function quantityAvailability(position, orderedKg = 0,kgPerTruck=25000) {
   const offeredKg = offeredQuantityKg(position,kgPerTruck);
   return { offeredKg, orderedKg: Number(orderedKg) || 0,
@@ -84,4 +95,4 @@ function offeredTruckCount(position) {
   return 1;
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,quantityInputKg,isTruckOffer,offeredTruckCount };
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,optionAvailableForPurchaseSql,quantityInputKg,isTruckOffer,offeredTruckCount };

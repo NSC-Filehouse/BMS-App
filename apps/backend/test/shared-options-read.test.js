@@ -44,6 +44,7 @@ test('shared pool returns different sources with canonical suppliers and applies
     assert.match(sql, /o\.op_GueltigAb<=\?/);
     assert.match(sql, /o\.op_id=\?/);
     assert.match(sql, /o\.op_Geschaeftsstatus=N'open'/);
+    assert.match(sql, /NOT EXISTS \([\s\S]+OptionPositionID=optionPosition\.opp_id[\s\S]+optionPosition\.opp_op_id=o\.op_id AND b\.tb_status=2/);
   }
   assert.match(calls[1].sql, /COALESCE\(p\.opp_GueltigBis,o\.op_GueltigBis\)>=\?/);
 });

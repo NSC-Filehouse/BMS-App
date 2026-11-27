@@ -112,12 +112,20 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   if(current.length && confirmedPackaging!=null && context.header?.packagingTypeId
     && Number(context.header.packagingTypeId)!==Number(confirmedPackaging))
     throw new Error('Die gewählte Verpackungsart passt nicht zum bestehenden Bestellwarenkorb. Bitte die bestehende Bestellung zuerst abschließen oder den Warenkorb leeren.');
+  const header = context.header || {};
   const manualLocation = isManualPurchaseLocation(headerDefaults);
-  if (current.length && manualLocation) {
-    const header = context.header;
-    const existingLocation = isManualPurchaseLocation(header) || header?.addressId;
-    const incompatibleTerm = header?.deliveryTermText && !/^(FCA|EXW)\b/i.test(header.deliveryTermText);
-    if (incompatibleTerm || (existingLocation && (!isManualPurchaseLocation(header) || header.loadingLocationText !== headerDefaults.loadingLocationText))) {
+  const incomingLocation = headerDefaults?.optionLoadingLocationText || (manualLocation ? headerDefaults.loadingLocationText : '');
+  const pickup = /^(FCA|EXW)\b/i.test(headerDefaults?.deliveryTermText || '');
+  const sameLocation = (a, b) => String(a || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    === String(b || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (current.length && headerDefaults) {
+    const incompatibleTerm = (headerDefaults.deliveryTermFromOption !== false && header.deliveryTermId && headerDefaults.deliveryTermId
+      && String(header.deliveryTermId) !== String(headerDefaults.deliveryTermId))
+      || (manualLocation && header.deliveryTermText && !/^(FCA|EXW)\b/i.test(header.deliveryTermText));
+    const existingLocation = pickup
+      ? header.loadingLocationText || header.optionLoadingLocationText
+      : header.optionLoadingLocationText;
+    if (incompatibleTerm || (incomingLocation && existingLocation && !sameLocation(existingLocation, incomingLocation))) {
       const error = new Error('Im Bestellwarenkorb ist bereits eine andere Lieferbedingung oder Adresse gewählt. Bitte den Ladeort im Warenkorb ändern.');
       error.code = 'PURCHASE_CART_LOCATION_CONFLICT';
       throw error;
@@ -142,17 +150,25 @@ export function addPurchaseCartItems(items, returnTo = null, headerDefaults = nu
   const next = [...current, ...additions];
   write(next);
   if (headerDefaults) {
-    const header = context.header || {};
     const needsPackaging = confirmedPackaging != null && !header.packagingTypeId;
     const needsIncoterm = headerDefaults.deliveryTermId && !header.deliveryTermId && !header.deliveryTermText;
+    const needsContact = headerDefaults.supplierContactId && (header.supplierContactId == null
+      || (!header.supplierContactId && !header.supplierContactSelected));
+    const needsLocation = incomingLocation && !header.optionLoadingLocationText;
+    const canSetLocation = (manualLocation || (pickup && needsLocation))
+      && !header.addressId && !isManualPurchaseLocation(header);
     if (!current.length) savePurchaseCartContext({ header: headerDefaults });
-    else if (needsPackaging || needsIncoterm || manualLocation) {
+    else if (needsPackaging || needsIncoterm || needsContact || needsLocation || canSetLocation) {
       savePurchaseCartContext({ header: {
         ...header,
         ...(needsPackaging ? { packagingTypeId: headerDefaults.packagingTypeId, packagingType: headerDefaults.packagingType } : {}),
         ...(needsIncoterm ? { deliveryTermId: headerDefaults.deliveryTermId, deliveryTermText: headerDefaults.deliveryTermText } : {}),
-        ...(manualLocation ? { loadingLocationSource: 'manual', loadingLocationChanged: true,
-          loadingLocationText: headerDefaults.loadingLocationText, loadingLocationCity: headerDefaults.loadingLocationCity } : {}),
+        ...(needsContact ? { supplierContactId: headerDefaults.supplierContactId, supplierContact: headerDefaults.supplierContact,
+          ...(headerDefaults.supplierContactSelected && { supplierContactSelected: true }) } : {}),
+        ...(needsLocation && headerDefaults.optionLoadingLocationText ? { optionLoadingLocationText: incomingLocation } : {}),
+        ...(canSetLocation ? { loadingLocationSource: 'manual', loadingLocationChanged: manualLocation,
+          loadingLocationText: incomingLocation, loadingLocationCity: headerDefaults.loadingLocationCity,
+          ...(headerDefaults.loadingLocationCountryCode && { loadingLocationCountryCode: headerDefaults.loadingLocationCountryCode }) } : {}),
       } });
     }
   }

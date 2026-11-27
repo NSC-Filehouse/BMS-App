@@ -3,6 +3,19 @@ import { useI18n } from '../utils/i18n.jsx';
 import { Box, Typography } from '@mui/material';
 import { purchaseTotals } from '../utils/purchaseCart.js';
 
+export function PurchaseOptionArticleNames({ positions }) {
+  const { t } = useI18n();
+  const names = new Map(positions.filter(position => position.optionId != null && position.article)
+    .map(({ article, masterArticleName }) => [JSON.stringify([article, masterArticleName]), { article, masterArticleName }]));
+  if (!names.size) return null;
+  return <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+    {[...names].map(([key, { article, masterArticleName }]) => <Box key={key} sx={{ mb: 0.5 }}>
+      <Typography variant="subtitle2">{article}</Typography>
+      {masterArticleName && <Typography variant="body2">{t('purchase_internal_name')}: {masterArticleName}</Typography>}
+    </Box>)}
+  </Box>;
+}
+
 export default function PurchaseOrderSummary({ positions, currency = 'EUR', truckEstimate, actions }) {
   const { lang, t } = useI18n();
   const locale = lang === 'en' ? 'en-GB' : 'de-DE';

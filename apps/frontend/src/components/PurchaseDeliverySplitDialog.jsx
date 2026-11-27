@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, TextField, Typography } from '@mui/material';
 import { allocatePurchaseDeliveries, planPurchaseDeliveries, purchaseDeliveryAmounts, purchaseTruckLoadChoices } from '../utils/purchaseDeliveries.js';
 import { purchaseFieldErrors } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
@@ -47,21 +47,25 @@ export default function PurchaseDeliverySplitDialog({ positions, initialLoadKg, 
         return <Box key={delivery.id} sx={{ display: 'grid', gap: 1, border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="subtitle2">{t('purchase_delivery_number', { number: index + 1 })}</Typography>
-            {index > 0 && <Button color="error" size="small" onClick={() => {
-              setTooLarge(false); setDeliveries(current => current.filter(entry => entry.id !== delivery.id));
-            }}>{t('purchase_remove_delivery')}</Button>}
+            <FormControlLabel labelPlacement="start" sx={{ ml: 'auto', mr: 0 }}
+              label={t('purchase_delivery_skip_truck_split')}
+              control={<Checkbox size="small" checked={Boolean(delivery.skipTruckSplit)}
+                onChange={event => change(delivery.id, { skipTruckSplit: event.target.checked })} />} />
           </Box>
           <TextField size="small" required={index > 0} label={t('purchase_quantity_kg')} type="number"
             value={index ? delivery.amount : Number.isFinite(amount) ? amount / 1000 : ''}
             error={attempted && (!Number.isFinite(amount) || (index > 0 ? amount <= 0 : amount < 0))}
             InputProps={{ readOnly: index === 0 }} inputProps={{ min: index ? 0.001 : 0, step: 0.001 }}
             onChange={event => change(delivery.id, { amount: event.target.value })} />
-          <Typography variant="caption">{t('purchase_truck_count', { count: count.toLocaleString(locale) })}</Typography>
+          {!delivery.skipTruckSplit && <Typography variant="caption">{t('purchase_truck_count', { count: count.toLocaleString(locale) })}</Typography>}
           <TextField size="small" required={amount > 0} label={t('purchase_delivery_date')} type="date" value={delivery.date}
             error={attempted && invalidDate(index)} InputLabelProps={{ shrink: true }}
             onChange={event => change(delivery.id, { date: event.target.value })} />
           <TextField size="small" label={t('purchase_availability_note')} value={delivery.note} inputProps={{ maxLength: 255 }}
             onChange={event => change(delivery.id, { note: event.target.value })} />
+          {index > 0 && <Button color="error" size="small" sx={{ justifySelf: 'end' }} onClick={() => {
+            setTooLarge(false); setDeliveries(current => current.filter(entry => entry.id !== delivery.id));
+          }}>{t('purchase_remove_delivery')}</Button>}
         </Box>;
       })}
       <Button size="small" sx={{ justifySelf: 'start' }} onClick={() => {

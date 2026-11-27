@@ -10,6 +10,7 @@ const contactRows=[{id:41,name:'Herr Source Contact',firstName:'Source',lastName
 const source={opp_id:10,opp_op_id:1,opp_Artikelname_Lieferant:'Supplier grade',opp_Verpackung:'Sackware',opp_Verpackungsart_id:78,packagingSource:'original',packagingEvidence:'25kg bags',sourceMandantId:3,incoterm:'FCA',loadingLocation:'Werk',supplierName:'Borealis'};
 const incoterms = {
   de: [
+    { id: 25, text: 'CPT / Frachtfrei' },
     { id: 24, text: 'DAP / Geliefert Benannter Ort' },
     { id: 26, text: 'DDP / Geliefert Verzollt' },
     { id: 29, text: 'FCA / Frei Frachtführer' },
@@ -38,7 +39,8 @@ const deps={
   '../db/purchase-order-values': {
     loadPurchaseOptions: async (database, lang) => {
       assert.equal(database.firmaId, 10);
-      return { packagingTypes: [{ id: 78, text: 'Sackware' }, { id: 79, text: 'Siloware' }], incoterms: incoterms[lang] };
+      return { packagingTypes: [{ id: 78, text: 'Sackware', aliases: ['Sackware', 'Bags'] },
+        { id: 79, text: 'Siloware', aliases: ['Siloware', 'Silo/bulk'] }], incoterms: incoterms[lang] };
     },
     loadPurchasePackagingOptions: async () => [{ id: 78, text: 'Sackware', aliases: ['Sackware', 'Bags'] }, { id: 79, text: 'Siloware', aliases: ['Siloware', 'Silo/bulk'] }],
     purchaseTruckLoadKg: require('../src/db/purchase-order-values').purchaseTruckLoadKg,
@@ -117,6 +119,20 @@ test('a manually entered option loading location is passed through as the select
   assert.equal(data.header.loadingLocationChanged, true);
 });
 
+test('selection adopts a complete pickup from the option with its location details', async () => {
+  const original = source.loadingLocation;
+  try {
+    source.loadingLocation = 'Werk\nRue 1\n59000 Lille\nFR';
+    const { data } = await (await select(choice())).json();
+    assert.equal(data.header.loadingLocationText, source.loadingLocation);
+    assert.equal(data.header.loadingLocationCity, 'Lille');
+    assert.equal(data.header.loadingLocationCountryCode, 'FR');
+    assert.equal(data.header.loadingLocationChanged, true);
+  } finally {
+    source.loadingLocation = original;
+  }
+});
+
 test('purchase preview translates offered packaging alternatives while retaining the source',async()=>{
   const original=source.opp_Verpackung;
   try {
@@ -142,9 +158,10 @@ test('selection maps the option code to its ERP ID and label in the requested la
       [' fca / Free Carrier ', 'de', 29, 'FCA / Frei Frachtführer'],
       ['FCA / Frei Frachtführer', 'en', 40, 'FCA / Free Carrier'],
       ['DAP Incoterms 2020', 'de', 24, 'DAP / Geliefert Benannter Ort'],
-      ['FCA / DDP (Incoterms 2020)', 'de', '', ''],
-      ['FCAfoo', 'de', '', ''],
-      ['EXW / Ex Works', 'de', '', ''],
+      ['FCA / DDP (Incoterms 2020)', 'de', 25, 'CPT / Frachtfrei'],
+      ['FCAfoo', 'de', 25, 'CPT / Frachtfrei'],
+      ['EXW / Ex Works', 'de', 25, 'CPT / Frachtfrei'],
+      ['', 'de', 25, 'CPT / Frachtfrei'],
     ]) {
       source.incoterm = value;
       const response = await select(choice(), lang);
@@ -158,13 +175,14 @@ test('selection maps the option code to its ERP ID and label in the requested la
   }
 });
 
-test('selection leaves an ambiguous ERP code open unless the option identifies an exact label', async () => {
+test('selection falls back to CPT when an ambiguous ERP code has no exact label', async () => {
   const original = source.incoterm;
   incoterms.de.push({ id: 101, text: 'FCA / Abholstelle' });
   try {
     source.incoterm = 'FCA / Free Carrier';
     const noMatch = await (await select(choice())).json();
-    assert.equal(noMatch.data.header.deliveryTermId, '');
+    assert.equal(noMatch.data.header.deliveryTermId, 25);
+    assert.equal(noMatch.data.header.deliveryTermFromOption, false);
     source.incoterm = 'FCA / Frei Frachtführer';
     const exact = await (await select(choice())).json();
     assert.equal(exact.data.header.deliveryTermId, 29);
@@ -193,7 +211,10 @@ test('source contact exact email wins over ranking and is carried to the order h
   const {meta,data}=await(await fetch(`${base}/contacts?supplierId=LF0124`)).json();
   assert.equal(meta.selectedId,41);assert.equal(data.length,2);
   assert.equal((await(await select(choice())).json()).data.header.supplierContact,'Herr Source Contact');
-  assert.equal((await(await select({...choice(),contactId:42})).json()).data.header.supplierContact,'Other Contact');
+  const { data: selected } = await (await select({ ...choice(), contactId: 42, contactSelected: true })).json();
+  assert.equal(selected.header.supplierContact, 'Other Contact');
+  assert.equal(selected.header.supplierContactId, 42);
+  assert.equal(selected.header.supplierContactSelected, true);
   assert.equal((await(await select({...choice(),contactId:null})).json()).data.header.supplierContact,'');
   assert.equal((await select({...choice(),contactId:9000})).status,422);
   assert.equal((await fetch(`${base}/contacts?supplierId=UNRELATED`)).status,422);

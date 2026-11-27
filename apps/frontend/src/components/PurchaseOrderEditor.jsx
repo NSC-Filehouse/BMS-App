@@ -7,7 +7,8 @@ import PurchaseOrderActions from './PurchaseOrderActions.jsx';
 import PurchaseOrderDeliveryFields from './PurchaseOrderDeliveryFields.jsx';
 import PurchaseDeliverySplitDialog from './PurchaseDeliverySplitDialog.jsx';
 import { apiRequest } from '../api/client.js';
-import { findIncotermByCode } from '../utils/incoterm.js';
+import { findDefaultIncoterm, findIncotermByCode } from '../utils/incoterm.js';
+import { defaultPurchaseTruckLoad } from '../utils/purchaseDeliveries.js';
 import { defaultPurchaseAmount, packagingKey, planPurchaseTruckLoads, purchaseMissingFields, purchaseFieldErrors } from '../utils/purchaseCart.js';
 import { useI18n } from '../utils/i18n.jsx';
 
@@ -57,14 +58,16 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
         const deliveryTermText = previous.deliveryTermText || (isOptionPurchase ? '' : data.defaults.deliveryTermText);
         const incoterm = data.incoterms.find((p) => Number(previous.deliveryTermId) === p.id)
           || data.incoterms.find((p) => same(p.text, deliveryTermText))
-          || (isOptionPurchase ? findIncotermByCode(data.incoterms, deliveryTermText) : null);
+          || findIncotermByCode(data.incoterms, deliveryTermText)
+          || (!previous.deliveryTermId ? findDefaultIncoterm(data.incoterms) : null);
         const useDefaultPayment = isNew && !previous.paymentConditionChanged;
         return { ...previous, supplierContactId: previous.supplierContactId ?? (isNew ? data.defaults.supplierContactId : null),
           paymentConditionId: useDefaultPayment
             ? (data.defaults.paymentConditionText ? data.defaults.paymentConditionId : null) : previous.paymentConditionId,
           paymentConditionText: useDefaultPayment ? data.defaults.paymentConditionText : previous.paymentConditionText,
           packagingTypeId: packaging?.id || '', packagingType: packaging?.text || '',
-          deliveryTermId: incoterm?.id || '', deliveryTermText: incoterm?.text || '',
+          deliveryTermId: incoterm?.id ?? previous.deliveryTermId ?? '',
+          deliveryTermText: incoterm?.text || deliveryTermText || '',
         };
       });
     }).catch((e) => alive && setError(e.message)).finally(() => alive && setLoading(false));
@@ -114,7 +117,12 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
   const selectedPackaging = options.packagingTypes.find(item => Number(order.packagingTypeId) === item.id);
   const packaging = selectedPackaging?.key || order.packagingType;
   const showTruckPlanning = !fixedPosition && Boolean(order.packagingTypeId && packaging);
-  const truckPlan = showTruckPlanning ? planPurchaseTruckLoads(order.positions, packaging, splitLoadKg ?? defaultPurchaseAmount(packaging)) : null;
+  const loadKg = splitLoadKg?.loadingLocation === (order.loadingLocationText || order.optionLoadingLocationText)
+    ? splitLoadKg?.value ?? defaultPurchaseTruckLoad(order, packaging) : defaultPurchaseTruckLoad(order, packaging);
+  const truckPlan = showTruckPlanning ? planPurchaseTruckLoads(order.positions, packaging, loadKg) : null;
+  const truckPositions = order.positions.filter(position => !position.skipTruckSplit);
+  const truckEstimate = truckPositions.length === order.positions.length ? truckPlan?.count
+    : truckPositions.length ? planPurchaseTruckLoads(truckPositions, packaging, loadKg)?.count : 0;
   const savedAttachments = order.attachments || [];
   const pendingAttachmentFiles = order.pendingAttachmentFiles || [];
   const removeAttachmentIds = order.removeAttachmentIds || [];
@@ -165,6 +173,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
     update({ positions: [{ ...first,
       amount: first.optionId == null ? defaultPurchaseAmount(packaging) : first.optionDefaultAmount ?? (optionAmount || first.amount),
       amountTouched: first.optionId != null,
+      skipTruckSplit: false,
       purchasePrice: first.optionId == null ? '' : first.optionDefaultPurchasePrice ?? optionLines[0]?.purchasePrice ?? '',
       requestedDeliveryDate: '', reservedFor: '', comment: '', availabilityNote: '',
     }] });
@@ -213,7 +222,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
             {item.position && <Typography variant="caption" color="text.secondary">{item.position}</Typography>}
           </Box>
         </li>}
-        onChange={(_event, value) => update({ supplierContactId: value?.id ?? '', supplierContact: value?.name || '' })}
+        onChange={(_event, value) => update({ supplierContactId: value?.id ?? '', supplierContact: value?.name || '', supplierContactSelected: true })}
         renderInput={params=><TextField {...params} label={t('contact_label')} size="small" />} />
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, minWidth: 0 }}>
         {selectPayment ? <TextField label={t('payment_terms_label')} select size="small" value={order.paymentConditionId || ''}
@@ -231,7 +240,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           const option = options.incoterms.find((p) => p.id === Number(e.target.value));
           update({ deliveryTermId: option?.id || '', deliveryTermText: option?.text || '',
             addressCustomerId: '', addressCustomerName: '', addressId: '', loadingLocationText: '',
-            loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '' });
+            loadingLocationSource: '', loadingLocationChanged: false, loadingLocationCity: '', loadingLocationCountryCode: '' });
         }}><MenuItem value="" disabled>{t('packaging_type_select')}</MenuItem>
           {order.deliveryTermId && !options.incoterms.some(p=>String(p.id)===String(order.deliveryTermId)) &&
             <MenuItem value={order.deliveryTermId} disabled>{order.deliveryTermText || t('purchase_saved_incoterm')}</MenuItem>}
@@ -258,7 +267,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
       <TextField label={t('wpz_option_other')} multiline minRows={2} size="small" value={order.comment || ''} onChange={(e) => update({ comment: e.target.value })} disabled={disabled} />
     </CardContent></Card>
     {optionQuantityFields}
-    <PurchaseOrderSummary positions={order.positions} currency={order.currency} truckEstimate={truckPlan?.count}
+    <PurchaseOrderSummary positions={order.positions} currency={order.currency} truckEstimate={showTruckPlanning ? truckEstimate : undefined}
       actions={!fixedPosition && !linkedOrder && order.positions.length > 0 ? <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto' }}>
         <Button color="error" size="small" disabled={!canChangePositions} onClick={resetPositions}
           sx={{ textTransform: 'none' }}>{t('purchase_reset_positions')}</Button>
@@ -279,7 +288,7 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           <Typography variant="subtitle1" title={p.article} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{String(p.article || '').slice(0, 75)}</Typography>
           {!fixedPosition && <IconButton size="small" color="error" aria-label={t('purchase_remove_position')} disabled={disabled || linkedOrder} onClick={() => removePosition(p.lineId)}><DeleteOutlineIcon /></IconButton>}
         </Box>
-        {(p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
+        {p.optionId == null && (p.masterArticleName || last.masterArticleName) && !same(p.article, p.masterArticleName || last.masterArticleName) &&
           <Typography variant="caption" color="text.secondary" sx={{ mt: -0.75, overflowWrap: 'anywhere' }}>{t('purchase_internal_name')}: {p.masterArticleName || last.masterArticleName}</Typography>}
         <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{!isNew?`${t('product_article_index')}: ${p.articleIndex} · `:''}{t('original_packaging_type_label')}: {p.originalPackagingType || '–'}</Typography>
         {!isNew && p.optionId!=null && <Typography variant="caption" color="primary">{t('purchase_option_title')}{p.remainingKg!=null?` · ${t('purchase_available_at_selection')}: ${Number(p.remainingKg).toLocaleString(locale)} kg`:''}</Typography>}
@@ -294,9 +303,9 @@ export default function PurchaseOrderEditor({ initialOrder, attachmentInputRef, 
           onChange={event => patchPosition(p.lineId, { availabilityNote: event.target.value })} disabled={disabled} inputProps={{ maxLength: 255 }} />
       </CardContent></Card>;
     })}
-    {splitDialogOpen && <PurchaseDeliverySplitDialog positions={order.positions} initialLoadKg={splitLoadKg ?? defaultPurchaseAmount(packaging)}
+    {splitDialogOpen && <PurchaseDeliverySplitDialog positions={order.positions} initialLoadKg={loadKg}
       onClose={() => setSplitDialogOpen(false)} onApply={(positions, loadKg) => {
-        setSplitLoadKg(loadKg);
+        setSplitLoadKg({ value: loadKg, loadingLocation: order.loadingLocationText || order.optionLoadingLocationText });
         update({ positions });
         setSplitDialogOpen(false);
       }} />}

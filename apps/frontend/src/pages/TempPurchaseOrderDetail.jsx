@@ -6,7 +6,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
-import PurchaseOrderSummary from '../components/PurchaseOrderSummary.jsx';
+import PurchaseOrderSummary, { PurchaseOptionArticleNames } from '../components/PurchaseOrderSummary.jsx';
 import PurchaseOrderActions from '../components/PurchaseOrderActions.jsx';
 import InfoRow from '../components/PurchaseOrderInfoRow.jsx';
 import { supplierReturnTo } from '../utils/purchaseCart.js';
@@ -87,6 +87,7 @@ export default function TempPurchaseOrderDetail() {
       ) : (
         <Typography variant="h6">{item.positions.some((p) => p.optionId != null) ? 'Bestellung (Option)' : 'Bestellung'}</Typography>
       )}
+      <PurchaseOptionArticleNames positions={item.positions} />
       <InfoRow label="Lieferant" value={item.supplierName} />
       <InfoRow label="Lieferantennummer" value={item.supplierId} />
       <InfoRow label="Anschrift" value={item.supplierAddress} />
@@ -118,7 +119,7 @@ export default function TempPurchaseOrderDetail() {
       <Box sx={{ display: 'grid', gap: 1, mt: 1.25, minWidth: 0 }}>
         {(item.positions || []).map((p, index) => <Box key={p.id} sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1.5, p: 1.25, display: 'grid', gap: 0.35, minWidth: 0, overflowWrap: 'anywhere' }}>
           <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{index + 1}. {p.article || '–'}</Typography>
-          {p.masterArticleName && p.masterArticleName !== p.article && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName}</Typography>}
+          {p.optionId == null && p.masterArticleName && p.masterArticleName !== p.article && <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>Unsere Bezeichnung: {p.masterArticleName}</Typography>}
           {p.optionId!=null && <Typography variant="caption" color="primary">Bestellung (Option)</Typography>}
           <Typography variant="caption" color="text.secondary">Artikelindex: {p.articleIndex || '–'}</Typography>
           <Typography variant="caption" color="text.secondary">Liefertermin: {formatPurchaseDate(p.requestedDeliveryDate)}</Typography>

@@ -13,7 +13,7 @@ import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest, apiRequestBlob } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
-import { findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
+import { findDefaultIncoterm, findOptionOfferIncoterm, isFcaIncoterm } from '../utils/incoterm.js';
 import { loadingLocationParts } from '../utils/loadingLocationDisplay.js';
 import { isValidSalePrice } from '../utils/salePrice.js';
 import { defaultOfferQuantityKg } from '../utils/offers.js';
@@ -163,7 +163,7 @@ function OfferCustomerFields({ customer, draft, values, incoterms, loadingLocati
       InputLabelProps={{ shrink: true }}
       disabled={!incoterms.length} onChange={event => update({ incotermId: event.target.value })}
     >
-      <MenuItem value=""><em>{t('incoterm_label')}</em></MenuItem>
+      {!values.incotermId && <MenuItem value="" disabled>{t('incoterm_label')}</MenuItem>}
       {incoterms.map(term => <MenuItem key={term.id} value={term.id}>{term.text}</MenuItem>)}
     </TextField>
     {values.isFca && <PickupFields draft={draft} loadingLocation={loadingLocation} pickupLocations={pickupLocations}
@@ -181,7 +181,7 @@ function OptionOfferDialog({ customers, position, loadingLocation, endpoint, que
   const [drafts, setDrafts] = React.useState({});
   const costPrice = !position.priceNeedsReview && Number.isFinite(position.pricePerTonne) ? position.pricePerTonne : null;
   const maxQuantity = stock && Number.isFinite(position.remainingKg) ? position.remainingKg : null;
-  const defaultTerm = findOptionOfferIncoterm(incoterms);
+  const defaultTerm = findOptionOfferIncoterm(incoterms) || findDefaultIncoterm(incoterms);
   const values = customers.map(customer => offerValues(customer.id, {
     quantityKg: stock && maxQuantity > 0 ? String(Math.min(Number(defaultOfferQuantityKg), maxQuantity)) : undefined,
     ...drafts[customer.id],
