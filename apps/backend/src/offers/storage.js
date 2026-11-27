@@ -43,13 +43,14 @@ const positionFields = {
 };
 const H = appTableSql('tempOffer');
 const P = appTableSql('tempOfferPosition');
+const bmsOfferNumberSql = `COALESCE(NULLIF(LTRIM(RTRIM(h.[BMS_Angebotsnummer])), N''), NULLIF(LTRIM(RTRIM(h.tag_bms_offer_number)), N''))`;
 function select(fields, alias = '') {
   return Object.entries(fields)
     .map(([key, col]) => `${alias}[${col}] AS [${key}]`)
     .join(', ');
 }
 const headerSelect = `${select(headerFields, 'h.')},h.tag_id AS id,h.tag_status AS status,h.tag_created_by AS createdBy,h.tag_created_at AS createdAt,
- h.tag_modified_at AS modifiedAt,h.tag_bms_offer_number AS bmsOfferNumber,h.tag_copy_source_id AS copySourceId,h.tag_return_comment AS returnComment,
+ h.tag_modified_at AS modifiedAt,${bmsOfferNumberSql} AS bmsOfferNumber,h.tag_copy_source_id AS copySourceId,h.tag_return_comment AS returnComment,
  sys.fn_varbintohexstr(h.tag_version) AS version`;
 const positionSelect = `${select(positionFields)},tagp_id AS id,sys.fn_varbintohexstr(tagp_reservation_version) AS reservationVersion`;
 function dbIdentifier(value) {
@@ -99,6 +100,7 @@ async function read(query, id, companyId, owner, locked = false) {
 module.exports = {
   H,
   P,
+  bmsOfferNumberSql,
   headerFields,
   positionFields,
   select,

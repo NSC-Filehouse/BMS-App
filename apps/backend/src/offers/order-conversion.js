@@ -6,7 +6,7 @@ const { parseMandantIdFromBeNumber } = require('../mandant-prefix');
 const { pilotFeaturesForIdentity } = require('../pilot-features');
 const { hasExecutiveAccess } = require('../executive-access');
 const { createHttpError } = require('../utils');
-const { H, P, read } = require('./storage');
+const { H, P, bmsOfferNumberSql, read } = require('./storage');
 
 const orderPositions = appTableSql('tempOrderPosition');
 const offerMail = 'BMSApp.OptionOfferMailOutbox';
@@ -184,9 +184,10 @@ async function unlinkOfferPositions(query, orderId, retainedIds = []) {
   `, [orderId, ...retainedIds]);
   const affected = [...new Set(result.rows.map((row) => Number(row.id)))];
   if (affected.length) {
-    await query(`UPDATE ${H}
-      SET tag_status=CASE WHEN NULLIF(tag_bms_offer_number,'') IS NULL THEN 0 ELSE 2 END,tag_modified_at=SYSUTCDATETIME()
-      WHERE tag_status=4 AND tag_id IN (${affected.map(() => '?').join(',')})
+    await query(`UPDATE h
+      SET tag_status=CASE WHEN ${bmsOfferNumberSql} IS NULL THEN 0 ELSE 2 END,tag_modified_at=SYSUTCDATETIME()
+      FROM ${H} h
+      WHERE h.tag_status=4 AND h.tag_id IN (${affected.map(() => '?').join(',')})
     `, affected);
   }
 }

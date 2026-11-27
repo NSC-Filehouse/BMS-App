@@ -406,6 +406,7 @@ BEGIN TRY
     [tag_print_totals] [bit] NULL,
     [tag_status] [int] NOT NULL CONSTRAINT [DF_Temp_Angebot_status] DEFAULT ((0)),
     [tag_bms_offer_number] [nvarchar](17) COLLATE Latin1_General_CI_AS NULL,
+    [BMS_Angebotsnummer] [nvarchar](22) COLLATE Latin1_General_CI_AS NULL,
     [tag_released_at] [datetime2](3) NULL,
     [tag_return_comment] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL,
     [tag_version] [timestamp] NOT NULL,
@@ -1219,6 +1220,8 @@ BEGIN TRY
   EXEC(N'ALTER TABLE [BMSApp].[tblOptionenPositionen] ADD [opp_LieferdatenJson] [nvarchar](MAX) COLLATE Latin1_General_CI_AS NULL;');
 
  -- Use one ERP offer and PDF for every new customer-mail job.
+ IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'BMS_Angebotsnummer') IS NULL
+  EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] ADD [BMS_Angebotsnummer] [nvarchar](22) COLLATE Latin1_General_CI_AS NULL;');
  IF COL_LENGTH(N'BMSApp.tbl_Temp_Angebot',N'tag_offer_pdf') IS NULL
   EXEC(N'ALTER TABLE [BMSApp].[tbl_Temp_Angebot] ADD [tag_offer_pdf] VARBINARY(MAX) NULL;');
  IF COL_LENGTH(N'BMSApp.OptionOfferMailOutbox',N'StockPositionKey') IS NULL
@@ -1528,6 +1531,7 @@ BEGIN TRY
 {"table":"tbl_Temp_Angebot","column":"tag_print_totals","type":"bit","length":1,"precision":1,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Angebot","column":"tag_status","type":"int","length":4,"precision":10,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Angebot","column":"tag_bms_offer_number","type":"nvarchar","length":34,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
+{"table":"tbl_Temp_Angebot","column":"BMS_Angebotsnummer","type":"nvarchar","length":44,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Angebot","column":"tag_released_at","type":"datetime2","length":7,"precision":23,"scale":3,"nullable":true,"identity":false,"computed":false,"collation":null},
 {"table":"tbl_Temp_Angebot","column":"tag_return_comment","type":"nvarchar","length":-1,"precision":0,"scale":0,"nullable":true,"identity":false,"computed":false,"collation":"Latin1_General_CI_AS"},
 {"table":"tbl_Temp_Angebot","column":"tag_version","type":"timestamp","length":8,"precision":0,"scale":0,"nullable":false,"identity":false,"computed":false,"collation":null},

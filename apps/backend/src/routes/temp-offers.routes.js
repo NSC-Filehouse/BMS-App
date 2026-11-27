@@ -30,6 +30,7 @@ const { loadCustomerDeliveryAddresses } = require('../db/delivery-addresses');
 const {
   H,
   P,
+  bmsOfferNumberSql,
   headerFields,
   positionFields,
   headerSelect,
@@ -300,7 +301,7 @@ router.get(
     if (search) {
       const like = `%${search.replace(/[\[\]%_]/g, (c) => `[${c}]`)}%`;
       clauses.push(
-        `(CONCAT(h.tag_customer_name,N' ',h.tag_customer_reference,N' ',h.tag_internal_note,N' ',h.tag_bms_offer_number,N' AN-',h.tag_id) LIKE ? OR EXISTS(SELECT 1 FROM ${P} p WHERE p.tagp_offer_id=h.tag_id AND CONCAT(p.tagp_article,N' ',p.tagp_article_index) LIKE ?))`,
+        `(CONCAT(h.tag_customer_name,N' ',h.tag_customer_reference,N' ',h.tag_internal_note,N' ',${bmsOfferNumberSql},N' AN-',h.tag_id) LIKE ? OR EXISTS(SELECT 1 FROM ${P} p WHERE p.tagp_offer_id=h.tag_id AND CONCAT(p.tagp_article,N' ',p.tagp_article_index) LIKE ?))`,
       );
       params.push(like, like);
     }
@@ -354,7 +355,7 @@ router.get(
     if (!await offerMailSchemaReady()) notFound();
     const ownerFilter = offerReadOwnerFilter(req);
     const [row] = (await query(`
-      SELECT h.tag_offer_pdf AS pdf, h.tag_bms_offer_number AS number
+      SELECT h.tag_offer_pdf AS pdf, ${bmsOfferNumberSql} AS number
       FROM ${H} h WHERE h.tag_id=? AND h.tag_company_id=?
         ${ownerFilter === null ? '' : 'AND h.tag_created_by=?'} AND ${offerDownloadPdfSql}
     `, [id, req.database.firmaId, ...(ownerFilter === null ? [] : [ownerFilter])])).rows;
@@ -646,7 +647,7 @@ router.post(
         const mail = await manualOfferMail(req, current, language(req));
         await queueManualOffer(tx, mail, current.id);
         await tx(
-          `UPDATE ${H} SET tag_status=1,tag_offer_pdf=NULL,tag_bms_offer_number=NULL,tag_language=?,
+          `UPDATE ${H} SET tag_status=1,tag_offer_pdf=NULL,[BMS_Angebotsnummer]=NULL,tag_bms_offer_number=NULL,tag_language=?,
             tag_released_at=SYSUTCDATETIME(),tag_modified_at=SYSUTCDATETIME(),tag_modified_by=? WHERE tag_id=?`,
           [mail.language, owner(req), current.id],
         );

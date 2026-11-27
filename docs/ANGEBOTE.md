@@ -80,8 +80,9 @@ Mails, Pushs oder Kreditlimit-Anfragen.
 Der externe BMS-Importer liest in `BMSApp.tbl_Temp_Angebot` nur Status 1.
 Status 0 bedeutet erstellt, Status 1 an BMS gesendet, Status 2 erledigt und
 Status 3 Nacharbeit. Bei Erfolg schreibt BMS die Angebotsnummer in
-`tag_bms_offer_number` und die unveränderten PDF-Bytes in die neue Spalte
-`tag_offer_pdf VARBINARY(MAX)`. Nummer, PDF und Status 2 sollen gemeinsam
+`BMS_Angebotsnummer NVARCHAR(22) NULL` und die unveränderten PDF-Bytes in
+`tag_offer_pdf VARBINARY(MAX)`. Die App liest bei leerem Rückgabefeld die
+bisherige Nummer aus `tag_bms_offer_number`. Nummer, PDF und Status 2 sollen gemeinsam
 für dieselbe `tag_id` und `tag_company_id` gespeichert werden. Bei Nacharbeit
 schreibt BMS die Rückmeldung in `tag_return_comment`.
 Der Import muss über `tag_id` idempotent sein.

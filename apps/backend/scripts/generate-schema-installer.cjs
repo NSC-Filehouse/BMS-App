@@ -59,7 +59,12 @@ const purchaseOrderColumns = [
 }));
 const articleColumn = schema.columns.find(item => item.tableName === 'tbl_Temp_Best_Position' && item.name === 'tbp_article');
 if (articleColumn) articleColumn.max_length = 150;
-const additionalColumns = [...optionDeliveryColumns, procurementNotification, ...purchaseOrderColumns];
+const bmsOfferNumber = {
+  tableName: 'tbl_Temp_Angebot', name: 'BMS_Angebotsnummer', typeName: 'nvarchar', max_length: 44,
+  precision: 0, scale: 0, is_nullable: true, is_identity: false, is_computed: false,
+  collation_name: 'Latin1_General_CI_AS',
+};
+const additionalColumns = [...optionDeliveryColumns, procurementNotification, ...purchaseOrderColumns, bmsOfferNumber];
 for (const column of additionalColumns) {
   if (!schema.columns.some(existing => existing.tableName === column.tableName && existing.name === column.name)) {
     schema.columns.push(column);

@@ -5,7 +5,7 @@ const { runSQLQuerySqlServer, withSqlTransaction } = require('./access');
 const { berlinDate } = require('../options/read');
 const { readTempOfferDocument, assembleOfferMail, singleEmail } = require('../options/offer-documents');
 const { loadGeneratedOfferHeaders, createGeneratedTempOffer } = require('../offers/erp-mail');
-const { H, P, dbIdentifier } = require('../offers/storage');
+const { H, P, bmsOfferNumberSql, dbIdentifier } = require('../offers/storage');
 const { getUserIdentityByShortCode } = require('./users');
 const { createHttpError } = require('../utils');
 
@@ -23,9 +23,10 @@ const readySql = `
   SELECT CASE WHEN COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'TempOfferId') IS NOT NULL
     AND COL_LENGTH(N'BMSApp.OptionOfferMailOutbox', N'StockPositionKey') IS NOT NULL
     AND COL_LENGTH(?, N'tag_offer_pdf') IS NOT NULL
+    AND COL_LENGTH(?, N'BMS_Angebotsnummer') IS NOT NULL
     AND OBJECT_ID(N'BMSApp.OptionOfferDocument', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready
 `;
-const readyParams = [H];
+const readyParams = [H, H];
 
 async function offerMailSchemaReady() {
   const [row] = await run(readySql, readyParams);
@@ -147,7 +148,7 @@ async function claimOffer() {
       d.OfferJson AS offerJson,
       h.tag_created_by AS createdBy,
       CASE WHEN h.tag_status IN (4,5) THEN CASE WHEN ${storedPdfSql} THEN 2 ELSE 3 END ELSE h.tag_status END AS erpStatus,
-      h.tag_bms_offer_number AS offerNumber, h.tag_offer_pdf AS pdf,
+      ${bmsOfferNumberSql} AS offerNumber, h.tag_offer_pdf AS pdf,
       COALESCE(h.tag_offer_date, CONVERT(date, h.tag_created_at)) AS issueDate, h.tag_valid_until AS validUntil,
       h.tag_currency AS currency, h.tag_customer_id AS customerId, h.tag_customer_name AS customerName,
       h.tag_customer_address AS customerAddress, h.tag_contact AS contact,
@@ -287,7 +288,7 @@ function startOptionOfferMailWorker() {
   void process();
 }
 
-const storedPdfSql = `NULLIF(LTRIM(RTRIM(h.tag_bms_offer_number)), N'') IS NOT NULL
+const storedPdfSql = `${bmsOfferNumberSql} IS NOT NULL
   AND DATALENGTH(h.tag_offer_pdf)>5 AND SUBSTRING(h.tag_offer_pdf,1,5)=0x255044462D`;
 const readyPdfSql = `h.tag_status=2 AND ${storedPdfSql}`;
 
