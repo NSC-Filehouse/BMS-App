@@ -7,6 +7,7 @@ import * as purchaseCart from '../src/utils/purchaseCart.js';
 import * as purchaseDeliveries from '../src/utils/purchaseDeliveries.js';
 import * as quantities from '../src/utils/optionQuantityConfirmation.js';
 import * as optionDisplay from '../src/utils/optionDisplay.js';
+import * as tempOrderStatus from '../src/utils/tempOrderStatus.js';
 import * as loadingLocations from '../src/utils/loadingLocationDraft.js';
 import * as contactRanking from '../src/utils/contactRanking.js';
 import * as incoterm from '../src/utils/incoterm.js';
@@ -77,6 +78,7 @@ async function mount(relativePath, props, request, params = {}, exportName = 'de
     '../utils/purchaseDeliveries.js': purchaseDeliveries,
     '../utils/optionQuantityConfirmation.js': quantities,
     '../utils/optionDisplay.js': optionDisplay,
+    '../utils/tempOrderStatus.js': tempOrderStatus,
     '../utils/useOptionValidityRefresh.js': { useOptionValidityRefresh: () => 0 },
     '../utils/loadingLocationDraft.js': loadingLocations,
     '../utils/contactRanking.js': contactRanking,
@@ -499,6 +501,32 @@ test('the preselected article can be confirmed immediately and is kept for order
   await detail.flush();
   assert.ok(detail.find(node => node.props?.titleAccess === 'Passender Artikel gefunden'));
   assert.ok(detail.find(node => node.props?.variant === 'caption' && node.props.children.includes('Local article')));
+});
+
+test('option details explain an allocated quantity and link only readable orders', async () => {
+  const position = { id: 1923, articleName: '5502', orderedKg: 1400000, remainingKg: 0,
+    purchaseCommitments: [{ orderId: 29, status: 3, amountKg: 1400000 }] };
+  const view = await mount('../src/pages/OptionDetail.jsx', { offer: { id: 634, positions: [position] }, position },
+    async () => assert.fail('The option details already contain the order information'), {}, 'OptionPositionDetails');
+  const quantityRow = () => {
+    const element = view.find(node => node.type?.name === 'OptionRemainingQuantity');
+    return element.type(element.props).props;
+  };
+  await view.flush();
+  assert.equal(quantityRow().label, 'Noch verfügbar');
+  const readable = JSON.stringify(quantityRow().value);
+  assert.match(readable, /0 kg/);
+  assert.match(readable, /1\.400\.000 kg sind durch eine Bestellung in Nacharbeit belegt/);
+  assert.match(readable, /Bestellung öffnen/);
+  assert.match(readable, /\/temp-purchase-orders\/29/);
+
+  view.updateProps({ position: { ...position, orderedKg: 900000, remainingKg: 500000,
+    purchaseCommitments: [], hasRestrictedPurchaseCommitments: true } });
+  await view.flush();
+  const restricted = JSON.stringify(quantityRow().value);
+  assert.match(restricted, /500\.000 kg/);
+  assert.match(restricted, /Menge durch bestehende Bestellungen belegt/);
+  assert.doesNotMatch(restricted, /Nacharbeit|Bestellung öffnen|temp-purchase-orders/);
 });
 
 test('option details reload customers for the selected article and discard late results', async () => {

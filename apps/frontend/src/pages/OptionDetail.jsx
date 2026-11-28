@@ -1,6 +1,6 @@
 import React from 'react';
 import { DisclosureBackButton } from '../components/DisclosureBack.jsx';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Link, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckIcon from '@mui/icons-material/Check';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -8,12 +8,13 @@ import OptionOfferCustomers from '../components/OptionOfferCustomers.jsx';
 import OptionPurchaseControls from '../components/OptionPurchaseControls.jsx';
 import { useFeatureAccess } from '../components/FeatureAccess.jsx';
 import OptionSourceDocuments from '../components/OptionSourceDocuments.jsx';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useI18n } from '../utils/i18n.jsx';
 import { navigateToReturn, createReturnTo } from '../utils/navigation.js';
 import { useOptionValidityRefresh } from '../utils/useOptionValidityRefresh.js';
 import { getMandant } from '../utils/mandant.js';
+import { TEMP_ORDER_STATUS } from '../utils/tempOrderStatus.js';
 import { createPurchaseLineId } from '../utils/purchaseCart.js';
 import { hasRecordedOffer, optionDate, optionNumber, optionPrice, optionQuantity, optionMfi, optionPackagingLayout, optionPositionTitle, optionPositionPath, optionDeliveryTerm } from '../utils/optionDisplay.js';
 
@@ -23,6 +24,34 @@ function InfoRow({ label, value }) {
     <Typography variant="body2" color="text.secondary">{label}</Typography>
     <Typography component="div" variant="body2" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{value}</Typography>
   </Box>;
+}
+
+const commitmentLabels = {
+  [TEMP_ORDER_STATUS.DRAFT]: 'option_purchase_amount_draft',
+  [TEMP_ORDER_STATUS.APP_FINALIZED]: 'option_purchase_amount_sent',
+  [TEMP_ORDER_STATUS.NEEDS_REWORK]: 'option_purchase_amount_rework',
+};
+
+function OptionRemainingQuantity({ position, returnTo, t }) {
+  if (!(position.orderedKg > 0)) return null;
+  return <InfoRow label={t('option_remaining_quantity')} value={<>
+    {position.remainingKg == null ? '–' : `${optionNumber(position.remainingKg)} kg`}
+    {position.purchaseCommitments?.map(({ orderId, status, amountKg }) => (
+      <Box key={orderId} sx={{ mt: 0.5, whiteSpace: 'normal' }}>
+        <Typography variant="caption" component="div" color="text.secondary">
+          {t(commitmentLabels[status] || 'option_purchase_amount_allocated', { amount: optionNumber(amountKg) })}
+        </Typography>
+        <Link component={RouterLink} to={`/temp-purchase-orders/${orderId}`} state={{ returnTo }} variant="caption">
+          {t('option_open_linked_purchase')}
+        </Link>
+      </Box>
+    ))}
+    {(position.hasRestrictedPurchaseCommitments || !position.purchaseCommitments?.length) && (
+      <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'normal' }}>
+        {t('option_purchase_amount_restricted')}
+      </Typography>
+    )}
+  </>} />;
 }
 
 export default function OptionDetail() {
@@ -243,7 +272,7 @@ export function OptionPositionDetails({ offer, position, supplierField, purchase
         <InfoRow label={t('option_delivery_term')} value={position.deliveryTermDisplay ?? optionDeliveryTerm(offer.incoterm, offer.loadingLocation)} />
         <InfoRow label={t('option_packaging')} value={packaging.positions[position.id] || packaging.common || (lang==='en'?'Unresolved':'ungeklärt')} />
         <InfoRow label={t('option_quantity')} value={position.confirmedQuantityKg!=null && !position.truckMax && !position.truckMin?`${optionNumber(position.confirmedQuantityKg)} kg`:optionQuantity(position, t)} />
-        {position.orderedKg>0 && <InfoRow label="Noch verfügbar" value={`${optionNumber(position.remainingKg)} kg`} />}
+        <OptionRemainingQuantity position={position} returnTo={createReturnTo(location)} t={t} />
         <InfoRow label={t('option_mfi')} value={optionMfi(position)} />
         <InfoRow label={t('option_batch')} value={position.batchNo} />
         <InfoRow label={t('option_properties')} value={position.propertiesText} />

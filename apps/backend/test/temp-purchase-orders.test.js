@@ -145,6 +145,7 @@ function fixture(options = {}) {
     '../middlewares/mandant.middleware': { requireMandant(req, res, next) { next(); } },
     '../middlewares/pilot-feature.middleware': options.routing ? require('../src/middlewares/pilot-feature.middleware') : { requirePilotFeature: () => () => {} },
     '../options/delivery-data': require('../src/options/delivery-data'),
+    '../db/purchase-order-access': require('../src/db/purchase-order-access'),
     '../db/customer-contact-ranking': { rememberFirstContact: async (...args) => { options.rememberContact?.(...args); } },
     '../db/access': {
       runSQLQueryAccess: async (_database, sql) => sql.includes('tblArt_Artikel')

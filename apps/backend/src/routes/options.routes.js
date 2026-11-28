@@ -6,6 +6,7 @@ const { requirePilotFeature } = require('../middlewares/pilot-feature.middleware
 const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require('../db/access');
 const { loadOffers, berlinDate } = require('../options/read');
 const { enrichOptionContactPhone } = require('../options/contact-display');
+const { loadOptionPurchaseCommitments } = require('../options/purchase-commitments');
 const { optionAvailableForPurchaseSql } = require('../options/purchase-quantity');
 const { loadOptionSource, sourceFileType } = require('../options/source');
 const { resolveOfferArticle, loadOptionOfferCustomers } = require('../options/customer-offers');
@@ -46,12 +47,15 @@ router.get('/options/:id/positions/:positionId',requireMandant,requirePilotFeatu
  const offer=offers[0],positionId=positiveId(req.params.positionId);
  const position=offer?.positions.find(row=>Number(row.id)===positionId);
  if(!position)throw createHttpError(404,'Optionsposition nicht gefunden.',{code:'OPTION_NOT_FOUND'});
- const [detail, article, confirmationIndex] = await Promise.all([
+ const [detail, article, confirmationIndex, commitments] = await Promise.all([
    enrichOptionContactPhone(req.database,offer), resolveOfferArticle(req.database,offer,position), loadArticleNameConfirmation(req.database,position,offer),
+   position.orderedKg > 0 ? loadOptionPurchaseCommitments(req.database, req.userIdentity, offer.id, position) : {},
  ]);
- const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = position;
+ if (!commitments) throw createHttpError(404, 'Optionsposition nicht gefunden.', { code: 'OPTION_NOT_FOUND' });
+ const { sourceMeasurementsJson, singleCandidateIndex, ...publicPosition } = { ...position, ...commitments };
  publicPosition.matchedArticle = article ? { articleIndex: String(article.articleIndex), articleName: article.articleName } : null;
  if (confirmationIndex) publicPosition.articleConfirmationIndex = confirmationIndex;
+ res.set('Cache-Control', 'private, no-store');
  sendEnvelope(res,{data:{...detail,positions:[publicPosition],readOnly:Number(offer.sourceMandantId)!==Number(req.database.firmaId),actionsReadOnly:optionActionsReadOnly(req)},meta:{mandant:req.mandant,sharedOptions:true}});
 }));
 async function loadOfferPositionForCustomers(req) {

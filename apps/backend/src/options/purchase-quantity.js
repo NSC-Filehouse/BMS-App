@@ -33,12 +33,18 @@ function confirmedQuantitySql(alias = 'p') {
   return `CASE WHEN ${alias}.opp_MengeBestaetigtQuellHash=${quantitySourceHashSql(alias)} THEN ${alias}.opp_GesamtmengeBestaetigtKg END`;
 }
 
+const SUM_PURCHASE_KG_SQL = `COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0)`;
+
 // Saved purchases from all productive mandants share one quantity, including drafts and ERP-accepted orders.
-function orderedOptionKgSql(positionIdSql, { excludeOrder = false } = {}) {
-  return `SELECT COALESCE(SUM(bp.tbp_amount * CASE WHEN LOWER(bp.tbp_unit) IN(N't',N'to',N'tonne',N'tonnen') THEN 1000 ELSE 1 END),0) AS orderedKg
-    FROM ${appTableSql('tempPurchaseOrderPosition')} bp
+function optionPurchaseRowsSql(positionIdSql) {
+  return `FROM ${appTableSql('tempPurchaseOrderPosition')} bp
     JOIN ${appTableSql('tempPurchaseOrder')} b ON b.tb_id=bp.tbp_tb_id
-    WHERE bp.OptionPositionID=${positionIdSql} AND b.tb_company_id<>${TEST_MANDANT_ID}
+    WHERE bp.OptionPositionID=${positionIdSql} AND b.tb_company_id<>${TEST_MANDANT_ID}`;
+}
+
+function orderedOptionKgSql(positionIdSql, { excludeOrder = false } = {}) {
+  return `SELECT ${SUM_PURCHASE_KG_SQL} AS orderedKg
+    ${optionPurchaseRowsSql(positionIdSql)}
       ${excludeOrder ? 'AND bp.tbp_tb_id<>?' : ''}`;
 }
 
@@ -95,4 +101,4 @@ function offeredTruckCount(position) {
   return 1;
 }
 
-module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,optionAvailableForPurchaseSql,quantityInputKg,isTruckOffer,offeredTruckCount };
+module.exports = { offeredQuantityKg, quantityAvailability, fitsQuantity,quantitySourceHashSql,confirmedQuantitySql,orderedOptionKgSql,optionPurchaseRowsSql,SUM_PURCHASE_KG_SQL,optionAvailableForPurchaseSql,quantityInputKg,isTruckOffer,offeredTruckCount };

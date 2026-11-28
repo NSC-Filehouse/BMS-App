@@ -11,6 +11,7 @@ const { runSQLQueryAccess, runSQLQuerySqlServer, withSqlTransaction } = require(
 const { appTableSql } = require('../db/app-tables');
 const { attachmentUploadMiddleware, parsePurchaseBody, normalizeAttachmentInput, buildContentDisposition,
   loadPurchaseOrderAttachments, withPurchaseOrderAttachments, savePurchaseOrderAttachments, syncPurchaseOptionPdf } = require('../db/purchase-order-attachments');
+const { purchaseOrderOwnerFilter } = require('../db/purchase-order-access');
 const { rememberFirstContact } = require('../db/customer-contact-ranking');
 const { getCustomerAccessScope, loadVisibleCustomer } = require('../db/customer-access');
 const { loadPurchaseOptions, loadSupplierTerms, loadPurchaseWarehouses, loadPurchasePaymentText, loadLatestPurchase, loadPurchaseLocations, findPackaging, packagingKey, enrichPurchaseArticleNames } = require('../db/purchase-order-values');
@@ -424,12 +425,11 @@ function normalizePositions(rawPositions) {
 }
 
 async function loadOrderForUser(id, companyId, userShortCode, isFullAccess) {
-  const ownerSql = isFullAccess ? '' : `AND [tb_created_by] = ?`;
-  const params = isFullAccess ? [id, companyId] : [id, companyId, userShortCode];
+  const owner = purchaseOrderOwnerFilter(userShortCode, isFullAccess);
   const rows = await runSQLQuerySqlServer(config.sql.database, `
     ${orderSelectSql()}
-    WHERE [tb_id] = ? AND [tb_company_id] = ? ${ownerSql}
-  `, params);
+    WHERE [tb_id] = ? AND [tb_company_id] = ? ${owner.sql}
+  `, [id, companyId, ...owner.params]);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
